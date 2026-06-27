@@ -1,0 +1,23 @@
+{
+  "name": "cvf-pt-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CVF PT - Core Value Fitness personal training management API",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node scripts/seed.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^4",
+    "stripe": "^22.2.0",
+    "ws": "^8.21.0"
+  }
+}

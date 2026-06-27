@@ -1,0 +1,113 @@
+const express = require('express');
+const { supabaseAdmin } = require('../supabase');
+const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
+
+const router = express.Router();
+router.use(requireAuth);
+
+// POST /api/bookings (client request)
+router.post('/', requireClient, async (req, res) => {
+  try {
+    const { requested_time, duration_minutes, location, note } = req.body || {};
+    if (!requested_time) return res.status(400).json({ error: 'Please choose a date and time' });
+    if (new Date(requested_time).getTime() < Date.now()) {
+      return res.status(400).json({ error: 'Requested time must be in the future' });
+    }
+    const { data, error } = await supabaseAdmin.from('booking_requests').insert({
+      client_id: req.user.client.id,
+      coach_id: req.user.client.coach_id,
+      requested_time,
+      duration_minutes: duration_minutes || 60,
+      location: location || null,
+      note: note || null,
+    }).select().single();
+    if (error) throw error;
+    return res.status(201).json(data);
+  } catch (e) {
+    console.error('create booking error', e);
+    return res.status(500).json({ error: 'Failed to send booking request' });
+  }
+});
+
+// GET /api/bookings/mine (client)
+router.get('/mine', requireClient, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('booking_requests').select('*')
+      .eq('client_id', req.user.client.id).eq('archived', false)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    console.error('client bookings error', e);
+    return res.status(500).json({ error: 'Failed to load your requests' });
+  }
+});
+
+// GET /api/bookings (coach) ?status=pending
+router.get('/', requireCoach, async (req, res) => {
+  try {
+    let q = supabaseAdmin.from('booking_requests').select('*, client:clients(id, name)')
+      .eq('archived', false).order('created_at', { ascending: false });
+    if (req.user.role !== 'admin') q = q.eq('coach_id', req.user.coach.id);
+    if (req.query.status) q = q.eq('status', req.query.status);
+    const { data, error } = await q;
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    console.error('list bookings error', e);
+    return res.status(500).json({ error: 'Failed to load booking requests' });
+  }
+});
+
+async function loadBookingForCoach(req, res) {
+  const { data: booking } = await supabaseAdmin.from('booking_requests').select('*').eq('id', req.params.id).maybeSingle();
+  if (!booking || (req.user.role !== 'admin' && booking.coach_id !== req.user.coach.id)) {
+    res.status(404).json({ error: 'Booking request not found' });
+    return null;
+  }
+  return booking;
+}
+
+// PATCH /api/bookings/:id/approve -> creates a session
+router.patch('/:id/approve', requireCoach, async (req, res) => {
+  try {
+    const booking = await loadBookingForCoach(req, res);
+    if (!booking) return;
+    if (booking.status !== 'pending') return res.status(400).json({ error: 'This request was already handled' });
+    const { data: session, error: sErr } = await supabaseAdmin.from('sessions').insert({
+      client_id: booking.client_id,
+      coach_id: booking.coach_id,
+      scheduled_at: booking.requested_time,
+      duration_minutes: booking.duration_minutes,
+      location: booking.location,
+    }).select().single();
+    if (sErr) throw sErr;
+    const { data, error } = await supabaseAdmin.from('booking_requests')
+      .update({ status: 'approved', updated_at: new Date().toISOString() })
+      .eq('id', booking.id).select('*, client:clients(id, name)').single();
+    if (error) throw error;
+    return res.json({ booking: data, session });
+  } catch (e) {
+    console.error('approve booking error', e);
+    return res.status(500).json({ error: 'Failed to approve request' });
+  }
+});
+
+// PATCH /api/bookings/:id/decline
+router.patch('/:id/decline', requireCoach, async (req, res) => {
+  try {
+    const booking = await loadBookingForCoach(req, res);
+    if (!booking) return;
+    if (booking.status !== 'pending') return res.status(400).json({ error: 'This request was already handled' });
+    const { data, error } = await supabaseAdmin.from('booking_requests')
+      .update({ status: 'declined', updated_at: new Date().toISOString() })
+      .eq('id', booking.id).select('*, client:clients(id, name)').single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    console.error('decline booking error', e);
+    return res.status(500).json({ error: 'Failed to decline request' });
+  }
+});
+
+module.exports = router;
