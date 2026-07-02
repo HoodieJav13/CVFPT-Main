@@ -2,7 +2,7 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
 const { getBalance } = require('../utils/credits');
-const { todayRangeInTz } = require('../utils/time');
+const { todayRangeInTz, todayDateInTz } = require('../utils/time');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -41,6 +41,7 @@ router.get('/coach', requireCoach, async (req, res) => {
     const { data: ownClients } = await clientIdsQ;
     let unread = 0;
     let recentMessages = [];
+    let recentCheckIns = [];
     const ids = (ownClients || []).map((c) => c.id);
     if (ids.length) {
       const { count } = await supabaseAdmin.from('messages').select('id', { count: 'exact', head: true })
@@ -49,6 +50,11 @@ router.get('/coach', requireCoach, async (req, res) => {
       const { data: recents } = await supabaseAdmin.from('messages').select('*, client:clients(id, name)')
         .in('client_id', ids).eq('archived', false).order('created_at', { ascending: false }).limit(5);
       recentMessages = recents || [];
+
+      const { data: checkIns } = await supabaseAdmin.from('check_ins').select('*, client:clients(id, name)')
+        .in('client_id', ids).eq('archived', false).eq('review_status', 'needs_review')
+        .order('check_in_date', { ascending: false }).limit(5);
+      recentCheckIns = checkIns || [];
     }
 
     return res.json({
@@ -58,6 +64,7 @@ router.get('/coach', requireCoach, async (req, res) => {
       client_count: clientCount || 0,
       unread_messages: unread,
       recent_messages: recentMessages,
+      recent_check_ins: recentCheckIns,
     });
   } catch (e) {
     console.error('coach dashboard error', e);
@@ -70,15 +77,40 @@ router.get('/client', requireClient, async (req, res) => {
   try {
     const clientId = req.user.client.id;
     const nowIso = new Date().toISOString();
+    const today = todayDateInTz();
 
-    const [{ data: nextSessions }, { data: recentMessages }, balance] = await Promise.all([
+    const [{ data: nextSessions }, { data: recentMessages }, { count: unreadMessages }, balance] = await Promise.all([
       supabaseAdmin.from('sessions').select('*, coach:coaches(id, name)')
         .eq('client_id', clientId).eq('archived', false).eq('status', 'scheduled')
         .gte('scheduled_at', nowIso).order('scheduled_at').limit(3),
       supabaseAdmin.from('messages').select('*')
         .eq('client_id', clientId).eq('archived', false).order('created_at', { ascending: false }).limit(5),
+      supabaseAdmin.from('messages').select('id', { count: 'exact', head: true })
+        .eq('client_id', clientId).eq('sender_role', 'coach').eq('read_by_recipient', false).eq('archived', false),
       getBalance(clientId),
     ]);
+
+    const [{ data: todayCheckIn }, { data: latestCheckIns }, { data: metrics }] = await Promise.all([
+      supabaseAdmin.from('check_ins').select('*')
+        .eq('client_id', clientId).eq('check_in_date', today).eq('archived', false).maybeSingle(),
+      supabaseAdmin.from('check_ins').select('*')
+        .eq('client_id', clientId).eq('archived', false).order('check_in_date', { ascending: false }).limit(1),
+      supabaseAdmin.from('metrics').select('id, name, unit')
+        .eq('client_id', clientId).eq('archived', false),
+    ]);
+
+    let recentProgress = [];
+    const metricIds = (metrics || []).map((m) => m.id);
+    const metricsById = Object.fromEntries((metrics || []).map((m) => [m.id, m]));
+    if (metricIds.length) {
+      const { data: entries } = await supabaseAdmin.from('metric_entries').select('*')
+        .in('metric_id', metricIds).eq('archived', false)
+        .order('recorded_on', { ascending: false }).order('created_at', { ascending: false }).limit(5);
+      recentProgress = (entries || []).map((entry) => ({
+        ...entry,
+        metric: metricsById[entry.metric_id] || null,
+      }));
+    }
 
     // waiver status
     const { data: latestArr } = await supabaseAdmin.from('waiver_versions').select('id, version_number')
@@ -98,6 +130,10 @@ router.get('/client', requireClient, async (req, res) => {
       next_session: nextSessions?.[0] || null,
       upcoming_sessions: nextSessions || [],
       recent_messages: recentMessages || [],
+      unread_messages: unreadMessages || 0,
+      today_check_in: todayCheckIn || null,
+      latest_check_in: latestCheckIns?.[0] || null,
+      recent_progress: recentProgress,
       credits: balance,
       waiver: { has_version: Boolean(latest), signed_latest: signedLatest },
       program_count: programCount || 0,

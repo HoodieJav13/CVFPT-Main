@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { Toaster } from '@/components/ui/sonner';
 import { LoadingScreen } from '@/components/common';
 import AppShell from '@/components/layout/AppShell';
+import PreviewToolbar from '@/components/PreviewToolbar';
 import Login from '@/pages/Login';
 import Signup from '@/pages/Signup';
 import CoachDashboard from '@/pages/coach/Dashboard';
@@ -95,6 +96,7 @@ export default function App() {
 
           <Route path="*" element={<RoleRedirect />} />
         </Routes>
+        <PreviewToolbar />
       </BrowserRouter>
       <Toaster position="top-center" richColors />
     </AuthProvider>

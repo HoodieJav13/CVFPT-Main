@@ -62,8 +62,10 @@ router.post('/clients/:clientId/metrics', requireCoach, async (req, res) => {
 });
 
 async function guardMetric(req, res) {
-  const { data: metric } = await supabaseAdmin.from('metrics').select('*, client:clients(*)').eq('id', req.params.metricId).maybeSingle();
-  if (!metric || !canAccessClient(req.user, metric.client)) {
+  const { data: metric } = await supabaseAdmin.from('metrics').select('*, client:clients(*)')
+    .eq('id', req.params.metricId).eq('archived', false).maybeSingle();
+  const clientOwnsMetric = req.user.role === 'client' && metric?.client_id === req.user.client.id;
+  if (!metric || (!clientOwnsMetric && !canAccessClient(req.user, metric.client))) {
     res.status(404).json({ error: 'Metric not found' });
     return null;
   }
@@ -71,7 +73,7 @@ async function guardMetric(req, res) {
 }
 
 // POST /api/progress/metrics/:metricId/entries { value, notes, recorded_on }
-router.post('/metrics/:metricId/entries', requireCoach, async (req, res) => {
+router.post('/metrics/:metricId/entries', async (req, res) => {
   try {
     const metric = await guardMetric(req, res);
     if (!metric) return;
@@ -90,6 +92,34 @@ router.post('/metrics/:metricId/entries', requireCoach, async (req, res) => {
   } catch (e) {
     console.error('create entry error', e);
     return res.status(500).json({ error: 'Failed to log entry' });
+  }
+});
+
+// PUT /api/progress/entries/:entryId { value, notes, recorded_on }
+router.put('/entries/:entryId', async (req, res) => {
+  try {
+    const { data: entry } = await supabaseAdmin.from('metric_entries')
+      .select('*, metric:metrics(*, client:clients(*))').eq('id', req.params.entryId).eq('archived', false).maybeSingle();
+    const clientOwnsEntry = req.user.role === 'client' && entry?.metric?.client_id === req.user.client.id;
+    if (!entry || entry.metric?.archived || (!clientOwnsEntry && !canAccessClient(req.user, entry.metric?.client))) {
+      return res.status(404).json({ error: 'Entry not found' });
+    }
+    const updates = {};
+    if ('value' in (req.body || {})) {
+      const { value } = req.body;
+      if (value === undefined || value === null || value === '' || isNaN(Number(value))) {
+        return res.status(400).json({ error: 'A numeric value is required' });
+      }
+      updates.value = Number(value);
+    }
+    if ('notes' in (req.body || {})) updates.notes = req.body.notes || null;
+    if ('recorded_on' in (req.body || {})) updates.recorded_on = req.body.recorded_on || new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabaseAdmin.from('metric_entries').update(updates).eq('id', entry.id).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    console.error('update entry error', e);
+    return res.status(500).json({ error: 'Failed to update entry' });
   }
 });
 

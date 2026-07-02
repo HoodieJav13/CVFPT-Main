@@ -20,6 +20,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/clients', require('./routes/clients'));
 app.use('/api/sessions', require('./routes/sessions'));
 app.use('/api/progress', require('./routes/progress'));
+app.use('/api/check-ins', require('./routes/checkins'));
 app.use('/api/programs', require('./routes/programs'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/bookings', require('./routes/bookings'));

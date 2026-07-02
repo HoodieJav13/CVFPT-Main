@@ -58,6 +58,8 @@ const SESSION_BADGES = {
   completed: 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25',
   cancelled: 'bg-destructive/15 text-destructive border border-destructive/25',
   pending: 'bg-[#F2C94C]/15 text-[#F2C94C] border border-[#F2C94C]/25',
+  needs_review: 'bg-[#F2C94C]/15 text-[#F2C94C] border border-[#F2C94C]/25',
+  reviewed: 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25',
   approved: 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25',
   declined: 'bg-destructive/15 text-destructive border border-destructive/25',
 };

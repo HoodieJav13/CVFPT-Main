@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingScreen, StatusBadge, MetricChart, EmptyState } from '@/components/common';
+import CheckInForm from '@/components/CheckInForm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +22,7 @@ import {
 import {
   ArrowLeft, Pencil, Archive, ArchiveRestore, Loader2, Plus, FileSignature,
   CreditCard, TrendingUp, Dumbbell, CalendarDays, MessageSquare, Trash2,
+  ClipboardCheck, Play, StickyNote,
 } from 'lucide-react';
 import { initials, fmtDate, fmtDateTime, fmtMoney, fmtTime, fmtDay } from '@/lib/format';
 import { toast } from 'sonner';
@@ -88,6 +90,7 @@ export default function ClientDetail() {
       <Tabs defaultValue="overview">
         <TabsList className="w-full justify-start overflow-x-auto rounded-xl">
           <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+          <TabsTrigger value="check-ins" data-testid="tab-check-ins">Check-ins</TabsTrigger>
           <TabsTrigger value="progress" data-testid="tab-progress">Progress</TabsTrigger>
           <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
           <TabsTrigger value="programs" data-testid="tab-programs">Programs</TabsTrigger>
@@ -96,6 +99,9 @@ export default function ClientDetail() {
 
         <TabsContent value="overview">
           <OverviewTab client={client} credits={credits} waiver={waiver} reload={load} user={user} />
+        </TabsContent>
+        <TabsContent value="check-ins">
+          <CheckInsTab clientId={client.id} />
         </TabsContent>
         <TabsContent value="progress">
           <ProgressTab clientId={client.id} />
@@ -318,11 +324,119 @@ function Row({ label, value }) {
   );
 }
 
+function CheckInsTab({ clientId }) {
+  const [checkIns, setCheckIns] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get(`/check-ins/clients/${clientId}`);
+      setCheckIns(data);
+    } catch (e) {
+      toast.error(errMsg(e, 'Failed to load check-ins'));
+    }
+  }, [clientId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const startNew = () => {
+    setEditing(null);
+    setOpen(true);
+  };
+
+  const startEdit = (checkIn) => {
+    setEditing(checkIn);
+    setOpen(true);
+  };
+
+  const save = async (payload) => {
+    setSaving(true);
+    try {
+      if (editing) {
+        await api.put(`/check-ins/${editing.id}`, payload);
+        toast.success('Check-in updated');
+      } else {
+        await api.post(`/check-ins/clients/${clientId}`, payload);
+        toast.success('Check-in saved');
+      }
+      setOpen(false);
+      setEditing(null);
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not save check-in'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!checkIns) return <LoadingScreen />;
+
+  return (
+    <div className="space-y-3 mt-1">
+      <div className="flex justify-end">
+        <Button size="sm" className="rounded-xl" onClick={startNew} data-testid="coach-new-check-in-button">
+          <Plus className="h-4 w-4 mr-1.5" /> New check-in
+        </Button>
+      </div>
+      {checkIns.length === 0 && (
+        <EmptyState icon={ClipboardCheck} title="No check-ins yet" subtitle="Client and coach check-ins will show here." testId="coach-check-ins-empty" />
+      )}
+      {checkIns.map((checkIn) => (
+        <Card key={checkIn.id} data-testid="coach-check-in-card">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-display font-semibold">{fmtDate(checkIn.check_in_date)}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Energy {checkIn.energy || '-'} - Soreness {checkIn.soreness || '-'} - Sleep {checkIn.sleep_quality || '-'} - Stress {checkIn.stress || '-'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <StatusBadge status={checkIn.review_status} />
+                <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => startEdit(checkIn)} data-testid="coach-edit-check-in-button">
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+            {(checkIn.body_notes || checkIn.training_notes || checkIn.general_notes || checkIn.coach_notes) && (
+              <div className="mt-3 grid gap-2 text-sm">
+                {checkIn.body_notes && <NoteBlock label="Body" value={checkIn.body_notes} />}
+                {checkIn.training_notes && <NoteBlock label="Training" value={checkIn.training_notes} />}
+                {checkIn.general_notes && <NoteBlock label="General" value={checkIn.general_notes} />}
+                {checkIn.coach_notes && <NoteBlock label="Coach" value={checkIn.coach_notes} accent />}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+
+      <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setEditing(null); }}>
+        <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
+          <DialogHeader><DialogTitle>{editing ? 'Edit check-in' : 'New check-in'}</DialogTitle></DialogHeader>
+          <CheckInForm initial={editing} saving={saving} onSubmit={save} submitLabel={editing ? 'Save changes' : 'Save check-in'} coachMode />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function NoteBlock({ label, value, accent }) {
+  return (
+    <div className={`rounded-xl border px-3 py-2 ${accent ? 'border-primary/20 bg-primary/10' : 'border-border bg-card/50'}`}>
+      <p className={`text-xs font-semibold ${accent ? 'text-primary' : 'text-muted-foreground'}`}>{label}</p>
+      <p className="mt-1 whitespace-pre-wrap">{value}</p>
+    </div>
+  );
+}
+
 function ProgressTab({ clientId }) {
   const [metrics, setMetrics] = useState(null);
   const [metricOpen, setMetricOpen] = useState(false);
   const [metricForm, setMetricForm] = useState({ name: '', unit: '' });
   const [entryFor, setEntryFor] = useState(null);
+  const [editingEntry, setEditingEntry] = useState(null);
   const [entryForm, setEntryForm] = useState({ value: '', recorded_on: new Date().toISOString().slice(0, 10), notes: '' });
   const [saving, setSaving] = useState(false);
 
@@ -353,13 +467,31 @@ function ProgressTab({ clientId }) {
     }
   };
 
-  const addEntry = async (e) => {
+  const openNewEntry = (metric) => {
+    setEntryFor(metric);
+    setEditingEntry(null);
+    setEntryForm({ value: '', recorded_on: new Date().toISOString().slice(0, 10), notes: '' });
+  };
+
+  const openEditEntry = (metric, entry) => {
+    setEntryFor(metric);
+    setEditingEntry(entry);
+    setEntryForm({ value: String(entry.value), recorded_on: entry.recorded_on, notes: entry.notes || '' });
+  };
+
+  const saveEntry = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post(`/progress/metrics/${entryFor.id}/entries`, entryForm);
-      toast.success('Entry logged');
+      if (editingEntry) {
+        await api.put(`/progress/entries/${editingEntry.id}`, entryForm);
+        toast.success('Entry updated');
+      } else {
+        await api.post(`/progress/metrics/${entryFor.id}/entries`, entryForm);
+        toast.success('Entry logged');
+      }
       setEntryFor(null);
+      setEditingEntry(null);
       setEntryForm({ value: '', recorded_on: new Date().toISOString().slice(0, 10), notes: '' });
       load();
     } catch (err) {
@@ -423,7 +555,7 @@ function ProgressTab({ clientId }) {
                 </p>
               </div>
               <div className="flex gap-1.5">
-                <Button size="sm" variant="secondary" className="rounded-lg" onClick={() => setEntryFor(m)} data-testid="log-entry-button">
+                <Button size="sm" variant="secondary" className="rounded-lg" onClick={() => openNewEntry(m)} data-testid="log-entry-button">
                   <Plus className="h-3.5 w-3.5 mr-1" /> Log
                 </Button>
                 <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archiveMetric(m)} data-testid="archive-metric-button">
@@ -433,7 +565,22 @@ function ProgressTab({ clientId }) {
             </CardHeader>
             <CardContent>
               {m.entries.length > 0 ? (
-                <MetricChart entries={m.entries} unit={m.unit} />
+                <>
+                  <MetricChart entries={m.entries} unit={m.unit} />
+                  <div className="mt-3 space-y-2">
+                    {m.entries.slice().reverse().slice(0, 4).map((entry) => (
+                      <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2" data-testid="coach-progress-entry-row">
+                        <div>
+                          <p className="text-sm font-medium tabular-nums">{entry.value}{m.unit ? ` ${m.unit}` : ''}</p>
+                          <p className="text-xs text-muted-foreground">{fmtDate(entry.recorded_on)}{entry.notes ? ` - ${entry.notes}` : ''}</p>
+                        </div>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="coach-edit-entry-button">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </>
               ) : (
                 <p className="text-sm text-muted-foreground py-4 text-center">Log the first entry to see the chart.</p>
               )}
@@ -442,10 +589,10 @@ function ProgressTab({ clientId }) {
         );
       })}
 
-      <Dialog open={Boolean(entryFor)} onOpenChange={(o) => !o && setEntryFor(null)}>
+      <Dialog open={Boolean(entryFor)} onOpenChange={(o) => { if (!o) { setEntryFor(null); setEditingEntry(null); } }}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Log {entryFor?.name}</DialogTitle></DialogHeader>
-          <form onSubmit={addEntry} className="space-y-3.5">
+          <DialogHeader><DialogTitle>{editingEntry ? 'Edit' : 'Log'} {entryFor?.name}</DialogTitle></DialogHeader>
+          <form onSubmit={saveEntry} className="space-y-3.5">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Value{entryFor?.unit ? ` (${entryFor.unit})` : ''} *</Label>
                 <Input required type="number" step="any" value={entryForm.value} onChange={(e) => setEntryForm({ ...entryForm, value: e.target.value })} data-testid="entry-value-input" /></div>
@@ -456,7 +603,7 @@ function ProgressTab({ clientId }) {
               <Input value={entryForm.notes} onChange={(e) => setEntryForm({ ...entryForm, notes: e.target.value })} placeholder="PR! Great depth." data-testid="entry-notes-input" /></div>
             <DialogFooter>
               <Button type="submit" disabled={saving} className="rounded-xl w-full sm:w-auto" data-testid="entry-save-button">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log entry'}
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingEntry ? 'Save changes' : 'Log entry'}
               </Button>
             </DialogFooter>
           </form>
@@ -499,35 +646,71 @@ function SessionsTab({ clientId }) {
 
 function ProgramsTab({ clientId }) {
   const [programs, setPrograms] = useState(null);
+  const [workouts, setWorkouts] = useState(null);
+  const [workoutAssignments, setWorkoutAssignments] = useState(null);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [selected, setSelected] = useState('');
+  const [assignmentType, setAssignmentType] = useState('program');
+  const [selectedProgram, setSelectedProgram] = useState('');
+  const [selectedWorkout, setSelectedWorkout] = useState('');
+  const [assignmentMode, setAssignmentMode] = useState('active');
+  const [assignedFor, setAssignedFor] = useState('');
+  const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/programs');
-      setPrograms(data);
+      const [programRes, workoutRes, assignmentRes] = await Promise.all([
+        api.get('/programs'),
+        api.get('/programs/workouts'),
+        api.get(`/programs/workout-assignments/client/${clientId}`),
+      ]);
+      setPrograms(programRes.data);
+      setWorkouts(workoutRes.data);
+      setWorkoutAssignments(assignmentRes.data);
     } catch (e) {
       toast.error(errMsg(e));
     }
-  }, []);
+  }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (!programs) return <LoadingScreen />;
+  if (!programs || !workouts || !workoutAssignments) return <LoadingScreen />;
 
-  const assigned = programs.filter((p) => p.active_assignments.some((a) => a.client?.id === clientId));
+  const assigned = programs.filter((p) => (p.active_assignments || []).some((a) => a.client?.id === clientId));
   const available = programs.filter((p) => !p.active_assignments.some((a) => a.client?.id === clientId));
+  const activeWorkouts = workoutAssignments.filter((a) => a.assignment_mode === 'active');
+  const datedWorkouts = workoutAssignments
+    .filter((a) => a.assignment_mode === 'dated')
+    .sort((a, b) => String(a.assigned_for || '').localeCompare(String(b.assigned_for || '')));
 
   const assign = async (e) => {
     e.preventDefault();
-    if (!selected) return;
     setSaving(true);
     try {
-      await api.post(`/programs/${selected}/assign`, { client_id: clientId });
-      toast.success('Program assigned');
+      if (assignmentType === 'program') {
+        if (!selectedProgram) return;
+        await api.post(`/programs/${selectedProgram}/assign`, { client_id: clientId, notes });
+        toast.success('Program assigned');
+      } else {
+        if (!selectedWorkout) return;
+        if (assignmentMode === 'dated' && !assignedFor) {
+          toast.error('Choose a date for this workout');
+          return;
+        }
+        await api.post('/programs/workout-assignments', {
+          client_id: clientId,
+          workout_id: selectedWorkout,
+          assignment_mode: assignmentMode,
+          assigned_for: assignmentMode === 'dated' ? assignedFor : null,
+          notes,
+        });
+        toast.success('Workout assigned');
+      }
       setAssignOpen(false);
-      setSelected('');
+      setSelectedProgram('');
+      setSelectedWorkout('');
+      setNotes('');
+      setAssignedFor('');
       load();
     } catch (err) {
       toast.error(errMsg(err));
@@ -537,7 +720,7 @@ function ProgramsTab({ clientId }) {
   };
 
   const unassign = async (program) => {
-    const a = program.active_assignments.find((x) => x.client?.id === clientId);
+    const a = (program.active_assignments || []).find((x) => x.client?.id === clientId);
     if (!a) return;
     try {
       await api.patch(`/programs/assignments/${a.id}/archive`);
@@ -548,29 +731,77 @@ function ProgramsTab({ clientId }) {
     }
   };
 
+  const unassignWorkout = async (assignment) => {
+    try {
+      await api.patch(`/programs/workout-assignments/${assignment.id}/archive`);
+      toast.success('Workout unassigned');
+      load();
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
+  };
+
+  const noAssignments = assigned.length === 0 && workoutAssignments.length === 0;
+
   return (
     <div className="space-y-3 mt-1">
       <div className="flex justify-end">
         <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="rounded-xl" data-testid="assign-program-button">
-              <Plus className="h-4 w-4 mr-1.5" /> Assign program
+              <Plus className="h-4 w-4 mr-1.5" /> Assign training
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-sm">
-            <DialogHeader><DialogTitle>Assign a program</DialogTitle></DialogHeader>
+          <DialogContent className="max-w-lg">
+            <DialogHeader><DialogTitle>Assign training</DialogTitle></DialogHeader>
             <form onSubmit={assign} className="space-y-4">
-              <Select value={selected} onValueChange={setSelected}>
-                <SelectTrigger className="rounded-xl" data-testid="assign-program-select">
-                  <SelectValue placeholder="Choose program..." />
-                </SelectTrigger>
+              <Select value={assignmentType} onValueChange={setAssignmentType}>
+                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {available.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  <SelectItem value="program">Long-term program</SelectItem>
+                  <SelectItem value="workout">Standalone workout</SelectItem>
                 </SelectContent>
               </Select>
-              {available.length === 0 && <p className="text-xs text-muted-foreground">All your programs are already assigned to this client. Create more from the Programs tab.</p>}
+              {assignmentType === 'program' ? (
+                <>
+                  <Select value={selectedProgram} onValueChange={setSelectedProgram}>
+                    <SelectTrigger className="rounded-xl" data-testid="assign-program-select">
+                      <SelectValue placeholder="Choose program..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {available.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {available.length === 0 && <p className="text-xs text-muted-foreground">All your programs are already assigned to this client. Create more from the Programs tab.</p>}
+                </>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5 sm:col-span-3">
+                    <Label>Workout</Label>
+                    <Select value={selectedWorkout} onValueChange={setSelectedWorkout}>
+                      <SelectTrigger className="rounded-xl"><SelectValue placeholder="Choose workout..." /></SelectTrigger>
+                      <SelectContent>{workouts.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Mode</Label>
+                    <Select value={assignmentMode} onValueChange={setAssignmentMode}>
+                      <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active template</SelectItem>
+                        <SelectItem value="dated">Dated workout</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label>Date</Label>
+                    <Input type="date" disabled={assignmentMode !== 'dated'} value={assignedFor} onChange={(e) => setAssignedFor(e.target.value)} />
+                  </div>
+                </div>
+              )}
+              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" />
               <DialogFooter>
-                <Button type="submit" disabled={saving || !selected} className="rounded-xl w-full sm:w-auto" data-testid="assign-confirm-button">
+                <Button type="submit" disabled={saving || (assignmentType === 'program' ? !selectedProgram : !selectedWorkout)} className="rounded-xl w-full sm:w-auto" data-testid="assign-confirm-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign'}
                 </Button>
               </DialogFooter>
@@ -578,22 +809,95 @@ function ProgramsTab({ clientId }) {
           </DialogContent>
         </Dialog>
       </div>
-      {assigned.length === 0 && <EmptyState icon={Dumbbell} title="No programs assigned" subtitle="Assign one of your workout programs to this client." />}
+      {noAssignments && <EmptyState icon={Dumbbell} title="No training assigned" subtitle="Assign a structured program or standalone workout to this client." />}
       {assigned.map((p) => (
         <Card key={p.id} data-testid="assigned-program-card">
-          <CardContent className="p-4 flex items-center justify-between gap-3">
-            <div>
-              <p className="font-medium">{p.name}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{p.exercise_count} exercises</p>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-display font-semibold">{p.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} days/week - {p.exercise_count} exercises</p>
+              </div>
+              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">
+                Unassign
+              </Button>
             </div>
-            <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">
-              Unassign
-            </Button>
+            {(p.days || []).map((day) => (
+              <div key={day.id || day.day_number} className="rounded-xl border border-border bg-card/60 p-3">
+                <p className="text-xs font-semibold text-muted-foreground">Day {day.day_number}</p>
+                <p className="text-sm font-medium mt-0.5">{day.workout?.name || 'Workout day'}</p>
+                <CoachExerciseRows exercises={day.workout?.exercises || []} />
+              </div>
+            ))}
           </CardContent>
         </Card>
       ))}
+      {activeWorkouts.map((assignment) => (
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} />
+      ))}
+      {datedWorkouts.map((assignment) => (
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} />
+      ))}
     </div>
   );
+}
+
+function CoachWorkoutAssignment({ assignment, onArchive }) {
+  const workout = assignment.workout || {};
+  const label = assignment.assignment_mode === 'dated'
+    ? `Dated: ${assignment.assigned_for ? fmtDate(assignment.assigned_for) : 'No date'}`
+    : 'Active template';
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-display font-semibold">{workout.name}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{label} - {(workout.exercises || []).length} exercises</p>
+          </div>
+          <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onArchive(assignment)}>
+            Unassign
+          </Button>
+        </div>
+        {assignment.notes && (
+          <div className="flex gap-2 rounded-lg bg-primary/10 border border-primary/20 px-3 py-2">
+            <StickyNote className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+            <p className="text-xs">{assignment.notes}</p>
+          </div>
+        )}
+        <CoachExerciseRows exercises={workout.exercises || []} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function CoachExerciseRows({ exercises }) {
+  if (!exercises.length) return null;
+  return (
+    <div className="mt-2 space-y-2">
+      {exercises.slice(0, 6).map((exercise, index) => (
+        <div key={exercise.id || index} className="rounded-lg border border-border bg-background/60 px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium">
+              <span className="text-muted-foreground mr-2 tabular-nums">{index + 1}.</span>{coachExerciseName(exercise)}
+            </p>
+            {(exercise.sets || exercise.reps) && <Badge variant="outline" className="shrink-0 tabular-nums">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+          </div>
+          {exercise.notes && <p className="text-xs text-muted-foreground mt-1">{exercise.notes}</p>}
+          {(exercise.video_url || exercise.library_exercise?.video_url) && (
+            <a href={exercise.video_url || exercise.library_exercise?.video_url} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+              <Play className="h-3 w-3" /> Video
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function coachExerciseName(exercise) {
+  return exercise.library_exercise?.name || exercise.custom_name || exercise.name || 'Exercise';
 }
 
 function PaymentsTab({ clientId, reloadParent }) {

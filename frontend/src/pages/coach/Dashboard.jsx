@@ -5,8 +5,8 @@ import { useAuth } from '@/context/AuthContext';
 import { PageHeader, StatTile, LoadingScreen, EmptyState, StatusBadge } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, Users, Inbox, MessageSquare, Check, X, Plus, ChevronRight } from 'lucide-react';
-import { fmtTime, fmtDay, fmtDateTime } from '@/lib/format';
+import { CalendarDays, Users, Inbox, MessageSquare, Check, X, Plus, ChevronRight, ClipboardCheck } from 'lucide-react';
+import { fmtTime, fmtDay, fmtDateTime, fmtDate } from '@/lib/format';
 import { toast } from 'sonner';
 
 export default function CoachDashboard() {
@@ -118,6 +118,33 @@ export default function CoachDashboard() {
                 </div>
               </div>
             </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-4" data-testid="recent-check-ins-card">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Check-ins to review</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2.5">
+          {data.recent_check_ins.length === 0 && (
+            <p className="text-sm text-muted-foreground py-2">No check-ins waiting for review.</p>
+          )}
+          {data.recent_check_ins.map((checkIn) => (
+            <Link key={checkIn.id} to={`/coach/clients/${checkIn.client_id}`} className="block rounded-xl border border-border bg-card/60 px-4 py-3 hover:bg-card transition-colors" data-testid="dashboard-check-in-row">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <ClipboardCheck className="h-4 w-4 text-primary shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{checkIn.client?.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {fmtDate(checkIn.check_in_date)} - Energy {checkIn.energy || '-'} / Sleep {checkIn.sleep_quality || '-'}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              </div>
+            </Link>
           ))}
         </CardContent>
       </Card>

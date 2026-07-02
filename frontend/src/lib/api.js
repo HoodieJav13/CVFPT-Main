@@ -1,8 +1,11 @@
 import axios from 'axios';
+import { installPreviewApi } from '@/lib/previewMode';
 
 const BACKEND_URL = import.meta.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_BACKEND_URL || '';
 
 export const api = axios.create({ baseURL: `${BACKEND_URL}/api` });
+
+installPreviewApi(api);
 
 const TOKEN_KEY = 'cvf_access_token';
 const REFRESH_KEY = 'cvf_refresh_token';

@@ -1,8 +1,16 @@
-/** Returns [startISO, endISO] of 'today' in the given IANA timezone (default America/Denver). */
-function todayRangeInTz(tz = 'America/Denver') {
+const DEFAULT_TZ = 'America/Denver';
+
+/** Returns YYYY-MM-DD for the current date in the given IANA timezone. */
+function todayDateInTz(tz = DEFAULT_TZ) {
   const now = new Date();
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-  const localDate = fmt.format(now); // YYYY-MM-DD
+  return fmt.format(now);
+}
+
+/** Returns [startISO, endISO] of 'today' in the given IANA timezone (default America/Denver). */
+function todayRangeInTz(tz = DEFAULT_TZ) {
+  const now = new Date();
+  const localDate = todayDateInTz(tz);
   // Find the UTC instant of local midnight by checking the tz offset at now
   const offsetFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' });
   const tzName = offsetFmt.formatToParts(now).find((p) => p.type === 'timeZoneName')?.value || 'GMT-07:00';
@@ -16,4 +24,4 @@ function todayRangeInTz(tz = 'America/Denver') {
   return [startUtc.toISOString(), endUtc.toISOString()];
 }
 
-module.exports = { todayRangeInTz };
+module.exports = { todayRangeInTz, todayDateInTz };
