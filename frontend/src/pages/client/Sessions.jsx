@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, EmptyState, StatusBadge } from '@/components/common';
+import { PageHeader, SessionsSkeleton, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,13 +44,13 @@ export default function ClientSessions() {
     };
   }, [sessions]);
 
-  if (!sessions) return <LoadingScreen />;
+  if (!sessions) return <SessionsSkeleton />;
 
   return (
     <div>
       <PageHeader
         title="Sessions"
-        subtitle="Your training schedule"
+        subtitle="Your time on the CVF floor"
         action={
           <Button className="rounded-xl" onClick={() => setDrawerOpen(true)} data-testid="booking-request-button">
             <Plus className="h-4 w-4 mr-1.5" /> Request
@@ -60,7 +60,7 @@ export default function ClientSessions() {
 
       {requests.filter((r) => r.status === 'pending').length > 0 && (
         <div className="mb-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Pending requests</p>
+          <SectionLabel className="mb-2">Pending requests</SectionLabel>
           <div className="space-y-2">
             {requests.filter((r) => r.status === 'pending').map((r) => (
               <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="my-booking-request-row">
@@ -75,7 +75,7 @@ export default function ClientSessions() {
         </div>
       )}
 
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Upcoming</p>
+      <SectionLabel className="mb-2">Upcoming</SectionLabel>
       {upcoming.length === 0 ? (
         <EmptyState icon={CalendarDays} title="No upcoming sessions" subtitle="Request a session and your coach will confirm it." testId="upcoming-empty-state" />
       ) : (
@@ -95,7 +95,7 @@ export default function ClientSessions() {
         </div>
       )}
 
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-6">Past</p>
+      <SectionLabel className="mb-2 mt-6">Past</SectionLabel>
       {past.length === 0 ? (
         <p className="text-sm text-muted-foreground">No past sessions yet.</p>
       ) : (
@@ -110,7 +110,7 @@ export default function ClientSessions() {
               {s.shared_notes?.length > 0 && (
                 <div className="mt-2 space-y-1.5">
                   {s.shared_notes.map((n) => (
-                    <div key={n.id} className="flex gap-2 rounded-lg bg-primary/8 bg-primary/10 border border-primary/20 px-3 py-2" data-testid="shared-note-row">
+                    <div key={n.id} className="flex gap-2 rounded-lg bg-primary/10 border border-primary/20 px-3 py-2" data-testid="shared-note-row">
                       <StickyNote className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
                       <p className="text-xs whitespace-pre-wrap">{n.content}</p>
                     </div>

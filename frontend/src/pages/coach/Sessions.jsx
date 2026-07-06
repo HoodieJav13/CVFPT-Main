@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, EmptyState, StatusBadge } from '@/components/common';
+import { PageHeader, SessionsSkeleton, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -131,7 +131,7 @@ export default function CoachSessions() {
     }
   };
 
-  if (!sessions) return <LoadingScreen />;
+  if (!sessions) return <SessionsSkeleton />;
 
   return (
     <div>
@@ -158,8 +158,8 @@ export default function CoachSessions() {
                   <p className="text-xs text-muted-foreground">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
-                  <Button size="icon" className="h-8 w-8 rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button"><Check className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="destructive" className="h-8 w-8 rounded-lg" onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button"><X className="h-4 w-4" /></Button>
+                  <Button size="sm" className="rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button"><Check className="h-3.5 w-3.5 mr-1" /> Approve</Button>
+                  <Button size="sm" variant="ghost" className="rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
                 </div>
               </div>
             ))}
@@ -187,7 +187,7 @@ export default function CoachSessions() {
       <div className="space-y-5">
         {grouped.map((g) => (
           <div key={g.day}>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{g.day}</p>
+            <SectionLabel className="mb-2">{g.day}</SectionLabel>
             <div className="space-y-2">
               {g.items.map((s) => (
                 <div key={s.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="session-row">

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen } from '@/components/common';
+import { PageHeader, LoadingScreen, SectionLabel } from '@/components/common';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -94,7 +94,7 @@ export default function ClientWaiver() {
         <Card className="mt-4">
           <CardContent className="p-4">
             <ScrollArea className="h-72 rounded-lg border border-border bg-background/40 p-4">
-              <pre className="whitespace-pre-wrap text-sm font-[var(--font-body)] leading-6" data-testid="waiver-full-text">{waiver.full_text}</pre>
+              <div className="whitespace-pre-wrap max-w-prose text-[15px] leading-relaxed" data-testid="waiver-full-text">{waiver.full_text}</div>
             </ScrollArea>
           </CardContent>
         </Card>
@@ -118,7 +118,7 @@ export default function ClientWaiver() {
 
       {status.signatures.length > 0 && (
         <div className="mt-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Signature history</p>
+          <SectionLabel className="mb-2">Signature history</SectionLabel>
           {status.signatures.map((s) => (
             <p key={s.id} className="text-xs text-muted-foreground py-1" data-testid="signature-history-row">
               v{s.version?.version_number} - "{s.signed_name}" - {fmtDateTime(s.signed_at)}{s.entered_by === 'coach' ? ' (paper, coach-entered)' : ''}

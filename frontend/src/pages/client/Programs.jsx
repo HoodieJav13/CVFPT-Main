@@ -70,9 +70,9 @@ function ProgramAssignmentCard({ assignment }) {
         </div>
         {assignment.notes && <AssignmentNote>{assignment.notes}</AssignmentNote>}
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="divide-y divide-border">
         {(program.days || []).map((day) => (
-          <WorkoutDay key={day.id || day.day_number} label={`Day ${day.day_number}`} workout={day.workout} notes={day.notes} />
+          <WorkoutDay key={day.id || day.day_number} dayNumber={day.day_number} workout={day.workout} notes={day.notes} />
         ))}
       </CardContent>
     </Card>
@@ -104,52 +104,55 @@ function WorkoutAssignmentCard({ assignment }) {
   );
 }
 
-function WorkoutDay({ label, workout, notes }) {
+function WorkoutDay({ dayNumber, workout, notes }) {
   return (
-    <div className="rounded-xl border border-border bg-card/60 p-4">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
-          <p className="font-medium mt-0.5">{workout?.name || 'Workout day'}</p>
-        </div>
-        {workout?.goal && <Badge variant="outline" className="w-fit">{workout.goal}</Badge>}
+    <section className="py-4 first:pt-0 last:pb-0">
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary text-xs font-display font-semibold tabular-nums shrink-0">
+          {dayNumber}
+        </span>
+        <p className="font-medium">{workout?.name || 'Workout day'}</p>
+        {workout?.goal && <Badge variant="outline" className="w-fit text-muted-foreground">{workout.goal}</Badge>}
       </div>
       {notes && <p className="text-xs text-muted-foreground mt-2">{notes}</p>}
       <ExerciseList exercises={workout?.exercises || []} />
-    </div>
+    </section>
   );
 }
 
 function ExerciseList({ exercises }) {
   if (exercises.length === 0) return <p className="text-sm text-muted-foreground mt-3">No exercises added yet.</p>;
   return (
-    <div className="space-y-2.5 mt-3">
+    <div className="divide-y divide-border/70 mt-2">
       {exercises.map((exercise, i) => (
-        <div key={exercise.id || `${exerciseName(exercise)}-${i}`} className="rounded-xl border border-border bg-background/60 px-4 py-3" data-testid="client-exercise-row">
+        <div key={exercise.id || `${exerciseName(exercise)}-${i}`} className="py-2.5" data-testid="client-exercise-row">
           <div className="flex items-center justify-between gap-2">
             <p className="font-medium text-sm">
               <span className="text-muted-foreground mr-2 tabular-nums">{i + 1}.</span>{exerciseName(exercise)}
             </p>
-            {(exercise.sets || exercise.reps) && (
-              <Badge variant="outline" className="bg-secondary text-foreground/90 shrink-0 tabular-nums">
-                {exercise.sets || '?'} x {exercise.reps || '?'}
-              </Badge>
-            )}
+            <span className="flex items-center gap-2 shrink-0">
+              {exerciseVideo(exercise) && (
+                <a
+                  href={exerciseVideo(exercise)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary font-medium hover:bg-primary/15"
+                  data-testid="program-video-link"
+                >
+                  <Play className="h-3 w-3" /> Video
+                </a>
+              )}
+              {(exercise.sets || exercise.reps) && (
+                <Badge variant="outline" className="bg-secondary text-foreground/90 tabular-nums">
+                  {exercise.sets || '?'} x {exercise.reps || '?'}
+                </Badge>
+              )}
+            </span>
           </div>
-          {[exercise.rest && `Rest: ${exercise.rest}`, exercise.tempo && `Tempo: ${exercise.tempo}`].filter(Boolean).length > 0 && (
-            <p className="text-xs text-muted-foreground mt-1">{[exercise.rest && `Rest: ${exercise.rest}`, exercise.tempo && `Tempo: ${exercise.tempo}`].filter(Boolean).join(' - ')}</p>
-          )}
-          {exercise.notes && <p className="text-xs text-muted-foreground mt-1">{exercise.notes}</p>}
-          {exerciseVideo(exercise) && (
-            <a
-              href={exerciseVideo(exercise)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-primary font-medium mt-2 hover:underline"
-              data-testid="program-video-link"
-            >
-              <Play className="h-3.5 w-3.5" /> Watch demo video
-            </a>
+          {[exercise.rest && `Rest: ${exercise.rest}`, exercise.tempo && `Tempo: ${exercise.tempo}`, exercise.notes].filter(Boolean).length > 0 && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {[exercise.rest && `Rest: ${exercise.rest}`, exercise.tempo && `Tempo: ${exercise.tempo}`, exercise.notes].filter(Boolean).join(' - ')}
+            </p>
           )}
         </div>
       ))}

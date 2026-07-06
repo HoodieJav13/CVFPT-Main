@@ -76,6 +76,7 @@ export default function AppShell() {
             ))}
           </nav>
           <UserMenu user={user} logout={logout} />
+          <p className="mt-3 px-2 text-[11px] text-muted-foreground/70">Core Value Fitness - Albuquerque, NM</p>
         </aside>
 
         <div className="relative z-10">

@@ -25,7 +25,7 @@ export function ChatThread({ messages = [], myRole, onSend, sending }) {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-260px)] lg:h-[calc(100dvh-220px)]">
+    <div className="flex flex-col h-[calc(100dvh-260px)] lg:h-[calc(100dvh-220px)] lg:max-w-3xl">
       <div className="flex-1 overflow-y-auto space-y-3 pr-1" data-testid="chat-message-list">
         {messages.length === 0 && (
           <p className="text-sm text-muted-foreground text-center pt-10">No messages yet. Say hello!</p>
@@ -51,7 +51,7 @@ export function ChatThread({ messages = [], myRole, onSend, sending }) {
         })}
         <div ref={bottomRef} />
       </div>
-      <form onSubmit={submit} className="mt-3 flex items-center gap-2">
+      <form onSubmit={submit} className="mt-3 flex items-center gap-2 border-t border-border/70 pt-3">
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}

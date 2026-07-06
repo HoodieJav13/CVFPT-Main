@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
-import { LoadingScreen } from '@/components/common';
+import { ListSkeleton } from '@/components/common';
 import { ChatThread } from '@/components/Chat';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
@@ -42,7 +42,7 @@ export default function CoachConversation() {
     }
   };
 
-  if (!data) return <LoadingScreen />;
+  if (!data) return <ListSkeleton rows={4} />;
 
   return (
     <div>

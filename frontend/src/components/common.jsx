@@ -1,9 +1,10 @@
 import { Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 
@@ -19,9 +20,22 @@ export function PageHeader({ title, subtitle, action, testId }) {
   return (
     <div className="flex items-start justify-between gap-3 mb-5" data-testid={testId}>
       <div>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">{title}</h1>
+        <div className="h-[3px] w-7 rounded-full bg-primary mb-2" aria-hidden />
+        <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight">{title}</h1>
         {subtitle ? <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p> : null}
       </div>
+      {action}
+    </div>
+  );
+}
+
+export function SectionLabel({ children, action, className, testId }) {
+  return (
+    <div className={cn('flex items-center justify-between gap-3', className)} data-testid={testId}>
+      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="h-[2px] w-3.5 rounded-full bg-primary/70" aria-hidden />
+        {children}
+      </p>
       {action}
     </div>
   );
@@ -30,13 +44,13 @@ export function PageHeader({ title, subtitle, action, testId }) {
 export function StatTile({ label, value, icon: Icon, accent = false, testId }) {
   return (
     <Card className={cn('relative overflow-hidden', accent && 'border-primary/30')} data-testid={testId}>
-      <div className="absolute inset-x-0 top-0 h-[2px] bg-primary/70" />
-      <CardContent className="p-4">
+      <div className="absolute left-0 top-3 bottom-3 w-[3px] rounded-full bg-primary/70" aria-hidden />
+      <CardContent className="p-4 pl-5">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
           {Icon ? <Icon className="h-4 w-4 text-primary" /> : null}
         </div>
-        <p className="mt-2 font-display text-2xl font-semibold tabular-nums">{value}</p>
+        <p className="mt-2 font-display text-3xl lg:text-4xl font-semibold tabular-nums">{value}</p>
       </CardContent>
     </Card>
   );
@@ -72,24 +86,170 @@ export function StatusBadge({ status, testId }) {
   );
 }
 
+/** Labeled mini-chips for check-in metrics ("Energy 2" etc.). Pure formatting of already-present values. */
+export function CheckInStats({ stats, className }) {
+  const present = stats.filter(([, value]) => value !== null && value !== undefined && value !== '');
+  if (!present.length) return null;
+  return (
+    <span className={cn('inline-flex flex-wrap items-center gap-1.5', className)}>
+      {present.map(([label, value]) => (
+        <span key={label} className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-[11px]">
+          <span className="text-muted-foreground">{label}</span>
+          <span className="font-medium tabular-nums">{value}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/* ---------- Skeleton layouts (loading placeholders, presentational only) ---------- */
+
+function SkeletonRow() {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/40 px-4 py-3">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+        <div className="flex-1 space-y-1.5">
+          <Skeleton className="h-3.5 w-2/5" />
+          <Skeleton className="h-3 w-1/4" />
+        </div>
+      </div>
+      <Skeleton className="h-5 w-16 rounded-full shrink-0" />
+    </div>
+  );
+}
+
+export function ListSkeleton({ rows = 3, header = true }) {
+  return (
+    <div data-testid="loading-skeleton">
+      {header && (
+        <div className="mb-5">
+          <Skeleton className="h-[3px] w-7 mb-2" />
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-3.5 w-56 mt-2" />
+        </div>
+      )}
+      <div className="space-y-2.5">
+        {Array.from({ length: rows }, (_, i) => <SkeletonRow key={i} />)}
+      </div>
+    </div>
+  );
+}
+
+export function DashboardSkeleton({ tiles = 4 }) {
+  return (
+    <div data-testid="loading-skeleton">
+      <div className="mb-5">
+        <Skeleton className="h-[3px] w-7 mb-2" />
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-3.5 w-36 mt-2" />
+      </div>
+      <div className={cn('grid grid-cols-2 gap-3', tiles === 4 && 'lg:grid-cols-4')}>
+        {Array.from({ length: tiles }, (_, i) => (
+          <div key={i} className="rounded-xl border border-border bg-card/40 p-4">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-8 w-12 mt-3" />
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 space-y-2.5">
+        {Array.from({ length: 3 }, (_, i) => <SkeletonRow key={i} />)}
+      </div>
+    </div>
+  );
+}
+
+export function SessionsSkeleton() {
+  return (
+    <div data-testid="loading-skeleton">
+      <div className="mb-5">
+        <Skeleton className="h-[3px] w-7 mb-2" />
+        <Skeleton className="h-8 w-36" />
+        <Skeleton className="h-3.5 w-52 mt-2" />
+      </div>
+      {Array.from({ length: 2 }, (_, g) => (
+        <div key={g} className="mb-5">
+          <Skeleton className="h-3 w-24 mb-2.5" />
+          <div className="space-y-2">
+            {Array.from({ length: 2 }, (_, i) => <SkeletonRow key={i} />)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function ChartSkeleton() {
+  return (
+    <div data-testid="loading-skeleton">
+      <div className="mb-5">
+        <Skeleton className="h-[3px] w-7 mb-2" />
+        <Skeleton className="h-8 w-36" />
+        <Skeleton className="h-3.5 w-56 mt-2" />
+      </div>
+      <div className="rounded-xl border border-border bg-card/40 p-4">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-[200px] w-full mt-4 rounded-lg" />
+        <div className="mt-3 space-y-2">
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <Skeleton className="h-10 w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Metric chart ---------- */
+
 export function MetricChart({ entries = [], unit }) {
   const data = entries.map((e) => ({
     date: (() => { try { return format(parseISO(e.recorded_on), 'MMM d'); } catch { return e.recorded_on; } })(),
     value: Number(e.value),
   }));
   if (!data.length) return null;
+  const lastIndex = data.length - 1;
   return (
-    <ResponsiveContainer width="100%" height={200}>
-      <LineChart data={data} margin={{ top: 8, right: 8, left: -14, bottom: 0 }}>
-        <CartesianGrid stroke="rgba(167,179,191,.18)" vertical={false} />
-        <XAxis dataKey="date" tick={{ fill: 'rgba(167,179,191,.75)', fontSize: 11 }} axisLine={false} tickLine={false} />
-        <YAxis tick={{ fill: 'rgba(167,179,191,.75)', fontSize: 11 }} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
-        <Tooltip
-          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 12, color: 'hsl(var(--foreground))' }}
-          formatter={(v) => [`${v}${unit ? ` ${unit}` : ''}`, 'Value']}
-        />
-        <Line type="monotone" dataKey="value" stroke="hsl(var(--chart-1))" strokeWidth={2.5} dot={{ r: 2.5 }} activeDot={{ r: 4 }} />
-      </LineChart>
-    </ResponsiveContainer>
+    <div className="min-h-[220px]">
+      <ResponsiveContainer width="100%" height={220}>
+        <AreaChart data={data} margin={{ top: 8, right: 8, left: -14, bottom: 0 }}>
+          <defs>
+            <linearGradient id="metricFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.22} />
+              <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="rgba(167,179,191,.1)" strokeDasharray="3 6" vertical={false} />
+          <XAxis dataKey="date" tick={{ fill: 'rgba(167,179,191,.75)', fontSize: 11 }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+          <YAxis tick={{ fill: 'rgba(167,179,191,.75)', fontSize: 11 }} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
+          <Tooltip
+            contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 12, color: 'hsl(var(--foreground))' }}
+            formatter={(v) => [`${v}${unit ? ` ${unit}` : ''}`, 'Value']}
+          />
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke="hsl(var(--chart-1))"
+            strokeWidth={2}
+            fill="url(#metricFill)"
+            dot={(props) => {
+              const { key, index, cx, cy } = props;
+              const latest = index === lastIndex;
+              return (
+                <circle
+                  key={key}
+                  cx={cx}
+                  cy={cy}
+                  r={latest ? 5.5 : 4}
+                  fill={latest ? 'hsl(var(--gold))' : 'hsl(var(--chart-1))'}
+                  stroke="hsl(var(--card))"
+                  strokeWidth={2}
+                />
+              );
+            }}
+            activeDot={{ r: 6, stroke: 'hsl(var(--card))', strokeWidth: 2 }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

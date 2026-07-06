@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, EmptyState } from '@/components/common';
+import { PageHeader, ListSkeleton, EmptyState } from '@/components/common';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { MessageSquare } from 'lucide-react';
 import { initials, fmtDay } from '@/lib/format';
@@ -17,7 +17,7 @@ export default function CoachMessages() {
       .catch((e) => toast.error(errMsg(e, 'Failed to load messages')));
   }, []);
 
-  if (!threads) return <LoadingScreen />;
+  if (!threads) return <ListSkeleton rows={4} />;
 
   return (
     <div>
@@ -53,6 +53,7 @@ export default function CoachMessages() {
           </button>
         ))}
       </div>
+      <div aria-hidden className="ridge-fade hidden lg:block mt-14 h-20 opacity-[0.04]" />
     </div>
   );
 }

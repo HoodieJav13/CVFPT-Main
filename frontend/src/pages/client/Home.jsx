@@ -2,9 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { LoadingScreen, StatTile } from '@/components/common';
+import { DashboardSkeleton, StatTile, SectionLabel, CheckInStats } from '@/components/common';
 import CheckInForm from '@/components/CheckInForm';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -48,7 +48,7 @@ export default function ClientHome() {
     }
   };
 
-  if (!data) return <LoadingScreen />;
+  if (!data) return <DashboardSkeleton tiles={2} />;
 
   const firstName = (user.profile?.name || '').split(' ')[0];
   const todayCheckIn = data.today_check_in;
@@ -56,8 +56,9 @@ export default function ClientHome() {
   return (
     <div>
       <div className="mb-5">
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Today, {firstName}</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Check in, train well, stay connected.</p>
+        <div className="h-[3px] w-7 rounded-full bg-primary mb-2" aria-hidden />
+        <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight">Today, {firstName}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Check in and make today count.</p>
       </div>
 
       {data.waiver.has_version && !data.waiver.signed_latest && (
@@ -79,15 +80,22 @@ export default function ClientHome() {
         <CardContent className="p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Daily check-in</p>
+              <SectionLabel>Daily check-in</SectionLabel>
               <h2 className="font-display text-xl font-semibold mt-1">
                 {todayCheckIn ? 'You checked in today' : 'Ready for your check-in?'}
               </h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                {todayCheckIn
-                  ? `Energy ${todayCheckIn.energy || '-'} / Sleep ${todayCheckIn.sleep_quality || '-'} / Stress ${todayCheckIn.stress || '-'}`
-                  : 'Log readiness, soreness, sleep, stress, and notes for your coach.'}
-              </p>
+              {todayCheckIn ? (
+                <CheckInStats
+                  className="mt-1.5"
+                  stats={[
+                    ['Energy', todayCheckIn.energy || '-'],
+                    ['Sleep', todayCheckIn.sleep_quality || '-'],
+                    ['Stress', todayCheckIn.stress || '-'],
+                  ]}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground mt-1">Log readiness, soreness, sleep, stress, and notes for your coach.</p>
+              )}
             </div>
             <Badge variant="outline" className={todayCheckIn ? 'bg-success/15 text-success-foreground border-success/25' : 'bg-gold/10 text-gold border-gold/25'}>
               {todayCheckIn ? (todayCheckIn.review_status === 'reviewed' ? 'Reviewed' : 'Sent') : 'Open'}
@@ -112,7 +120,7 @@ export default function ClientHome() {
 
       <Card className="mt-4" data-testid="client-home-next-session-card">
         <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Next session</CardTitle>
+          <SectionLabel>Next session</SectionLabel>
           <Link to="/client/sessions" className="text-xs text-primary font-medium flex items-center">
             Sessions <ChevronRight className="h-3.5 w-3.5" />
           </Link>
@@ -154,7 +162,7 @@ export default function ClientHome() {
 
       <Card className="mt-4" data-testid="recent-progress-card">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Recent progress</CardTitle>
+          <SectionLabel>Recent progress</SectionLabel>
           <Link to="/client/progress" className="text-xs text-primary font-medium flex items-center">
             Log/view <ChevronRight className="h-3.5 w-3.5" />
           </Link>
@@ -178,7 +186,7 @@ export default function ClientHome() {
 
       <Card className="mt-4" data-testid="client-recent-messages-card">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Messages</CardTitle>
+          <SectionLabel>Messages</SectionLabel>
           <Link to="/client/messages" className="text-xs text-primary font-medium flex items-center">
             Open chat <ChevronRight className="h-3.5 w-3.5" />
           </Link>

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { PageHeader, LoadingScreen, EmptyState } from '@/components/common';
+import { PageHeader, ListSkeleton, EmptyState } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -60,7 +60,7 @@ export default function Clients() {
     }
   };
 
-  if (!clients) return <LoadingScreen />;
+  if (!clients) return <ListSkeleton rows={3} />;
 
   return (
     <div>
@@ -156,6 +156,7 @@ export default function Clients() {
           ))}
         </div>
       )}
+      <div aria-hidden className="ridge-fade hidden lg:block mt-14 h-20 opacity-[0.04]" />
     </div>
   );
 }

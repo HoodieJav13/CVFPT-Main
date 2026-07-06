@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { PageHeader, StatTile, LoadingScreen, EmptyState, StatusBadge } from '@/components/common';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageHeader, StatTile, DashboardSkeleton, StatusBadge, SectionLabel, CheckInStats } from '@/components/common';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, Users, Inbox, MessageSquare, Check, X, Plus, ChevronRight, ClipboardCheck } from 'lucide-react';
+import { CalendarDays, Users, Inbox, MessageSquare, Check, Plus, ChevronRight, ClipboardCheck } from 'lucide-react';
 import { fmtTime, fmtDay, fmtDateTime, fmtDate } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -38,7 +38,7 @@ export default function CoachDashboard() {
     }
   };
 
-  if (loading) return <LoadingScreen />;
+  if (loading) return <DashboardSkeleton />;
   if (!data) return null;
 
   const firstName = (user.profile?.name || '').split(' ')[0];
@@ -47,7 +47,7 @@ export default function CoachDashboard() {
     <div>
       <PageHeader
         title={`Hey, ${firstName}`}
-        subtitle={user.role === 'admin' ? 'Admin view - all coaches' : "Here's your day at a glance"}
+        subtitle={user.role === 'admin' ? 'Admin view - all coaches' : 'Your day at CVF'}
         testId="coach-dashboard-header"
         action={
           <Button onClick={() => navigate('/coach/sessions?new=1')} className="rounded-xl hidden sm:flex" data-testid="dashboard-new-session-button">
@@ -65,7 +65,7 @@ export default function CoachDashboard() {
 
       <Card className="mt-5" data-testid="coach-dashboard-today-sessions-card">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Today's sessions</CardTitle>
+          <SectionLabel>Today's sessions</SectionLabel>
           <Link to="/coach/sessions" className="text-xs text-primary font-medium flex items-center" data-testid="view-all-sessions-link">
             View all <ChevronRight className="h-3.5 w-3.5" />
           </Link>
@@ -94,7 +94,7 @@ export default function CoachDashboard() {
 
       <Card className="mt-4" data-testid="pending-bookings-card">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Booking requests</CardTitle>
+          <SectionLabel>Booking requests</SectionLabel>
         </CardHeader>
         <CardContent className="space-y-2.5">
           {data.pending_bookings.length === 0 && (
@@ -109,11 +109,11 @@ export default function CoachDashboard() {
                   {b.note && <p className="text-xs text-muted-foreground mt-1 italic truncate">"{b.note}"</p>}
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <Button size="icon" className="h-9 w-9 rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button">
-                    <Check className="h-4 w-4" />
+                  <Button size="sm" className="rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button">
+                    <Check className="h-3.5 w-3.5 mr-1" /> Approve
                   </Button>
-                  <Button size="icon" variant="destructive" className="h-9 w-9 rounded-lg" onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button">
-                    <X className="h-4 w-4" />
+                  <Button size="sm" variant="ghost" className="rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button">
+                    Decline
                   </Button>
                 </div>
               </div>
@@ -124,7 +124,7 @@ export default function CoachDashboard() {
 
       <Card className="mt-4" data-testid="recent-check-ins-card">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Check-ins to review</CardTitle>
+          <SectionLabel>Check-ins to review</SectionLabel>
         </CardHeader>
         <CardContent className="space-y-2.5">
           {data.recent_check_ins.length === 0 && (
@@ -137,9 +137,14 @@ export default function CoachDashboard() {
                   <ClipboardCheck className="h-4 w-4 text-primary shrink-0" />
                   <div className="min-w-0">
                     <p className="font-medium truncate">{checkIn.client?.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {fmtDate(checkIn.check_in_date)} - Energy {checkIn.energy || '-'} / Sleep {checkIn.sleep_quality || '-'}
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{fmtDate(checkIn.check_in_date)}</p>
+                    <CheckInStats
+                      className="mt-1"
+                      stats={[
+                        ['Energy', checkIn.energy || '-'],
+                        ['Sleep', checkIn.sleep_quality || '-'],
+                      ]}
+                    />
                   </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -151,7 +156,7 @@ export default function CoachDashboard() {
 
       <Card className="mt-4" data-testid="recent-messages-card">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Recent messages</CardTitle>
+          <SectionLabel>Recent messages</SectionLabel>
           <Link to="/coach/messages" className="text-xs text-primary font-medium flex items-center">
             Inbox <ChevronRight className="h-3.5 w-3.5" />
           </Link>

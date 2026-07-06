@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen } from '@/components/common';
+import { PageHeader, ListSkeleton } from '@/components/common';
 import { ChatThread } from '@/components/Chat';
 import { toast } from 'sonner';
 
@@ -37,7 +37,7 @@ export default function ClientMessages() {
     }
   };
 
-  if (!data) return <LoadingScreen />;
+  if (!data) return <ListSkeleton rows={4} />;
 
   return (
     <div>

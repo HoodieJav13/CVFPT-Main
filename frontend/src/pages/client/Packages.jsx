@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, EmptyState } from '@/components/common';
+import { PageHeader, LoadingScreen, SectionLabel } from '@/components/common';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -79,7 +79,7 @@ export default function ClientPackages() {
       <Card className="border-gold/35">
         <CardContent className="p-5 flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your balance</p>
+            <SectionLabel>Your balance</SectionLabel>
             <p className="font-display text-3xl font-semibold mt-1 tabular-nums" data-testid="credits-balance-text">
               {credits} <span className="text-base text-muted-foreground font-normal">credits</span>
             </p>
@@ -98,12 +98,12 @@ export default function ClientPackages() {
         </div>
       )}
 
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-6">Available packages</p>
+      <SectionLabel className="mb-2 mt-6">Available packages</SectionLabel>
       <div className="grid gap-3 sm:grid-cols-2">
         {packages.map((pkg) => (
           <Card key={pkg.id} className="relative overflow-hidden" data-testid="package-card">
-            <div className="absolute inset-x-0 top-0 h-[2px] bg-primary/70" />
-            <CardContent className="p-5">
+            <div className="absolute left-0 top-3 bottom-3 w-[3px] rounded-full bg-primary/70" aria-hidden />
+            <CardContent className="p-5 pl-6">
               <div className="flex items-center justify-between">
                 <p className="font-display font-semibold">{pkg.name}</p>
                 {pkg.is_recurring && (
@@ -116,7 +116,7 @@ export default function ClientPackages() {
               <p className="font-display text-2xl font-semibold mt-3 tabular-nums">{fmtMoney(pkg.price)}</p>
               <p className="text-xs text-gold font-medium mt-0.5">{pkg.session_credits} session credits</p>
               <Button
-                className="w-full mt-4 rounded-xl font-semibold"
+                className={`w-full mt-4 rounded-xl font-semibold ${!config.configured ? 'bg-muted text-muted-foreground hover:bg-muted disabled:opacity-100 disabled:pointer-events-auto cursor-not-allowed' : ''}`}
                 disabled={!config.configured || buying === pkg.id}
                 onClick={() => buy(pkg)}
                 data-testid="stripe-checkout-button"
@@ -128,7 +128,7 @@ export default function ClientPackages() {
         ))}
       </div>
 
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 mt-6">Payment history</p>
+      <SectionLabel className="mb-2 mt-6">Payment history</SectionLabel>
       {history.length === 0 ? (
         <p className="text-sm text-muted-foreground">No payments yet.</p>
       ) : (

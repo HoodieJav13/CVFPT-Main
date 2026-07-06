@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { LoadingScreen, StatusBadge, MetricChart, EmptyState } from '@/components/common';
+import { LoadingScreen, StatusBadge, MetricChart, EmptyState, SectionLabel, CheckInStats } from '@/components/common';
 import CheckInForm from '@/components/CheckInForm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,7 +69,7 @@ export default function ClientDetail() {
           <AvatarFallback className="bg-primary/15 text-primary font-display font-semibold text-lg">{initials(client.name)}</AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight truncate" data-testid="client-detail-name">{client.name}</h1>
+          <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight truncate" data-testid="client-detail-name">{client.name}</h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             {client.archived && <Badge variant="outline" className="text-muted-foreground">Archived</Badge>}
             {client.auth_user_id ? (
@@ -194,7 +194,7 @@ function OverviewTab({ client, credits, waiver, reload, user }) {
     <div className="space-y-4 mt-1">
       <Card>
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Profile</CardTitle>
+          <SectionLabel>Profile</SectionLabel>
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="sm" className="rounded-lg" data-testid="edit-client-button">
@@ -389,9 +389,15 @@ function CheckInsTab({ clientId }) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-display font-semibold">{fmtDate(checkIn.check_in_date)}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Energy {checkIn.energy || '-'} - Soreness {checkIn.soreness || '-'} - Sleep {checkIn.sleep_quality || '-'} - Stress {checkIn.stress || '-'}
-                </p>
+                <CheckInStats
+                  className="mt-1.5"
+                  stats={[
+                    ['Energy', checkIn.energy || '-'],
+                    ['Soreness', checkIn.soreness || '-'],
+                    ['Sleep', checkIn.sleep_quality || '-'],
+                    ['Stress', checkIn.stress || '-'],
+                  ]}
+                />
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <StatusBadge status={checkIn.review_status} />
@@ -822,13 +828,19 @@ function ProgramsTab({ clientId }) {
                 Unassign
               </Button>
             </div>
-            {(p.days || []).map((day) => (
-              <div key={day.id || day.day_number} className="rounded-xl border border-border bg-card/60 p-3">
-                <p className="text-xs font-semibold text-muted-foreground">Day {day.day_number}</p>
-                <p className="text-sm font-medium mt-0.5">{day.workout?.name || 'Workout day'}</p>
-                <CoachExerciseRows exercises={day.workout?.exercises || []} />
-              </div>
-            ))}
+            <div className="divide-y divide-border">
+              {(p.days || []).map((day) => (
+                <section key={day.id || day.day_number} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary text-xs font-display font-semibold tabular-nums shrink-0">
+                      {day.day_number}
+                    </span>
+                    <p className="text-sm font-medium">{day.workout?.name || 'Workout day'}</p>
+                  </div>
+                  <CoachExerciseRows exercises={day.workout?.exercises || []} />
+                </section>
+              ))}
+            </div>
           </CardContent>
         </Card>
       ))}
@@ -875,21 +887,23 @@ function CoachWorkoutAssignment({ assignment, onArchive }) {
 function CoachExerciseRows({ exercises }) {
   if (!exercises.length) return null;
   return (
-    <div className="mt-2 space-y-2">
+    <div className="mt-1 divide-y divide-border/70">
       {exercises.slice(0, 6).map((exercise, index) => (
-        <div key={exercise.id || index} className="rounded-lg border border-border bg-background/60 px-3 py-2">
+        <div key={exercise.id || index} className="py-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">
               <span className="text-muted-foreground mr-2 tabular-nums">{index + 1}.</span>{coachExerciseName(exercise)}
             </p>
-            {(exercise.sets || exercise.reps) && <Badge variant="outline" className="shrink-0 tabular-nums">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+            <span className="flex items-center gap-2 shrink-0">
+              {(exercise.video_url || exercise.library_exercise?.video_url) && (
+                <a href={exercise.video_url || exercise.library_exercise?.video_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/15">
+                  <Play className="h-3 w-3" /> Video
+                </a>
+              )}
+              {(exercise.sets || exercise.reps) && <Badge variant="outline" className="tabular-nums">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+            </span>
           </div>
           {exercise.notes && <p className="text-xs text-muted-foreground mt-1">{exercise.notes}</p>}
-          {(exercise.video_url || exercise.library_exercise?.video_url) && (
-            <a href={exercise.video_url || exercise.library_exercise?.video_url} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-              <Play className="h-3 w-3" /> Video
-            </a>
-          )}
         </div>
       ))}
     </div>

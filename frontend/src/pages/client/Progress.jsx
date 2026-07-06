@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, EmptyState, MetricChart } from '@/components/common';
+import { PageHeader, ChartSkeleton, EmptyState, MetricChart } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,7 +74,7 @@ export default function ClientProgress() {
     }
   };
 
-  if (!metrics) return <LoadingScreen />;
+  if (!metrics) return <ChartSkeleton />;
 
   return (
     <div>
@@ -103,7 +103,10 @@ export default function ClientProgress() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {delta !== null && m.entries.length > 1 && (
-                      <span className="text-xs font-semibold tabular-nums text-gold">
+                      /* ELEVATION-DEFERRED: "gold when improving" needs a goal-direction on the
+                         metric (e.g. lower-is-better for weight) — a data/logic change. Until then:
+                         gold for any movement, muted when flat. */
+                      <span className={`rounded-md px-2 py-0.5 font-display text-sm font-semibold tabular-nums ${Number(delta) !== 0 ? 'bg-gold/15 text-gold border border-gold/25' : 'bg-secondary text-muted-foreground border border-border'}`}>
                         {delta > 0 ? '+' : ''}{delta}{m.unit ? ` ${m.unit}` : ''}
                       </span>
                     )}
