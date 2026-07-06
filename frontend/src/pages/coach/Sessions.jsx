@@ -146,9 +146,9 @@ export default function CoachSessions() {
       />
 
       {bookings.length > 0 && (
-        <div className="mb-5 rounded-2xl border border-[#F2C94C]/30 bg-[#F2C94C]/5 p-4" data-testid="pending-requests-banner">
+        <div className="mb-5 rounded-2xl border border-gold/30 bg-gold/5 p-4" data-testid="pending-requests-banner">
           <p className="text-sm font-semibold flex items-center gap-2 mb-3">
-            <Inbox className="h-4 w-4 text-[#F2C94C]" /> {bookings.length} pending booking request{bookings.length > 1 ? 's' : ''}
+            <Inbox className="h-4 w-4 text-gold" /> {bookings.length} pending booking request{bookings.length > 1 ? 's' : ''}
           </p>
           <div className="space-y-2">
             {bookings.map((b) => (

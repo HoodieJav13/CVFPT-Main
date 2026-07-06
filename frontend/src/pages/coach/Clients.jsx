@@ -146,7 +146,7 @@ export default function Clients() {
               <div className="flex items-center gap-2 shrink-0">
                 {c.archived && <Badge variant="outline" className="text-muted-foreground">Archived</Badge>}
                 {c.auth_user_id ? (
-                  <Badge variant="outline" className="bg-emerald-500/15 text-emerald-200 border-emerald-500/25">Active</Badge>
+                  <Badge variant="outline" className="bg-success/15 text-success-foreground border-success/25">Active</Badge>
                 ) : c.invited ? (
                   <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Invited</Badge>
                 ) : null}

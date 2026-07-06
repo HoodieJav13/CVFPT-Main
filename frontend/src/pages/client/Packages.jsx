@@ -76,7 +76,7 @@ export default function ClientPackages() {
     <div>
       <PageHeader title="Packages & credits" subtitle="Buy session credits and view payment history" />
 
-      <Card className="border-[#F2C94C]/35">
+      <Card className="border-gold/35">
         <CardContent className="p-5 flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your balance</p>
@@ -84,7 +84,7 @@ export default function ClientPackages() {
               {credits} <span className="text-base text-muted-foreground font-normal">credits</span>
             </p>
           </div>
-          <CreditCard className="h-8 w-8 text-[#F2C94C]" />
+          <CreditCard className="h-8 w-8 text-gold" />
         </CardContent>
       </Card>
 
@@ -114,7 +114,7 @@ export default function ClientPackages() {
               </div>
               {pkg.description && <p className="text-xs text-muted-foreground mt-1">{pkg.description}</p>}
               <p className="font-display text-2xl font-semibold mt-3 tabular-nums">{fmtMoney(pkg.price)}</p>
-              <p className="text-xs text-[#F2C94C] font-medium mt-0.5">{pkg.session_credits} session credits</p>
+              <p className="text-xs text-gold font-medium mt-0.5">{pkg.session_credits} session credits</p>
               <Button
                 className="w-full mt-4 rounded-xl font-semibold"
                 disabled={!config.configured || buying === pkg.id}

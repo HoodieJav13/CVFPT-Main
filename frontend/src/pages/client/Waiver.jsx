@@ -69,9 +69,9 @@ export default function ClientWaiver() {
       <PageHeader title="Liability waiver" subtitle={`Version ${status.latest_version.version_number}`} />
 
       {status.signed_latest ? (
-        <Card className="border-emerald-500/30" data-testid="waiver-signed-card">
+        <Card className="border-success/30" data-testid="waiver-signed-card">
           <CardContent className="p-5 flex items-start gap-3">
-            <CheckCircle2 className="h-6 w-6 text-emerald-300 shrink-0" />
+            <CheckCircle2 className="h-6 w-6 text-success-foreground shrink-0" />
             <div>
               <p className="font-semibold">You're all set</p>
               <p className="text-sm text-muted-foreground mt-1">
@@ -82,9 +82,9 @@ export default function ClientWaiver() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-[#F2C94C]/30">
+        <Card className="border-gold/30">
           <CardContent className="p-4 flex items-center gap-3">
-            <FileSignature className="h-5 w-5 text-[#F2C94C] shrink-0" />
+            <FileSignature className="h-5 w-5 text-gold shrink-0" />
             <p className="text-sm">Please read the waiver below and sign before your next session.</p>
           </CardContent>
         </Card>

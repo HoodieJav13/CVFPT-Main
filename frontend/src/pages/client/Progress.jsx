@@ -103,7 +103,7 @@ export default function ClientProgress() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {delta !== null && m.entries.length > 1 && (
-                      <span className="text-xs font-semibold tabular-nums text-[#F2C94C]">
+                      <span className="text-xs font-semibold tabular-nums text-gold">
                         {delta > 0 ? '+' : ''}{delta}{m.unit ? ` ${m.unit}` : ''}
                       </span>
                     )}

@@ -62,9 +62,9 @@ export default function ClientHome() {
 
       {data.waiver.has_version && !data.waiver.signed_latest && (
         <Link to="/client/waiver" className="block mb-4" data-testid="waiver-alert-card">
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#F2C94C]/35 bg-[#F2C94C]/10 px-4 py-3.5">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-gold/35 bg-gold/10 px-4 py-3.5">
             <div className="flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-[#F2C94C] shrink-0" />
+              <AlertTriangle className="h-5 w-5 text-gold shrink-0" />
               <div>
                 <p className="text-sm font-semibold">Waiver needs your signature</p>
                 <p className="text-xs text-muted-foreground">Please review and sign before your next session.</p>
@@ -89,7 +89,7 @@ export default function ClientHome() {
                   : 'Log readiness, soreness, sleep, stress, and notes for your coach.'}
               </p>
             </div>
-            <Badge variant="outline" className={todayCheckIn ? 'bg-emerald-500/15 text-emerald-200 border-emerald-500/25' : 'bg-[#F2C94C]/10 text-[#F2C94C] border-[#F2C94C]/25'}>
+            <Badge variant="outline" className={todayCheckIn ? 'bg-success/15 text-success-foreground border-success/25' : 'bg-gold/10 text-gold border-gold/25'}>
               {todayCheckIn ? (todayCheckIn.review_status === 'reviewed' ? 'Reviewed' : 'Sent') : 'Open'}
             </Badge>
           </div>
@@ -199,7 +199,7 @@ export default function ClientHome() {
 
       <Link to="/client/packages" className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3.5 hover:bg-card transition-colors" data-testid="credits-summary-link">
         <div className="flex items-center gap-3">
-          <CreditCard className="h-5 w-5 text-[#F2C94C]" />
+          <CreditCard className="h-5 w-5 text-gold" />
           <div>
             <p className="text-sm font-medium">Session credits</p>
             <p className="text-xs text-muted-foreground">Current balance: {data.credits}</p>

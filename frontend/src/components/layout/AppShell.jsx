@@ -51,7 +51,8 @@ export default function AppShell() {
         {/* Desktop sidebar */}
         <aside className="hidden lg:flex lg:flex-col lg:h-dvh lg:sticky lg:top-0 border-r border-border bg-card/40 px-4 py-6 z-10">
           <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2.5 px-2" data-testid="sidebar-brand">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-display font-bold">CV</div>
+            {/* LOGO: swap lettermark for /logo.png when provided */}
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-display font-bold text-sm">CVF</div>
             <div>
               <p className="font-display font-semibold leading-none">CVF PT</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">Fitness Done Right</p>
@@ -66,10 +67,10 @@ export default function AppShell() {
                 data-testid={`sidebar-nav-${item.label.toLowerCase().replace(/[^a-z]+/g, '-')}`}
                 className={({ isActive }) => cn(
                   'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors',
-                  isActive && 'bg-primary/12 text-primary bg-primary/10'
+                  isActive && 'bg-primary/10 text-primary'
                 )}
               >
-                <item.icon className="h-4.5 w-4.5 h-[18px] w-[18px]" />
+                <item.icon className="h-[18px] w-[18px]" />
                 {item.label}
               </NavLink>
             ))}
@@ -81,7 +82,8 @@ export default function AppShell() {
           {/* Mobile top bar */}
           <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur">
             <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2" data-testid="mobile-brand">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-display font-bold text-sm">CV</div>
+              {/* LOGO: swap lettermark for /logo.png when provided */}
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-display font-bold text-xs">CVF</div>
               <span className="font-display font-semibold">CVF PT</span>
             </Link>
             <div className="flex items-center gap-2">
@@ -106,7 +108,7 @@ export default function AppShell() {
           size="icon"
           onClick={() => navigate('/coach/sessions?new=1')}
           data-testid="coach-quick-add-button"
-          className="lg:hidden fixed bottom-20 right-4 z-50 h-13 w-13 h-[52px] w-[52px] rounded-full shadow-[0_10px_24px_rgba(91,194,212,.3)]"
+          className="lg:hidden fixed bottom-20 right-4 z-50 h-[52px] w-[52px] rounded-full shadow-[0_10px_24px_rgba(91,194,212,.3)]"
         >
           <Plus className="h-6 w-6" />
         </Button>

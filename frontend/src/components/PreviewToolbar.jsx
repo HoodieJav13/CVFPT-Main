@@ -65,9 +65,9 @@ export default function PreviewToolbar() {
   const links = LINKS[role] || LINKS.client;
 
   return (
-    <div className="fixed inset-x-3 bottom-[76px] z-[80] rounded-xl border border-[#F2C94C]/30 bg-background/95 p-2 shadow-[0_16px_40px_rgba(0,0,0,.35)] backdrop-blur lg:bottom-4 lg:left-auto lg:right-4 lg:w-[520px]" data-testid="preview-toolbar">
+    <div className="fixed inset-x-3 bottom-[76px] z-[80] rounded-xl border border-gold/30 bg-background/95 p-2 shadow-[0_16px_40px_rgba(0,0,0,.35)] backdrop-blur lg:bottom-4 lg:left-auto lg:right-4 lg:w-[520px]" data-testid="preview-toolbar">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-lg bg-[#F2C94C]/15 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#F2C94C]">
+        <span className="rounded-lg bg-gold/15 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">
           Preview Mode
         </span>
         <select

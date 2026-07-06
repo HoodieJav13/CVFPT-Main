@@ -55,12 +55,12 @@ export function EmptyState({ icon: Icon, title, subtitle, action, testId }) {
 
 const SESSION_BADGES = {
   scheduled: 'bg-primary/15 text-primary border border-primary/25',
-  completed: 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25',
+  completed: 'bg-success/15 text-success-foreground border border-success/25',
   cancelled: 'bg-destructive/15 text-destructive border border-destructive/25',
-  pending: 'bg-[#F2C94C]/15 text-[#F2C94C] border border-[#F2C94C]/25',
-  needs_review: 'bg-[#F2C94C]/15 text-[#F2C94C] border border-[#F2C94C]/25',
-  reviewed: 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25',
-  approved: 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/25',
+  pending: 'bg-gold/15 text-gold border border-gold/25',
+  needs_review: 'bg-gold/15 text-gold border border-gold/25',
+  reviewed: 'bg-success/15 text-success-foreground border border-success/25',
+  approved: 'bg-success/15 text-success-foreground border border-success/25',
   declined: 'bg-destructive/15 text-destructive border border-destructive/25',
 };
 
@@ -85,7 +85,7 @@ export function MetricChart({ entries = [], unit }) {
         <XAxis dataKey="date" tick={{ fill: 'rgba(167,179,191,.75)', fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fill: 'rgba(167,179,191,.75)', fontSize: 11 }} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
         <Tooltip
-          contentStyle={{ background: 'hsl(214 28% 8%)', border: '1px solid hsl(214 22% 18%)', borderRadius: 12, color: '#F4F7FA' }}
+          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 12, color: 'hsl(var(--foreground))' }}
           formatter={(v) => [`${v}${unit ? ` ${unit}` : ''}`, 'Value']}
         />
         <Line type="monotone" dataKey="value" stroke="hsl(var(--chart-1))" strokeWidth={2.5} dot={{ r: 2.5 }} activeDot={{ r: 4 }} />

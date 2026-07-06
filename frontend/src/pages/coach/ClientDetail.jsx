@@ -73,13 +73,13 @@ export default function ClientDetail() {
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             {client.archived && <Badge variant="outline" className="text-muted-foreground">Archived</Badge>}
             {client.auth_user_id ? (
-              <Badge variant="outline" className="bg-emerald-500/15 text-emerald-200 border-emerald-500/25">Account active</Badge>
+              <Badge variant="outline" className="bg-success/15 text-success-foreground border-success/25">Account active</Badge>
             ) : client.invited ? (
               <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Invited - awaiting signup</Badge>
             ) : (
               <Badge variant="outline" className="text-muted-foreground">Not invited</Badge>
             )}
-            <Badge variant="outline" className="bg-[#F2C94C]/10 text-[#F2C94C] border-[#F2C94C]/25" data-testid="client-credits-badge">{credits} credits</Badge>
+            <Badge variant="outline" className="bg-gold/10 text-gold border-gold/25" data-testid="client-credits-badge">{credits} credits</Badge>
           </div>
         </div>
         <Button variant="secondary" size="icon" className="rounded-xl shrink-0" onClick={() => navigate(`/coach/messages/${client.id}`)} data-testid="client-message-button">
