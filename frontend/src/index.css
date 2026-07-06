@@ -31,8 +31,7 @@
     --accent-foreground: 210 25% 97%;
     --destructive: 352 86% 62%;
     --destructive-foreground: 210 25% 97%;
-    /* TODO: sync exact values with Leagues tokens */
-    --gold: 42 88% 55%;
+    --gold: 58 97% 62%;
     --gold-foreground: 215 28% 8%;
     --success: 160 84% 39%;
     --success-foreground: 152 76% 80%;
