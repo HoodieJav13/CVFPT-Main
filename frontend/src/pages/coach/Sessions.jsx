@@ -77,7 +77,7 @@ export default function CoachSessions() {
     let list = sessions;
     if (filter === 'upcoming') list = sessions.filter((s) => s.status === 'scheduled' && !isBeforeToday(s.scheduled_at));
     if (filter === 'today') list = sessions.filter((s) => new Date(s.scheduled_at).toDateString() === todayStr && s.status !== 'cancelled');
-    if (filter === 'past') list = sessions.filter((s) => s.status === 'completed' || s.status === 'cancelled' || (s.status === 'scheduled' && isBeforeToday(s.scheduled_at))).slice().reverse();
+    if (filter === 'past') list = sessions.filter((s) => s.status === 'completed' || (s.status === 'scheduled' && isBeforeToday(s.scheduled_at))).slice().reverse();
     if (filter === 'cancelled') list = sessions.filter((s) => s.status === 'cancelled');
     return list;
   }, [sessions, filter]);
