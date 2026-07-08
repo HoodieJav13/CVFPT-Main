@@ -19,7 +19,7 @@ import {
   Dumbbell, FileText, FileUp, Loader2, Pencil, Plus, Trash2, UserPlus, Video,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import draftTools from '../../../../shared/programDraft.cjs';
+import draftTools from '@/lib/programDraft.cjs';
 
 const {
   normalizeDraft,

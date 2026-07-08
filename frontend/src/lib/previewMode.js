@@ -1,4 +1,4 @@
-import draftTools from '../../../shared/programDraft.cjs';
+import draftTools from '@/lib/programDraft.cjs';
 
 const {
   csvTemplate,

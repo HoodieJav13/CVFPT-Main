@@ -14,7 +14,7 @@ const {
   normalizeName,
   parseCsvDraft,
   validateDraft,
-} = require('../../../shared/programDraft.cjs');
+} = require('../lib/programDraft.cjs');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -36,7 +36,7 @@ function programImportUpload(req, res, next) {
 }
 
 const CVF_LOCATION = 'Core Value Fitness - Albuquerque, NM';
-const LOGO_PATH = path.join(__dirname, '..', '..', '..', 'frontend', 'cvf-logo-transparent copy.png');
+const LOGO_PATH = path.join(__dirname, '..', 'assets', 'cvf-logo.png');
 
 function isCsvUpload(file) {
   return Boolean(file && (
@@ -97,8 +97,10 @@ function generateProgramPdf(program, user, options = {}) {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const teal = '#5BC2D4';
-    const gold = '#F7EC3D';
+    // Keep in sync with --primary in frontend/src/index.css — pdfkit can't read CSS vars.
+    const teal = '#5EC4D4';
+    // Keep in sync with --gold in frontend/src/index.css — pdfkit can't read CSS vars.
+    const gold = '#FCF640';
     const dark = '#09111C';
     const muted = '#5F6B78';
 

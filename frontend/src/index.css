@@ -127,11 +127,8 @@
     .skeleton::after { animation: none; }
   }
 
-  /* RIDGE: placeholder horizon line — swap the data URI for the Leagues Sandia
-     ridge asset when it lands in this repo. Decorative only; keep opacity low
-     (≤ .05 on content pages) and pointer-events off at call sites. */
   .ridge-fade {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 160' preserveAspectRatio='none'%3E%3Cpath d='M0 128 L140 88 L250 118 L400 52 L510 104 L660 28 L780 96 L930 64 L1060 108 L1200 80 L1200 160 L0 160 Z' fill='%235BC2D4'/%3E%3C/svg%3E");
+    background-image: url('/backgrounds/sandia-wide-hero-bg.svg');
     background-repeat: repeat-x;
     background-position: bottom center;
     background-size: 1200px 100%;

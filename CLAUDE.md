@@ -24,6 +24,10 @@ Vite ONLY. CRA/craco were removed — never reintroduce `react-scripts`.
 
 `previewMode.js` is a DEV-only mock layer, double-gated, pending a keep/kill decision. Do not extend it without being asked.
 
+## Known duplication
+
+`programDraft.cjs` is intentionally duplicated in `frontend/src/lib/` and `backend/src/lib/` because the frontend and backend deploy as separate Vercel project roots. Changes to the CSV/PDF Program Draft schema must be applied to both copies.
+
 ## Conventions
 
 - Functional and visual changes go in **separate commits**; keep commits small and scoped.

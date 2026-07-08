@@ -14,6 +14,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [logoBroken, setLogoBroken] = useState(false);
 
   if (!loading && user) return <Navigate to={user.role === 'client' ? '/client' : '/coach'} replace />;
 
@@ -37,14 +38,21 @@ export default function Login() {
         style={{ backgroundImage: "url('https://images.unsplash.com/photo-1595886509089-b691b210fc5c?crop=entropy&cs=srgb&fm=jpg&ixlib=rb-4.1.0&q=85&w=1600')" }}
       />
       <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/90 to-background" />
-      {/* RIDGE: placeholder horizon line — swap for the Leagues Sandia ridge asset when provided */}
       <div aria-hidden className="ridge-fade absolute inset-x-0 bottom-0 h-32 opacity-[0.05]" />
       <div className="relative w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          {/* LOGO: swap lettermark for /logo.png when provided */}
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground font-display font-bold text-lg shadow-[0_10px_30px_rgba(91,194,212,.35)]">
-            CVF
-          </div>
+          {logoBroken ? (
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground font-display font-bold text-lg shadow-[0_10px_30px_rgba(91,194,212,.35)]">
+              CVF
+            </div>
+          ) : (
+            <img
+              src="/logo.png"
+              alt="CVF PT"
+              className="h-14 w-14 rounded-2xl object-contain shadow-[0_10px_30px_rgba(91,194,212,.35)]"
+              onError={() => setLogoBroken(true)}
+            />
+          )}
           <h1 className="mt-4 font-display text-4xl font-semibold tracking-tight">CVF PT</h1>
           <p className="text-sm text-muted-foreground mt-1">Fitness Done Right</p>
         </div>

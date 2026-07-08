@@ -1,3 +1,4 @@
+// Duplicated in frontend/src/lib/programDraft.cjs — keep both in sync manually. See CLAUDE.md.
 const PARSER_VERSION = 'program-draft-v1';
 
 const REQUIRED_CSV_COLUMNS = ['day_number', 'workout_name', 'exercise_name'];

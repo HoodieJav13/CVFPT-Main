@@ -35,6 +35,28 @@ const CLIENT_EXTRA = [
   { to: '/client/packages', label: 'Packages & Credits', icon: CreditCard },
 ];
 
+function BrandLogo({ size = 'desktop' }) {
+  const [logoBroken, setLogoBroken] = useState(false);
+  const classes = size === 'mobile'
+    ? 'h-8 w-8 rounded-lg text-xs'
+    : 'h-9 w-9 rounded-xl text-sm';
+  if (logoBroken) {
+    return (
+      <div className={cn('flex items-center justify-center bg-primary text-primary-foreground font-display font-bold', classes)}>
+        CVF
+      </div>
+    );
+  }
+  return (
+    <img
+      src="/logo.png"
+      alt="CVF PT"
+      className={cn('object-contain', classes)}
+      onError={() => setLogoBroken(true)}
+    />
+  );
+}
+
 export default function AppShell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -51,8 +73,7 @@ export default function AppShell() {
         {/* Desktop sidebar */}
         <aside className="hidden lg:flex lg:flex-col lg:h-dvh lg:sticky lg:top-0 border-r border-border bg-card/40 px-4 py-6 z-10">
           <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2.5 px-2" data-testid="sidebar-brand">
-            {/* LOGO: swap lettermark for /logo.png when provided */}
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-display font-bold text-sm">CVF</div>
+            <BrandLogo />
             <div>
               <p className="font-display font-semibold leading-none">CVF PT</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">Fitness Done Right</p>
@@ -83,8 +104,7 @@ export default function AppShell() {
           {/* Mobile top bar */}
           <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur">
             <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2" data-testid="mobile-brand">
-              {/* LOGO: swap lettermark for /logo.png when provided */}
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-display font-bold text-xs">CVF</div>
+              <BrandLogo size="mobile" />
               <span className="font-display font-semibold">CVF PT</span>
             </Link>
             <div className="flex items-center gap-2">
