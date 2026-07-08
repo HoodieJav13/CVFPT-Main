@@ -23,7 +23,7 @@ import {
 import {
   Plus, CalendarDays, MoreVertical, Check, X, Pencil, StickyNote, Loader2, Inbox,
 } from 'lucide-react';
-import { fmtTime, fmtDay, fmtDateTime, toLocalInputValue } from '@/lib/format';
+import { fmtTime, fmtDay, fmtDateTime, toLocalInputValue, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
 
 const FILTERS = [
@@ -73,12 +73,11 @@ export default function CoachSessions() {
 
   const filtered = useMemo(() => {
     if (!sessions) return [];
-    const now = Date.now();
     const todayStr = new Date().toDateString();
     let list = sessions;
-    if (filter === 'upcoming') list = sessions.filter((s) => s.status === 'scheduled' && new Date(s.scheduled_at).getTime() >= now - 3600e3);
+    if (filter === 'upcoming') list = sessions.filter((s) => s.status === 'scheduled' && !isBeforeToday(s.scheduled_at));
     if (filter === 'today') list = sessions.filter((s) => new Date(s.scheduled_at).toDateString() === todayStr && s.status !== 'cancelled');
-    if (filter === 'past') list = sessions.filter((s) => s.status === 'completed' || (s.status === 'scheduled' && new Date(s.scheduled_at).getTime() < now - 3600e3)).slice().reverse();
+    if (filter === 'past') list = sessions.filter((s) => s.status === 'completed' || s.status === 'cancelled' || (s.status === 'scheduled' && isBeforeToday(s.scheduled_at))).slice().reverse();
     if (filter === 'cancelled') list = sessions.filter((s) => s.status === 'cancelled');
     return list;
   }, [sessions, filter]);

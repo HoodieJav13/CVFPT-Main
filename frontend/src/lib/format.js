@@ -1,4 +1,4 @@
-import { format, parseISO, isToday, isTomorrow, isYesterday } from 'date-fns';
+import { format, parseISO, isToday, isTomorrow, isYesterday, differenceInCalendarDays } from 'date-fns';
 
 export function fmtDate(iso) {
   if (!iso) return '';
@@ -32,6 +32,12 @@ export function fmtMoney(n) {
 
 export function initials(name = '') {
   return name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+}
+
+/** True if the given ISO timestamp's local calendar day is before today's local calendar day. */
+export function isBeforeToday(iso) {
+  if (!iso) return false;
+  try { return differenceInCalendarDays(parseISO(iso), new Date()) < 0; } catch { return false; }
 }
 
 /** Convert a Date-like ISO string to a value for <input type="datetime-local"> in local time. */

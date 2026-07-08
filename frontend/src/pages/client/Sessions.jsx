@@ -12,7 +12,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Plus, CalendarDays, MapPin, Loader2, StickyNote } from 'lucide-react';
-import { fmtTime, fmtDay, fmtDateTime } from '@/lib/format';
+import { fmtTime, fmtDay, fmtDateTime, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
 
 export default function ClientSessions() {
@@ -37,10 +37,10 @@ export default function ClientSessions() {
 
   const { upcoming, past } = useMemo(() => {
     if (!sessions) return { upcoming: [], past: [] };
-    const now = Date.now();
+    const isPast = (s) => s.status === 'completed' || s.status === 'cancelled' || isBeforeToday(s.scheduled_at);
     return {
-      upcoming: sessions.filter((s) => s.status === 'scheduled' && new Date(s.scheduled_at).getTime() >= now - 3600e3).slice().reverse(),
-      past: sessions.filter((s) => s.status !== 'scheduled' || new Date(s.scheduled_at).getTime() < now - 3600e3),
+      upcoming: sessions.filter((s) => !isPast(s)).slice().reverse(),
+      past: sessions.filter(isPast),
     };
   }, [sessions]);
 
