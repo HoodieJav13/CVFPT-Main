@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="720" viewBox="0 0 1920 720" preserveAspectRatio="xMidYMid slice" role="img" aria-labelledby="title desc">
+  <title id="title">Sandia Mountains wide hero silhouette</title>
+  <desc id="desc">Simplified Sandia Mountains ridgeline silhouette extracted from the provided reference photo for the full-bleed home hero background.</desc>
+  <defs>
+    <linearGradient id="cvf-dusk-gradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#050914"/>
+      <stop offset="58%" stop-color="#081521"/>
+      <stop offset="100%" stop-color="#0d2730"/>
+    </linearGradient>
+    <style>:root {
+  --cvf-teal-deep: #06383f;
+}
+.sandia-mountain {
+  fill: #06383f;
+  fill: var(--cvf-teal-deep, #06383f);
+  opacity: 0.58;
+  shape-rendering: geometricPrecision;
+}
+</style>
+  </defs>
+  <rect width="1920" height="720" fill="url(#cvf-dusk-gradient)"/>
+  <path class="sandia-mountain" d="M 0.0 410.4 L 116.3 409.0 L 185.4 388.5 L 270.2 406.1 L 317.4 373.0 L 330.0 378.8 L 355.1 415.0 L 367.7 417.6 L 405.4 408.5 L 452.5 376.0 L 568.8 379.9 L 675.6 351.4 L 719.6 324.6 L 854.7 327.8 L 905.0 314.7 L 967.9 309.6 L 1011.8 320.4 L 1178.4 320.7 L 1231.8 334.4 L 1288.4 335.1 L 1319.8 364.1 L 1357.5 374.2 L 1486.4 373.9 L 1564.9 388.2 L 1678.0 388.1 L 1744.0 399.0 L 1920.0 403.4 L 1920.0 720.0 L 0 720.0 Z"/>
+</svg>

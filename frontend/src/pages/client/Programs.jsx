@@ -149,9 +149,9 @@ function ExerciseList({ exercises }) {
               )}
             </span>
           </div>
-          {[exercise.rest && `Rest: ${exercise.rest}`, exercise.tempo && `Tempo: ${exercise.tempo}`, exercise.notes].filter(Boolean).length > 0 && (
+          {[exercise.rest && `Rest: ${exercise.rest}`, exercise.tempo && `Tempo: ${exercise.tempo}`, clientExerciseNotes(exercise)].filter(Boolean).length > 0 && (
             <p className="text-xs text-muted-foreground mt-1">
-              {[exercise.rest && `Rest: ${exercise.rest}`, exercise.tempo && `Tempo: ${exercise.tempo}`, exercise.notes].filter(Boolean).join(' - ')}
+              {[exercise.rest && `Rest: ${exercise.rest}`, exercise.tempo && `Tempo: ${exercise.tempo}`, clientExerciseNotes(exercise)].filter(Boolean).join(' - ')}
             </p>
           )}
         </div>
@@ -175,4 +175,8 @@ function exerciseName(exercise) {
 
 function exerciseVideo(exercise) {
   return exercise.video_url || exercise.library_exercise?.video_url || '';
+}
+
+function clientExerciseNotes(exercise) {
+  return exercise.client_notes || exercise.notes || '';
 }

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="240" viewBox="0 0 720 240" preserveAspectRatio="xMidYMid slice" role="img" aria-labelledby="title desc">
+  <title id="title">Sandia Mountains Team Interest CTA crop</title>
+  <desc id="desc">Narrow simplified Sandia Mountains silhouette crop emphasizing the left notched and stepped formation for the Team Interest CTA card.</desc>
+  <defs>
+    <linearGradient id="cvf-dusk-gradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#050914"/>
+      <stop offset="58%" stop-color="#081521"/>
+      <stop offset="100%" stop-color="#0d2730"/>
+    </linearGradient>
+    <style>:root {
+  --cvf-teal-deep: #06383f;
+}
+.sandia-mountain {
+  fill: #06383f;
+  fill: var(--cvf-teal-deep, #06383f);
+  opacity: 0.64;
+  shape-rendering: geometricPrecision;
+}
+</style>
+  </defs>
+  <rect width="720" height="240" fill="url(#cvf-dusk-gradient)"/>
+  <path class="sandia-mountain" d="M 0.0 140.5 L 77.2 139.8 L 123.1 129.8 L 179.5 138.4 L 202.4 124.0 L 210.8 122.2 L 219.1 125.1 L 235.8 142.7 L 244.2 144.0 L 269.2 139.5 L 300.5 123.7 L 377.7 125.6 L 409.0 120.5 L 429.9 112.9 L 448.7 111.6 L 477.9 98.5 L 567.7 100.1 L 601.0 93.7 L 642.8 91.2 L 672.0 96.5 L 720.0 96.6 L 720.0 240.0 L 0 240.0 Z"/>
+</svg>

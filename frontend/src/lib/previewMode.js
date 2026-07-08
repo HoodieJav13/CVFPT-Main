@@ -1,3 +1,13 @@
+import draftTools from '../../../shared/programDraft.cjs';
+
+const {
+  csvTemplate,
+  normalizeDraft,
+  normalizeName,
+  parseCsvDraft,
+  validateDraft,
+} = draftTools;
+
 const PREVIEW_ROLE_KEY = 'cvf_preview_role';
 const PREVIEW_CLIENT_KEY = 'cvf_preview_client_id';
 const CHANGE_EVENT = 'cvf-preview-change';
@@ -222,7 +232,9 @@ function replaceWorkoutExercises(workoutId, exercises = []) {
         reps: exercise.reps || null,
         rest: exercise.rest || null,
         tempo: exercise.tempo || null,
-        notes: exercise.notes || null,
+        notes: exercise.client_notes || exercise.notes || null,
+        client_notes: exercise.client_notes || exercise.notes || null,
+        coach_notes: exercise.coach_notes || null,
         video_url: exercise.video_url || null,
         position: index,
         archived: false,
@@ -244,6 +256,83 @@ function replaceProgramDays(programId, days = []) {
       created_at: new Date().toISOString(),
     });
   });
+}
+
+function commitPreviewProgramDraft(inputDraft) {
+  const { valid, errors, draft } = validateDraft(inputDraft);
+  if (!valid) {
+    const error = new Error('Fix import draft errors before saving.');
+    error.validationErrors = errors;
+    throw error;
+  }
+  const source = draft.import_meta.source_type === 'pdf' ? 'import_pdf_ai' : 'import_csv';
+  const createdExercises = [];
+  const reusedExercises = [];
+  const byName = new Map(state.exerciseLibrary.filter((e) => !e.archived).map((e) => [normalizeName(e.name), e]));
+  const workoutIds = [];
+
+  draft.days.forEach((day) => {
+    const workout = {
+      id: id('workout'),
+      coach_id: currentCoach().id,
+      name: day.name,
+      description: day.notes || null,
+      goal: day.goal || null,
+      archived: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    state.workouts.push(workout);
+    workoutIds.push({ day, workout });
+    const rows = day.exercises.map((exercise) => {
+      const key = normalizeName(exercise.name);
+      let libraryExercise = byName.get(key);
+      if (libraryExercise) {
+        reusedExercises.push({ id: libraryExercise.id, name: libraryExercise.name });
+      } else {
+        libraryExercise = {
+          id: id('lib'),
+          name: exercise.name,
+          category: exercise.category || null,
+          equipment: exercise.equipment || null,
+          primary_muscle: exercise.primary_muscle || null,
+          secondary_muscles: null,
+          video_url: exercise.video_url || null,
+          notes: exercise.client_notes || null,
+          source,
+          review_status: 'needs_review',
+          archived: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        state.exerciseLibrary.push(libraryExercise);
+        byName.set(key, libraryExercise);
+        createdExercises.push({ id: libraryExercise.id, name: libraryExercise.name });
+      }
+      return { ...exercise, exercise_library_id: libraryExercise.id, custom_name: exercise.name };
+    });
+    replaceWorkoutExercises(workout.id, rows);
+  });
+
+  const program = {
+    id: id('program'),
+    coach_id: currentCoach().id,
+    name: draft.program.name,
+    description: draft.program.description || null,
+    frequency_days: Number(draft.program.frequency_days),
+    archived: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  state.programs.push(program);
+  replaceProgramDays(program.id, workoutIds.map(({ day, workout }) => ({ day_number: day.day_number, workout_id: workout.id, notes: day.notes })));
+  return {
+    program_id: program.id,
+    program: programDetails(program.id),
+    created_exercises: createdExercises,
+    reused_exercises: reusedExercises,
+    warnings: draft.import_meta.warnings || [],
+  };
 }
 
 function programSummary(program) {
@@ -672,6 +761,40 @@ export function installPreviewApi(api) {
       return ok(row, config);
     }
 
+    if (path === '/programs/import/template.csv' && method === 'get') {
+      return Promise.resolve({
+        data: new Blob([csvTemplate()], { type: 'text/csv' }),
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-disposition': 'attachment; filename="CVF-program-import-template.csv"' },
+        config,
+      });
+    }
+    if (path === '/programs/import/parse-csv' && method === 'post') {
+      try {
+        const file = payload?.get?.('file');
+        if (!file) return fail(config, 400, 'Upload a CSV file using the program import template.');
+        const draft = parseCsvDraft(await file.text(), { originalFilename: file.name, sourceType: 'csv' });
+        const validation = validateDraft(draft);
+        if (!validation.valid) {
+          return Promise.reject({ response: { data: { error: 'CSV parsed, but the draft needs fixes before saving.', draft: validation.draft, errors: validation.errors }, status: 422, statusText: 'Error', headers: {}, config }, config });
+        }
+        return ok({ message: 'CSV parsed. Review imported program before saving.', draft: validation.draft, errors: [] }, config);
+      } catch (e) {
+        return fail(config, 400, e.message || 'Could not parse CSV import');
+      }
+    }
+    if (path === '/programs/import/parse-pdf' && method === 'post') {
+      return fail(config, 503, 'PDF import is not configured. Add the AI import configuration, then try again.');
+    }
+    if (path === '/programs/import/commit' && method === 'post') {
+      try {
+        return ok(commitPreviewProgramDraft(payload.draft || payload), config, 201);
+      } catch (e) {
+        return Promise.reject({ response: { data: { error: e.message || 'Fix import draft errors before saving.', errors: e.validationErrors || [] }, status: 422, statusText: 'Error', headers: {}, config }, config });
+      }
+    }
+
     if (path === '/programs' && method === 'get') return ok(state.programs.filter((p) => !p.archived && p.frequency_days).map(programSummary), config);
     if (path === '/programs' && method === 'post') {
       const program = { id: id('program'), coach_id: currentCoach().id, name: payload.name, description: payload.description || null, frequency_days: Number(payload.frequency_days), archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
@@ -684,6 +807,19 @@ export function installPreviewApi(api) {
         programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => ({ ...a, program: programDetails(a.program_id) })),
         workouts: state.workoutAssignments.filter((a) => a.client_id === client.id && !a.archived).map(workoutAssignmentDetails),
       }, config);
+    }
+    const programExport = path.match(/^\/programs\/([^/]+)\/export\.pdf$/);
+    if (programExport && method === 'get') {
+      const program = programDetails(programExport[1]);
+      if (!program) return fail(config, 404, 'Program not found');
+      const text = `CVF PT\n${program.name}\n${program.frequency_days} days/week\n\nPreview mode PDF export placeholder. Real PDF export is generated by the backend.`;
+      return Promise.resolve({
+        data: new Blob([text], { type: 'application/pdf' }),
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-disposition': `attachment; filename="CVF-${program.name.replace(/[^a-z0-9]+/gi, '-')}.pdf"` },
+        config,
+      });
     }
     const programId = path.match(/^\/programs\/([^/]+)$/);
     if (programId && method === 'get') return ok(programDetails(programId[1]), config);

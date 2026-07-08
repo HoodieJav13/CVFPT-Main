@@ -1,9 +1,216 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+const PDFDocument = require('pdfkit');
+const pdfParse = require('pdf-parse');
 const { supabaseAdmin } = require('../supabase');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
+const {
+  PARSER_VERSION,
+  csvTemplate,
+  draftFromProgram,
+  normalizeDraft,
+  normalizeName,
+  parseCsvDraft,
+  validateDraft,
+} = require('../../../shared/programDraft.cjs');
 
 const router = express.Router();
 router.use(requireAuth);
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+function programImportUpload(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'Import files must be 5 MB or smaller.' });
+    }
+    console.error('program import upload error', err);
+    return res.status(400).json({ error: 'Could not read the uploaded file.' });
+  });
+}
+
+const CVF_LOCATION = 'Core Value Fitness - Albuquerque, NM';
+const LOGO_PATH = path.join(__dirname, '..', '..', '..', 'frontend', 'cvf-logo-transparent copy.png');
+
+function isCsvUpload(file) {
+  return Boolean(file && (
+    file.mimetype === 'text/csv'
+    || file.mimetype === 'application/csv'
+    || file.mimetype === 'application/vnd.ms-excel'
+    || /\.csv$/i.test(file.originalname || '')
+  ));
+}
+
+function isPdfUpload(file) {
+  return Boolean(file && (
+    file.mimetype === 'application/pdf'
+    || /\.pdf$/i.test(file.originalname || '')
+  ));
+}
+
+function sourceForImport(sourceType) {
+  return sourceType === 'pdf' ? 'import_pdf_ai' : 'import_csv';
+}
+
+function safeFilename(value) {
+  const cleaned = String(value || 'Program')
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return `CVF-${cleaned || 'Program'}.pdf`;
+}
+
+function getExerciseText(exercise, includeCoachNotes = false) {
+  const parts = [];
+  if (exercise.sets || exercise.reps) parts.push(`${exercise.sets || '?'} x ${exercise.reps || '?'}`);
+  if (exercise.rest) parts.push(`Rest: ${exercise.rest}`);
+  if (exercise.tempo) parts.push(`Tempo: ${exercise.tempo}`);
+  if (exercise.client_notes || exercise.notes) parts.push(exercise.client_notes || exercise.notes);
+  if (includeCoachNotes && exercise.coach_notes) parts.push(`Coach: ${exercise.coach_notes}`);
+  return parts.filter(Boolean).join(' - ');
+}
+
+function addWrappedText(doc, text, x, y, options = {}) {
+  doc.text(String(text || ''), x, y, options);
+  return doc.y;
+}
+
+function ensurePdfSpace(doc, needed = 80) {
+  if (doc.y + needed > doc.page.height - doc.page.margins.bottom) {
+    doc.addPage();
+  }
+}
+
+function generateProgramPdf(program, user, options = {}) {
+  const includeVideos = options.includeVideos !== false;
+  const includeCoachNotes = Boolean(options.includeCoachNotes);
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'LETTER', margin: 42, bufferPages: true });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const teal = '#5BC2D4';
+    const gold = '#F7EC3D';
+    const dark = '#09111C';
+    const muted = '#5F6B78';
+
+    doc.rect(0, 0, doc.page.width, 116).fill(dark);
+    if (fs.existsSync(LOGO_PATH)) {
+      doc.image(LOGO_PATH, 42, 26, { width: 52, height: 52 });
+    } else {
+      doc.roundedRect(42, 30, 44, 44, 8).fill(teal).fillColor(dark).font('Helvetica-Bold').fontSize(13).text('CVF', 51, 45);
+    }
+    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(20).text(program.name || 'Training Program', 110, 30, { width: 430 });
+    doc.fillColor(gold).font('Helvetica-Bold').fontSize(9).text('CVF PT', 110, 58);
+    doc.fillColor('#DCE6EF').font('Helvetica').fontSize(9).text(CVF_LOCATION, 110, 73);
+
+    doc.y = 140;
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(14).text('Program Overview');
+    doc.moveTo(42, doc.y + 6).lineTo(570, doc.y + 6).strokeColor(teal).lineWidth(1.5).stroke();
+    doc.moveDown(1);
+    doc.fillColor('#111827').font('Helvetica').fontSize(10);
+    const generated = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    const coachName = user?.coach?.name || 'CVF Coach';
+    doc.text(`${program.frequency_days || program.days?.length || 0} days/week`, { continued: true });
+    doc.fillColor(muted).text(`   Coach: ${coachName}   Generated: ${generated}`);
+    if (program.description) {
+      doc.moveDown(0.8);
+      doc.fillColor('#1F2937').fontSize(10).text(program.description, { width: 510, lineGap: 2 });
+    }
+    doc.moveDown(1.2);
+
+    (program.days || []).forEach((day) => {
+      ensurePdfSpace(doc, 120);
+      const workout = day.workout || {};
+      doc.roundedRect(42, doc.y, 528, 32, 6).fill('#F3F8FA');
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(12).text(`Day ${day.day_number}: ${workout.name || 'Workout Day'}`, 54, doc.y + 9, { width: 390 });
+      if (workout.goal) doc.fillColor(teal).fontSize(9).text(workout.goal, 440, doc.y - 14, { width: 116, align: 'right' });
+      doc.y += 42;
+      if (day.notes) {
+        doc.fillColor(muted).font('Helvetica-Oblique').fontSize(9).text(day.notes, 54, doc.y, { width: 490 });
+        doc.moveDown(0.6);
+      }
+
+      (workout.exercises || []).forEach((exercise, index) => {
+        ensurePdfSpace(doc, 72);
+        const exerciseName = exercise.library_exercise?.name || exercise.custom_name || exercise.name || 'Exercise';
+        const top = doc.y;
+        doc.circle(53, top + 8, 8).fill(teal);
+        doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(8).text(String(index + 1), 49, top + 3, { width: 8, align: 'center' });
+        doc.fillColor('#111827').font('Helvetica-Bold').fontSize(10).text(exerciseName, 70, top, { width: 470 });
+        const detail = getExerciseText(exercise, includeCoachNotes);
+        if (detail) doc.fillColor('#374151').font('Helvetica').fontSize(9).text(detail, 70, doc.y + 3, { width: 470, lineGap: 2 });
+        if (includeVideos && (exercise.video_url || exercise.library_exercise?.video_url)) {
+          const video = exercise.video_url || exercise.library_exercise.video_url;
+          doc.fillColor(teal).fontSize(8).text(video, 70, doc.y + 4, { width: 470, underline: true });
+        }
+        doc.moveDown(0.8);
+        doc.strokeColor('#E5E7EB').lineWidth(0.5).moveTo(70, doc.y).lineTo(570, doc.y).stroke();
+        doc.moveDown(0.5);
+      });
+      doc.moveDown(0.6);
+    });
+
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i += 1) {
+      doc.switchToPage(i);
+      doc.fillColor(muted).font('Helvetica').fontSize(8)
+        .text(`Core Value Fitness - ${i + 1} / ${range.count}`, 42, 752, { width: 528, align: 'center' });
+    }
+
+    doc.end();
+  });
+}
+
+async function callOpenAiForDraft(pdfText, originalFilename) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.PROGRAM_IMPORT_MODEL;
+  if (!apiKey || !model) {
+    const error = new Error('PDF import is not configured. Add the AI import configuration, then try again.');
+    error.status = 503;
+    throw error;
+  }
+
+  const prompt = [
+    'Extract this fitness program PDF into strict JSON only.',
+    'Use this shape: { "program": { "name": "", "description": "", "frequency_days": 3, "source": "pdf" }, "days": [{ "day_number": 1, "name": "", "goal": "", "notes": "", "exercises": [{ "name": "", "sets": "", "reps": "", "rest": "", "tempo": "", "client_notes": "", "coach_notes": "", "video_url": "", "category": "", "equipment": "", "primary_muscle": "" }] }], "import_meta": { "source_type": "pdf", "original_filename": "", "parser_version": "", "confidence": 0.7, "warnings": [], "new_exercises_detected": [], "possible_duplicates": [] } }',
+    'Return 3, 4, or 5 days only. If uncertain, add a warning instead of inventing details.',
+    `Original filename: ${originalFilename}`,
+    'PDF text:',
+    pdfText.slice(0, 30000),
+  ].join('\n\n');
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      input: prompt,
+      text: { format: { type: 'json_object' } },
+    }),
+  });
+  if (!response.ok) {
+    const error = new Error('PDF import could not parse this file. Review the file or try CSV import.');
+    error.status = 502;
+    throw error;
+  }
+  const data = await response.json();
+  const text = data.output_text
+    || data.output?.flatMap((item) => item.content || []).map((item) => item.text).filter(Boolean).join('\n')
+    || '';
+  return JSON.parse(text);
+}
 
 function canAccessWorkout(user, workout) {
   if (!workout) return false;
@@ -73,7 +280,9 @@ function cleanExerciseRows(workoutId, exercises = []) {
       reps: ex.reps || null,
       rest: ex.rest || null,
       tempo: ex.tempo || null,
-      notes: ex.notes || null,
+      notes: ex.client_notes || ex.notes || null,
+      client_notes: ex.client_notes || ex.notes || null,
+      coach_notes: ex.coach_notes || null,
       video_url: ex.video_url || null,
       position,
     }));
@@ -126,7 +335,7 @@ router.post('/exercise-library', requireCoach, async (req, res) => {
     const { data, error } = await supabaseAdmin.from('exercise_library').insert({
       name: String(name).trim(), category: category || null, equipment: equipment || null,
       primary_muscle: primary_muscle || null, secondary_muscles: secondary_muscles || null,
-      video_url: video_url || null, notes: notes || null,
+      video_url: video_url || null, notes: notes || null, source: 'manual', review_status: 'approved',
     }).select().single();
     if (error) throw error;
     return res.status(201).json(data);
@@ -149,6 +358,8 @@ router.post('/exercise-library/import', requireCoach, async (req, res) => {
         secondary_muscles: row.secondary_muscles || null,
         video_url: row.video_url || null,
         notes: row.notes || null,
+        source: 'import_csv',
+        review_status: 'needs_review',
       }));
     if (!cleaned.length) return res.status(400).json({ error: 'No valid exercises found in import' });
     const { data, error } = await supabaseAdmin.from('exercise_library').insert(cleaned).select();
@@ -162,7 +373,7 @@ router.post('/exercise-library/import', requireCoach, async (req, res) => {
 
 router.put('/exercise-library/:id', requireCoach, async (req, res) => {
   try {
-    const allowed = ['name', 'category', 'equipment', 'primary_muscle', 'secondary_muscles', 'video_url', 'notes'];
+    const allowed = ['name', 'category', 'equipment', 'primary_muscle', 'secondary_muscles', 'video_url', 'notes', 'source', 'review_status'];
     const updates = { updated_at: new Date().toISOString() };
     for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k] || null;
     if (updates.name !== undefined && !String(updates.name).trim()) return res.status(400).json({ error: 'Exercise name is required' });
@@ -256,6 +467,74 @@ router.patch('/workouts/:id/archive', requireCoach, async (req, res) => {
   }
 });
 
+// ----- Program import/export -----
+router.get('/import/template.csv', requireCoach, async (_req, res) => {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="CVF-program-import-template.csv"');
+  return res.send(csvTemplate());
+});
+
+router.post('/import/parse-csv', requireCoach, programImportUpload, async (req, res) => {
+  try {
+    if (!isCsvUpload(req.file)) return res.status(400).json({ error: 'Upload a CSV file using the program import template.' });
+    const text = req.file.buffer.toString('utf8');
+    const draft = parseCsvDraft(text, { originalFilename: req.file.originalname, sourceType: 'csv' });
+    const validation = validateDraft(draft);
+    if (!validation.valid) return res.status(422).json({ error: 'CSV parsed, but the draft needs fixes before saving.', draft: validation.draft, errors: validation.errors });
+    return res.json({ message: 'CSV parsed. Review imported program before saving.', draft: validation.draft, errors: [] });
+  } catch (e) {
+    const status = e.validation ? 400 : 500;
+    console.error('parse csv program error', e);
+    return res.status(status).json({ error: e.message || 'Could not parse CSV import' });
+  }
+});
+
+router.post('/import/parse-pdf', requireCoach, programImportUpload, async (req, res) => {
+  try {
+    if (!isPdfUpload(req.file)) return res.status(400).json({ error: 'Upload a PDF file.' });
+    const parsed = await pdfParse(req.file.buffer);
+    if (!String(parsed.text || '').trim()) return res.status(400).json({ error: 'Could not extract readable text from this PDF. Try the CSV template instead.' });
+    const aiDraft = await callOpenAiForDraft(parsed.text, req.file.originalname);
+    const draft = normalizeDraft({
+      ...aiDraft,
+      import_meta: {
+        ...(aiDraft.import_meta || {}),
+        source_type: 'pdf',
+        original_filename: req.file.originalname,
+        parser_version: PARSER_VERSION,
+      },
+    });
+    const validation = validateDraft(draft);
+    if (!validation.valid) return res.status(422).json({ error: 'PDF parsed, but the draft needs fixes before saving.', draft: validation.draft, errors: validation.errors });
+    return res.json({ message: 'PDF parsed. Review extracted program before saving.', draft: validation.draft, errors: [] });
+  } catch (e) {
+    console.error('parse pdf program error', e);
+    return res.status(e.status || 500).json({ error: e.message || 'Could not parse PDF import' });
+  }
+});
+
+router.post('/import/commit', requireCoach, async (req, res) => {
+  try {
+    const validation = validateDraft(req.body?.draft || req.body);
+    if (!validation.valid) return res.status(422).json({ error: 'Fix import draft errors before saving.', errors: validation.errors, draft: validation.draft });
+    const source = sourceForImport(validation.draft.import_meta.source_type);
+    const { data, error } = await supabaseAdmin.rpc('commit_program_import', {
+      p_coach_id: req.user.coach.id,
+      p_source: source,
+      p_draft: validation.draft,
+    });
+    if (error) {
+      console.error('commit program import rpc error', error);
+      return res.status(500).json({ error: 'Program import could not be saved. Confirm the latest database migration has been applied.' });
+    }
+    const program = data?.program_id ? await programWithDetails(data.program_id) : null;
+    return res.status(201).json({ ...data, program });
+  } catch (e) {
+    console.error('commit program import error', e);
+    return res.status(500).json({ error: 'Failed to save imported program' });
+  }
+});
+
 // ----- Structured programs -----
 router.get('/', requireCoach, async (req, res) => {
   try {
@@ -304,6 +583,25 @@ router.post('/', requireCoach, async (req, res) => {
   } catch (e) {
     console.error('create program error', e);
     return res.status(500).json({ error: e.message || 'Failed to create program' });
+  }
+});
+
+router.get('/:id/export.pdf', requireCoach, async (req, res) => {
+  try {
+    const program = await programWithDetails(req.params.id);
+    if (!program || !canAccessProgram(req.user, program) || program.archived) return res.status(404).json({ error: 'Program not found' });
+    const pdf = await generateProgramPdf(program, req.user, {
+      includeVideos: req.query.includeVideos !== 'false',
+      includeCoachNotes: req.query.includeCoachNotes === 'true',
+      format: req.query.format || 'client',
+    });
+    const filename = safeFilename(program.name);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(pdf);
+  } catch (e) {
+    console.error('export program pdf error', e);
+    return res.status(500).json({ error: 'Failed to export program PDF' });
   }
 });
 

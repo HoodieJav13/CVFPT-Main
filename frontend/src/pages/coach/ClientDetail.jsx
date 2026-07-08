@@ -903,7 +903,8 @@ function CoachExerciseRows({ exercises }) {
               {(exercise.sets || exercise.reps) && <Badge variant="outline" className="tabular-nums">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
             </span>
           </div>
-          {exercise.notes && <p className="text-xs text-muted-foreground mt-1">{exercise.notes}</p>}
+          {(exercise.client_notes || exercise.notes) && <p className="text-xs text-muted-foreground mt-1">{exercise.client_notes || exercise.notes}</p>}
+          {exercise.coach_notes && <p className="text-xs text-primary mt-1">Coach: {exercise.coach_notes}</p>}
         </div>
       ))}
     </div>

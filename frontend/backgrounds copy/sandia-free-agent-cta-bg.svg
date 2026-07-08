@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="240" viewBox="0 0 720 240" preserveAspectRatio="xMidYMid slice" role="img" aria-labelledby="title desc">
+  <title id="title">Sandia Mountains Free Agent CTA crop</title>
+  <desc id="desc">Narrow simplified Sandia Mountains silhouette crop emphasizing the long jagged crest running across the center-right of the range for the Free Agent CTA card.</desc>
+  <defs>
+    <linearGradient id="cvf-dusk-gradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#050914"/>
+      <stop offset="58%" stop-color="#081521"/>
+      <stop offset="100%" stop-color="#0d2730"/>
+    </linearGradient>
+    <style>:root {
+  --cvf-teal-deep: #06383f;
+}
+.sandia-mountain {
+  fill: #06383f;
+  fill: var(--cvf-teal-deep, #06383f);
+  opacity: 0.64;
+  shape-rendering: geometricPrecision;
+}
+</style>
+  </defs>
+  <rect width="720" height="240" fill="url(#cvf-dusk-gradient)"/>
+  <path class="sandia-mountain" d="M 0.0 126.4 L 66.1 111.6 L 89.2 98.5 L 160.2 100.1 L 186.6 93.7 L 219.6 91.2 L 242.8 96.5 L 330.3 96.6 L 358.3 103.3 L 388.1 103.6 L 404.6 117.8 L 424.4 122.8 L 492.1 122.6 L 508.6 127.8 L 533.4 129.6 L 549.9 128.2 L 571.4 131.7 L 592.8 129.6 L 627.5 134.9 L 653.9 133.2 L 720.0 137.1 L 720.0 240.0 L 0 240.0 Z"/>
+</svg>
