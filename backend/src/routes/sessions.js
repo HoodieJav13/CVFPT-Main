@@ -1,7 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
-const { deductCredit, getBalance } = require('../utils/credits');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -105,12 +104,10 @@ router.patch('/:id/complete', requireCoach, async (req, res) => {
     if (session.status === 'completed') return res.status(400).json({ error: 'Session already completed' });
     if (session.status === 'cancelled') return res.status(400).json({ error: 'Cancelled sessions cannot be completed' });
 
-    const newBalance = await deductCredit(session.client_id);
-    const { data, error } = await supabaseAdmin.from('sessions')
-      .update({ status: 'completed', credit_deducted: newBalance !== null, updated_at: new Date().toISOString() })
-      .eq('id', session.id).select('*, client:clients(id, name)').single();
+    const { data, error } = await supabaseAdmin.rpc('complete_session', { p_session_id: session.id });
     if (error) throw error;
-    return res.json({ session: data, credit_deducted: newBalance !== null, credits_remaining: newBalance !== null ? newBalance : await getBalance(session.client_id) });
+    if (!data) return res.status(400).json({ error: 'Session was already handled' });
+    return res.json(data);
   } catch (e) {
     console.error('complete session error', e);
     return res.status(500).json({ error: 'Failed to complete session' });

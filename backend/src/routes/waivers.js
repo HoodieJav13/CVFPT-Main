@@ -103,6 +103,7 @@ router.post('/client/:clientId/sign-paper', requireCoach, async (req, res) => {
     return res.status(201).json(data);
   } catch (e) {
     console.error('sign paper error', e);
+    if (e.code === '23505') return res.status(409).json({ error: 'The current waiver is already signed for this client' });
     return res.status(500).json({ error: 'Failed to record signature' });
   }
 });
@@ -139,6 +140,7 @@ router.post('/sign', requireClient, async (req, res) => {
     return res.status(201).json(data);
   } catch (e) {
     console.error('sign waiver error', e);
+    if (e.code === '23505') return res.status(409).json({ error: 'You have already signed the current waiver' });
     return res.status(500).json({ error: 'Failed to sign waiver' });
   }
 });

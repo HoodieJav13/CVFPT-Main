@@ -75,19 +75,10 @@ router.patch('/:id/approve', requireCoach, async (req, res) => {
     const booking = await loadBookingForCoach(req, res);
     if (!booking) return;
     if (booking.status !== 'pending') return res.status(400).json({ error: 'This request was already handled' });
-    const { data: session, error: sErr } = await supabaseAdmin.from('sessions').insert({
-      client_id: booking.client_id,
-      coach_id: booking.coach_id,
-      scheduled_at: booking.requested_time,
-      duration_minutes: booking.duration_minutes,
-      location: booking.location,
-    }).select().single();
-    if (sErr) throw sErr;
-    const { data, error } = await supabaseAdmin.from('booking_requests')
-      .update({ status: 'approved', updated_at: new Date().toISOString() })
-      .eq('id', booking.id).select('*, client:clients(id, name)').single();
+    const { data, error } = await supabaseAdmin.rpc('approve_booking', { p_booking_id: booking.id });
     if (error) throw error;
-    return res.json({ booking: data, session });
+    if (!data) return res.status(400).json({ error: 'This request was already handled' });
+    return res.json(data);
   } catch (e) {
     console.error('approve booking error', e);
     return res.status(500).json({ error: 'Failed to approve request' });

@@ -1,7 +1,7 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
-const { completePurchase, addCredits, getBalance } = require('../utils/credits');
+const { completePurchase, getBalance } = require('../utils/credits');
 const { createStripeClient, stripeConfiguration } = require('../config/stripe');
 
 const router = express.Router();
@@ -132,18 +132,19 @@ router.post('/manual', requireCoach, async (req, res) => {
       .eq('id', req.body?.package_id).eq('archived', false).maybeSingle();
     if (!pkg) return res.status(404).json({ error: 'Package not found' });
     const amount = req.body?.amount !== undefined && !isNaN(Number(req.body.amount)) ? Number(req.body.amount) : Number(pkg.price);
-    const { data: purchase, error } = await supabaseAdmin.from('purchases').insert({
-      client_id: clientRow.id,
-      package_id: pkg.id,
-      amount,
-      credits_granted: pkg.session_credits,
-      method: 'manual',
-      status: 'completed',
-      recorded_by_coach_id: req.user.coach.id,
-    }).select('*, package:packages(id, name)').single();
+    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'Amount must be a non-negative number' });
+    const { data, error } = await supabaseAdmin.rpc('record_manual_purchase', {
+      p_client_id: clientRow.id,
+      p_package_id: pkg.id,
+      p_amount: amount,
+      p_recorded_by_coach_id: req.user.coach.id,
+    });
     if (error) throw error;
-    const balance = await addCredits(clientRow.id, pkg.session_credits);
-    return res.status(201).json({ purchase, credits: balance });
+    if (!data) return res.status(404).json({ error: 'Client or package not found' });
+    return res.status(201).json({
+      purchase: { ...data.purchase, package: { id: pkg.id, name: pkg.name } },
+      credits: data.credits,
+    });
   } catch (e) {
     console.error('manual purchase error', e);
     return res.status(500).json({ error: 'Failed to record purchase' });
