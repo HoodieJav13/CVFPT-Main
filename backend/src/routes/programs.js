@@ -228,7 +228,8 @@ async function callOpenAiForDraft(pdfText, originalFilename) {
 }
 
 async function workoutWithDetails(workoutId) {
-  const { data: workout } = await supabaseAdmin.from('workouts').select('*').eq('id', workoutId).maybeSingle();
+  const { data: workout } = await supabaseAdmin.from('workouts').select('*')
+    .eq('id', workoutId).eq('archived', false).maybeSingle();
   if (!workout) return null;
   const { data: exercises, error } = await supabaseAdmin
     .from('workout_exercises')
@@ -241,7 +242,8 @@ async function workoutWithDetails(workoutId) {
 }
 
 async function programWithDetails(programId) {
-  const { data: program } = await supabaseAdmin.from('programs').select('*').eq('id', programId).maybeSingle();
+  const { data: program } = await supabaseAdmin.from('programs').select('*')
+    .eq('id', programId).eq('archived', false).maybeSingle();
   if (!program) return null;
   const { data: days, error } = await supabaseAdmin
     .from('program_days')
@@ -388,8 +390,10 @@ router.put('/exercise-library/:id', requireCoach, async (req, res) => {
     const updates = { updated_at: new Date().toISOString() };
     for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k] || null;
     if (updates.name !== undefined && !String(updates.name).trim()) return res.status(400).json({ error: 'Exercise name is required' });
-    const { data, error } = await supabaseAdmin.from('exercise_library').update(updates).eq('id', req.params.id).select().single();
+    const { data, error } = await supabaseAdmin.from('exercise_library').update(updates)
+      .eq('id', req.params.id).eq('archived', false).select().maybeSingle();
     if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Exercise not found' });
     return res.json(data);
   } catch (e) {
     console.error('update library exercise error', e);
@@ -678,7 +682,8 @@ router.post('/:id/assign', requireCoach, async (req, res) => {
   try {
     const program = await programWithDetails(req.params.id);
     if (!program || !canAccessProgram(req.user, program)) return res.status(404).json({ error: 'Program not found' });
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.body.client_id).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.body.client_id).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const { data: existing } = await supabaseAdmin.from('program_assignments').select('id')
       .eq('program_id', program.id).eq('client_id', clientRow.id).eq('archived', false).maybeSingle();
@@ -697,8 +702,10 @@ router.post('/:id/assign', requireCoach, async (req, res) => {
 router.patch('/assignments/:assignmentId/archive', requireCoach, async (req, res) => {
   try {
     const { data: assignment } = await supabaseAdmin.from('program_assignments')
-      .select('*, program:programs(*)').eq('id', req.params.assignmentId).maybeSingle();
-    if (!assignment || !canAccessProgram(req.user, assignment.program)) return res.status(404).json({ error: 'Assignment not found' });
+      .select('*, program:programs(*)').eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
+    if (!assignment || assignment.program?.archived || !canAccessProgram(req.user, assignment.program)) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
     const { data, error } = await supabaseAdmin.from('program_assignments').update({ archived: true }).eq('id', assignment.id).select().single();
     if (error) throw error;
     return res.json(data);
@@ -711,13 +718,17 @@ router.patch('/assignments/:assignmentId/archive', requireCoach, async (req, res
 // ----- Standalone workout assignments -----
 router.get('/workout-assignments/client/:clientId', requireCoach, async (req, res) => {
   try {
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const { data, error } = await supabaseAdmin.from('workout_assignments').select('*')
       .eq('client_id', clientRow.id).eq('archived', false).order('assigned_for', { ascending: true, nullsFirst: false });
     if (error) throw error;
     const result = [];
-    for (const a of data || []) result.push({ ...a, workout: await workoutWithDetails(a.workout_id) });
+    for (const a of data || []) {
+      const workout = await workoutWithDetails(a.workout_id);
+      if (workout) result.push({ ...a, workout });
+    }
     return res.json(result);
   } catch (e) {
     console.error('workout assignments error', e);
@@ -728,7 +739,8 @@ router.get('/workout-assignments/client/:clientId', requireCoach, async (req, re
 router.post('/workout-assignments', requireCoach, async (req, res) => {
   try {
     const { client_id, workout_id, assignment_mode, assigned_for, notes } = req.body || {};
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', client_id).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', client_id).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const workout = await workoutWithDetails(workout_id);
     if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
@@ -753,7 +765,9 @@ router.patch('/workout-assignments/:assignmentId/archive', requireCoach, async (
       .eq('archived', false)
       .maybeSingle();
     if (loadError) throw loadError;
-    if (!canAccessWorkoutAssignment(req.user, assignment)) return res.status(404).json({ error: 'Workout assignment not found' });
+    if (assignment?.client?.archived || !canAccessWorkoutAssignment(req.user, assignment)) {
+      return res.status(404).json({ error: 'Workout assignment not found' });
+    }
     const { data, error } = await supabaseAdmin.from('workout_assignments')
       .update({ archived: true })
       .eq('id', assignment.id)
@@ -781,7 +795,10 @@ router.get('/client/assigned', requireClient, async (req, res) => {
       .eq('client_id', req.user.client.id).eq('archived', false).order('assigned_for', { ascending: true, nullsFirst: false });
     if (waErr) throw waErr;
     const workouts = [];
-    for (const assignment of workoutAssignments || []) workouts.push({ ...assignment, workout: await workoutWithDetails(assignment.workout_id) });
+    for (const assignment of workoutAssignments || []) {
+      const workout = await workoutWithDetails(assignment.workout_id);
+      if (workout) workouts.push({ ...assignment, workout });
+    }
     return res.json({ programs, workouts });
   } catch (e) {
     console.error('client programs error', e);

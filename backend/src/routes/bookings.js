@@ -60,7 +60,8 @@ router.get('/', requireCoach, async (req, res) => {
 });
 
 async function loadBookingForCoach(req, res) {
-  const { data: booking } = await supabaseAdmin.from('booking_requests').select('*').eq('id', req.params.id).maybeSingle();
+  const { data: booking } = await supabaseAdmin.from('booking_requests').select('*')
+    .eq('id', req.params.id).eq('archived', false).maybeSingle();
   if (!booking || (req.user.role !== 'admin' && booking.coach_id !== req.user.coach.id)) {
     res.status(404).json({ error: 'Booking request not found' });
     return null;
@@ -101,8 +102,10 @@ router.patch('/:id/decline', requireCoach, async (req, res) => {
     if (booking.status !== 'pending') return res.status(400).json({ error: 'This request was already handled' });
     const { data, error } = await supabaseAdmin.from('booking_requests')
       .update({ status: 'declined', updated_at: new Date().toISOString() })
-      .eq('id', booking.id).select('*, client:clients(id, name)').single();
+      .eq('id', booking.id).eq('status', 'pending').eq('archived', false)
+      .select('*, client:clients(id, name)').maybeSingle();
     if (error) throw error;
+    if (!data) return res.status(400).json({ error: 'This request was already handled' });
     return res.json(data);
   } catch (e) {
     console.error('decline booking error', e);

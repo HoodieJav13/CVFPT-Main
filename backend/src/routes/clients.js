@@ -49,8 +49,10 @@ router.post('/', async (req, res) => {
   }
 });
 
-async function loadClientOr404(req, res) {
-  const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.id).maybeSingle();
+async function loadClientOr404(req, res, { includeArchived = false } = {}) {
+  let query = supabaseAdmin.from('clients').select('*').eq('id', req.params.id);
+  if (!includeArchived) query = query.eq('archived', false);
+  const { data: clientRow } = await query.maybeSingle();
   if (!clientRow || !canAccessClient(req.user, clientRow)) {
     res.status(404).json({ error: 'Client not found' });
     return null;
@@ -117,7 +119,7 @@ router.patch('/:id/invite', async (req, res) => {
 // PATCH /api/clients/:id/archive { archived: boolean }  (soft delete only)
 router.patch('/:id/archive', async (req, res) => {
   try {
-    const clientRow = await loadClientOr404(req, res);
+    const clientRow = await loadClientOr404(req, res, { includeArchived: true });
     if (!clientRow) return;
     const archived = Boolean(req.body.archived);
     const { data, error } = await supabaseAdmin

@@ -72,7 +72,8 @@ async function signatureStatus(clientId) {
 // GET /api/waivers/client/:clientId/status (coach)
 router.get('/client/:clientId/status', requireCoach, async (req, res) => {
   try {
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     return res.json(await signatureStatus(clientRow.id));
   } catch (e) {
@@ -84,7 +85,8 @@ router.get('/client/:clientId/status', requireCoach, async (req, res) => {
 // POST /api/waivers/client/:clientId/sign-paper (coach records a paper waiver)
 router.post('/client/:clientId/sign-paper', requireCoach, async (req, res) => {
   try {
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const latest = await latestVersion();
     if (!latest) return res.status(400).json({ error: 'No waiver version exists yet' });

@@ -33,7 +33,7 @@ router.post('/webhook', async (req, res) => {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       const { data: purchase } = await supabaseAdmin.from('purchases').select('*')
-        .eq('stripe_session_id', session.id).maybeSingle();
+        .eq('stripe_session_id', session.id).eq('archived', false).maybeSingle();
       if (purchase) await completePurchase(purchase.id);
     }
     return res.json({ received: true });
@@ -105,7 +105,7 @@ router.get('/verify', requireClient, async (req, res) => {
     const sessionId = req.query.session_id;
     if (!sessionId) return res.status(400).json({ error: 'session_id required' });
     const { data: purchase } = await supabaseAdmin.from('purchases').select('*')
-      .eq('stripe_session_id', sessionId).eq('client_id', req.user.client.id).maybeSingle();
+      .eq('stripe_session_id', sessionId).eq('client_id', req.user.client.id).eq('archived', false).maybeSingle();
     if (!purchase) return res.status(404).json({ error: 'Purchase not found' });
     if (purchase.status === 'completed') {
       return res.json({ status: 'completed', credits: await getBalance(req.user.client.id) });
@@ -125,9 +125,11 @@ router.get('/verify', requireClient, async (req, res) => {
 // POST /api/payments/manual (coach records cash/manual purchase) { client_id, package_id, amount? }
 router.post('/manual', requireCoach, async (req, res) => {
   try {
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.body?.client_id).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.body?.client_id).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
-    const { data: pkg } = await supabaseAdmin.from('packages').select('*').eq('id', req.body?.package_id).maybeSingle();
+    const { data: pkg } = await supabaseAdmin.from('packages').select('*')
+      .eq('id', req.body?.package_id).eq('archived', false).maybeSingle();
     if (!pkg) return res.status(404).json({ error: 'Package not found' });
     const amount = req.body?.amount !== undefined && !isNaN(Number(req.body.amount)) ? Number(req.body.amount) : Number(pkg.price);
     const { data: purchase, error } = await supabaseAdmin.from('purchases').insert({
@@ -166,7 +168,8 @@ router.get('/history', requireClient, async (req, res) => {
 // GET /api/payments/history/:clientId (coach)
 router.get('/history/:clientId', requireCoach, async (req, res) => {
   try {
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const { data, error } = await supabaseAdmin.from('purchases')
       .select('*, package:packages(id, name), recorded_by:coaches(id, name)')
@@ -187,7 +190,8 @@ router.get('/credits', requireClient, async (req, res) => {
 
 // GET /api/payments/credits/:clientId (coach)
 router.get('/credits/:clientId', requireCoach, async (req, res) => {
-  const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+  const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+    .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
   if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
   return res.json({ balance: await getBalance(clientRow.id) });
 });

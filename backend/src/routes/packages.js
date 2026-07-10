@@ -51,8 +51,10 @@ router.put('/:id', requireAdmin, async (req, res) => {
     const allowed = ['name', 'description', 'price', 'session_credits', 'is_recurring'];
     const updates = {};
     for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k];
-    const { data, error } = await supabaseAdmin.from('packages').update(updates).eq('id', req.params.id).select().single();
+    const { data, error } = await supabaseAdmin.from('packages').update(updates)
+      .eq('id', req.params.id).eq('archived', false).select().maybeSingle();
     if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Package not found' });
     return res.json(data);
   } catch (e) {
     console.error('update package error', e);
@@ -64,8 +66,10 @@ router.put('/:id', requireAdmin, async (req, res) => {
 router.patch('/:id/archive', requireAdmin, async (req, res) => {
   try {
     const archived = req.body?.archived !== false;
-    const { data, error } = await supabaseAdmin.from('packages').update({ archived }).eq('id', req.params.id).select().single();
+    const { data, error } = await supabaseAdmin.from('packages').update({ archived })
+      .eq('id', req.params.id).select().maybeSingle();
     if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Package not found' });
     return res.json(data);
   } catch (e) {
     console.error('archive package error', e);

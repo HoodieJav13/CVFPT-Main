@@ -60,8 +60,9 @@ router.patch('/clients/:id/reassign', async (req, res) => {
     if (!coach) return res.status(404).json({ error: 'Coach not found' });
     const { data, error } = await supabaseAdmin.from('clients')
       .update({ coach_id, updated_at: new Date().toISOString() })
-      .eq('id', req.params.id).select('*, coach:coaches(id, name)').single();
+      .eq('id', req.params.id).eq('archived', false).select('*, coach:coaches(id, name)').maybeSingle();
     if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Client not found' });
     return res.json(data);
   } catch (e) {
     console.error('reassign error', e);

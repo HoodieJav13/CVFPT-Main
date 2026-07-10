@@ -55,13 +55,14 @@ router.get('/threads', async (req, res) => {
 // GET /api/messages/with/:clientId (coach) - marks client-sent as read
 router.get('/with/:clientId', requireCoach, async (req, res) => {
   try {
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const { data, error } = await supabaseAdmin.from('messages').select('*')
       .eq('client_id', clientRow.id).eq('archived', false).order('created_at');
     if (error) throw error;
     await supabaseAdmin.from('messages').update({ read_by_recipient: true })
-      .eq('client_id', clientRow.id).eq('sender_role', 'client').eq('read_by_recipient', false);
+      .eq('client_id', clientRow.id).eq('sender_role', 'client').eq('read_by_recipient', false).eq('archived', false);
     return res.json({ client: { id: clientRow.id, name: clientRow.name }, messages: data || [] });
   } catch (e) {
     console.error('get conversation error', e);
@@ -72,7 +73,8 @@ router.get('/with/:clientId', requireCoach, async (req, res) => {
 // POST /api/messages/with/:clientId (coach)
 router.post('/with/:clientId', requireCoach, async (req, res) => {
   try {
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const content = (req.body?.content || '').trim();
     if (!content) return res.status(400).json({ error: 'Message cannot be empty' });
@@ -99,7 +101,7 @@ router.get('/mine', requireClient, async (req, res) => {
       .eq('client_id', client.id).eq('archived', false).order('created_at');
     if (error) throw error;
     await supabaseAdmin.from('messages').update({ read_by_recipient: true })
-      .eq('client_id', client.id).eq('sender_role', 'coach').eq('read_by_recipient', false);
+      .eq('client_id', client.id).eq('sender_role', 'coach').eq('read_by_recipient', false).eq('archived', false);
     return res.json({ coach, messages: data || [] });
   } catch (e) {
     console.error('client conversation error', e);

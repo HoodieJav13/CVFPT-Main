@@ -48,7 +48,8 @@ function sanitizePayload(body = {}, user) {
 }
 
 async function loadClientForCoach(req, res) {
-  const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+  const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+    .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
   if (!clientRow || !canAccessClient(req.user, clientRow)) {
     res.status(404).json({ error: 'Client not found' });
     return null;
@@ -63,7 +64,7 @@ async function loadCheckInForUser(req, res) {
     .eq('id', req.params.id)
     .eq('archived', false)
     .maybeSingle();
-  if (!checkIn) {
+  if (!checkIn || checkIn.client?.archived) {
     res.status(404).json({ error: 'Check-in not found' });
     return null;
   }

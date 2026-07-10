@@ -23,7 +23,8 @@ async function metricsWithEntries(clientId) {
 }
 
 async function guardClient(req, res) {
-  const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+  const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+    .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
   if (!clientRow || !canAccessClient(req.user, clientRow)) {
     res.status(404).json({ error: 'Client not found' });
     return null;
@@ -65,7 +66,7 @@ async function guardMetric(req, res) {
   const { data: metric } = await supabaseAdmin.from('metrics').select('*, client:clients(*)')
     .eq('id', req.params.metricId).eq('archived', false).maybeSingle();
   const clientOwnsMetric = req.user.role === 'client' && metric?.client_id === req.user.client.id;
-  if (!metric || (!clientOwnsMetric && !canAccessClient(req.user, metric.client))) {
+  if (!metric || metric.client?.archived || (!clientOwnsMetric && !canAccessClient(req.user, metric.client))) {
     res.status(404).json({ error: 'Metric not found' });
     return null;
   }
@@ -141,8 +142,11 @@ router.patch('/metrics/:metricId/archive', requireCoach, async (req, res) => {
 router.patch('/entries/:entryId/archive', requireCoach, async (req, res) => {
   try {
     const { data: entry } = await supabaseAdmin.from('metric_entries')
-      .select('*, metric:metrics(*, client:clients(*))').eq('id', req.params.entryId).maybeSingle();
-    if (!entry || !canAccessClient(req.user, entry.metric?.client)) return res.status(404).json({ error: 'Entry not found' });
+      .select('*, metric:metrics(*, client:clients(*))')
+      .eq('id', req.params.entryId).eq('archived', false).maybeSingle();
+    if (!entry || entry.metric?.archived || entry.metric?.client?.archived || !canAccessClient(req.user, entry.metric?.client)) {
+      return res.status(404).json({ error: 'Entry not found' });
+    }
     const { data, error } = await supabaseAdmin.from('metric_entries').update({ archived: true }).eq('id', entry.id).select().single();
     if (error) throw error;
     return res.json(data);
