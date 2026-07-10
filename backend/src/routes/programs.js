@@ -7,6 +7,12 @@ const pdfParse = require('pdf-parse');
 const { supabaseAdmin } = require('../supabase');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
 const {
+  canAccessProgram,
+  canAccessWorkout,
+  canAccessWorkoutAssignment,
+  programDaysUseAccessibleWorkouts,
+} = require('../security/access');
+const {
   PARSER_VERSION,
   csvTemplate,
   draftFromProgram,
@@ -214,18 +220,6 @@ async function callOpenAiForDraft(pdfText, originalFilename) {
   return JSON.parse(text);
 }
 
-function canAccessWorkout(user, workout) {
-  if (!workout) return false;
-  if (user.role === 'admin') return true;
-  return !workout.coach_id || workout.coach_id === user.coach?.id;
-}
-
-function canAccessProgram(user, program) {
-  if (!program) return false;
-  if (user.role === 'admin') return true;
-  return program.coach_id === user.coach?.id;
-}
-
 async function workoutWithDetails(workoutId) {
   const { data: workout } = await supabaseAdmin.from('workouts').select('*').eq('id', workoutId).maybeSingle();
   if (!workout) return null;
@@ -314,6 +308,14 @@ async function replaceProgramDays(programId, days = []) {
     const { error } = await supabaseAdmin.from('program_days').upsert(rows, { onConflict: 'program_id,day_number' });
     if (error) throw error;
   }
+}
+
+async function programDaysAreAccessible(user, days) {
+  const workoutIds = [...new Set((days || []).map((day) => day.workout_id).filter(Boolean))];
+  if (!workoutIds.length) return true;
+  const { data, error } = await supabaseAdmin.from('workouts').select('*').in('id', workoutIds);
+  if (error) throw error;
+  return programDaysUseAccessibleWorkouts(user, days, data || []);
 }
 
 // ----- Exercise library -----
@@ -573,6 +575,7 @@ router.post('/', requireCoach, async (req, res) => {
     if (![3, 4, 5].includes(frequency)) return res.status(400).json({ error: 'Choose 3, 4, or 5 days per week' });
     const validDays = Array.isArray(days) ? days.filter((d) => d.workout_id) : [];
     if (validDays.length !== frequency) return res.status(400).json({ error: `Assign one workout to each of the ${frequency} days` });
+    if (!await programDaysAreAccessible(req.user, validDays)) return res.status(404).json({ error: 'Workout not found' });
     const { data: program, error } = await supabaseAdmin.from('programs').insert({
       coach_id: req.user.role === 'admin' ? req.user.coach.id : req.user.coach.id,
       name: String(name).trim(),
@@ -630,11 +633,20 @@ router.put('/:id', requireCoach, async (req, res) => {
       if (![3, 4, 5].includes(frequency)) return res.status(400).json({ error: 'Choose 3, 4, or 5 days per week' });
       updates.frequency_days = frequency;
     }
+    let validDays = null;
+    if (Array.isArray(req.body.days)) {
+      validDays = req.body.days.filter((day) => day.workout_id);
+      const targetFrequency = updates.frequency_days || program.frequency_days;
+      if (validDays.length !== targetFrequency) {
+        return res.status(400).json({ error: `Assign one workout to each of the ${targetFrequency} days` });
+      }
+      if (!await programDaysAreAccessible(req.user, validDays)) return res.status(404).json({ error: 'Workout not found' });
+    }
     if (Object.keys(updates).length) {
       const { error } = await supabaseAdmin.from('programs').update(updates).eq('id', program.id);
       if (error) throw error;
     }
-    if (Array.isArray(req.body.days)) await replaceProgramDays(program.id, req.body.days);
+    if (validDays) await replaceProgramDays(program.id, validDays);
     return res.json(await programWithDetails(program.id));
   } catch (e) {
     console.error('update program error', e);
@@ -728,7 +740,19 @@ router.post('/workout-assignments', requireCoach, async (req, res) => {
 
 router.patch('/workout-assignments/:assignmentId/archive', requireCoach, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin.from('workout_assignments').update({ archived: true }).eq('id', req.params.assignmentId).select().single();
+    const { data: assignment, error: loadError } = await supabaseAdmin.from('workout_assignments')
+      .select('*, client:clients(*)')
+      .eq('id', req.params.assignmentId)
+      .eq('archived', false)
+      .maybeSingle();
+    if (loadError) throw loadError;
+    if (!canAccessWorkoutAssignment(req.user, assignment)) return res.status(404).json({ error: 'Workout assignment not found' });
+    const { data, error } = await supabaseAdmin.from('workout_assignments')
+      .update({ archived: true })
+      .eq('id', assignment.id)
+      .eq('archived', false)
+      .select()
+      .single();
     if (error) throw error;
     return res.json(data);
   } catch (e) {

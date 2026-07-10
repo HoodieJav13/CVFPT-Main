@@ -1,4 +1,5 @@
 const { supabaseAdmin } = require('../supabase');
+const { canAccessClient } = require('../security/access');
 
 /**
  * Verifies the Supabase access token and resolves the app role.
@@ -59,14 +60,6 @@ function requireAdmin(req, res, next) {
 function requireClient(req, res, next) {
   if (req.user?.role === 'client') return next();
   return res.status(403).json({ error: 'Client access required' });
-}
-
-/** True if this coach/admin user may access the given client row. */
-function canAccessClient(user, clientRow) {
-  if (!clientRow) return false;
-  if (user.role === 'admin') return true;
-  if (user.role === 'coach') return clientRow.coach_id === user.coach.id;
-  return false;
 }
 
 module.exports = { requireAuth, requireCoach, requireAdmin, requireClient, canAccessClient };
