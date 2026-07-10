@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "node --test",
+    "test:integration": "node integration/api-hardening.mjs",
     "seed": "node scripts/seed.js"
   },
   "engines": {

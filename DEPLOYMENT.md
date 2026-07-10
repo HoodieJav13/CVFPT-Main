@@ -14,7 +14,7 @@ Deploy them as two Vercel projects (recommended) pointing at the respective subd
 ### Required environment variables (Vercel -> Settings -> Environment Variables)
 | Variable | Value |
 |---|---|
-| `SUPABASE_URL` | `https://kzmsgwkmewbjnhmioduj.supabase.co` |
+| `SUPABASE_URL` | The explicitly confirmed development Supabase project URL |
 | `SUPABASE_ANON_KEY` | (anon key) |
 | `SUPABASE_SERVICE_ROLE_KEY` | (service role key - secret!) |
 | `STRIPE_SECRET_KEY` | `sk_test_...` (TEST mode; leave empty to disable payments gracefully) |
@@ -41,8 +41,15 @@ Point a TEST-mode webhook at `https://<backend-domain>/api/payments/webhook` for
 ---
 
 ## 3. Database
-Schema lives in `backend/migration.sql` (already applied to the Supabase project via the SQL editor).
-Seed demo data anytime with: `cd backend && node scripts/seed.js` (idempotent).
+Schema lives in `supabase/migrations/`; `backend/migration.sql` mirrors the current
+baseline for review. Apply versioned migrations only to the explicitly confirmed
+development project and verify the resulting schema before deploying either app.
+
+The idempotent seed is development/preview-only and fails closed unless
+`CVF_SEED_CONFIRM_DEVELOPMENT=true`, the exact Supabase hostname is allowlisted,
+and dedicated fake-account credentials are supplied through the environment.
+It never prints those credentials. Run it with `cd backend && npm run seed` only
+after those safeguards are configured.
 
 ## 4. Local development (this workspace)
 Supervisor runs `backend/server.py`, a thin ASGI proxy that spawns the Node server (port 8002) and proxies port 8001 -> Node. This is local-environment glue only; Vercel uses the Node app directly.
