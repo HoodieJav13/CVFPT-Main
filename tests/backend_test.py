@@ -5,10 +5,40 @@ Tests all backend endpoints with proper authentication and ownership enforcement
 """
 import requests
 import sys
+import os
+import secrets
 from datetime import datetime, timedelta
 import json
+from urllib.parse import urlparse
 
-BASE_URL = "https://cvf-pt-app.preview.emergentagent.com/api"
+BASE_URL = os.environ.get("CVF_TEST_BASE_URL", "").rstrip("/")
+RUN_PASSWORD = secrets.token_urlsafe(24)
+
+
+def required_env(name):
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"Missing required test environment variable: {name}")
+    return value
+
+
+def validate_target():
+    if not BASE_URL:
+        raise RuntimeError("CVF_TEST_BASE_URL is required; the test suite has no default remote target")
+    parsed = urlparse(BASE_URL)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise RuntimeError("CVF_TEST_BASE_URL must be an absolute HTTP(S) URL")
+    local_hosts = {"localhost", "127.0.0.1", "::1"}
+    allowed_hosts = {
+        host.strip().lower()
+        for host in os.environ.get("CVF_TEST_ALLOWED_HOSTS", "").split(",")
+        if host.strip()
+    }
+    if parsed.hostname.lower() not in local_hosts | allowed_hosts:
+        raise RuntimeError(
+            "Refusing unapproved remote target; add its exact hostname to CVF_TEST_ALLOWED_HOSTS"
+        )
+    print(f"Target environment: {os.environ.get('CVF_TEST_ENV', 'development')} ({parsed.hostname})")
 
 class Colors:
     GREEN = '\033[92m'
@@ -113,7 +143,7 @@ class APITester:
         success, data = self.test(
             "Admin login with correct credentials",
             "POST", "/auth/login", 200,
-            data={"email": "admin@corevaluefitness.com", "password": "CVFadmin2025!"}
+            data={"email": required_env("CVF_TEST_ADMIN_EMAIL"), "password": required_env("CVF_TEST_ADMIN_PASSWORD")}
         )
         if success:
             self.admin_token = data.get('access_token')
@@ -126,14 +156,14 @@ class APITester:
         self.test(
             "Admin login with wrong password returns 401",
             "POST", "/auth/login", 401,
-            data={"email": "admin@corevaluefitness.com", "password": "wrongpassword"}
+            data={"email": required_env("CVF_TEST_ADMIN_EMAIL"), "password": secrets.token_urlsafe(24)}
         )
         
         # Test coach Jordan login
         success, data = self.test(
             "Coach Jordan login",
             "POST", "/auth/login", 200,
-            data={"email": "coach.jordan@corevaluefitness.com", "password": "CVFcoach2025!"}
+            data={"email": required_env("CVF_TEST_COACH_A_EMAIL"), "password": required_env("CVF_TEST_COACH_A_PASSWORD")}
         )
         if success:
             self.coach_jordan_token = data.get('access_token')
@@ -143,7 +173,7 @@ class APITester:
         success, data = self.test(
             "Coach Alex login",
             "POST", "/auth/login", 200,
-            data={"email": "coach.alex@corevaluefitness.com", "password": "CVFcoach2025!"}
+            data={"email": required_env("CVF_TEST_COACH_B_EMAIL"), "password": required_env("CVF_TEST_COACH_B_PASSWORD")}
         )
         if success:
             self.coach_alex_token = data.get('access_token')
@@ -153,7 +183,7 @@ class APITester:
         success, data = self.test(
             "Client login",
             "POST", "/auth/login", 200,
-            data={"email": "client.demo@corevaluefitness.com", "password": "CVFclient2025!"}
+            data={"email": required_env("CVF_TEST_CLIENT_EMAIL"), "password": required_env("CVF_TEST_CLIENT_PASSWORD")}
         )
         if success:
             self.client_token = data.get('access_token')
@@ -252,7 +282,7 @@ class APITester:
         success, data = self.test(
             "POST /auth/signup with non-invited email returns 403",
             "POST", "/auth/signup", 403,
-            data={"email": random_email, "password": "TestPass123!"}
+            data={"email": random_email, "password": RUN_PASSWORD}
         )
         if success:
             if 'contact your coach' in data.get('error', '').lower():
@@ -291,7 +321,7 @@ class APITester:
             success, data = self.test(
                 "POST /auth/signup with invited email succeeds 201",
                 "POST", "/auth/signup", 201,
-                data={"email": unique_email, "password": "TestPass123!"}
+                data={"email": unique_email, "password": RUN_PASSWORD}
             )
             if success:
                 if data.get('role') == 'client' and data.get('profile', {}).get('auth_user_id'):
@@ -884,6 +914,7 @@ class APITester:
             self.log(f"⚠️  {self.tests_failed} test(s) failed", Colors.YELLOW)
 
 def main():
+    validate_target()
     tester = APITester()
     return tester.run_all_tests()
 

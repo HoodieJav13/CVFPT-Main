@@ -32,6 +32,15 @@ dist
 
 # Environment files (comprehensive coverage)
 
+.env
+.env.*
+!.env.example
+!**/.env.example
+.secrets/
+*.secret
+*.p12
+*.pfx
+
 *token.json*
 *credentials.json*
 
