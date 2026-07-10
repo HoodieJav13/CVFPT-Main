@@ -20,15 +20,37 @@ CVF PT is the internal personal training management app for Core Value Fitness (
 
 Vite ONLY. CRA/craco were removed — never reintroduce `react-scripts`.
 
+## Deploy architecture — read before adding cross-cutting code
+
+Frontend and backend deploy as **two separate Vercel projects**, each rooted at its own directory (`frontend/` and `backend/`). Neither project's build can see files outside its own root.
+
+**Never `require`/`import` across the `frontend/` ↔ `backend/` boundary, and never reference a repo-root-level shared folder.** A prior bug (Training Builder import/export v1) reached outside `backend/` for both a shared validation module and a logo asset; it passed every local build/smoke-test and would have 500'd in production, because local checkouts have the full monorepo on disk and an isolated Vercel deploy does not. If logic or an asset is needed in both projects, duplicate it into both trees (see Known duplication below) — don't share a path across the deploy boundary.
+
+## Brand system
+
+- **Fonts:** Oswald (display, weights 500/600/700), Inter (body).
+- **Color tokens** (`frontend/src/index.css`): `--primary` (teal, brand/action), `--gold` (Zia gold, synced from the CVF Leagues repo — credits/achievement/pending only), `--success` (tokenized, not raw `emerald-*`), `--destructive` (alerts/destructive only). Never hardcode hex in components — semantic rules are documented in the CSS itself.
+- **Assets:** logo at `frontend/public/logo.png` (fallback: CVF lettermark if the image 404s), Sandia ridge background at `frontend/public/backgrounds/sandia-wide-hero-bg.svg`. Two unused CTA-background SVGs (`sandia-free-agent-cta-bg.svg`, `sandia-team-interest-cta-bg.svg`) also live in that folder, carried over from Leagues — not currently wired to any PT screen.
+- **PDF export** (`backend/src/routes/programs.js`, `generateProgramPdf`) cannot read CSS variables — its teal/gold are hardcoded hex literals kept manually in sync with the tokens above. If you change `--primary` or `--gold`, update the matching hex in that function too.
+
+## Known duplication
+
+- `programDraft.cjs` is intentionally duplicated in `frontend/src/lib/` and `backend/src/lib/` — see Deploy architecture above. Changes to the CSV/PDF Program Draft schema must be applied to both copies.
+- The real CVF logo is duplicated at `frontend/public/logo.png` (served to the browser) and `backend/src/assets/cvf-logo.png` (used by PDF export) for the same reason.
+
 ## Preview mode
 
 `previewMode.js` is a DEV-only mock layer, double-gated, pending a keep/kill decision. Do not extend it without being asked.
 
-## Known duplication
-
-`programDraft.cjs` is intentionally duplicated in `frontend/src/lib/` and `backend/src/lib/` because the frontend and backend deploy as separate Vercel project roots. Changes to the CSV/PDF Program Draft schema must be applied to both copies.
-
 ## Conventions
 
 - Functional and visual changes go in **separate commits**; keep commits small and scoped.
-- Design tokens only — no hardcoded hex colors in components.
+- Design tokens only — no hardcoded hex colors in components (PDF export is the one necessary exception — see Brand system above).
+- Cross-project code/assets get duplicated, never shared via a path that crosses the frontend/backend deploy boundary.
+
+## Status (updated as of this session)
+
+- Toolchain/scaffolding cleanup, brand token foundation, and visual elevation pass: **done**.
+- Session "past"-bucketing bug (client + coach Sessions pages): **fixed**.
+- Training Builder import/export v1 (CSV/PDF import, `commit_program_import` transactional RPC, branded PDF export): **done**, deploy-root bug found and fixed, verified locally — a real isolated Vercel deploy of `backend/` should still be smoke-tested before relying on this in production.
+- Outstanding: Supabase service-role key rotation to the new key format (confirm completed), migration re-run to close schema drift, real Vercel deploy verification for the backend project.
