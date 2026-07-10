@@ -1,6 +1,7 @@
 const express = require('express');
 const { supabaseAdmin, anonClient } = require('../supabase');
 const { requireAuth } = require('../middleware/auth');
+const { loginLimiter, refreshLimiter, signupLimiter } = require('../middleware/rateLimits');
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ async function resolveProfile(authUserId) {
 }
 
 // POST /api/auth/login { email, password }
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
@@ -42,7 +43,7 @@ router.post('/login', async (req, res) => {
 
 // POST /api/auth/signup { email, password }
 // Invitation-only claim flow: email must match an invited, unclaimed, non-archived client profile.
-router.post('/signup', async (req, res) => {
+router.post('/signup', signupLimiter, async (req, res) => {
   try {
     const { email, password } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
@@ -108,7 +109,7 @@ router.post('/signup', async (req, res) => {
 });
 
 // POST /api/auth/refresh { refresh_token }
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', refreshLimiter, async (req, res) => {
   try {
     const { refresh_token } = req.body || {};
     if (!refresh_token) return res.status(400).json({ error: 'refresh_token is required' });

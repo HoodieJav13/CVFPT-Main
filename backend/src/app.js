@@ -3,7 +3,9 @@ const cors = require('cors');
 
 const app = express();
 
-app.set('trust proxy', true);
+// Vercel places one trusted proxy hop in front of the Express function.
+// A numeric hop count prevents clients from selecting an arbitrary left-most IP.
+app.set('trust proxy', 1);
 app.use(cors({ origin: process.env.CORS_ORIGINS === '*' ? true : (process.env.CORS_ORIGINS || '').split(','), credentials: true }));
 
 // Capture raw body for Stripe webhook signature verification

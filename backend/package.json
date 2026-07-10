@@ -18,6 +18,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^4",
+    "express-rate-limit": "8.5.2",
     "multer": "^2.2.0",
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.19.1",

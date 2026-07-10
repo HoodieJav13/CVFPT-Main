@@ -13,6 +13,13 @@ const {
   programDaysUseAccessibleWorkouts,
 } = require('../security/access');
 const {
+  csvImportLimiter,
+  libraryImportLimiter,
+  pdfExportLimiter,
+  pdfImportLimiter,
+  programCommitLimiter,
+} = require('../middleware/rateLimits');
+const {
   PARSER_VERSION,
   csvTemplate,
   draftFromProgram,
@@ -349,7 +356,7 @@ router.post('/exercise-library', requireCoach, async (req, res) => {
   }
 });
 
-router.post('/exercise-library/import', requireCoach, async (req, res) => {
+router.post('/exercise-library/import', requireCoach, libraryImportLimiter, async (req, res) => {
   try {
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
     const cleaned = rows
@@ -478,7 +485,7 @@ router.get('/import/template.csv', requireCoach, async (_req, res) => {
   return res.send(csvTemplate());
 });
 
-router.post('/import/parse-csv', requireCoach, programImportUpload, async (req, res) => {
+router.post('/import/parse-csv', requireCoach, csvImportLimiter, programImportUpload, async (req, res) => {
   try {
     if (!isCsvUpload(req.file)) return res.status(400).json({ error: 'Upload a CSV file using the program import template.' });
     const text = req.file.buffer.toString('utf8');
@@ -493,7 +500,7 @@ router.post('/import/parse-csv', requireCoach, programImportUpload, async (req, 
   }
 });
 
-router.post('/import/parse-pdf', requireCoach, programImportUpload, async (req, res) => {
+router.post('/import/parse-pdf', requireCoach, pdfImportLimiter, programImportUpload, async (req, res) => {
   try {
     if (!isPdfUpload(req.file)) return res.status(400).json({ error: 'Upload a PDF file.' });
     const parsed = await pdfParse(req.file.buffer);
@@ -517,7 +524,7 @@ router.post('/import/parse-pdf', requireCoach, programImportUpload, async (req, 
   }
 });
 
-router.post('/import/commit', requireCoach, async (req, res) => {
+router.post('/import/commit', requireCoach, programCommitLimiter, async (req, res) => {
   try {
     const validation = validateDraft(req.body?.draft || req.body);
     if (!validation.valid) return res.status(422).json({ error: 'Fix import draft errors before saving.', errors: validation.errors, draft: validation.draft });
@@ -591,7 +598,7 @@ router.post('/', requireCoach, async (req, res) => {
   }
 });
 
-router.get('/:id/export.pdf', requireCoach, async (req, res) => {
+router.get('/:id/export.pdf', requireCoach, pdfExportLimiter, async (req, res) => {
   try {
     const program = await programWithDetails(req.params.id);
     if (!program || !canAccessProgram(req.user, program) || program.archived) return res.status(404).json({ error: 'Program not found' });
