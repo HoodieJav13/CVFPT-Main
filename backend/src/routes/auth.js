@@ -2,6 +2,7 @@ const express = require('express');
 const { supabaseAdmin, anonClient } = require('../supabase');
 const { requireAuth } = require('../middleware/auth');
 const { loginLimiter, refreshLimiter, signupLimiter } = require('../middleware/rateLimits');
+const { linkInvitedClient } = require('../services/clientClaims');
 
 const router = express.Router();
 
@@ -57,10 +58,15 @@ router.post('/signup', signupLimiter, async (req, res) => {
       .ilike('email', normalized)
       .eq('invited', true)
       .is('auth_user_id', null)
-      .eq('archived', false);
+      .eq('archived', false)
+      .order('created_at', { ascending: true })
+      .limit(2);
 
     if (findErr) throw findErr;
-    const clientRow = (matches || [])[0];
+    if ((matches || []).length > 1) {
+      return res.status(409).json({ error: 'More than one invitation uses this email. Please contact your coach.' });
+    }
+    const clientRow = matches?.[0];
     if (!clientRow) {
       return res.status(403).json({
         error: "We couldn't find an invitation for this email. Please contact your coach to get set up.",
@@ -79,13 +85,15 @@ router.post('/signup', signupLimiter, async (req, res) => {
       throw createErr;
     }
 
-    const { error: linkErr } = await supabaseAdmin
-      .from('clients')
-      .update({ auth_user_id: created.user.id, updated_at: new Date().toISOString() })
-      .eq('id', clientRow.id);
-    if (linkErr) {
+    const { data: linkedClient, error: linkErr } = await linkInvitedClient(supabaseAdmin, {
+      clientId: clientRow.id,
+      authUserId: created.user.id,
+      updatedAt: new Date().toISOString(),
+    });
+    if (linkErr || !linkedClient) {
       // Roll back the orphaned auth user so signup can be retried cleanly.
       await supabaseAdmin.auth.admin.deleteUser(created.user.id);
+      if (!linkErr) return res.status(409).json({ error: 'This invitation was already claimed. Try logging in instead.' });
       throw linkErr;
     }
 
@@ -93,14 +101,12 @@ router.post('/signup', signupLimiter, async (req, res) => {
     const { data: signin, error: signinErr } = await sb.auth.signInWithPassword({ email: normalized, password });
     if (signinErr) throw signinErr;
 
-    const { data: freshClient } = await supabaseAdmin.from('clients').select('*').eq('id', clientRow.id).single();
-
     return res.status(201).json({
       access_token: signin.session.access_token,
       refresh_token: signin.session.refresh_token,
       expires_at: signin.session.expires_at,
       role: 'client',
-      profile: freshClient,
+      profile: linkedClient,
     });
   } catch (e) {
     console.error('signup error', e);
@@ -115,7 +121,12 @@ router.post('/refresh', refreshLimiter, async (req, res) => {
     if (!refresh_token) return res.status(400).json({ error: 'refresh_token is required' });
     const sb = anonClient();
     const { data, error } = await sb.auth.refreshSession({ refresh_token });
-    if (error || !data?.session) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    if (error || !data?.session || !data?.user) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const resolved = await resolveProfile(data.user.id);
+    if (!resolved) {
+      await sb.auth.signOut({ scope: 'local' });
+      return res.status(403).json({ error: 'No active profile is linked to this account. Please contact your coach.' });
+    }
     return res.json({
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
