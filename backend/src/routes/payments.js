@@ -2,14 +2,13 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
 const { completePurchase, addCredits, getBalance } = require('../utils/credits');
+const { createStripeClient, stripeConfiguration } = require('../config/stripe');
 
 const router = express.Router();
 
 function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) return null;
   const Stripe = require('stripe');
-  return new Stripe(key);
+  return createStripeClient(process.env, Stripe);
 }
 
 const NOT_CONFIGURED_MSG = 'Online payments are not yet configured. Please pay your coach directly, or check back soon.';
@@ -48,10 +47,11 @@ router.use(requireAuth);
 
 // GET /api/payments/config
 router.get('/config', async (_req, res) => {
+  const configuration = stripeConfiguration(process.env);
   return res.json({
-    configured: Boolean(process.env.STRIPE_SECRET_KEY),
-    publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || null,
-    message: process.env.STRIPE_SECRET_KEY ? null : NOT_CONFIGURED_MSG,
+    configured: configuration.configured,
+    publishable_key: configuration.configured ? configuration.publishableKey : null,
+    message: configuration.configured ? null : NOT_CONFIGURED_MSG,
   });
 });
 
