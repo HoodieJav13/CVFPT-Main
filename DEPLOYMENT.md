@@ -21,7 +21,7 @@ Deploy them as two Vercel projects (recommended) pointing at the respective subd
 | `STRIPE_PUBLISHABLE_KEY` | `pk_test_...` (optional) |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_...` (optional; payment verification also works without webhooks via `/api/payments/verify` polling on the success redirect) |
 | `FRONTEND_URL` | The deployed frontend URL, e.g. `https://cvfpt.vercel.app` (used for Stripe success/cancel redirects) |
-| `CORS_ORIGINS` | `*` or comma-separated allowed origins |
+| `CORS_ORIGINS` | Comma-separated exact frontend origins; wildcards and paths are rejected |
 
 ### Stripe webhook (optional but recommended)
 Point a TEST-mode webhook at `https://<backend-domain>/api/payments/webhook` for event `checkout.session.completed`, then set `STRIPE_WEBHOOK_SECRET`.
