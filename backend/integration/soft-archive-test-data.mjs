@@ -1,4 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
+import supabaseFetch from '../src/lib/supabaseFetch.js';
+
+const { createSecretKeyFetch } = supabaseFetch;
 
 const required = (name) => {
   const value = process.env[name]?.trim();
@@ -14,13 +17,17 @@ const prefix = required('CVF_TEST_LABEL_PREFIX');
 if (!/^CVF (?:LIVE|TEST)(?: |$)/.test(prefix)) throw new Error('CVF_TEST_LABEL_PREFIX must begin with CVF LIVE or CVF TEST');
 
 const supabaseUrl = new URL(required('SUPABASE_URL'));
+if (supabaseUrl.protocol !== 'https:') throw new Error('Cleanup requires an HTTPS Supabase URL');
 const allowedHosts = new Set(required('CVF_TEST_SUPABASE_ALLOWED_HOSTS').split(',').map((host) => host.trim().toLowerCase()).filter(Boolean));
 if (!allowedHosts.has(supabaseUrl.hostname.toLowerCase())) throw new Error('Refusing unapproved Supabase cleanup target');
 
 const secret = required('SUPABASE_SERVICE_ROLE_KEY');
 if (!secret.startsWith('sb_secret_')) throw new Error('Cleanup requires the current Supabase secret-key format');
 
-const supabase = createClient(supabaseUrl.toString(), secret, { auth: { persistSession: false, autoRefreshToken: false } });
+const supabase = createClient(supabaseUrl.toString(), secret, {
+  auth: { persistSession: false, autoRefreshToken: false },
+  global: { fetch: createSecretKeyFetch(secret) },
+});
 const pattern = `${prefix}%`;
 const counts = {};
 
@@ -47,6 +54,7 @@ async function archiveIds(table, ids) {
 }
 
 const clientIds = await idsLike('clients', 'name');
+const coachIds = await idsLike('coaches', 'name');
 const activeSessionIds = await idsLike('sessions', 'location');
 const activeProgramIds = await idsLike('programs', 'name');
 const activeNamedWorkoutIds = await idsLike('workouts', 'name');
@@ -128,6 +136,7 @@ await archiveIds('exercise_library', activeExerciseIds);
 await archiveIds('packages', activePackageIds);
 await archiveIds('sessions', activeSessionIds);
 await archiveIds('clients', clientIds);
+await archiveIds('coaches', coachIds);
 
 console.log(`Soft cleanup target: ${environment} (${supabaseUrl.hostname}); prefix: ${prefix}`);
 for (const [table, count] of Object.entries(counts)) console.log(`${table}: ${count}`);
