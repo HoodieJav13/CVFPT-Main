@@ -4,9 +4,10 @@ Audit date: 2026-07-10
 
 Scope: all 94 Express endpoints registered under `backend/src/routes`, the global authentication middleware, Supabase service-role isolation, CORS, payment/webhook handling, and state-changing multi-step flows.
 
-Local verification now includes 21 backend regression tests plus an isolated
-PostgreSQL execution test of both migrations and the transactional RPC behavior.
-Live development authorization and browser verification remain pending target confirmation.
+Local verification now includes 25 backend regression tests, four preview-mode
+browser tests, and isolated PostgreSQL execution of all three migrations and
+their transactional RPC behavior. Live development authorization and hosted
+browser verification remain pending target confirmation.
 
 ## Critical and high findings
 
@@ -136,7 +137,7 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
 - Message read-marking now excludes archived messages.
 - Shared/global workouts remain readable by coaches but are now admin-only to edit/archive.
 - The client dashboard always returns `coach_name: null` even though the client has a coach relationship.
-- Some error logging passes full error objects. No credential value was found in source, but structured redaction should be applied before production logging.
+- Backend error logging now emits only safe error name/code/status metadata; a regression proves messages, stacks, request objects, and nested secrets are omitted.
 - Duplicate statements exist in the program route (`error.status`, exercise update loop, and `frequency_days` property). They are harmless but should be removed during scoped cleanup.
 
 ## Controls verified as present
@@ -152,12 +153,16 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
 ## Regression and live verification status
 
 - Legacy Python and destructive proof-of-concept runners were removed.
-- Secret-free CI runs backend regressions, frontend build, and production audits.
-- Backend regressions: 21 passing.
+- Secret-free CI runs backend regressions, frontend build, preview-mode browser
+  tests, and production audits.
+- Backend regressions: 25 passing.
+- Preview browser regressions: four passing across coach, client, admin, route
+  protection, and mobile navigation. The suite also guards against browser-incompatible
+  module imports that previously left the preview page blank.
 - Opt-in API integration harness: development/preview allowlist, dedicated fake
   accounts, hard-delete prohibition, and soft-archive cleanup implemented; live run pending.
 - All three migrations and transactional RPC assertions executed successfully
   against isolated PostgreSQL 16, including rollback-on-child-failure tests.
   Hosted PostgreSQL 17 verification remains pending.
-- Live authorization matrix and coach/client browser flows remain pending until
+- Live authorization matrix and hosted coach/client browser flows remain pending until
   the intended empty Supabase development target is explicitly confirmed and initialized.

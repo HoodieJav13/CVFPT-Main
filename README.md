@@ -23,11 +23,13 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment details.
 
 ## Verification
 
-Backend unit/regression checks and the frontend production build are secret-free:
+Backend unit/regression checks, the frontend production build, and preview-mode
+browser checks are secret-free:
 
 ```sh
 cd backend && npm test
 cd frontend && npm run build
+cd frontend && npm run test:e2e:preview
 ```
 
 The mutating API integration harness is opt-in and accepts only an explicitly
