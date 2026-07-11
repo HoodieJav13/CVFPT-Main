@@ -20,6 +20,10 @@ CVF PT is the internal personal training management app for Core Value Fitness (
 
 Vite ONLY. CRA/craco were removed — never reintroduce `react-scripts`.
 
+## Browser Automation
+
+Use `agent-browser` for web automation. Run `agent-browser --help` for all commands.
+
 ## Deploy architecture — read before adding cross-cutting code
 
 Frontend and backend deploy as **two separate Vercel projects**, each rooted at its own directory (`frontend/` and `backend/`). Neither project's build can see files outside its own root.
