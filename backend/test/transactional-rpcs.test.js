@@ -8,6 +8,11 @@ const migration = [
   '20260710202908_transactional_business_mutations.sql',
   '20260711051129_transactional_program_writes.sql',
 ].map((name) => fs.readFileSync(path.join(root, 'supabase', 'migrations', name), 'utf8')).join('\n');
+const dataApiGrantMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260711060556_restrict_data_api_to_service_role.sql'),
+  'utf8',
+);
+const baseline = fs.readFileSync(path.join(root, 'backend', 'migration.sql'), 'utf8');
 
 const functions = [
   ['approve_booking', 'uuid'],
@@ -33,6 +38,26 @@ test('transactional RPCs are invoker-security and service-role-only', () => {
       migration,
       new RegExp(`grant execute on function public\\.${name}\\(${signature}\\) to service_role;`),
     );
+  }
+});
+
+test('Data API table grants are service-role-only and prohibit hard deletes', () => {
+  for (const sql of [dataApiGrantMigration, baseline]) {
+    const statements = sql.replace(/^--.*$/gm, '');
+    assert.match(
+      sql,
+      /revoke all privileges on all tables in schema public\s+from public, anon, authenticated, service_role;/,
+    );
+    assert.match(
+      sql,
+      /grant select, insert, update on all tables in schema public to service_role;/,
+    );
+    assert.match(
+      sql,
+      /revoke all privileges on all sequences in schema public\s+from public, anon, authenticated, service_role;/,
+    );
+    assert.match(sql, /grant usage, select on all sequences in schema public to service_role;/);
+    assert.doesNotMatch(statements, /grant[^;]*delete[^;]*service_role;/i);
   }
 });
 

@@ -35,7 +35,7 @@ Frontend and backend deploy as **two separate Vercel projects**, each rooted at 
 
 ## Known duplication
 
-- `programDraft.cjs` is intentionally duplicated in `frontend/src/lib/` and `backend/src/lib/` — see Deploy architecture above. Changes to the CSV/PDF Program Draft schema must be applied to both copies.
+- Program Draft logic is intentionally duplicated as browser ESM at `frontend/src/lib/programDraft.js` and backend CommonJS at `backend/src/lib/programDraft.cjs` — see Deploy architecture above. Changes to the CSV/PDF Program Draft schema must be applied to both copies.
 - The real CVF logo is duplicated at `frontend/public/logo.png` (served to the browser) and `backend/src/assets/cvf-logo.png` (used by PDF export) for the same reason.
 
 ## Preview mode
@@ -52,5 +52,7 @@ Frontend and backend deploy as **two separate Vercel projects**, each rooted at 
 
 - Toolchain/scaffolding cleanup, brand token foundation, and visual elevation pass: **done**.
 - Session "past"-bucketing bug (client + coach Sessions pages): **fixed**.
-- Training Builder import/export v1 (CSV/PDF import, `commit_program_import` transactional RPC, branded PDF export): **done**, deploy-root bug found and fixed, verified locally — a real isolated Vercel deploy of `backend/` should still be smoke-tested before relying on this in production.
-- Outstanding: Supabase service-role key rotation to the new key format (confirm completed), migration re-run to close schema drift, real Vercel deploy verification for the backend project.
+- Training Builder import/export v1 (CSV/PDF import, `commit_program_import` transactional RPC, branded PDF export): **done**, deploy-root and browser-module bugs fixed, verified locally and in preview-mode browser CI — a real isolated Vercel deploy of `backend/` still needs smoke testing.
+- Hosted development schema: **current** — four versioned migrations applied to PostgreSQL 17; 23/23 tables use RLS with no policies, eight RPCs are service-role-only invoker functions, and direct anon/authenticated table grants are revoked.
+- Vercel isolation: **projects created and Git-connected** — `cvfpt-frontend` is rooted at `frontend/` with Vite; `cvfpt-backend` is rooted at `backend/` with Express. Preview variables and deployments remain pending.
+- Outstanding: securely configure and verify a current Supabase secret key, confirm the legacy service-role key is disabled, deploy both Vercel previews, and complete real-auth coach/client verification.

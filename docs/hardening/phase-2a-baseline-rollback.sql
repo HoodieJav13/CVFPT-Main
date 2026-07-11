@@ -38,5 +38,7 @@ drop table if exists public.coaches;
 
 commit;
 
--- The baseline's least-privilege default function grants and revocation on the
--- pre-existing rls_auto_enable() helper are intentionally retained.
+-- The baseline's least-privilege default function/table/sequence grants and
+-- revocation on the pre-existing rls_auto_enable() helper are intentionally
+-- retained. They are safe empty-project defaults and prevent future accidental
+-- Data API exposure if a later migration creates an object before re-baselining.

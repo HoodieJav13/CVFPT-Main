@@ -4,10 +4,10 @@ Audit date: 2026-07-10
 
 Scope: all 94 Express endpoints registered under `backend/src/routes`, the global authentication middleware, Supabase service-role isolation, CORS, payment/webhook handling, and state-changing multi-step flows.
 
-Local verification now includes 25 backend regression tests, four preview-mode
-browser tests, and isolated PostgreSQL execution of all three migrations and
-their transactional RPC behavior. Live development authorization and hosted
-browser verification remain pending target confirmation.
+Local verification now includes 26 backend regression tests, four preview-mode
+browser tests, isolated PostgreSQL execution of all four migrations, and hosted
+PostgreSQL 17 schema/grant verification. Live development authorization and hosted
+browser verification remain pending secure credentials and dedicated test accounts.
 
 ## Critical and high findings
 
@@ -155,14 +155,15 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
 - Legacy Python and destructive proof-of-concept runners were removed.
 - Secret-free CI runs backend regressions, frontend build, preview-mode browser
   tests, and production audits.
-- Backend regressions: 25 passing.
+- Backend regressions: 26 passing.
 - Preview browser regressions: four passing across coach, client, admin, route
   protection, and mobile navigation. The suite also guards against browser-incompatible
   module imports that previously left the preview page blank.
 - Opt-in API integration harness: development/preview allowlist, dedicated fake
   accounts, hard-delete prohibition, and soft-archive cleanup implemented; live run pending.
-- All three migrations and transactional RPC assertions executed successfully
-  against isolated PostgreSQL 16, including rollback-on-child-failure tests.
-  Hosted PostgreSQL 17 verification remains pending.
-- Live authorization matrix and hosted coach/client browser flows remain pending until
-  the intended empty Supabase development target is explicitly confirmed and initialized.
+- All four migrations and transactional RPC assertions executed successfully
+  against isolated PostgreSQL 16, including rollback-on-child-failure and
+  current/future grant tests. Hosted PostgreSQL 17 has 23/23 RLS-enabled tables,
+  zero policies, eight service-role-only invoker RPCs, and no direct anon/auth table grants.
+- Live authorization matrix and hosted coach/client browser flows remain pending
+  secure backend credentials and dedicated development test accounts.

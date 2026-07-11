@@ -513,4 +513,25 @@ alter table purchases enable row level security;
 alter table client_credits enable row level security;
 alter table credit_transactions enable row level security;
 
+-- The Express backend is the only Data API caller. Make table access explicit
+-- because Supabase project defaults vary, and intentionally omit DELETE so
+-- business records remain soft-delete/archive only.
+revoke all privileges on all tables in schema public
+  from public, anon, authenticated, service_role;
+grant select, insert, update on all tables in schema public to service_role;
+
+revoke all privileges on all sequences in schema public
+  from public, anon, authenticated, service_role;
+grant usage, select on all sequences in schema public to service_role;
+
+alter default privileges for role postgres in schema public
+  revoke all privileges on tables from public, anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  grant select, insert, update on tables to service_role;
+
+alter default privileges for role postgres in schema public
+  revoke all privileges on sequences from public, anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  grant usage, select on sequences to service_role;
+
 select 'CVF PT schema created successfully' as result;
