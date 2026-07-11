@@ -181,11 +181,11 @@ All routes require authenticated admin access.
 
 | Actor / condition | Expected default for owned-resource routes | Current evidence |
 |---|---|---|
-| Unauthenticated | `401` | Middleware/source contract plus opt-in integration harness; live pending |
-| Owning client | Allowed only on explicitly client-facing/dual-role routes | Route inspection plus integration harness; live pending |
-| Different client | `404` or no path parameter capable of selecting another client | Route inspection; live pending |
-| Owning coach | Allowed | Pure helper/source contracts plus integration harness; live pending |
-| Different coach | `404` | Program/workout ownership regressions plus integration harness; live pending |
-| Admin | Allowed across coach ownership unless explicitly client-only | Route inspection plus integration harness; live pending |
-| Missing record | `404` | Stable missing handling fixed on audited mutation routes; live pending |
-| Archived record | `404` outside list/restore boundaries | Cross-route source contract passing; live pending |
+| Unauthenticated | `401` | Live integration and protected Vercel smoke passing |
+| Owning client | Allowed only on explicitly client-facing/dual-role routes | Live API and browser flows passing |
+| Different client | `404` or no path parameter capable of selecting another client | Route inventory plus derived-identity browser/API coverage |
+| Owning coach | Allowed | Live API and browser flows passing |
+| Different coach | `404` | Live integration ownership-safe `404` passing |
+| Admin | Allowed across coach ownership unless explicitly client-only | Live integration, hosted smoke, and admin browser flow passing |
+| Missing record | `404` | Stable missing handling and live ownership probes passing |
+| Archived record | `404` outside list/restore boundaries | Cross-route contracts passing; explicit client restore boundary live-tested |

@@ -63,7 +63,8 @@
     "dev:preview": "REACT_APP_PREVIEW_MODE=true vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:e2e:preview": "playwright test"
+    "test:e2e:preview": "playwright test",
+    "test:e2e:live": "playwright test --config playwright.live.config.mjs"
   },
   "browserslist": {
     "production": [

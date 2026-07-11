@@ -4,10 +4,11 @@ Audit date: 2026-07-10
 
 Scope: all 94 Express endpoints registered under `backend/src/routes`, the global authentication middleware, Supabase service-role isolation, CORS, payment/webhook handling, and state-changing multi-step flows.
 
-Local verification now includes 26 backend regression tests, four preview-mode
-browser tests, isolated PostgreSQL execution of all four migrations, and hosted
-PostgreSQL 17 schema/grant verification. Live development authorization and hosted
-browser verification remain pending secure credentials and dedicated test accounts.
+Verification now includes 29 backend regression tests, four preview-mode browser
+tests, three real-auth browser flows, a 32-check hosted-Supabase integration run,
+12 protected-Vercel role checks, and seven hosted invite/refresh checks. All four
+migrations also pass isolated PostgreSQL execution and hosted PostgreSQL 17
+schema/grant verification.
 
 ## Critical and high findings
 
@@ -155,15 +156,18 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
 - Legacy Python and destructive proof-of-concept runners were removed.
 - Secret-free CI runs backend regressions, frontend build, preview-mode browser
   tests, and production audits.
-- Backend regressions: 26 passing.
+- Backend regressions: 29 passing.
 - Preview browser regressions: four passing across coach, client, admin, route
   protection, and mobile navigation. The suite also guards against browser-incompatible
   module imports that previously left the preview page blank.
-- Opt-in API integration harness: development/preview allowlist, dedicated fake
-  accounts, hard-delete prohibition, and soft-archive cleanup implemented; live run pending.
+- Opt-in API integration harness: 32/32 passing with dedicated fake accounts,
+  target allowlisting, hard-delete prohibition, and soft-archive cleanup.
 - All four migrations and transactional RPC assertions executed successfully
   against isolated PostgreSQL 16, including rollback-on-child-failure and
   current/future grant tests. Hosted PostgreSQL 17 has 23/23 RLS-enabled tables,
   zero policies, eight service-role-only invoker RPCs, and no direct anon/auth table grants.
-- Live authorization matrix and hosted coach/client browser flows remain pending
-  secure backend credentials and dedicated development test accounts.
+- Protected Vercel auth smoke: 12/12 role/login/profile/dashboard checks plus 7/7
+  invite, signup, refresh, identity, and soft-archive checks passing.
+- Real-auth browser flows: 3/3 passing across client, coach, and admin. The run found
+  and fixed the archived-client restore boundary; see the Phase 3/4 flow report for
+  blocked and not-applicable cases.

@@ -1,25 +1,30 @@
 # Phase 2A credential and schema audit
 
 Audit date: 2026-07-10
+Credential/deployment verification updated: 2026-07-11
 
 ## Target discovery
 
 - Connected project: `CVFPT-Main` (`hhzpzcxcurmhpmfgriqb`), healthy, PostgreSQL 17, created 2026-07-06.
 - Connected API origin: `https://hhzpzcxcurmhpmfgriqb.supabase.co`.
 - The repository previously named `kzmsgwkmewbjnhmioduj`; that hostname no longer resolves and the project is not available through the connected Supabase account.
-- The project was confirmed empty immediately before migration. The hardening brief
-  identifies the connected database as the fake-data development target; no seed or
-  business data was present or added during schema application.
+- The project was confirmed empty immediately before migration. Schema application
+  added no business data. Later verification added only clearly labeled fake accounts
+  and soft-archived test records to this development target.
 
 ## Environment and credential state
 
 - General `.env`, `.env.*`, `.secrets/`, private-key containers, credential JSON, and token JSON files are ignored. Sanitized `.env.example` templates are intentionally tracked.
 - The current tree contains no detected secret-shaped values or fixed passwords. Full Git history contains the previously confirmed development passwords in `tests/backend_test.py`; history was intentionally left unchanged.
 - No backend Supabase/OpenAI/Stripe values are present in the current shell environment. The only discovered local frontend environment file is ignored and contains only the preview-mode flag.
-- The connected project has an enabled current publishable key and an enabled legacy `anon` key.
-- Current secret-key presence and legacy `service_role` disabled state are not yet
-  verifiable because the connected project tool intentionally does not expose secret
-  metadata. The two Vercel projects currently have no preview environment variables.
+- The connected project has enabled current-format publishable and secret keys. A
+  safe backend service read and hosted invite/signup flow prove the secret works.
+- Both legacy JWT-based Supabase keys were disabled in the authenticated dashboard;
+  the legacy page now offers re-enable actions rather than disable actions.
+- Backend Preview has `SUPABASE_URL`, current publishable/secret key variables,
+  `CORS_ORIGINS`, and `FRONTEND_URL`. Frontend Preview has
+  `REACT_APP_BACKEND_URL`. Values were transferred only through secure flows and
+  were never committed.
 
 ## Expected versus actual schema
 
