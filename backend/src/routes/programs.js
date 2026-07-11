@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const PDFDocument = require('pdfkit');
-const pdfParse = require('pdf-parse');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
@@ -30,6 +29,7 @@ const {
   parseCsvDraft,
   validateDraft,
 } = require('../lib/programDraft.cjs');
+const { extractPdfText } = require('../lib/pdfText');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -473,9 +473,9 @@ router.post('/import/parse-csv', requireCoach, csvImportLimiter, programImportUp
 router.post('/import/parse-pdf', requireCoach, pdfImportLimiter, programImportUpload, async (req, res) => {
   try {
     if (!isPdfUpload(req.file)) return res.status(400).json({ error: 'Upload a PDF file.' });
-    const parsed = await pdfParse(req.file.buffer);
-    if (!String(parsed.text || '').trim()) return res.status(400).json({ error: 'Could not extract readable text from this PDF. Try the CSV template instead.' });
-    const aiDraft = await callOpenAiForDraft(parsed.text, req.file.originalname);
+    const text = await extractPdfText(req.file.buffer);
+    if (!text.trim()) return res.status(400).json({ error: 'Could not extract readable text from this PDF. Try the CSV template instead.' });
+    const aiDraft = await callOpenAiForDraft(text, req.file.originalname);
     const draft = normalizeDraft({
       ...aiDraft,
       import_meta: {
