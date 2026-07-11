@@ -77,20 +77,22 @@ standard headers are regression-tested. Secret-dependent integration remains opt
 
 ## Moderate findings
 
-### P2 — Waiver-signature uniqueness relied on pre-checks (signature fixed; version allocation open)
+### P2 — Waiver-signature and version uniqueness relied on pre-checks (fixed locally)
 
 Client signature creation checks for an existing current signature before insert, but the schema has no unique `(client_id, waiver_version_id)` constraint. Concurrent requests can append duplicate signatures. Paper signing does not check duplicates. Waiver version allocation also reads the latest version and increments it outside a transaction.
 
 Resolution: a unique `(client_id, waiver_version_id)` index rejects concurrent
 duplicates and both signing routes return deterministic `409`s. No legal text or
-existing signature is updated or deleted. Waiver version-number allocation still
-needs serialization.
+existing signature is updated or deleted. `create_waiver_version(text)` uses a
+transaction-scoped advisory lock to serialize monotonic version allocation.
 
-### P2 — Multi-step program/workout edits can leave partial state
+### P2 — Multi-step program/workout edits can leave partial state (fixed locally)
 
 Workout creation inserts the parent before replacing exercises. Program creation inserts the parent before replacing days. Replacement archives existing children before inserting replacements. A later failure can leave empty or partially updated business records.
 
-Required fix: transactional database operations for compound replacements, or compensating behavior with regression coverage.
+Resolution: create/update delegate to service-role-only `save_workout` and
+`save_program` RPCs. Isolated PostgreSQL fault injection proved invalid child
+writes roll back parent changes and preserve the previous active child set.
 
 ### P2 — Archived records remain directly mutable in several coach routes (fixed locally)
 
@@ -103,11 +105,14 @@ program/workout/assignment, booking, waiver, package, payment, and admin reassig
 paths now hide archived rows. Explicit archive/restore boundaries retain intentional
 access. A regression contract covers the cross-route predicate set.
 
-### P2 — Input validation is inconsistent
+### P2 — Input validation is inconsistent (partially fixed locally)
 
 Invalid dates and durations can become database errors and generic `500`s; package updates can introduce negative/non-numeric prices or credits; manual payment amounts can be negative; bulk imports are not bounded by row count; several string fields accept unbounded values.
 
-Required fix: centralized request schemas or equivalent bounded validation, with stable `400` responses.
+Resolution to date: centralized bounded validation covers package price/credits,
+session and booking timestamps/durations, manual purchase amounts, and 500-row
+exercise import limits, with stable `400`/`413` responses. Broader string and
+payload schemas remain a maintenance item.
 
 ### P2 — CORS can reflect every origin while credentials are enabled (fixed locally)
 
@@ -129,7 +134,7 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
 
 - Admin client reassignment and package mutations now return stable `404`s for missing/archived records.
 - Message read-marking now excludes archived messages.
-- Shared/global workouts (`coach_id IS NULL`) can be edited and archived by any coach; ownership policy needs explicit product confirmation or admin-only mutation.
+- Shared/global workouts remain readable by coaches but are now admin-only to edit/archive.
 - The client dashboard always returns `coach_name: null` even though the client has a coach relationship.
 - Some error logging passes full error objects. No credential value was found in source, but structured redaction should be applied before production logging.
 - Duplicate statements exist in the program route (`error.status`, exercise update loop, and `frequency_days` property). They are harmless but should be removed during scoped cleanup.
@@ -151,7 +156,8 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
 - Backend regressions: 21 passing.
 - Opt-in API integration harness: development/preview allowlist, dedicated fake
   accounts, hard-delete prohibition, and soft-archive cleanup implemented; live run pending.
-- Both migrations and transactional RPC assertions executed successfully against
-  isolated PostgreSQL 16. Hosted PostgreSQL 17 verification remains pending.
+- All three migrations and transactional RPC assertions executed successfully
+  against isolated PostgreSQL 16, including rollback-on-child-failure tests.
+  Hosted PostgreSQL 17 verification remains pending.
 - Live authorization matrix and coach/client browser flows remain pending until
   the intended empty Supabase development target is explicitly confirmed and initialized.

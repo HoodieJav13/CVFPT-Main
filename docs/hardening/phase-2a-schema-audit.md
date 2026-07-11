@@ -52,11 +52,12 @@ The prepared baseline changes it to `SECURITY INVOKER`, fixes `search_path` to e
 - Local Supabase versioned migration structure was created with the installed CLI.
 - Prepared baseline: `supabase/migrations/20260710151327_baseline_schema.sql`.
 - Prepared transactional hardening: `supabase/migrations/20260710202908_transactional_business_mutations.sql`.
+- Prepared transactional compound writes: `supabase/migrations/20260711051129_transactional_program_writes.sql`.
 - The baseline is not applied pending target confirmation.
-- Both migrations executed successfully against isolated PostgreSQL 16. Behavioral
+- All three migrations executed successfully against isolated PostgreSQL 16. Behavioral
   assertions verified booking/session/purchase idempotency, atomic credit/ledger
-  updates, waiver-signature uniqueness, and RPC grants. Hosted PostgreSQL 17
-  execution remains required after the target is confirmed.
+  updates, waiver-signature/version uniqueness, compound-write rollback, and RPC
+  grants. Hosted PostgreSQL 17 execution remains required after target confirmation.
 - Pre-change recovery evidence is this empty-schema inventory plus the remote migration list (empty). Because there is no application data or schema, rollback can safely remove only the objects introduced by the baseline; the reviewed reverse-order rollback is `docs/hardening/phase-2a-baseline-rollback.sql`.
 
 ## Documentation basis

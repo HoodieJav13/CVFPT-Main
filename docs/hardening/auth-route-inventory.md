@@ -81,19 +81,19 @@ All routes require authenticated coach/admin access.
 | `PUT /api/programs/exercise-library/:id` | Coach/admin | Current policy: any coach; admin: all | Archived hidden | Yes | Missing/archived `404` |
 | `PATCH /api/programs/exercise-library/:id/archive` | Coach/admin | Current policy: any coach; admin: all | Intentional archive/restore boundary | Yes | Missing `404` |
 | `GET /api/programs/workouts` | Coach/admin | Coach: own + global; admin: all | Workouts excluded | No | `401` / `403` |
-| `POST /api/programs/workouts` | Coach/admin | Coach creates own; admin creates global | Creates active | Yes, compound | Validation `400` |
+| `POST /api/programs/workouts` | Coach/admin | Coach creates own; admin creates global | Creates active | Yes, transactional compound write | Validation `400` |
 | `GET /api/programs/workouts/:id` | Coach/admin | Coach: own/global; admin: all | Archived hidden | No | Ownership-hiding `404` |
-| `PUT /api/programs/workouts/:id` | Coach/admin | Coach: own/global; admin: all | Archived hidden; global still mutable by any coach | Yes, compound | Ownership-hiding `404` |
-| `PATCH /api/programs/workouts/:id/archive` | Coach/admin | Coach: own/global; admin: all | Archive only; global mutable by any coach | Yes | Ownership-hiding `404` |
+| `PUT /api/programs/workouts/:id` | Coach/admin | Coach: own only; admin: all including global | Archived hidden | Yes, transactional compound write | Ownership-hiding `404` |
+| `PATCH /api/programs/workouts/:id/archive` | Coach/admin | Coach: own only; admin: all including global | Archive only | Yes | Ownership-hiding `404` |
 | `GET /api/programs/import/template.csv` | Coach/admin | No record ownership | N/A | No | `401` / `403` |
 | `POST /api/programs/import/parse-csv` | Coach/admin | No database mutation | N/A | CPU/memory only | File `400`/`413`; draft `422` |
 | `POST /api/programs/import/parse-pdf` | Coach/admin | Sends extracted program text to configured AI | N/A | External AI request | File `400`/`413`; config `503`; draft `422` |
 | `POST /api/programs/import/commit` | Coach/admin | RPC receives authenticated coach ID; admin uses own coach profile | Creates active | Yes, transaction | Draft `422`; RPC `500` |
 | `GET /api/programs` | Coach/admin | Coach: own; admin: all | Programs excluded | No | `401` / `403` |
-| `POST /api/programs` | Coach/admin | Program owned by caller; all day workouts resolved as own/global/admin-accessible | Creates active | Yes, compound | Validation `400`; workout `404` |
+| `POST /api/programs` | Coach/admin | Program owned by caller; all day workouts resolved as own/global/admin-accessible | Creates active | Yes, transactional compound write | Validation `400`; workout `404` |
 | `GET /api/programs/:id/export.pdf` | Coach/admin | Coach: own; admin: all | Program must be active | CPU/PDF only | Ownership-hiding `404` |
 | `GET /api/programs/:id` | Coach/admin | Coach: own; admin: all | Program must be active | No | Ownership-hiding `404` |
-| `PUT /api/programs/:id` | Coach/admin | Coach: own; admin: all; all day workouts ownership-checked | Archived hidden | Yes, compound | Ownership-hiding `404` |
+| `PUT /api/programs/:id` | Coach/admin | Coach: own; admin: all; all day workouts ownership-checked | Archived hidden | Yes, transactional compound write | Ownership-hiding `404` |
 | `PATCH /api/programs/:id/archive` | Coach/admin | Coach: own; admin: all | Archive only | Yes | Ownership-hiding `404` |
 | `POST /api/programs/:id/assign` | Coach/admin | Active program/client must be accessible; admin: all | Archived program/client hidden | Yes | Ownership-hiding `404`; duplicate `409` |
 | `PATCH /api/programs/assignments/:assignmentId/archive` | Coach/admin | Through active related program ownership; admin: all | Active assignment only | Yes | Ownership-hiding `404` |
@@ -128,7 +128,7 @@ All routes require authenticated coach/admin access.
 |---|---|---|---|---:|---|
 | `GET /api/waivers/latest` | Any authenticated | Same immutable version for all roles | Waiver records are append-only, not archived | No | `404` if none |
 | `GET /api/waivers/versions` | Admin | All versions | Append-only | No | `403` |
-| `POST /api/waivers/versions` | Admin | Appends next version | Append-only | Yes | Validation `400` |
+| `POST /api/waivers/versions` | Admin | Service-role-only RPC serializes next version | Append-only | Yes, transaction | Validation `400` |
 | `GET /api/waivers/client/:clientId/status` | Coach/admin | Coach: own active client; admin: all | Archived client hidden | No | Ownership-hiding `404` |
 | `POST /api/waivers/client/:clientId/sign-paper` | Coach/admin | Coach: own active client; admin: all | Archived client hidden; duplicate version signature `409` | Yes, append only | Ownership-hiding `404` |
 | `GET /api/waivers/my-status` | Client | Authenticated client's ID only | Profile must be active | No | `401` / `403` |
