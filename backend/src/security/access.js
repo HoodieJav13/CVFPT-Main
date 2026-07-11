@@ -10,6 +10,12 @@ function canAccessWorkout(user, workout) {
   return user.role === 'coach' && (!workout.coach_id || workout.coach_id === user.coach?.id);
 }
 
+function canManageWorkout(user, workout) {
+  if (!user || !workout || workout.archived) return false;
+  if (user.role === 'admin') return true;
+  return user.role === 'coach' && Boolean(workout.coach_id) && workout.coach_id === user.coach?.id;
+}
+
 function canAccessProgram(user, program) {
   if (!user || !program) return false;
   if (user.role === 'admin') return true;
@@ -31,6 +37,7 @@ module.exports = {
   canAccessClient,
   canAccessProgram,
   canAccessWorkout,
+  canManageWorkout,
   canAccessWorkoutAssignment,
   programDaysUseAccessibleWorkouts,
 };

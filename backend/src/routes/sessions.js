@@ -1,6 +1,7 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
+const { validateSchedulePayload } = require('../validation/business');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -40,7 +41,9 @@ router.get('/', requireCoach, async (req, res) => {
 router.post('/', requireCoach, async (req, res) => {
   try {
     const { client_id, scheduled_at, duration_minutes, location } = req.body || {};
-    if (!client_id || !scheduled_at) return res.status(400).json({ error: 'Client and date/time are required' });
+    if (!client_id) return res.status(400).json({ error: 'Client and date/time are required' });
+    const validation = validateSchedulePayload({ scheduled_at, duration_minutes }, { requireDate: true });
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
     const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
       .eq('id', client_id).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
@@ -48,8 +51,8 @@ router.post('/', requireCoach, async (req, res) => {
     const { data, error } = await supabaseAdmin.from('sessions').insert({
       client_id,
       coach_id: coachId,
-      scheduled_at,
-      duration_minutes: duration_minutes || 60,
+      scheduled_at: validation.value.scheduled_at,
+      duration_minutes: validation.value.duration_minutes,
       location: location || null,
     }).select('*, client:clients(id, name)').single();
     if (error) throw error;
@@ -65,9 +68,11 @@ router.put('/:id', requireCoach, async (req, res) => {
   try {
     const session = await loadSessionForCoach(req, res);
     if (!session) return;
-    const allowed = ['scheduled_at', 'duration_minutes', 'location'];
-    const updates = {};
-    for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k];
+    const validation = validateSchedulePayload(req.body || {});
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    const updates = { ...validation.value };
+    if ('location' in (req.body || {})) updates.location = req.body.location || null;
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide a session field to update' });
     updates.updated_at = new Date().toISOString();
     const { data, error } = await supabaseAdmin.from('sessions').update(updates).eq('id', session.id)
       .select('*, client:clients(id, name)').single();

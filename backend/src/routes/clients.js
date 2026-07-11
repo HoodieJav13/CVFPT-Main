@@ -27,7 +27,12 @@ router.post('/', async (req, res) => {
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Client name is required' });
 
     // Coaches always create under themselves; admin may assign any coach.
-    let targetCoachId = req.user.role === 'admin' ? (coach_id || req.user.coach.id) : req.user.coach.id;
+    const targetCoachId = req.user.role === 'admin' ? (coach_id || req.user.coach.id) : req.user.coach.id;
+    if (req.user.role === 'admin') {
+      const { data: targetCoach } = await supabaseAdmin.from('coaches').select('id')
+        .eq('id', targetCoachId).eq('archived', false).maybeSingle();
+      if (!targetCoach) return res.status(404).json({ error: 'Coach not found' });
+    }
 
     const { data, error } = await supabaseAdmin
       .from('clients')

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   canAccessClient,
   canAccessWorkout,
+  canManageWorkout,
   canAccessWorkoutAssignment,
   programDaysUseAccessibleWorkouts,
 } = require('../src/security/access');
@@ -25,6 +26,16 @@ test('workout access allows own and global active workouts only', () => {
   assert.equal(canAccessWorkout(coachA, { id: 'foreign', coach_id: 'coach-b', archived: false }), false);
   assert.equal(canAccessWorkout(coachA, { id: 'archived', coach_id: 'coach-a', archived: true }), false);
   assert.equal(canAccessWorkout(admin, { id: 'foreign', coach_id: 'coach-b', archived: false }), true);
+});
+
+test('only admins may mutate global workouts', () => {
+  const own = { id: 'own', coach_id: 'coach-a', archived: false };
+  const global = { id: 'global', coach_id: null, archived: false };
+  assert.equal(canManageWorkout(coachA, own), true);
+  assert.equal(canManageWorkout(coachB, own), false);
+  assert.equal(canManageWorkout(coachA, global), false);
+  assert.equal(canManageWorkout(admin, global), true);
+  assert.equal(canManageWorkout(admin, { ...global, archived: true }), false);
 });
 
 test('workout assignment archive access follows client ownership and active state', () => {

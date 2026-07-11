@@ -1,6 +1,7 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
+const { validateSchedulePayload } = require('../validation/business');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -9,15 +10,19 @@ router.use(requireAuth);
 router.post('/', requireClient, async (req, res) => {
   try {
     const { requested_time, duration_minutes, location, note } = req.body || {};
-    if (!requested_time) return res.status(400).json({ error: 'Please choose a date and time' });
-    if (new Date(requested_time).getTime() < Date.now()) {
+    const validation = validateSchedulePayload(
+      { scheduled_at: requested_time, duration_minutes },
+      { requireDate: true },
+    );
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    if (new Date(validation.value.scheduled_at).getTime() <= Date.now()) {
       return res.status(400).json({ error: 'Requested time must be in the future' });
     }
     const { data, error } = await supabaseAdmin.from('booking_requests').insert({
       client_id: req.user.client.id,
       coach_id: req.user.client.coach_id,
-      requested_time,
-      duration_minutes: duration_minutes || 60,
+      requested_time: validation.value.scheduled_at,
+      duration_minutes: validation.value.duration_minutes,
       location: location || null,
       note: note || null,
     }).select().single();

@@ -10,6 +10,7 @@ const {
   canAccessProgram,
   canAccessWorkout,
   canAccessWorkoutAssignment,
+  canManageWorkout,
   programDaysUseAccessibleWorkouts,
 } = require('../security/access');
 const {
@@ -361,6 +362,7 @@ router.post('/exercise-library', requireCoach, async (req, res) => {
 router.post('/exercise-library/import', requireCoach, libraryImportLimiter, async (req, res) => {
   try {
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (rows.length > 500) return res.status(413).json({ error: 'Exercise imports are limited to 500 rows' });
     const cleaned = rows
       .filter((row) => row.name && String(row.name).trim())
       .map((row) => ({
@@ -455,7 +457,7 @@ router.get('/workouts/:id', requireCoach, async (req, res) => {
 router.put('/workouts/:id', requireCoach, async (req, res) => {
   try {
     const workout = await workoutWithDetails(req.params.id);
-    if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    if (!canManageWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
     const updates = { updated_at: new Date().toISOString() };
     for (const k of ['name', 'description', 'goal']) if (k in (req.body || {})) updates[k] = req.body[k] || null;
     if (updates.name !== undefined && !String(updates.name).trim()) return res.status(400).json({ error: 'Workout name is required' });
@@ -472,7 +474,7 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
 router.patch('/workouts/:id/archive', requireCoach, async (req, res) => {
   try {
     const workout = await workoutWithDetails(req.params.id);
-    if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    if (!canManageWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
     const { data, error } = await supabaseAdmin.from('workouts').update({ archived: true, updated_at: new Date().toISOString() }).eq('id', workout.id).select().single();
     if (error) throw error;
     return res.json(data);
