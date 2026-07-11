@@ -101,7 +101,10 @@ async function main() {
   }
   await check('client is blocked from coach dashboard', () => request('/dashboard/coach', { token: client.access_token, expected: 403 }));
   await check('coach dashboard', () => request('/dashboard/coach', { token: coachA.access_token }));
-  await check('client dashboard', () => request('/dashboard/client', { token: client.access_token }));
+  await check('client dashboard includes assigned coach', async () => {
+    const { payload } = await request('/dashboard/client', { token: client.access_token });
+    if (payload.coach_name !== coachA.profile.name) throw new Error('assigned coach name missing');
+  });
   await check('admin overview', () => request('/admin/overview', { token: admin.access_token }));
 
   const email = `cvf-test-${runId}@example.invalid`;
