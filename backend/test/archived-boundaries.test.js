@@ -18,6 +18,7 @@ test('ordinary owned-resource routes exclude archived records', () => {
   const clients = routeSource('clients.js');
   assert.match(clients, /includeArchived = false/);
   assert.match(clients, /if \(!includeArchived\) query = query\.eq\('archived', false\)/);
+  assert.match(clients, /includeArchived: req\.query\.include_archived === 'true'/);
   assert.match(clients, /loadClientOr404\(req, res, \{ includeArchived: true \}\)/);
 
   assertQueryFiltersArchived(routeSource('sessions.js'), 'sessions', 'async function loadSessionForCoach');

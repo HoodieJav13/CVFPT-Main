@@ -38,12 +38,17 @@ export default function ClientDetail() {
 
   const load = useCallback(async () => {
     try {
-      const [c, cr, w] = await Promise.all([
-        api.get(`/clients/${id}`),
+      const c = await api.get(`/clients/${id}?include_archived=true`);
+      setClient(c.data);
+      if (c.data.archived) {
+        setCredits(0);
+        setWaiver(null);
+        return;
+      }
+      const [cr, w] = await Promise.all([
         api.get(`/payments/credits/${id}`),
         api.get(`/waivers/client/${id}/status`),
       ]);
-      setClient(c.data);
       setCredits(cr.data.balance);
       setWaiver(w.data);
     } catch (e) {

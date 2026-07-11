@@ -69,7 +69,9 @@ async function loadClientOr404(req, res, { includeArchived = false } = {}) {
 // GET /api/clients/:id
 router.get('/:id', async (req, res) => {
   try {
-    const clientRow = await loadClientOr404(req, res);
+    const clientRow = await loadClientOr404(req, res, {
+      includeArchived: req.query.include_archived === 'true',
+    });
     if (!clientRow) return;
     return res.json(clientRow);
   } catch (e) {
