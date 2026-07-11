@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin, anonClient } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth } = require('../middleware/auth');
 const { loginLimiter, refreshLimiter, signupLimiter } = require('../middleware/rateLimits');
 const { linkInvitedClient } = require('../services/clientClaims');
@@ -37,7 +38,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       profile: resolved.profile,
     });
   } catch (e) {
-    console.error('login error', e);
+    logError('login error', e);
     return res.status(500).json({ error: 'Login failed' });
   }
 });
@@ -109,7 +110,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
       profile: linkedClient,
     });
   } catch (e) {
-    console.error('signup error', e);
+    logError('signup error', e);
     return res.status(500).json({ error: 'Signup failed. Please try again or contact your coach.' });
   }
 });
@@ -133,7 +134,7 @@ router.post('/refresh', refreshLimiter, async (req, res) => {
       expires_at: data.session.expires_at,
     });
   } catch (e) {
-    console.error('refresh error', e);
+    logError('refresh error', e);
     return res.status(500).json({ error: 'Token refresh failed' });
   }
 });

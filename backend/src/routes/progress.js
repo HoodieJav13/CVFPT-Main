@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
 
 const router = express.Router();
@@ -39,7 +40,7 @@ router.get('/clients/:clientId/metrics', requireCoach, async (req, res) => {
     if (!clientRow) return;
     return res.json(await metricsWithEntries(clientRow.id));
   } catch (e) {
-    console.error('get metrics error', e);
+    logError('get metrics error', e);
     return res.status(500).json({ error: 'Failed to load progress' });
   }
 });
@@ -57,7 +58,7 @@ router.post('/clients/:clientId/metrics', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json({ ...data, entries: [] });
   } catch (e) {
-    console.error('create metric error', e);
+    logError('create metric error', e);
     return res.status(500).json({ error: 'Failed to create metric' });
   }
 });
@@ -91,7 +92,7 @@ router.post('/metrics/:metricId/entries', async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create entry error', e);
+    logError('create entry error', e);
     return res.status(500).json({ error: 'Failed to log entry' });
   }
 });
@@ -119,7 +120,7 @@ router.put('/entries/:entryId', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('update entry error', e);
+    logError('update entry error', e);
     return res.status(500).json({ error: 'Failed to update entry' });
   }
 });
@@ -133,7 +134,7 @@ router.patch('/metrics/:metricId/archive', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive metric error', e);
+    logError('archive metric error', e);
     return res.status(500).json({ error: 'Failed to archive metric' });
   }
 });
@@ -151,7 +152,7 @@ router.patch('/entries/:entryId/archive', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive entry error', e);
+    logError('archive entry error', e);
     return res.status(500).json({ error: 'Failed to remove entry' });
   }
 });
@@ -161,7 +162,7 @@ router.get('/mine', requireClient, async (req, res) => {
   try {
     return res.json(await metricsWithEntries(req.user.client.id));
   } catch (e) {
-    console.error('client metrics error', e);
+    logError('client metrics error', e);
     return res.status(500).json({ error: 'Failed to load your progress' });
   }
 });

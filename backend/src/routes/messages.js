@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
 
 const router = express.Router();
@@ -47,7 +48,7 @@ router.get('/threads', async (req, res) => {
     });
     return res.json(threads);
   } catch (e) {
-    console.error('threads error', e);
+    logError('threads error', e);
     return res.status(500).json({ error: 'Failed to load messages' });
   }
 });
@@ -65,7 +66,7 @@ router.get('/with/:clientId', requireCoach, async (req, res) => {
       .eq('client_id', clientRow.id).eq('sender_role', 'client').eq('read_by_recipient', false).eq('archived', false);
     return res.json({ client: { id: clientRow.id, name: clientRow.name }, messages: data || [] });
   } catch (e) {
-    console.error('get conversation error', e);
+    logError('get conversation error', e);
     return res.status(500).json({ error: 'Failed to load conversation' });
   }
 });
@@ -87,7 +88,7 @@ router.post('/with/:clientId', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('send message error', e);
+    logError('send message error', e);
     return res.status(500).json({ error: 'Failed to send message' });
   }
 });
@@ -104,7 +105,7 @@ router.get('/mine', requireClient, async (req, res) => {
       .eq('client_id', client.id).eq('sender_role', 'coach').eq('read_by_recipient', false).eq('archived', false);
     return res.json({ coach, messages: data || [] });
   } catch (e) {
-    console.error('client conversation error', e);
+    logError('client conversation error', e);
     return res.status(500).json({ error: 'Failed to load your messages' });
   }
 });
@@ -124,7 +125,7 @@ router.post('/mine', requireClient, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('client send error', e);
+    logError('client send error', e);
     return res.status(500).json({ error: 'Failed to send message' });
   }
 });

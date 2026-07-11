@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
 const { validateSchedulePayload } = require('../validation/business');
 
@@ -32,7 +33,7 @@ router.get('/', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('list sessions error', e);
+    logError('list sessions error', e);
     return res.status(500).json({ error: 'Failed to load sessions' });
   }
 });
@@ -58,7 +59,7 @@ router.post('/', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create session error', e);
+    logError('create session error', e);
     return res.status(500).json({ error: 'Failed to create session' });
   }
 });
@@ -79,7 +80,7 @@ router.put('/:id', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('update session error', e);
+    logError('update session error', e);
     return res.status(500).json({ error: 'Failed to update session' });
   }
 });
@@ -96,7 +97,7 @@ router.patch('/:id/cancel', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('cancel session error', e);
+    logError('cancel session error', e);
     return res.status(500).json({ error: 'Failed to cancel session' });
   }
 });
@@ -114,7 +115,7 @@ router.patch('/:id/complete', requireCoach, async (req, res) => {
     if (!data) return res.status(400).json({ error: 'Session was already handled' });
     return res.json(data);
   } catch (e) {
-    console.error('complete session error', e);
+    logError('complete session error', e);
     return res.status(500).json({ error: 'Failed to complete session' });
   }
 });
@@ -130,7 +131,7 @@ router.get('/:id/notes', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('get notes error', e);
+    logError('get notes error', e);
     return res.status(500).json({ error: 'Failed to load notes' });
   }
 });
@@ -151,7 +152,7 @@ router.post('/:id/notes', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create note error', e);
+    logError('create note error', e);
     return res.status(500).json({ error: 'Failed to save note' });
   }
 });
@@ -172,7 +173,7 @@ router.put('/notes/:noteId', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('update note error', e);
+    logError('update note error', e);
     return res.status(500).json({ error: 'Failed to update note' });
   }
 });
@@ -199,7 +200,7 @@ router.get('/client/mine', requireClient, async (req, res) => {
     }
     return res.json((sessions || []).map((s) => ({ ...s, shared_notes: notesBySession[s.id] || [] })));
   } catch (e) {
-    console.error('client sessions error', e);
+    logError('client sessions error', e);
     return res.status(500).json({ error: 'Failed to load your sessions' });
   }
 });

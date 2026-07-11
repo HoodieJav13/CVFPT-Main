@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { validatePackagePayload } = require('../validation/business');
 
@@ -19,7 +20,7 @@ router.get('/', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('list packages error', e);
+    logError('list packages error', e);
     return res.status(500).json({ error: 'Failed to load packages' });
   }
 });
@@ -33,7 +34,7 @@ router.post('/', requireAdmin, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create package error', e);
+    logError('create package error', e);
     return res.status(500).json({ error: 'Failed to create package' });
   }
 });
@@ -49,7 +50,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
     if (!data) return res.status(404).json({ error: 'Package not found' });
     return res.json(data);
   } catch (e) {
-    console.error('update package error', e);
+    logError('update package error', e);
     return res.status(500).json({ error: 'Failed to update package' });
   }
 });
@@ -64,7 +65,7 @@ router.patch('/:id/archive', requireAdmin, async (req, res) => {
     if (!data) return res.status(404).json({ error: 'Package not found' });
     return res.json(data);
   } catch (e) {
-    console.error('archive package error', e);
+    logError('archive package error', e);
     return res.status(500).json({ error: 'Failed to archive package' });
   }
 });

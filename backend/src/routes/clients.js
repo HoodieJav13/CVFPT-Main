@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, canAccessClient } = require('../middleware/auth');
 
 const router = express.Router();
@@ -15,7 +16,7 @@ router.get('/', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('list clients error', e);
+    logError('list clients error', e);
     return res.status(500).json({ error: 'Failed to load clients' });
   }
 });
@@ -49,7 +50,7 @@ router.post('/', async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create client error', e);
+    logError('create client error', e);
     return res.status(500).json({ error: 'Failed to create client' });
   }
 });
@@ -72,7 +73,7 @@ router.get('/:id', async (req, res) => {
     if (!clientRow) return;
     return res.json(clientRow);
   } catch (e) {
-    console.error('get client error', e);
+    logError('get client error', e);
     return res.status(500).json({ error: 'Failed to load client' });
   }
 });
@@ -92,7 +93,7 @@ router.put('/:id', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('update client error', e);
+    logError('update client error', e);
     return res.status(500).json({ error: 'Failed to update client' });
   }
 });
@@ -116,7 +117,7 @@ router.patch('/:id/invite', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('invite client error', e);
+    logError('invite client error', e);
     return res.status(500).json({ error: 'Failed to update invite status' });
   }
 });
@@ -136,7 +137,7 @@ router.patch('/:id/archive', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive client error', e);
+    logError('archive client error', e);
     return res.status(500).json({ error: 'Failed to archive client' });
   }
 });

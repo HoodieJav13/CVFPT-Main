@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -12,7 +13,7 @@ router.get('/coaches', async (_req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('list coaches error', e);
+    logError('list coaches error', e);
     return res.status(500).json({ error: 'Failed to load coaches' });
   }
 });
@@ -46,7 +47,7 @@ router.post('/coaches', async (req, res) => {
     }
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create coach error', e);
+    logError('create coach error', e);
     return res.status(500).json({ error: 'Failed to create coach' });
   }
 });
@@ -65,7 +66,7 @@ router.patch('/clients/:id/reassign', async (req, res) => {
     if (!data) return res.status(404).json({ error: 'Client not found' });
     return res.json(data);
   } catch (e) {
-    console.error('reassign error', e);
+    logError('reassign error', e);
     return res.status(500).json({ error: 'Failed to reassign client' });
   }
 });
@@ -81,7 +82,7 @@ router.get('/overview', async (_req, res) => {
     ]);
     return res.json({ coaches: coaches || 0, clients: clients || 0, upcoming_sessions: upcoming || 0, pending_bookings: pendingBookings || 0 });
   } catch (e) {
-    console.error('overview error', e);
+    logError('overview error', e);
     return res.status(500).json({ error: 'Failed to load overview' });
   }
 });

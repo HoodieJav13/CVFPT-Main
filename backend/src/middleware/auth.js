@@ -1,4 +1,5 @@
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { canAccessClient } = require('../security/access');
 
 /**
@@ -42,7 +43,7 @@ async function requireAuth(req, res, next) {
 
     return res.status(403).json({ error: 'No profile linked to this account. Please contact your coach.' });
   } catch (e) {
-    console.error('auth middleware error', e);
+    logError('auth middleware error', e);
     return res.status(500).json({ error: 'Authentication check failed' });
   }
 }

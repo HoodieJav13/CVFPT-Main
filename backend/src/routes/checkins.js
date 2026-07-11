@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
 const { todayDateInTz } = require('../utils/time');
 
@@ -132,7 +133,7 @@ router.get('/mine', requireClient, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('client check-ins error', e);
+    logError('client check-ins error', e);
     return res.status(500).json({ error: 'Failed to load check-ins' });
   }
 });
@@ -144,7 +145,7 @@ router.post('/mine', requireClient, async (req, res) => {
     const data = await saveCheckIn(req.user.client, req.user, payload);
     return res.status(201).json(data);
   } catch (e) {
-    console.error('save client check-in error', e);
+    logError('save client check-in error', e);
     return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to save check-in' });
   }
 });
@@ -161,7 +162,7 @@ router.get('/clients/:clientId', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('coach check-ins error', e);
+    logError('coach check-ins error', e);
     return res.status(500).json({ error: 'Failed to load check-ins' });
   }
 });
@@ -175,7 +176,7 @@ router.post('/clients/:clientId', requireCoach, async (req, res) => {
     const data = await saveCheckIn(clientRow, req.user, payload);
     return res.status(201).json(data);
   } catch (e) {
-    console.error('save coach check-in error', e);
+    logError('save coach check-in error', e);
     return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to save check-in' });
   }
 });
@@ -198,7 +199,7 @@ router.put('/:id', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('update check-in error', e);
+    logError('update check-in error', e);
     return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to update check-in' });
   }
 });
@@ -218,7 +219,7 @@ router.patch('/:id/archive', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive check-in error', e);
+    logError('archive check-in error', e);
     return res.status(500).json({ error: 'Failed to archive check-in' });
   }
 });

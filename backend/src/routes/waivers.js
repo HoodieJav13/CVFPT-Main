@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireAdmin, requireClient, canAccessClient } = require('../middleware/auth');
 
 const router = express.Router();
@@ -24,7 +25,7 @@ router.get('/latest', async (_req, res) => {
     if (!v) return res.status(404).json({ error: 'No waiver version exists yet' });
     return res.json(v);
   } catch (e) {
-    console.error('latest waiver error', e);
+    logError('latest waiver error', e);
     return res.status(500).json({ error: 'Failed to load waiver' });
   }
 });
@@ -37,7 +38,7 @@ router.get('/versions', requireAdmin, async (_req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('versions error', e);
+    logError('versions error', e);
     return res.status(500).json({ error: 'Failed to load waiver versions' });
   }
 });
@@ -51,7 +52,7 @@ router.post('/versions', requireAdmin, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create version error', e);
+    logError('create version error', e);
     return res.status(500).json({ error: 'Failed to create waiver version' });
   }
 });
@@ -73,7 +74,7 @@ router.get('/client/:clientId/status', requireCoach, async (req, res) => {
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     return res.json(await signatureStatus(clientRow.id));
   } catch (e) {
-    console.error('waiver status error', e);
+    logError('waiver status error', e);
     return res.status(500).json({ error: 'Failed to load waiver status' });
   }
 });
@@ -98,7 +99,7 @@ router.post('/client/:clientId/sign-paper', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('sign paper error', e);
+    logError('sign paper error', e);
     if (e.code === '23505') return res.status(409).json({ error: 'The current waiver is already signed for this client' });
     return res.status(500).json({ error: 'Failed to record signature' });
   }
@@ -109,7 +110,7 @@ router.get('/my-status', requireClient, async (req, res) => {
   try {
     return res.json(await signatureStatus(req.user.client.id));
   } catch (e) {
-    console.error('my waiver status error', e);
+    logError('my waiver status error', e);
     return res.status(500).json({ error: 'Failed to load your waiver status' });
   }
 });
@@ -135,7 +136,7 @@ router.post('/sign', requireClient, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('sign waiver error', e);
+    logError('sign waiver error', e);
     if (e.code === '23505') return res.status(409).json({ error: 'You have already signed the current waiver' });
     return res.status(500).json({ error: 'Failed to sign waiver' });
   }

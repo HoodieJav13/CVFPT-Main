@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
 const { completePurchase, getBalance } = require('../utils/credits');
 const { createStripeClient, stripeConfiguration } = require('../config/stripe');
@@ -27,7 +28,7 @@ router.post('/webhook', async (req, res) => {
     try {
       event = stripe.webhooks.constructEvent(req.rawBody, sig, secret);
     } catch (err) {
-      console.error('Webhook signature verification failed', err.message);
+      logError('Webhook signature verification failed', err);
       return res.status(400).json({ error: 'Invalid signature' });
     }
     if (event.type === 'checkout.session.completed') {
@@ -38,7 +39,7 @@ router.post('/webhook', async (req, res) => {
     }
     return res.json({ received: true });
   } catch (e) {
-    console.error('webhook error', e);
+    logError('webhook error', e);
     return res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
@@ -92,7 +93,7 @@ router.post('/checkout', requireClient, async (req, res) => {
     if (error) throw error;
     return res.json({ url: session.url });
   } catch (e) {
-    console.error('checkout error', e);
+    logError('checkout error', e);
     return res.status(500).json({ error: 'Failed to start checkout. Please try again.' });
   }
 });
@@ -117,7 +118,7 @@ router.get('/verify', requireClient, async (req, res) => {
     }
     return res.json({ status: session.payment_status });
   } catch (e) {
-    console.error('verify error', e);
+    logError('verify error', e);
     return res.status(500).json({ error: 'Failed to verify payment' });
   }
 });
@@ -146,7 +147,7 @@ router.post('/manual', requireCoach, async (req, res) => {
       credits: data.credits,
     });
   } catch (e) {
-    console.error('manual purchase error', e);
+    logError('manual purchase error', e);
     return res.status(500).json({ error: 'Failed to record purchase' });
   }
 });
@@ -161,7 +162,7 @@ router.get('/history', requireClient, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('history error', e);
+    logError('history error', e);
     return res.status(500).json({ error: 'Failed to load payment history' });
   }
 });
@@ -179,7 +180,7 @@ router.get('/history/:clientId', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('coach history error', e);
+    logError('coach history error', e);
     return res.status(500).json({ error: 'Failed to load payment history' });
   }
 });

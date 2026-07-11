@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
 const { validateSchedulePayload } = require('../validation/business');
 
@@ -29,7 +30,7 @@ router.post('/', requireClient, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create booking error', e);
+    logError('create booking error', e);
     return res.status(500).json({ error: 'Failed to send booking request' });
   }
 });
@@ -43,7 +44,7 @@ router.get('/mine', requireClient, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('client bookings error', e);
+    logError('client bookings error', e);
     return res.status(500).json({ error: 'Failed to load your requests' });
   }
 });
@@ -59,7 +60,7 @@ router.get('/', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('list bookings error', e);
+    logError('list bookings error', e);
     return res.status(500).json({ error: 'Failed to load booking requests' });
   }
 });
@@ -85,7 +86,7 @@ router.patch('/:id/approve', requireCoach, async (req, res) => {
     if (!data) return res.status(400).json({ error: 'This request was already handled' });
     return res.json(data);
   } catch (e) {
-    console.error('approve booking error', e);
+    logError('approve booking error', e);
     return res.status(500).json({ error: 'Failed to approve request' });
   }
 });
@@ -104,7 +105,7 @@ router.patch('/:id/decline', requireCoach, async (req, res) => {
     if (!data) return res.status(400).json({ error: 'This request was already handled' });
     return res.json(data);
   } catch (e) {
-    console.error('decline booking error', e);
+    logError('decline booking error', e);
     return res.status(500).json({ error: 'Failed to decline request' });
   }
 });

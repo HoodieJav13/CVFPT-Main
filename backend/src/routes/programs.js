@@ -5,6 +5,7 @@ const multer = require('multer');
 const PDFDocument = require('pdfkit');
 const pdfParse = require('pdf-parse');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
 const {
   canAccessProgram,
@@ -44,7 +45,7 @@ function programImportUpload(req, res, next) {
     if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({ error: 'Import files must be 5 MB or smaller.' });
     }
-    console.error('program import upload error', err);
+    logError('program import upload error', err);
     return res.status(400).json({ error: 'Could not read the uploaded file.' });
   });
 }
@@ -292,7 +293,7 @@ router.get('/exercise-library', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data || []);
   } catch (e) {
-    console.error('exercise library error', e);
+    logError('exercise library error', e);
     return res.status(500).json({ error: 'Failed to load exercise library' });
   }
 });
@@ -309,7 +310,7 @@ router.post('/exercise-library', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create library exercise error', e);
+    logError('create library exercise error', e);
     return res.status(500).json({ error: 'Failed to save exercise' });
   }
 });
@@ -336,7 +337,7 @@ router.post('/exercise-library/import', requireCoach, libraryImportLimiter, asyn
     if (error) throw error;
     return res.status(201).json({ imported: data.length, exercises: data });
   } catch (e) {
-    console.error('import library error', e);
+    logError('import library error', e);
     return res.status(500).json({ error: 'Failed to import exercises' });
   }
 });
@@ -353,7 +354,7 @@ router.put('/exercise-library/:id', requireCoach, async (req, res) => {
     if (!data) return res.status(404).json({ error: 'Exercise not found' });
     return res.json(data);
   } catch (e) {
-    console.error('update library exercise error', e);
+    logError('update library exercise error', e);
     return res.status(500).json({ error: 'Failed to update exercise' });
   }
 });
@@ -364,7 +365,7 @@ router.patch('/exercise-library/:id/archive', requireCoach, async (req, res) => 
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive library exercise error', e);
+    logError('archive library exercise error', e);
     return res.status(500).json({ error: 'Failed to archive exercise' });
   }
 });
@@ -374,7 +375,7 @@ router.get('/workouts', requireCoach, async (req, res) => {
   try {
     return res.json(await listWorkouts(req.user));
   } catch (e) {
-    console.error('list workouts error', e);
+    logError('list workouts error', e);
     return res.status(500).json({ error: 'Failed to load workouts' });
   }
 });
@@ -394,7 +395,7 @@ router.post('/workouts', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(await workoutWithDetails(workoutId));
   } catch (e) {
-    console.error('create workout error', e);
+    logError('create workout error', e);
     return res.status(500).json({ error: 'Failed to create workout' });
   }
 });
@@ -405,7 +406,7 @@ router.get('/workouts/:id', requireCoach, async (req, res) => {
     if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
     return res.json(workout);
   } catch (e) {
-    console.error('get workout error', e);
+    logError('get workout error', e);
     return res.status(500).json({ error: 'Failed to load workout' });
   }
 });
@@ -429,7 +430,7 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
     if (!workoutId) return res.status(404).json({ error: 'Workout not found' });
     return res.json(await workoutWithDetails(workoutId));
   } catch (e) {
-    console.error('update workout error', e);
+    logError('update workout error', e);
     return res.status(500).json({ error: 'Failed to update workout' });
   }
 });
@@ -442,7 +443,7 @@ router.patch('/workouts/:id/archive', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive workout error', e);
+    logError('archive workout error', e);
     return res.status(500).json({ error: 'Failed to archive workout' });
   }
 });
@@ -464,7 +465,7 @@ router.post('/import/parse-csv', requireCoach, csvImportLimiter, programImportUp
     return res.json({ message: 'CSV parsed. Review imported program before saving.', draft: validation.draft, errors: [] });
   } catch (e) {
     const status = e.validation ? 400 : 500;
-    console.error('parse csv program error', e);
+    logError('parse csv program error', e);
     return res.status(status).json({ error: e.message || 'Could not parse CSV import' });
   }
 });
@@ -488,7 +489,7 @@ router.post('/import/parse-pdf', requireCoach, pdfImportLimiter, programImportUp
     if (!validation.valid) return res.status(422).json({ error: 'PDF parsed, but the draft needs fixes before saving.', draft: validation.draft, errors: validation.errors });
     return res.json({ message: 'PDF parsed. Review extracted program before saving.', draft: validation.draft, errors: [] });
   } catch (e) {
-    console.error('parse pdf program error', e);
+    logError('parse pdf program error', e);
     return res.status(e.status || 500).json({ error: e.message || 'Could not parse PDF import' });
   }
 });
@@ -504,13 +505,13 @@ router.post('/import/commit', requireCoach, programCommitLimiter, async (req, re
       p_draft: validation.draft,
     });
     if (error) {
-      console.error('commit program import rpc error', error);
+      logError('commit program import rpc error', error);
       return res.status(500).json({ error: 'Program import could not be saved. Confirm the latest database migration has been applied.' });
     }
     const program = data?.program_id ? await programWithDetails(data.program_id) : null;
     return res.status(201).json({ ...data, program });
   } catch (e) {
-    console.error('commit program import error', e);
+    logError('commit program import error', e);
     return res.status(500).json({ error: 'Failed to save imported program' });
   }
 });
@@ -538,7 +539,7 @@ router.get('/', requireCoach, async (req, res) => {
     }
     return res.json(result);
   } catch (e) {
-    console.error('list programs error', e);
+    logError('list programs error', e);
     return res.status(500).json({ error: 'Failed to load programs' });
   }
 });
@@ -564,7 +565,7 @@ router.post('/', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(await programWithDetails(programId));
   } catch (e) {
-    console.error('create program error', e);
+    logError('create program error', e);
     return res.status(500).json({ error: e.message || 'Failed to create program' });
   }
 });
@@ -583,7 +584,7 @@ router.get('/:id/export.pdf', requireCoach, pdfExportLimiter, async (req, res) =
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return res.send(pdf);
   } catch (e) {
-    console.error('export program pdf error', e);
+    logError('export program pdf error', e);
     return res.status(500).json({ error: 'Failed to export program PDF' });
   }
 });
@@ -594,7 +595,7 @@ router.get('/:id', requireCoach, async (req, res) => {
     if (!program || !canAccessProgram(req.user, program) || program.archived) return res.status(404).json({ error: 'Program not found' });
     return res.json(program);
   } catch (e) {
-    console.error('get program error', e);
+    logError('get program error', e);
     return res.status(500).json({ error: 'Failed to load program' });
   }
 });
@@ -628,7 +629,7 @@ router.put('/:id', requireCoach, async (req, res) => {
     if (!programId) return res.status(404).json({ error: 'Program not found' });
     return res.json(await programWithDetails(programId));
   } catch (e) {
-    console.error('update program error', e);
+    logError('update program error', e);
     return res.status(500).json({ error: 'Failed to update program' });
   }
 });
@@ -641,7 +642,7 @@ router.patch('/:id/archive', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive program error', e);
+    logError('archive program error', e);
     return res.status(500).json({ error: 'Failed to archive program' });
   }
 });
@@ -662,7 +663,7 @@ router.post('/:id/assign', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('assign program error', e);
+    logError('assign program error', e);
     return res.status(500).json({ error: 'Failed to assign program' });
   }
 });
@@ -678,7 +679,7 @@ router.patch('/assignments/:assignmentId/archive', requireCoach, async (req, res
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('unassign error', e);
+    logError('unassign error', e);
     return res.status(500).json({ error: 'Failed to unassign program' });
   }
 });
@@ -699,7 +700,7 @@ router.get('/workout-assignments/client/:clientId', requireCoach, async (req, re
     }
     return res.json(result);
   } catch (e) {
-    console.error('workout assignments error', e);
+    logError('workout assignments error', e);
     return res.status(500).json({ error: 'Failed to load workout assignments' });
   }
 });
@@ -720,7 +721,7 @@ router.post('/workout-assignments', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json({ ...data, workout });
   } catch (e) {
-    console.error('assign workout error', e);
+    logError('assign workout error', e);
     return res.status(500).json({ error: 'Failed to assign workout' });
   }
 });
@@ -745,7 +746,7 @@ router.patch('/workout-assignments/:assignmentId/archive', requireCoach, async (
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive workout assignment error', e);
+    logError('archive workout assignment error', e);
     return res.status(500).json({ error: 'Failed to remove workout assignment' });
   }
 });
@@ -769,7 +770,7 @@ router.get('/client/assigned', requireClient, async (req, res) => {
     }
     return res.json({ programs, workouts });
   } catch (e) {
-    console.error('client programs error', e);
+    logError('client programs error', e);
     return res.status(500).json({ error: 'Failed to load your programs' });
   }
 });

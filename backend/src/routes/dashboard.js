@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
 const { getBalance } = require('../utils/credits');
 const { todayRangeInTz, todayDateInTz } = require('../utils/time');
@@ -67,7 +68,7 @@ router.get('/coach', requireCoach, async (req, res) => {
       recent_check_ins: recentCheckIns,
     });
   } catch (e) {
-    console.error('coach dashboard error', e);
+    logError('coach dashboard error', e);
     return res.status(500).json({ error: 'Failed to load dashboard' });
   }
 });
@@ -140,7 +141,7 @@ router.get('/client', requireClient, async (req, res) => {
       coach_name: null,
     });
   } catch (e) {
-    console.error('client dashboard error', e);
+    logError('client dashboard error', e);
     return res.status(500).json({ error: 'Failed to load your home' });
   }
 });
