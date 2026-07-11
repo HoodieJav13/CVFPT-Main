@@ -1,6 +1,7 @@
-import { Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2, RotateCcw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import {
@@ -12,6 +13,25 @@ export function LoadingScreen() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center" data-testid="loading-screen">
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+}
+
+export function LoadErrorState({ message = 'Please try again.', onRetry, scope = 'page' }) {
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      className="flex min-h-[40vh] flex-col items-center justify-center rounded-2xl border border-destructive/30 bg-destructive/5 px-6 py-10 text-center"
+      data-testid="load-error-state"
+      data-load-error-scope={scope}
+    >
+      <AlertCircle className="h-8 w-8 text-destructive" aria-hidden />
+      <h2 className="mt-3 font-display text-xl font-semibold">Unable to load this page</h2>
+      <p className="mt-1 max-w-md text-sm text-muted-foreground" data-testid="load-error-message">{message}</p>
+      <Button type="button" variant="outline" className="mt-4 rounded-xl" onClick={onRetry} data-testid="load-error-retry-button">
+        <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden /> Try again
+      </Button>
     </div>
   );
 }

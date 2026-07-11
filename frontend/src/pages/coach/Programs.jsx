@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, EmptyState } from '@/components/common';
+import { PageHeader, LoadingScreen, LoadErrorState, EmptyState } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,6 +50,7 @@ export default function Programs() {
   const [workouts, setWorkouts] = useState(null);
   const [programs, setPrograms] = useState(null);
   const [clients, setClients] = useState([]);
+  const [loadError, setLoadError] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -63,24 +64,29 @@ export default function Programs() {
       setWorkouts(w.data);
       setPrograms(p.data);
       setClients(c.data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load training builder'));
+      const message = errMsg(e, 'Failed to load training builder');
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  if (!library || !workouts || !programs) return <LoadingScreen />;
+  const awaitingInitialData = !library || !workouts || !programs;
+  if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="coach-programs" onRetry={() => { setLoadError(null); load(); }} />;
+  if (awaitingInitialData) return <LoadingScreen />;
 
   return (
     <div>
       <PageHeader title="Training builder" subtitle="Manage exercise library, workout days, structured programs, and assignments" />
       <Tabs defaultValue="library">
         <TabsList className="w-full justify-start overflow-x-auto rounded-xl">
-          <TabsTrigger value="library">Exercise Library</TabsTrigger>
-          <TabsTrigger value="workouts">Workout Days</TabsTrigger>
-          <TabsTrigger value="programs">Programs</TabsTrigger>
-          <TabsTrigger value="assignments">Assignments</TabsTrigger>
+          <TabsTrigger value="library" data-testid="training-builder-tab-library">Exercise Library</TabsTrigger>
+          <TabsTrigger value="workouts" data-testid="training-builder-tab-workouts">Workout Days</TabsTrigger>
+          <TabsTrigger value="programs" data-testid="training-builder-tab-programs">Programs</TabsTrigger>
+          <TabsTrigger value="assignments" data-testid="training-builder-tab-assignments">Assignments</TabsTrigger>
         </TabsList>
         <TabsContent value="library"><ExerciseLibraryTab library={library} reload={load} /></TabsContent>
         <TabsContent value="workouts"><WorkoutsTab workouts={workouts} library={library} reload={load} /></TabsContent>
@@ -166,13 +172,13 @@ function ExerciseLibraryTab({ library, reload }) {
   return (
     <div className="space-y-4 mt-1">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search exercises..." className="h-11 rounded-xl sm:max-w-sm" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search exercises..." className="h-11 rounded-xl sm:max-w-sm" data-testid="exercise-library-search-input" />
         <div className="flex gap-2">
           <label className="inline-flex h-10 cursor-pointer items-center rounded-xl border border-border px-3 text-sm font-medium hover:bg-accent">
             <FileUp className="h-4 w-4 mr-1.5" /> Import CSV
-            <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => importCsv(e.target.files?.[0])} />
+            <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => importCsv(e.target.files?.[0])} data-testid="exercise-library-import-input" />
           </label>
-          <Button className="rounded-xl" onClick={openCreate}>
+          <Button className="rounded-xl" onClick={openCreate} data-testid="exercise-library-create-button">
             <Plus className="h-4 w-4 mr-1.5" /> Add exercise
           </Button>
         </div>
@@ -181,7 +187,7 @@ function ExerciseLibraryTab({ library, reload }) {
       {filtered.length === 0 && <EmptyState icon={BookOpen} title="No exercises found" subtitle="Import a CSV or add an exercise manually." />}
       <div className="grid gap-3 md:grid-cols-2">
         {filtered.map((exercise) => (
-          <Card key={exercise.id}>
+          <Card key={exercise.id} data-testid="exercise-library-card">
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -192,8 +198,8 @@ function ExerciseLibraryTab({ library, reload }) {
                   {exercise.video_url && <a href={exercise.video_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">Video</a>}
                 </div>
                 <div className="flex gap-1.5">
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEdit(exercise)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archive(exercise)}><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEdit(exercise)} data-testid="exercise-library-edit-button"><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archive(exercise)} data-testid="exercise-library-archive-button"><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>
             </CardContent>
@@ -204,16 +210,16 @@ function ExerciseLibraryTab({ library, reload }) {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>{editing ? 'Edit exercise' : 'Add exercise'}</DialogTitle></DialogHeader>
           <form onSubmit={save} className="space-y-3.5">
-            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Exercise name" />
+            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Exercise name" data-testid="exercise-library-name-input" />
             <div className="grid grid-cols-2 gap-3">
-              <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Category" />
-              <Input value={form.equipment} onChange={(e) => setForm({ ...form, equipment: e.target.value })} placeholder="Equipment" />
-              <Input value={form.primary_muscle} onChange={(e) => setForm({ ...form, primary_muscle: e.target.value })} placeholder="Primary muscle" />
-              <Input value={form.secondary_muscles} onChange={(e) => setForm({ ...form, secondary_muscles: e.target.value })} placeholder="Secondary muscles" />
+              <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Category" data-testid="exercise-library-category-input" />
+              <Input value={form.equipment} onChange={(e) => setForm({ ...form, equipment: e.target.value })} placeholder="Equipment" data-testid="exercise-library-equipment-input" />
+              <Input value={form.primary_muscle} onChange={(e) => setForm({ ...form, primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="exercise-library-primary-muscle-input" />
+              <Input value={form.secondary_muscles} onChange={(e) => setForm({ ...form, secondary_muscles: e.target.value })} placeholder="Secondary muscles" data-testid="exercise-library-secondary-muscles-input" />
             </div>
-            <Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="YouTube video URL" />
-            <Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" />
-            <DialogFooter><Button disabled={saving} className="rounded-xl">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save exercise'}</Button></DialogFooter>
+            <Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="YouTube video URL" data-testid="exercise-library-video-input" />
+            <Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" data-testid="exercise-library-notes-input" />
+            <DialogFooter><Button disabled={saving} className="rounded-xl" data-testid="exercise-library-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save exercise'}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -291,12 +297,12 @@ function WorkoutsTab({ workouts, library, reload }) {
   return (
     <div className="space-y-4 mt-1">
       <div className="flex justify-end">
-        <Button className="rounded-xl" onClick={openCreate}><Plus className="h-4 w-4 mr-1.5" /> New workout day</Button>
+        <Button className="rounded-xl" onClick={openCreate} data-testid="workout-create-button"><Plus className="h-4 w-4 mr-1.5" /> New workout day</Button>
       </div>
       {workouts.length === 0 && <EmptyState icon={Dumbbell} title="No workout days yet" subtitle="Create reusable day templates from library exercises or custom movements." />}
       <div className="grid gap-3 md:grid-cols-2">
         {workouts.map((workout) => (
-          <Card key={workout.id}>
+          <Card key={workout.id} data-testid="workout-card">
             <CardHeader className="pb-2">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -304,8 +310,8 @@ function WorkoutsTab({ workouts, library, reload }) {
                   <p className="text-xs text-muted-foreground mt-1">{workout.goal || workout.description || 'Workout day template'}</p>
                 </div>
                 <div className="flex gap-1.5">
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEdit(workout)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archive(workout)}><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEdit(workout)} data-testid="workout-edit-button"><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archive(workout)} data-testid="workout-archive-button"><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>
             </CardHeader>
@@ -407,13 +413,13 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
   return (
     <div className="space-y-4 mt-1">
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-        <Button variant="secondary" className="rounded-xl" onClick={() => setImportOpen(true)}><FileUp className="h-4 w-4 mr-1.5" /> Import program</Button>
-        <Button className="rounded-xl" onClick={openCreate}><Plus className="h-4 w-4 mr-1.5" /> New program</Button>
+        <Button variant="secondary" className="rounded-xl" onClick={() => setImportOpen(true)} data-testid="program-import-open-button"><FileUp className="h-4 w-4 mr-1.5" /> Import program</Button>
+        <Button className="rounded-xl" onClick={openCreate} data-testid="program-create-button"><Plus className="h-4 w-4 mr-1.5" /> New program</Button>
       </div>
       {programs.length === 0 && <EmptyState icon={CalendarDays} title="No structured programs yet" subtitle="Build a 3-5 day weekly program from saved workout days." />}
       <div className="space-y-3">
         {programs.map((program) => (
-          <Card key={program.id}>
+          <Card key={program.id} data-testid="program-card">
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -429,9 +435,9 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
                   </div>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => exportPdf(program)} title="Export PDF"><Download className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEdit(program)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archive(program)}><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => exportPdf(program)} title="Export PDF" data-testid="program-export-pdf-button"><Download className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEdit(program)} data-testid="program-edit-button"><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archive(program)} data-testid="program-archive-button"><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>
             </CardContent>
@@ -442,12 +448,12 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
         <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
           <DialogHeader><DialogTitle>{editing ? 'Edit program' : 'New structured program'}</DialogTitle></DialogHeader>
           <form onSubmit={save} className="space-y-4">
-            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Program name" />
-            <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Program description" />
+            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Program name" data-testid="program-name-input" />
+            <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Program description" data-testid="program-description-input" />
             <div className="space-y-1.5">
               <Label>Days per week</Label>
               <Select value={form.frequency_days} onValueChange={setFrequency}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-xl" data-testid="program-frequency-select"><SelectValue /></SelectTrigger>
                 <SelectContent>{['3', '4', '5'].map((d) => <SelectItem key={d} value={d}>{d} days/week</SelectItem>)}</SelectContent>
               </Select>
             </div>
@@ -456,14 +462,14 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
                 <div key={day.day_number} className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
                   <Label>Day {day.day_number}</Label>
                   <Select value={day.workout_id} onValueChange={(workout_id) => setForm({ ...form, days: form.days.map((d, i) => i === index ? { ...d, workout_id } : d) })}>
-                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Choose workout day..." /></SelectTrigger>
+                    <SelectTrigger className="rounded-xl" data-testid="program-day-workout-select"><SelectValue placeholder="Choose workout day..." /></SelectTrigger>
                     <SelectContent>{workouts.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
                   </Select>
-                  <Input value={day.notes} onChange={(e) => setForm({ ...form, days: form.days.map((d, i) => i === index ? { ...d, notes: e.target.value } : d) })} placeholder="Day notes" />
+                  <Input value={day.notes} onChange={(e) => setForm({ ...form, days: form.days.map((d, i) => i === index ? { ...d, notes: e.target.value } : d) })} placeholder="Day notes" data-testid="program-day-notes-input" />
                 </div>
               ))}
             </div>
-            <DialogFooter><Button disabled={saving} className="rounded-xl">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save program'}</Button></DialogFooter>
+            <DialogFooter><Button disabled={saving} className="rounded-xl" data-testid="program-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save program'}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -582,7 +588,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="max-h-[92dvh] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[92dvh] max-w-4xl overflow-y-auto" data-testid="program-import-dialog">
         <DialogHeader>
           <DialogTitle>Import program</DialogTitle>
         </DialogHeader>
@@ -591,7 +597,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
             <div className="space-y-1.5">
               <Label>Source</Label>
               <Select value={sourceType} onValueChange={setSourceType}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-xl" data-testid="program-import-source-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="csv">CSV template</SelectItem>
                   <SelectItem value="pdf">PDF extraction</SelectItem>
@@ -600,11 +606,11 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
             </div>
             <div className="space-y-1.5">
               <Label>{sourceType === 'pdf' ? 'PDF file' : 'CSV file'}</Label>
-              <Input type="file" accept={sourceType === 'pdf' ? '.pdf,application/pdf' : '.csv,text/csv'} onChange={(e) => setFile(e.target.files?.[0] || null)} />
+              <Input type="file" accept={sourceType === 'pdf' ? '.pdf,application/pdf' : '.csv,text/csv'} onChange={(e) => setFile(e.target.files?.[0] || null)} data-testid="program-import-file-input" />
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="rounded-xl" type="button" onClick={downloadTemplate}><FileText className="h-4 w-4 mr-1.5" /> Template</Button>
-              <Button className="rounded-xl" type="button" onClick={parseFile} disabled={parsing || !file}>{parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Parse'}</Button>
+              <Button variant="outline" className="rounded-xl" type="button" onClick={downloadTemplate} data-testid="program-import-template-button"><FileText className="h-4 w-4 mr-1.5" /> Template</Button>
+              <Button className="rounded-xl" type="button" onClick={parseFile} disabled={parsing || !file} data-testid="program-import-parse-button">{parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Parse'}</Button>
             </div>
           </div>
 
@@ -630,7 +636,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
             <div className="space-y-4">
               <div className="rounded-xl border border-border bg-card/50 p-4 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
-                  <Input value={draft.program.name} onChange={(e) => setProgram({ name: e.target.value })} placeholder="Program name" />
+                  <Input value={draft.program.name} onChange={(e) => setProgram({ name: e.target.value })} placeholder="Program name" data-testid="program-import-name-input" />
                   <Select value={String(draft.program.frequency_days)} onValueChange={(value) => setProgram({ frequency_days: Number(value) })}>
                     <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                     <SelectContent>{['3', '4', '5'].map((d) => <SelectItem key={d} value={d}>{d} days/week</SelectItem>)}</SelectContent>
@@ -702,7 +708,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
 
               <DialogFooter>
                 <Button variant="outline" className="rounded-xl" onClick={() => close(false)}>Cancel</Button>
-                <Button className="rounded-xl" disabled={saving || !validation.valid} onClick={commit}>
+                <Button className="rounded-xl" disabled={saving || !validation.valid} onClick={commit} data-testid="program-import-save-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save to vault'}
                 </Button>
               </DialogFooter>
@@ -761,7 +767,7 @@ function AssignmentsTab({ programs, workouts, clients, reload }) {
             <div className="space-y-1.5">
               <Label>Assignment type</Label>
               <Select value={type} onValueChange={setType}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-xl" data-testid="assignment-type-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="program">Long-term program</SelectItem>
                   <SelectItem value="workout">Standalone workout</SelectItem>
@@ -771,7 +777,7 @@ function AssignmentsTab({ programs, workouts, clients, reload }) {
             <div className="space-y-1.5">
               <Label>Client</Label>
               <Select value={clientId} onValueChange={setClientId}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Choose client..." /></SelectTrigger>
+                <SelectTrigger className="rounded-xl" data-testid="assignment-client-select"><SelectValue placeholder="Choose client..." /></SelectTrigger>
                 <SelectContent>{clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
@@ -780,7 +786,7 @@ function AssignmentsTab({ programs, workouts, clients, reload }) {
             <div className="space-y-1.5">
               <Label>Program</Label>
               <Select value={programId} onValueChange={setProgramId}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Choose program..." /></SelectTrigger>
+                <SelectTrigger className="rounded-xl" data-testid="assignment-program-select"><SelectValue placeholder="Choose program..." /></SelectTrigger>
                 <SelectContent>{programs.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
@@ -789,25 +795,25 @@ function AssignmentsTab({ programs, workouts, clients, reload }) {
               <div className="space-y-1.5 sm:col-span-1">
                 <Label>Workout</Label>
                 <Select value={workoutId} onValueChange={setWorkoutId}>
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Choose workout..." /></SelectTrigger>
+                  <SelectTrigger className="rounded-xl" data-testid="assignment-workout-select"><SelectValue placeholder="Choose workout..." /></SelectTrigger>
                   <SelectContent>{workouts.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Mode</Label>
                 <Select value={mode} onValueChange={setMode}>
-                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="rounded-xl" data-testid="assignment-mode-select"><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="active">Active template</SelectItem><SelectItem value="dated">Dated workout</SelectItem></SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Date</Label>
-                <Input type="date" disabled={mode !== 'dated'} value={date} onChange={(e) => setDate(e.target.value)} />
+                <Input type="date" disabled={mode !== 'dated'} value={date} onChange={(e) => setDate(e.target.value)} data-testid="assignment-date-input" />
               </div>
             </div>
           )}
-          <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" />
-          <Button disabled={saving} className="rounded-xl"><UserPlus className="h-4 w-4 mr-1.5" /> {saving ? 'Assigning...' : 'Assign'}</Button>
+          <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" data-testid="assignment-notes-input" />
+          <Button disabled={saving} className="rounded-xl" data-testid="assignment-submit-button"><UserPlus className="h-4 w-4 mr-1.5" /> {saving ? 'Assigning...' : 'Assign'}</Button>
         </form>
       </CardContent>
     </Card>
@@ -834,10 +840,10 @@ function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onS
         <DialogHeader><DialogTitle>{editing ? 'Edit workout day' : 'New workout day'}</DialogTitle></DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Workout day name" />
-            <Input value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} placeholder="Goal/focus" />
+            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Workout day name" data-testid="workout-name-input" />
+            <Input value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} placeholder="Goal/focus" data-testid="workout-goal-input" />
           </div>
-          <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" />
+          <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" data-testid="workout-description-input" />
           <datalist id="exercise-library-options">
             {library.map((exercise) => <option key={exercise.id} value={exercise.name} />)}
           </datalist>
@@ -845,28 +851,28 @@ function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onS
             {form.exercises.map((exercise, index) => (
               <div key={index} className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <Input list="exercise-library-options" value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} />
-                  <Button type="button" size="icon" variant="ghost" className="h-9 w-9 rounded-lg text-muted-foreground" onClick={() => setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== index) })}><Trash2 className="h-4 w-4" /></Button>
+                  <Input list="exercise-library-options" value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
+                  <Button type="button" size="icon" variant="ghost" className="h-9 w-9 rounded-lg text-muted-foreground" onClick={() => setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== index) })} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></Button>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" />
-                  <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" />
-                  <Input value={exercise.rest} onChange={(e) => setExercise(index, { rest: e.target.value })} placeholder="Rest" />
-                  <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" />
+                  <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />
+                  <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />
+                  <Input value={exercise.rest} onChange={(e) => setExercise(index, { rest: e.target.value })} placeholder="Rest" data-testid="workout-exercise-rest-input" />
+                  <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" />
                 </div>
                 <div className="relative">
                   <Video className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" />
+                  <Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" />
                 </div>
-                <Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" />
-                <Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" />
+                <Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" />
+                <Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" />
               </div>
             ))}
           </div>
-          <Button type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setForm({ ...form, exercises: [...form.exercises, { ...EMPTY_EXERCISE }] })}>
+          <Button type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setForm({ ...form, exercises: [...form.exercises, { ...EMPTY_EXERCISE }] })} data-testid="workout-exercise-add-button">
             <Plus className="h-4 w-4 mr-1.5" /> Add exercise
           </Button>
-          <DialogFooter><Button disabled={saving} className="rounded-xl">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save workout'}</Button></DialogFooter>
+          <DialogFooter><Button disabled={saving} className="rounded-xl" data-testid="workout-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save workout'}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

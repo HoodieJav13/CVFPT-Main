@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
-import { ListSkeleton } from '@/components/common';
+import { ListSkeleton, LoadErrorState } from '@/components/common';
 import { ChatThread } from '@/components/Chat';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,17 +10,26 @@ export default function CoachConversation() {
   const { clientId } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [loadedClientId, setLoadedClientId] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [sending, setSending] = useState(false);
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     try {
       const { data } = await api.get(`/messages/with/${clientId}`);
+      if (sequence !== loadSequence.current) return;
       setData(data);
+      setLoadedClientId(clientId);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load conversation'));
-      navigate('/coach/messages');
+      if (sequence !== loadSequence.current) return;
+      const message = errMsg(e, 'Failed to load conversation');
+      setLoadError({ clientId, message });
+      toast.error(message);
     }
-  }, [clientId, navigate]);
+  }, [clientId]);
 
   useEffect(() => {
     load();
@@ -42,7 +51,9 @@ export default function CoachConversation() {
     }
   };
 
-  if (!data) return <ListSkeleton rows={4} />;
+  const hasCurrentConversation = loadedClientId === clientId;
+  if (!hasCurrentConversation && loadError?.clientId === clientId) return <LoadErrorState message={loadError.message} scope="coach-conversation" onRetry={() => { setLoadError(null); load(); }} />;
+  if (!data || !hasCurrentConversation) return <ListSkeleton rows={4} />;
 
   return (
     <div>

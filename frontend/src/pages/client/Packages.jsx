@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, SectionLabel } from '@/components/common';
+import { PageHeader, LoadingScreen, LoadErrorState, SectionLabel } from '@/components/common';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ export default function ClientPackages() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [config, setConfig] = useState(null);
   const [packages, setPackages] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [credits, setCredits] = useState(0);
   const [history, setHistory] = useState([]);
   const [buying, setBuying] = useState(null);
@@ -29,8 +30,11 @@ export default function ClientPackages() {
       setPackages(pkgs.data);
       setCredits(cr.data.balance);
       setHistory(hist.data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load packages'));
+      const message = errMsg(e, 'Failed to load packages');
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
@@ -70,7 +74,9 @@ export default function ClientPackages() {
     }
   };
 
-  if (!packages || !config) return <LoadingScreen />;
+  const awaitingInitialData = !packages || !config;
+  if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="client-packages" onRetry={() => { setLoadError(null); load(); }} />;
+  if (awaitingInitialData) return <LoadingScreen />;
 
   return (
     <div>

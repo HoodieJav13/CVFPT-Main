@@ -102,12 +102,12 @@ export default function AppShell() {
 
         <div className="relative z-10">
           {/* Mobile top bar */}
-          <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur">
+          <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur" data-testid="mobile-header">
             <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2" data-testid="mobile-brand">
               <BrandLogo size="mobile" />
               <span className="font-display font-semibold">CVF PT</span>
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" data-testid="mobile-header-actions">
               {user.role === 'admin' && (
                 <Button variant="ghost" size="icon" onClick={() => navigate('/admin')} data-testid="mobile-admin-link">
                   <ShieldCheck className="h-5 w-5 text-primary" />
@@ -136,7 +136,7 @@ export default function AppShell() {
       )}
 
       {/* Mobile bottom tabs */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70" data-testid="mobile-bottom-navigation">
         <div className="grid grid-cols-5 h-16">
           {nav.map((item) => (
             <NavLink

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { PageHeader, StatTile, DashboardSkeleton, StatusBadge, SectionLabel, CheckInStats } from '@/components/common';
+import { PageHeader, StatTile, DashboardSkeleton, LoadErrorState, StatusBadge, SectionLabel, CheckInStats } from '@/components/common';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, Users, Inbox, MessageSquare, Check, Plus, ChevronRight, ClipboardCheck } from 'lucide-react';
@@ -14,13 +14,17 @@ export default function CoachDashboard() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   const load = useCallback(async () => {
     try {
       const { data } = await api.get('/dashboard/coach');
       setData(data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load dashboard'));
+      const message = errMsg(e, 'Failed to load dashboard');
+      setLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -39,7 +43,8 @@ export default function CoachDashboard() {
   };
 
   if (loading) return <DashboardSkeleton />;
-  if (!data) return null;
+  if (!data && loadError) return <LoadErrorState message={loadError} scope="coach-dashboard" onRetry={() => { setLoading(true); load(); }} />;
+  if (!data) return <DashboardSkeleton />;
 
   const firstName = (user.profile?.name || '').split(' ')[0];
 
@@ -104,9 +109,9 @@ export default function CoachDashboard() {
             <div key={b.id} className="rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="booking-request-row">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-medium truncate">{b.client?.name}</p>
-                  <p className="text-xs text-muted-foreground">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
-                  {b.note && <p className="text-xs text-muted-foreground mt-1 italic truncate">"{b.note}"</p>}
+                  <p className="font-medium truncate" data-testid="booking-client-name">{b.client?.name}</p>
+                  <p className="text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
+                  {b.note && <p className="text-xs text-muted-foreground mt-1 italic truncate" data-testid="booking-request-note">"{b.note}"</p>}
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <Button size="sm" className="rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button">

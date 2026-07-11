@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, SessionsSkeleton, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
+import { PageHeader, SessionsSkeleton, LoadErrorState, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 
 export default function ClientSessions() {
   const [sessions, setSessions] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [requests, setRequests] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -28,8 +29,11 @@ export default function ClientSessions() {
       ]);
       setSessions(s.data);
       setRequests(r.data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load sessions'));
+      const message = errMsg(e, 'Failed to load sessions');
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
@@ -44,6 +48,7 @@ export default function ClientSessions() {
     };
   }, [sessions]);
 
+  if (!sessions && loadError) return <LoadErrorState message={loadError} scope="client-sessions" onRetry={() => { setLoadError(null); load(); }} />;
   if (!sessions) return <SessionsSkeleton />;
 
   return (

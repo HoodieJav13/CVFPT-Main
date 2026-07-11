@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, EmptyState } from '@/components/common';
+import { PageHeader, LoadingScreen, LoadErrorState, EmptyState } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CalendarDays, Dumbbell, Play, StickyNote } from 'lucide-react';
@@ -9,13 +9,23 @@ import { toast } from 'sonner';
 
 export default function ClientPrograms() {
   const [assignments, setAssignments] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
-  useEffect(() => {
-    api.get('/programs/client/assigned')
-      .then(({ data }) => setAssignments(Array.isArray(data) ? { programs: data, workouts: [] } : data))
-      .catch((e) => toast.error(errMsg(e, 'Failed to load programs')));
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get('/programs/client/assigned');
+      setAssignments(Array.isArray(data) ? { programs: data, workouts: [] } : data);
+      setLoadError(null);
+    } catch (e) {
+      const message = errMsg(e, 'Failed to load programs');
+      setLoadError(message);
+      toast.error(message);
+    }
   }, []);
 
+  useEffect(() => { load(); }, [load]);
+
+  if (!assignments && loadError) return <LoadErrorState message={loadError} scope="client-programs" onRetry={() => { setLoadError(null); load(); }} />;
   if (!assignments) return <LoadingScreen />;
 
   const programAssignments = assignments.programs || [];

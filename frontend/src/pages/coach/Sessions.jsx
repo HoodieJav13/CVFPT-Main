@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, SessionsSkeleton, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
+import { PageHeader, SessionsSkeleton, LoadErrorState, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,6 +36,7 @@ const FILTERS = [
 export default function CoachSessions() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [sessions, setSessions] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [bookings, setBookings] = useState([]);
   const [clients, setClients] = useState([]);
   const [filter, setFilter] = useState('upcoming');
@@ -53,8 +54,11 @@ export default function CoachSessions() {
       setSessions(s.data);
       setBookings(b.data);
       setClients(c.data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load sessions'));
+      const message = errMsg(e, 'Failed to load sessions');
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
@@ -130,6 +134,7 @@ export default function CoachSessions() {
     }
   };
 
+  if (!sessions && loadError) return <LoadErrorState message={loadError} scope="coach-sessions" onRetry={() => { setLoadError(null); load(); }} />;
   if (!sessions) return <SessionsSkeleton />;
 
   return (
@@ -153,8 +158,8 @@ export default function CoachSessions() {
             {bookings.map((b) => (
               <div key={b.id} className="flex items-center justify-between gap-2 rounded-xl bg-card/70 border border-border px-3 py-2.5" data-testid="sessions-booking-row">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{b.client?.name}</p>
-                  <p className="text-xs text-muted-foreground">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
+                  <p className="text-sm font-medium truncate" data-testid="booking-client-name">{b.client?.name}</p>
+                  <p className="text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
                   <Button size="sm" className="rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button"><Check className="h-3.5 w-3.5 mr-1" /> Approve</Button>
@@ -301,7 +306,7 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
+      <DrawerContent data-testid="session-editor-drawer">
         <div className="mx-auto w-full max-w-md px-4 pb-6">
           <DrawerHeader className="px-0">
             <DrawerTitle>{editing ? 'Edit session' : 'New session'}</DrawerTitle>
@@ -401,7 +406,7 @@ function NotesDialog({ session, onClose }) {
 
   return (
     <Dialog open={Boolean(session)} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" data-testid="session-notes-dialog">
         <DialogHeader>
           <DialogTitle>Session notes</DialogTitle>
         </DialogHeader>

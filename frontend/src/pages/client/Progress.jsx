@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, ChartSkeleton, EmptyState, MetricChart } from '@/components/common';
+import { PageHeader, ChartSkeleton, LoadErrorState, EmptyState, MetricChart } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ const blankEntry = () => ({ value: '', recorded_on: new Date().toISOString().sli
 
 export default function ClientProgress() {
   const [metrics, setMetrics] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [entryFor, setEntryFor] = useState(null);
   const [editingEntry, setEditingEntry] = useState(null);
   const [entryForm, setEntryForm] = useState(blankEntry());
@@ -25,8 +26,11 @@ export default function ClientProgress() {
     try {
       const { data } = await api.get('/progress/mine');
       setMetrics(data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load progress'));
+      const message = errMsg(e, 'Failed to load progress');
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
@@ -74,6 +78,7 @@ export default function ClientProgress() {
     }
   };
 
+  if (!metrics && loadError) return <LoadErrorState message={loadError} scope="client-progress" onRetry={() => { setLoadError(null); load(); }} />;
   if (!metrics) return <ChartSkeleton />;
 
   return (
@@ -144,7 +149,7 @@ export default function ClientProgress() {
       </div>
 
       <Dialog open={Boolean(entryFor)} onOpenChange={(open) => !open && closeEntry()}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" data-testid="client-progress-entry-dialog">
           <DialogHeader><DialogTitle>{editingEntry ? 'Edit' : 'Log'} {entryFor?.name}</DialogTitle></DialogHeader>
           <form onSubmit={saveEntry} className="space-y-3.5">
             <div className="grid grid-cols-2 gap-3">

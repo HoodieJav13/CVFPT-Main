@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, ListSkeleton, EmptyState } from '@/components/common';
+import { PageHeader, ListSkeleton, LoadErrorState, EmptyState } from '@/components/common';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { MessageSquare } from 'lucide-react';
 import { initials, fmtDay } from '@/lib/format';
@@ -10,13 +10,23 @@ import { toast } from 'sonner';
 export default function CoachMessages() {
   const navigate = useNavigate();
   const [threads, setThreads] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
-  useEffect(() => {
-    api.get('/messages/threads')
-      .then(({ data }) => setThreads(data))
-      .catch((e) => toast.error(errMsg(e, 'Failed to load messages')));
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get('/messages/threads');
+      setThreads(data);
+      setLoadError(null);
+    } catch (e) {
+      const message = errMsg(e, 'Failed to load messages');
+      setLoadError(message);
+      toast.error(message);
+    }
   }, []);
 
+  useEffect(() => { load(); }, [load]);
+
+  if (!threads && loadError) return <LoadErrorState message={loadError} scope="coach-messages" onRetry={() => { setLoadError(null); load(); }} />;
   if (!threads) return <ListSkeleton rows={4} />;
 
   return (
