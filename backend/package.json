@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js",
     "test": "node --test",
     "test:integration": "node integration/api-hardening.mjs",
+    "test:cleanup": "node integration/soft-archive-test-data.mjs",
     "seed": "node scripts/seed.js"
   },
   "engines": {

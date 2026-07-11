@@ -122,10 +122,260 @@ async function main() {
     await check('owning coach can read fake client', () => request(`/clients/${created.id}`, { token: coachA.access_token }));
     await check('other coach receives ownership-safe 404', () => request(`/clients/${created.id}`, { token: coachB.access_token, expected: 404 }));
     await check('admin can read fake client', () => request(`/clients/${created.id}`, { token: admin.access_token }));
+    await check('owning coach edits fake client', async () => {
+      const { payload } = await request(`/clients/${created.id}`, {
+        method: 'PUT', token: coachA.access_token,
+        json: { name: `CVF TEST EDITED ${runId}`, goals: 'Updated automated development verification' },
+      });
+      if (payload.name !== `CVF TEST EDITED ${runId}`) throw new Error('client edit did not persist');
+    });
     await check('non-invited signup is rejected', () => request('/auth/signup', {
       method: 'POST', expected: 403, json: { email, password: randomBytes(24).toString('base64url') },
     }));
+
+    const coachCheckIn = await check('coach creates fake check-in', async () => {
+      const { payload } = await request(`/check-ins/clients/${created.id}`, {
+        method: 'POST', token: coachA.access_token, expected: 201,
+        json: { check_in_date: new Date().toISOString().slice(0, 10), energy: 3, coach_notes: `CVF TEST ${runId}` },
+      });
+      return payload;
+    });
+    if (coachCheckIn) {
+      await check('coach updates and reviews fake check-in', () => request(`/check-ins/${coachCheckIn.id}`, {
+        method: 'PUT', token: coachA.access_token,
+        json: { energy: 4, review_status: 'reviewed', coach_notes: `CVF TEST REVIEWED ${runId}` },
+      }));
+      await check('coach soft-archives fake check-in', () => request(`/check-ins/${coachCheckIn.id}/archive`, {
+        method: 'PATCH', token: coachA.access_token,
+      }));
+    }
+
+    const packageRow = await check('admin creates fake package', async () => {
+      const { payload } = await request('/packages', {
+        method: 'POST', token: admin.access_token, expected: 201,
+        json: { name: `CVF TEST ${runId}`, description: 'Automated development verification', price: 99, session_credits: 2, is_recurring: false },
+      });
+      cleanup.push(() => request(`/packages/${payload.id}/archive`, {
+        method: 'PATCH', token: admin.access_token, json: { archived: true },
+      }));
+      return payload;
+    });
+    if (packageRow) {
+      await check('admin updates fake package', () => request(`/packages/${packageRow.id}`, {
+        method: 'PUT', token: admin.access_token,
+        json: { description: 'Updated automated development verification', price: 100 },
+      }));
+      await check('coach records fake manual purchase', () => request('/payments/manual', {
+        method: 'POST', token: coachA.access_token, expected: 201,
+        json: { client_id: created.id, package_id: packageRow.id, amount: 100 },
+      }));
+      await check('manual purchase grants two credits', async () => {
+        const { payload } = await request(`/payments/credits/${created.id}`, { token: coachA.access_token });
+        if (payload.balance !== 2) throw new Error(`expected 2 credits, received ${payload.balance}`);
+      });
+    }
+
+    const session = await check('coach creates fake session', async () => {
+      const { payload } = await request('/sessions', {
+        method: 'POST', token: coachA.access_token, expected: 201,
+        json: { client_id: created.id, scheduled_at: new Date(Date.now() + 3 * 86_400_000).toISOString(), duration_minutes: 60, location: 'CVF TEST Studio' },
+      });
+      return payload;
+    });
+    if (session) {
+      await check('coach edits fake session', () => request(`/sessions/${session.id}`, {
+        method: 'PUT', token: coachA.access_token,
+        json: { duration_minutes: 45, location: 'CVF TEST Updated Studio' },
+      }));
+      const note = await check('coach adds shared session note', async () => {
+        const { payload } = await request(`/sessions/${session.id}/notes`, {
+          method: 'POST', token: coachA.access_token, expected: 201,
+          json: { content: `CVF TEST NOTE ${runId}`, shared_with_client: true },
+        });
+        return payload;
+      });
+      if (note) {
+        await check('coach edits session note sharing', () => request(`/sessions/notes/${note.id}`, {
+          method: 'PUT', token: coachA.access_token,
+          json: { content: `CVF TEST NOTE UPDATED ${runId}`, shared_with_client: false },
+        }));
+      }
+      await check('coach completes fake session', () => request(`/sessions/${session.id}/complete`, {
+        method: 'PATCH', token: coachA.access_token,
+      }));
+      await check('session completion deducts one credit', async () => {
+        const { payload } = await request(`/payments/credits/${created.id}`, { token: coachA.access_token });
+        if (payload.balance !== 1) throw new Error(`expected 1 credit, received ${payload.balance}`);
+      });
+      await check('completed session cannot complete twice', () => request(`/sessions/${session.id}/complete`, {
+        method: 'PATCH', token: coachA.access_token, expected: 400,
+      }));
+    }
+
+    const libraryExercise = await check('coach creates fake library exercise', async () => {
+      const { payload } = await request('/programs/exercise-library', {
+        method: 'POST', token: coachA.access_token, expected: 201,
+        json: { name: `CVF TEST EXERCISE ${runId}`, category: 'Strength', video_url: 'https://example.com/cvf-test-video' },
+      });
+      return payload;
+    });
+    if (libraryExercise) {
+      await check('coach updates fake library exercise', () => request(`/programs/exercise-library/${libraryExercise.id}`, {
+        method: 'PUT', token: coachA.access_token,
+        json: { notes: `CVF TEST UPDATED ${runId}`, review_status: 'approved' },
+      }));
+      await check('coach soft-archives fake library exercise', () => request(`/programs/exercise-library/${libraryExercise.id}/archive`, {
+        method: 'PATCH', token: coachA.access_token, json: { archived: true },
+      }));
+    }
+
+    const workout = await check('coach creates fake workout with video exercise', async () => {
+      const { payload } = await request('/programs/workouts', {
+        method: 'POST', token: coachA.access_token, expected: 201,
+        json: {
+          name: `CVF TEST WORKOUT ${runId}`,
+          goal: 'Automated development verification',
+          exercises: [{ name: 'CVF Test Movement', sets: '3', reps: '8', video_url: 'https://example.com/cvf-test-video', position: 0 }],
+        },
+      });
+      return payload;
+    });
+    if (workout) {
+      await check('coach updates fake workout', () => request(`/programs/workouts/${workout.id}`, {
+        method: 'PUT', token: coachA.access_token,
+        json: { description: `CVF TEST UPDATED ${runId}`, exercises: workout.exercises },
+      }));
+      const workoutAssignment = await check('coach assigns fake workout to client', async () => {
+        const { payload } = await request('/programs/workout-assignments', {
+          method: 'POST', token: coachA.access_token, expected: 201,
+          json: { client_id: client.profile.id, workout_id: workout.id, assignment_mode: 'active', notes: `CVF TEST ${runId}` },
+        });
+        return payload;
+      });
+      if (workoutAssignment) {
+        await check('client sees assigned workout and video link', async () => {
+          const { payload } = await request('/programs/client/assigned', { token: client.access_token });
+          const found = payload.workouts?.find((row) => row.id === workoutAssignment.id);
+          if (!found?.workout?.exercises?.some((exercise) => exercise.video_url === 'https://example.com/cvf-test-video')) {
+            throw new Error('assigned workout video link missing');
+          }
+        });
+        await check('coach soft-archives workout assignment', () => request(`/programs/workout-assignments/${workoutAssignment.id}/archive`, {
+          method: 'PATCH', token: coachA.access_token,
+        }));
+      }
+
+      const program = await check('coach creates fake three-day program', async () => {
+        const { payload } = await request('/programs', {
+          method: 'POST', token: coachA.access_token, expected: 201,
+          json: {
+            name: `CVF TEST PROGRAM ${runId}`,
+            description: 'Automated development verification',
+            frequency_days: 3,
+            days: [1, 2, 3].map((day) => ({ day_number: day, workout_id: workout.id, notes: `CVF TEST DAY ${day}` })),
+          },
+        });
+        return payload;
+      });
+      if (program) {
+        await check('coach updates fake program', () => request(`/programs/${program.id}`, {
+          method: 'PUT', token: coachA.access_token,
+          json: { description: `CVF TEST PROGRAM UPDATED ${runId}` },
+        }));
+        const assignment = await check('coach assigns fake program', async () => {
+          const { payload } = await request(`/programs/${program.id}/assign`, {
+            method: 'POST', token: coachA.access_token, expected: 201,
+            json: { client_id: created.id, notes: `CVF TEST ${runId}` },
+          });
+          return payload;
+        });
+        if (assignment) {
+          await check('coach soft-archives program assignment', () => request(`/programs/assignments/${assignment.id}/archive`, {
+            method: 'PATCH', token: coachA.access_token,
+          }));
+        }
+        await check('coach soft-archives fake program', () => request(`/programs/${program.id}/archive`, {
+          method: 'PATCH', token: coachA.access_token,
+        }));
+      }
+      await check('coach soft-archives fake workout', () => request(`/programs/workouts/${workout.id}/archive`, {
+        method: 'PATCH', token: coachA.access_token,
+      }));
+    }
+
+    await check('admin reassigns fake client to coach B', () => request(`/admin/clients/${created.id}/reassign`, {
+      method: 'PATCH', token: admin.access_token, json: { coach_id: coachB.profile.id },
+    }));
+    await check('former coach loses access after reassignment', () => request(`/clients/${created.id}`, {
+      token: coachA.access_token, expected: 404,
+    }));
+    await check('new coach gains access after reassignment', () => request(`/clients/${created.id}`, {
+      token: coachB.access_token,
+    }));
+    await check('admin reassigns fake client back to coach A', () => request(`/admin/clients/${created.id}/reassign`, {
+      method: 'PATCH', token: admin.access_token, json: { coach_id: coachA.profile.id },
+    }));
   }
+
+  const clientMetric = await check('coach creates metric for authenticated client', async () => {
+    const { payload } = await request(`/progress/clients/${client.profile.id}/metrics`, {
+      method: 'POST', token: coachA.access_token, expected: 201,
+      json: { name: `CVF TEST METRIC ${runId}`, unit: 'reps' },
+    });
+    cleanup.push(() => request(`/progress/metrics/${payload.id}/archive`, { method: 'PATCH', token: coachA.access_token }));
+    return payload;
+  });
+  if (clientMetric) {
+    const entry = await check('client logs permitted progress entry', async () => {
+      const { payload } = await request(`/progress/metrics/${clientMetric.id}/entries`, {
+        method: 'POST', token: client.access_token, expected: 201,
+        json: { value: 8, notes: `CVF TEST ${runId}` },
+      });
+      return payload;
+    });
+    if (entry) {
+      await check('client edits own progress entry', () => request(`/progress/entries/${entry.id}`, {
+        method: 'PUT', token: client.access_token, json: { value: 9, notes: `CVF TEST UPDATED ${runId}` },
+      }));
+      await check('coach soft-archives progress entry', () => request(`/progress/entries/${entry.id}/archive`, {
+        method: 'PATCH', token: coachA.access_token,
+      }));
+    }
+  }
+
+  const booking = await check('client creates booking for approval', async () => {
+    const { payload } = await request('/bookings', {
+      method: 'POST', token: client.access_token, expected: 201,
+      json: { requested_time: new Date(Date.now() + 5 * 86_400_000).toISOString(), duration_minutes: 60, location: 'CVF TEST Studio', note: `CVF TEST ${runId}` },
+    });
+    return payload;
+  });
+  if (booking) {
+    const approved = await check('coach approves booking atomically', async () => {
+      const { payload } = await request(`/bookings/${booking.id}/approve`, { method: 'PATCH', token: coachA.access_token });
+      if (!payload.session?.id || payload.booking?.status !== 'approved') throw new Error('approval response missing session');
+      return payload;
+    });
+    if (approved) {
+      await check('client sees approved booking session', async () => {
+        const { payload } = await request('/sessions/client/mine', { token: client.access_token });
+        if (!payload.some((row) => row.id === approved.session.id)) throw new Error('approved session missing from client view');
+      });
+      await check('coach cancels approved test session', () => request(`/sessions/${approved.session.id}/cancel`, {
+        method: 'PATCH', token: coachA.access_token,
+      }));
+    }
+  }
+
+  await check('client sends fake message', () => request('/messages/mine', {
+    method: 'POST', token: client.access_token, expected: 201, json: { content: `CVF TEST CLIENT MESSAGE ${runId}` },
+  }));
+  await check('coach reads authenticated client thread', () => request(`/messages/with/${client.profile.id}`, {
+    token: coachA.access_token,
+  }));
+  await check('coach replies to fake client message', () => request(`/messages/with/${client.profile.id}`, {
+    method: 'POST', token: coachA.access_token, expected: 201, json: { content: `CVF TEST COACH MESSAGE ${runId}` },
+  }));
 
   const template = await check('Training Builder CSV template', () => request('/programs/import/template.csv', { token: coachA.access_token }));
   const parsed = await check('Training Builder CSV parse', async () => {
@@ -136,6 +386,14 @@ async function main() {
       method: 'POST', token: coachA.access_token, body: form, expected: 200,
     });
     payload.draft.program.name = `CVF TEST ${runId}`;
+    payload.draft.days = payload.draft.days.map((day, dayIndex) => ({
+      ...day,
+      name: `CVF TEST ${runId} DAY ${dayIndex + 1}`,
+      exercises: day.exercises.map((exercise, exerciseIndex) => ({
+        ...exercise,
+        name: `CVF TEST ${runId} D${dayIndex + 1} E${exerciseIndex + 1}`,
+      })),
+    }));
     return payload.draft;
   });
   const imported = await check('Training Builder atomic import', async () => {

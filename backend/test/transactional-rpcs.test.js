@@ -12,6 +12,10 @@ const dataApiGrantMigration = fs.readFileSync(
   path.join(root, 'supabase', 'migrations', '20260711060556_restrict_data_api_to_service_role.sql'),
   'utf8',
 );
+const versionedBaseline = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260710151327_baseline_schema.sql'),
+  'utf8',
+);
 const baseline = fs.readFileSync(path.join(root, 'backend', 'migration.sql'), 'utf8');
 
 const functions = [
@@ -39,6 +43,29 @@ test('transactional RPCs are invoker-security and service-role-only', () => {
       new RegExp(`grant execute on function public\\.${name}\\(${signature}\\) to service_role;`),
     );
   }
+});
+
+test('priority import RPC is invoker-security and unavailable to public API roles', () => {
+  assert.match(
+    versionedBaseline,
+    /create or replace function (?:public\.)?commit_program_import[\s\S]*?security invoker[\s\S]*?set search_path = ''/,
+  );
+  assert.doesNotMatch(
+    versionedBaseline.match(/create or replace function (?:public\.)?commit_program_import[\s\S]*?\$\$;/)?.[0] || '',
+    /security definer/i,
+  );
+  assert.match(
+    versionedBaseline,
+    /revoke execute on function public\.commit_program_import\(uuid, text, jsonb\) from public;/,
+  );
+  assert.match(
+    versionedBaseline,
+    /revoke execute on function public\.commit_program_import\(uuid, text, jsonb\) from anon, authenticated;/,
+  );
+  assert.match(
+    versionedBaseline,
+    /grant execute on function public\.commit_program_import\(uuid, text, jsonb\) to service_role;/,
+  );
 });
 
 test('Data API table grants are service-role-only and prohibit hard deletes', () => {
