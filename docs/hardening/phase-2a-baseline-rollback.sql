@@ -3,6 +3,9 @@
 
 begin;
 
+drop function if exists public.create_waiver_version(text);
+drop function if exists public.save_program(uuid, uuid, boolean, text, text, integer, jsonb);
+drop function if exists public.save_workout(uuid, uuid, text, text, text, jsonb);
 drop function if exists public.record_manual_purchase(uuid, uuid, numeric, uuid);
 drop function if exists public.complete_purchase(uuid);
 drop function if exists public.complete_session(uuid);

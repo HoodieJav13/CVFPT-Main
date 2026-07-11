@@ -47,11 +47,7 @@ router.post('/versions', requireAdmin, async (req, res) => {
   try {
     const fullText = (req.body?.full_text || '').trim();
     if (!fullText) return res.status(400).json({ error: 'Waiver text is required' });
-    const current = await latestVersion();
-    const { data, error } = await supabaseAdmin.from('waiver_versions').insert({
-      version_number: (current?.version_number || 0) + 1,
-      full_text: fullText,
-    }).select().single();
+    const { data, error } = await supabaseAdmin.rpc('create_waiver_version', { p_full_text: fullText });
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {

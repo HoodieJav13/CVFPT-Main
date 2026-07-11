@@ -275,51 +275,6 @@ async function listWorkouts(user) {
   return result;
 }
 
-function cleanExerciseRows(workoutId, exercises = []) {
-  return exercises
-    .filter((ex) => ex.exercise_library_id || (ex.custom_name || ex.name || '').trim())
-    .map((ex, position) => ({
-      workout_id: workoutId,
-      exercise_library_id: ex.exercise_library_id || null,
-      custom_name: ex.custom_name || ex.name || null,
-      sets: ex.sets || null,
-      reps: ex.reps || null,
-      rest: ex.rest || null,
-      tempo: ex.tempo || null,
-      notes: ex.client_notes || ex.notes || null,
-      client_notes: ex.client_notes || ex.notes || null,
-      coach_notes: ex.coach_notes || null,
-      video_url: ex.video_url || null,
-      position,
-    }));
-}
-
-async function replaceWorkoutExercises(workoutId, exercises) {
-  await supabaseAdmin.from('workout_exercises').update({ archived: true }).eq('workout_id', workoutId);
-  const rows = cleanExerciseRows(workoutId, exercises);
-  if (rows.length) {
-    const { error } = await supabaseAdmin.from('workout_exercises').insert(rows);
-    if (error) throw error;
-  }
-}
-
-async function replaceProgramDays(programId, days = []) {
-  await supabaseAdmin.from('program_days').update({ archived: true }).eq('program_id', programId);
-  const rows = days
-    .filter((day) => day.workout_id)
-    .map((day, i) => ({
-      program_id: programId,
-      day_number: Number(day.day_number || i + 1),
-      workout_id: day.workout_id,
-      notes: day.notes || null,
-      archived: false,
-    }));
-  if (rows.length) {
-    const { error } = await supabaseAdmin.from('program_days').upsert(rows, { onConflict: 'program_id,day_number' });
-    if (error) throw error;
-  }
-}
-
 async function programDaysAreAccessible(user, days) {
   const workoutIds = [...new Set((days || []).map((day) => day.workout_id).filter(Boolean))];
   if (!workoutIds.length) return true;
@@ -428,15 +383,16 @@ router.post('/workouts', requireCoach, async (req, res) => {
   try {
     const { name, description, goal, exercises } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Workout name is required' });
-    const { data: workout, error } = await supabaseAdmin.from('workouts').insert({
-      coach_id: req.user.role === 'admin' ? null : req.user.coach.id,
-      name: String(name).trim(),
-      description: description || null,
-      goal: goal || null,
-    }).select().single();
+    const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
+      p_workout_id: null,
+      p_coach_id: req.user.role === 'admin' ? null : req.user.coach.id,
+      p_name: String(name).trim(),
+      p_description: description || null,
+      p_goal: goal || null,
+      p_exercises: Array.isArray(exercises) ? exercises : [],
+    });
     if (error) throw error;
-    await replaceWorkoutExercises(workout.id, exercises || []);
-    return res.status(201).json(await workoutWithDetails(workout.id));
+    return res.status(201).json(await workoutWithDetails(workoutId));
   } catch (e) {
     console.error('create workout error', e);
     return res.status(500).json({ error: 'Failed to create workout' });
@@ -458,13 +414,20 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
   try {
     const workout = await workoutWithDetails(req.params.id);
     if (!canManageWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
-    const updates = { updated_at: new Date().toISOString() };
-    for (const k of ['name', 'description', 'goal']) if (k in (req.body || {})) updates[k] = req.body[k] || null;
-    if (updates.name !== undefined && !String(updates.name).trim()) return res.status(400).json({ error: 'Workout name is required' });
-    const { error } = await supabaseAdmin.from('workouts').update(updates).eq('id', workout.id);
+    const body = req.body || {};
+    const name = 'name' in body ? String(body.name || '').trim() : workout.name;
+    if (!name) return res.status(400).json({ error: 'Workout name is required' });
+    const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
+      p_workout_id: workout.id,
+      p_coach_id: workout.coach_id,
+      p_name: name,
+      p_description: 'description' in body ? body.description || null : workout.description,
+      p_goal: 'goal' in body ? body.goal || null : workout.goal,
+      p_exercises: Array.isArray(body.exercises) ? body.exercises : workout.exercises,
+    });
     if (error) throw error;
-    if (Array.isArray(req.body.exercises)) await replaceWorkoutExercises(workout.id, req.body.exercises);
-    return res.json(await workoutWithDetails(workout.id));
+    if (!workoutId) return res.status(404).json({ error: 'Workout not found' });
+    return res.json(await workoutWithDetails(workoutId));
   } catch (e) {
     console.error('update workout error', e);
     return res.status(500).json({ error: 'Failed to update workout' });
@@ -589,15 +552,17 @@ router.post('/', requireCoach, async (req, res) => {
     const validDays = Array.isArray(days) ? days.filter((d) => d.workout_id) : [];
     if (validDays.length !== frequency) return res.status(400).json({ error: `Assign one workout to each of the ${frequency} days` });
     if (!await programDaysAreAccessible(req.user, validDays)) return res.status(404).json({ error: 'Workout not found' });
-    const { data: program, error } = await supabaseAdmin.from('programs').insert({
-      coach_id: req.user.role === 'admin' ? req.user.coach.id : req.user.coach.id,
-      name: String(name).trim(),
-      description: description || null,
-      frequency_days: frequency,
-    }).select().single();
+    const { data: programId, error } = await supabaseAdmin.rpc('save_program', {
+      p_program_id: null,
+      p_coach_id: req.user.coach.id,
+      p_is_admin: req.user.role === 'admin',
+      p_name: String(name).trim(),
+      p_description: description || null,
+      p_frequency_days: frequency,
+      p_days: validDays,
+    });
     if (error) throw error;
-    await replaceProgramDays(program.id, validDays);
-    return res.status(201).json(await programWithDetails(program.id));
+    return res.status(201).json(await programWithDetails(programId));
   } catch (e) {
     console.error('create program error', e);
     return res.status(500).json({ error: e.message || 'Failed to create program' });
@@ -638,29 +603,30 @@ router.put('/:id', requireCoach, async (req, res) => {
   try {
     const program = await programWithDetails(req.params.id);
     if (!program || !canAccessProgram(req.user, program)) return res.status(404).json({ error: 'Program not found' });
-    const updates = {};
-    if ('name' in req.body) updates.name = req.body.name;
-    if ('description' in req.body) updates.description = req.body.description || null;
-    if ('frequency_days' in req.body) {
-      const frequency = Number(req.body.frequency_days);
-      if (![3, 4, 5].includes(frequency)) return res.status(400).json({ error: 'Choose 3, 4, or 5 days per week' });
-      updates.frequency_days = frequency;
+    const body = req.body || {};
+    const name = 'name' in body ? String(body.name || '').trim() : program.name;
+    if (!name) return res.status(400).json({ error: 'Program name is required' });
+    const frequency = 'frequency_days' in body ? Number(body.frequency_days) : program.frequency_days;
+    if (![3, 4, 5].includes(frequency)) return res.status(400).json({ error: 'Choose 3, 4, or 5 days per week' });
+    const validDays = Array.isArray(body.days)
+      ? body.days.filter((day) => day.workout_id)
+      : program.days.map((day) => ({ day_number: day.day_number, workout_id: day.workout_id, notes: day.notes }));
+    if (validDays.length !== frequency) {
+      return res.status(400).json({ error: `Assign one workout to each of the ${frequency} days` });
     }
-    let validDays = null;
-    if (Array.isArray(req.body.days)) {
-      validDays = req.body.days.filter((day) => day.workout_id);
-      const targetFrequency = updates.frequency_days || program.frequency_days;
-      if (validDays.length !== targetFrequency) {
-        return res.status(400).json({ error: `Assign one workout to each of the ${targetFrequency} days` });
-      }
-      if (!await programDaysAreAccessible(req.user, validDays)) return res.status(404).json({ error: 'Workout not found' });
-    }
-    if (Object.keys(updates).length) {
-      const { error } = await supabaseAdmin.from('programs').update(updates).eq('id', program.id);
-      if (error) throw error;
-    }
-    if (validDays) await replaceProgramDays(program.id, validDays);
-    return res.json(await programWithDetails(program.id));
+    if (!await programDaysAreAccessible(req.user, validDays)) return res.status(404).json({ error: 'Workout not found' });
+    const { data: programId, error } = await supabaseAdmin.rpc('save_program', {
+      p_program_id: program.id,
+      p_coach_id: program.coach_id,
+      p_is_admin: req.user.role === 'admin',
+      p_name: name,
+      p_description: 'description' in body ? body.description || null : program.description,
+      p_frequency_days: frequency,
+      p_days: validDays,
+    });
+    if (error) throw error;
+    if (!programId) return res.status(404).json({ error: 'Program not found' });
+    return res.json(await programWithDetails(programId));
   } catch (e) {
     console.error('update program error', e);
     return res.status(500).json({ error: 'Failed to update program' });

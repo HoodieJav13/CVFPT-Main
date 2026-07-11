@@ -4,16 +4,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..');
-const migration = fs.readFileSync(
-  path.join(root, 'supabase', 'migrations', '20260710202908_transactional_business_mutations.sql'),
-  'utf8',
-);
+const migration = [
+  '20260710202908_transactional_business_mutations.sql',
+  '20260711051129_transactional_program_writes.sql',
+].map((name) => fs.readFileSync(path.join(root, 'supabase', 'migrations', name), 'utf8')).join('\n');
 
 const functions = [
   ['approve_booking', 'uuid'],
   ['complete_session', 'uuid'],
   ['complete_purchase', 'uuid'],
   ['record_manual_purchase', 'uuid, uuid, numeric, uuid'],
+  ['save_workout', 'uuid, uuid, text, text, text, jsonb'],
+  ['save_program', 'uuid, uuid, boolean, text, text, integer, jsonb'],
+  ['create_waiver_version', 'text'],
 ];
 
 test('transactional RPCs are invoker-security and service-role-only', () => {
@@ -46,10 +49,15 @@ test('HTTP handlers delegate multi-record mutations to transactional RPCs', () =
   const sessions = fs.readFileSync(path.join(root, 'backend', 'src', 'routes', 'sessions.js'), 'utf8');
   const payments = fs.readFileSync(path.join(root, 'backend', 'src', 'routes', 'payments.js'), 'utf8');
   const credits = fs.readFileSync(path.join(root, 'backend', 'src', 'utils', 'credits.js'), 'utf8');
+  const programs = fs.readFileSync(path.join(root, 'backend', 'src', 'routes', 'programs.js'), 'utf8');
+  const waivers = fs.readFileSync(path.join(root, 'backend', 'src', 'routes', 'waivers.js'), 'utf8');
 
   assert.match(bookings, /\.rpc\('approve_booking'/);
   assert.match(sessions, /\.rpc\('complete_session'/);
   assert.match(payments, /\.rpc\('record_manual_purchase'/);
   assert.match(credits, /\.rpc\('complete_purchase'/);
+  assert.match(programs, /\.rpc\('save_workout'/);
+  assert.match(programs, /\.rpc\('save_program'/);
+  assert.match(waivers, /\.rpc\('create_waiver_version'/);
   assert.doesNotMatch(credits, /setBalance|addCredits|deductCredit/);
 });
