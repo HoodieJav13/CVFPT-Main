@@ -1,4 +1,4 @@
-// Duplicated in backend/src/lib/programDraft.cjs — keep both in sync manually. See CLAUDE.md.
+// ESM browser copy of backend/src/lib/programDraft.cjs — keep logic in sync manually. See CLAUDE.md.
 const PARSER_VERSION = 'program-draft-v1';
 
 const REQUIRED_CSV_COLUMNS = ['day_number', 'workout_name', 'exercise_name'];
@@ -356,7 +356,7 @@ function draftFromProgram(program) {
   });
 }
 
-module.exports = {
+const draftTools = {
   PARSER_VERSION,
   REQUIRED_CSV_COLUMNS,
   KNOWN_CSV_COLUMNS,
@@ -368,3 +368,18 @@ module.exports = {
   validateDraft,
   draftFromProgram,
 };
+
+export {
+  PARSER_VERSION,
+  REQUIRED_CSV_COLUMNS,
+  KNOWN_CSV_COLUMNS,
+  normalizeName,
+  parseCsv,
+  parseCsvDraft,
+  csvTemplate,
+  normalizeDraft,
+  validateDraft,
+  draftFromProgram,
+};
+
+export default draftTools;
