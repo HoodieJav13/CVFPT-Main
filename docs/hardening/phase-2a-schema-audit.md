@@ -15,7 +15,13 @@ Credential/deployment verification updated: 2026-07-11
 ## Environment and credential state
 
 - General `.env`, `.env.*`, `.secrets/`, private-key containers, credential JSON, and token JSON files are ignored. Sanitized `.env.example` templates are intentionally tracked.
-- The current tree contains no detected secret-shaped values or fixed passwords. Full Git history contains the previously confirmed development passwords in `tests/backend_test.py`; history was intentionally left unchanged.
+- The current tree contains no detected secret-shaped values or fixed passwords.
+  Full Git history contains previously confirmed development passwords in the
+  removed `tests/backend_test.py`; history was intentionally left unchanged because
+  rewriting shared history was outside authorization. Those obsolete-endpoint
+  credentials are treated as compromised/retired and are not used by the connected
+  Supabase project, either Vercel preview, or the new test harness. Dedicated current
+  fake accounts use newly generated credentials supplied only through secure flows.
 - No backend Supabase/OpenAI/Stripe values are present in the current shell environment. The only discovered local frontend environment file is ignored and contains only the preview-mode flag.
 - The connected project has enabled current-format publishable and secret keys. A
   safe backend service read and hosted invite/signup flow prove the secret works.
@@ -31,6 +37,8 @@ Credential/deployment verification updated: 2026-07-11
 | Area | Repository baseline | Connected project | Result |
 |---|---:|---:|---|
 | Application tables | 23 | 23 | Match |
+| Application columns | 213; signature `57f36167ac6ab398b58ca6d8ddc44da4` | 213; same signature | Match |
+| Table constraints | 83; signature `ca23af16605e787f45b7ad2e960b2a15` | 83; same signature | Match |
 | Explicit application indexes | 27 | 27 applied; 56 total including PK/constraint indexes | Match |
 | RLS-enabled application tables | 23 | 23 | Match |
 | RLS policies | 0 intentionally | 0 | Match: service-role-only architecture |
@@ -43,6 +51,14 @@ All eight routines are `SECURITY INVOKER`, use an empty fixed `search_path`, den
 `PUBLIC`/`anon`/`authenticated` execution, and grant only `service_role`. A
 rolled-back hosted probe verified future tables and sequences inherit the same
 service-role-only boundary and intentionally omit DELETE.
+
+Column and constraint parity uses the checked-in read-only query at
+`supabase/tests/schema_parity_signature.sql`. It hashes the ordered table/ordinal/
+name/type/nullability/default inventory for every application column and the ordered
+table/name/type/whitespace-normalized, case-sensitive definition inventory for every
+primary-key, unique, foreign-key, check, and exclusion constraint. The signatures
+above matched between the fresh local PostgreSQL 16 migration result and hosted
+PostgreSQL 17.
 
 ## Verified security findings
 

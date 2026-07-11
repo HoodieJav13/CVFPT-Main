@@ -9,8 +9,7 @@ Common behavior:
 - Role middleware returns `403` for an authenticated but disallowed role.
 - Ownership checks should return `404` for both missing and different-owner records.
 - `Admin: all` means the admin role intentionally crosses coach ownership boundaries.
-- “Current gap” records behavior that must be fixed or explicitly accepted.
-- Automated matrix coverage is pending unless a test identifier is named.
+- Test evidence codes and section-to-endpoint mappings appear after the inventory.
 
 ## Authentication
 
@@ -28,7 +27,7 @@ All routes require authenticated coach/admin access.
 | Method and path | Ownership and admin behavior | Archived behavior | Mutates | Missing / unauthorized |
 |---|---|---|---:|---|
 | `GET /api/clients` | Coach: own; admin: all | Excluded unless admin/coach requests `include_archived=true` | No | `401` / `403` |
-| `POST /api/clients` | Coach forced to self; admin may choose coach | Creates active | Yes | Invalid coach currently becomes `500` |
+| `POST /api/clients` | Coach forced to self; admin may choose active coach | Creates active | Yes | Invalid coach `404` |
 | `GET /api/clients/:id` | Coach: own; admin: all | Archived hidden | No | Ownership-hiding `404` |
 | `PUT /api/clients/:id` | Coach: own; admin may reassign | Archived hidden | Yes | Ownership-hiding `404` |
 | `PATCH /api/clients/:id/invite` | Coach: own; admin: all | Archived hidden | Yes | Ownership-hiding `404` |
@@ -189,3 +188,64 @@ All routes require authenticated admin access.
 | Admin | Allowed across coach ownership unless explicitly client-only | Live integration, hosted smoke, and admin browser flow passing |
 | Missing record | `404` | Stable missing handling and live ownership probes passing |
 | Archived record | `404` outside list/restore boundaries | Cross-route contracts passing; explicit client restore boundary live-tested |
+
+## Resource-by-actor authorization matrix
+
+`Own` means the authenticated profile-derived client or coach owns the resource;
+`404` is ownership-hiding; `—` means the role has no route for selecting that
+resource. The expected behavior and the scope of its live/contract evidence are
+identified below.
+
+| Resource family | Unauthenticated | Owning client | Different client | Owning coach | Different coach | Admin | Missing | Archived |
+|---|---|---|---|---|---|---|---|---|
+| Clients | `401` | — | — | Allow | `404` | Allow | `404` | `404`, except explicit restore |
+| Sessions / notes | `401` | Own read only | — | Allow | `404` | Allow | `404` | `404` |
+| Progress / entries | `401` | Own read/write entry | — | Allow | `404` | Allow | `404` | `404` |
+| Check-ins | `401` | Own read/write/archive | — | Allow | `404` | Allow | `404` | `404` |
+| Programs / workouts / assignments | `401` | Own assigned read | — | Own/global policy | `404` | Allow | `404` | `404` |
+| Messages | `401` | Own thread | — | Own-client threads | `404` | Allow | `404` | `404` |
+| Booking requests | `401` | Own create/read | — | Own-client requests | `404` | Allow | `404` | `404` |
+| Packages / payments / credits | `401` | Own reads/checkout | — | Own-client reads/manual | `404` | Allow | `404` | `404` |
+| Waivers / signatures | `401` | Own status/sign | — | Own-client status/paper | `404` | Allow | `404` | Append-only; archived client `404` |
+| Admin management | `401` | `403` | `403` | `403` | `403` | Allow | `404` where record-selected | Archived excluded |
+
+## Per-endpoint test evidence
+
+Evidence codes:
+
+- **U30** — 30 backend regressions under `backend/test`, including access,
+  archived-boundary, validation, CORS, rate-limit, Stripe-mode, claim-race,
+  logging, PDF, grant, and transactional source contracts.
+- **L76** — `backend/integration/api-hardening.mjs`, 76/76 against the hosted
+  development database with real auth and labeled fake records.
+- **B6** — `frontend/e2e/live-auth.spec.mjs`, 6/6 real-auth browser flows.
+- **P4** — `frontend/e2e/preview-critical.spec.mjs`, 4/4 deterministic browser flows.
+- **PG** — isolated PostgreSQL migration/RPC behavior and hosted grant probes.
+- **H19** — 12 protected-Vercel role/profile checks plus seven hosted
+  invite/signup/refresh/identity/archive checks.
+
+Evidence below is scoped by route family: it combines representative live role
+probes, focused source/authorization contracts, and transactional PostgreSQL
+checks. It does not claim that every actor/status permutation was sent to every
+handler. External/gated exceptions are called out explicitly.
+
+| Inventory section / endpoints | Relevant tests |
+|---|---|
+| Authentication — all four endpoints | **L76**, **B6**, **H19**; signup race and archived refresh: **U30** |
+| Clients — all six endpoints | **L76**, **B6**, **U30**; archive/restore boundary: **B6** + **U30** |
+| Sessions and notes — all nine endpoints | **L76**, **B6**, **U30**; atomic completion/credits: **PG** |
+| Progress — all seven endpoints | **L76**, **B6**, **U30** |
+| Daily check-ins — all six endpoints | **L76**, **B6**, **U30** |
+| Exercise library/workout CRUD — first ten Program Builder endpoints | **L76**, **B6**, **P4**, **U30**, **PG** |
+| CSV template/parse, import commit, PDF export | **L76**, **B6**, **P4**, **PG** |
+| AI PDF parse | File/config/error boundaries: **U30**; successful external-AI request blocked pending OpenAI preview credential |
+| Program CRUD and both assignment families | **L76**, **B6**, **P4**, **U30**, **PG** |
+| Messages — all five endpoints | **L76**, **B6**, **U30** |
+| Booking requests — all five endpoints | **L76**, **B6**, **U30**, **PG** |
+| Waiver reads/status | **L76**, **B6**, **U30**, **PG** |
+| Waiver version/sign/paper mutations | Uniqueness/grants/transaction boundaries: **U30**, **PG**; UI success blocked pending approved legal text |
+| Packages — all four endpoints | **L76**, **B6**, **U30** |
+| Payment config/manual/history/credits | **L76**, **B6**, **U30**, **PG** |
+| Stripe webhook/checkout/verify | Signature, test-mode, ownership, and idempotency: **U30**, **PG**; no live Stripe operation by invariant |
+| Admin — all four endpoints | **L76**, **B6**, **H19** |
+| Coach/client dashboards | **L76**, **B6**, **P4**, **H19** |

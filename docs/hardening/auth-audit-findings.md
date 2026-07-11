@@ -4,8 +4,8 @@ Audit date: 2026-07-10
 
 Scope: all 94 Express endpoints registered under `backend/src/routes`, the global authentication middleware, Supabase service-role isolation, CORS, payment/webhook handling, and state-changing multi-step flows.
 
-Verification now includes 29 backend regression tests, four preview-mode browser
-tests, three real-auth browser flows, a 32-check hosted-Supabase integration run,
+Verification now includes 30 backend regression tests, four preview-mode browser
+tests, six expanded real-auth browser flows, a 76-check hosted-Supabase integration run,
 12 protected-Vercel role checks, and seven hosted invite/refresh checks. All four
 migrations also pass isolated PostgreSQL execution and hosted PostgreSQL 17
 schema/grant verification.
@@ -107,14 +107,19 @@ program/workout/assignment, booking, waiver, package, payment, and admin reassig
 paths now hide archived rows. Explicit archive/restore boundaries retain intentional
 access. A regression contract covers the cross-route predicate set.
 
-### P2 — Input validation is inconsistent (partially fixed locally)
+### P2 — Input validation is inconsistent (high-risk paths fixed; broader schemas deferred)
 
 Invalid dates and durations can become database errors and generic `500`s; package updates can introduce negative/non-numeric prices or credits; manual payment amounts can be negative; bulk imports are not bounded by row count; several string fields accept unbounded values.
 
 Resolution to date: centralized bounded validation covers package price/credits,
 session and booking timestamps/durations, manual purchase amounts, and 500-row
 exercise import limits, with stable `400`/`413` responses. Broader string and
-payload schemas remain a maintenance item.
+payload schemas are explicitly deferred because their field-specific maximums are
+business/product decisions and tightening them without those limits could reject
+valid existing workflows. Express's bounded JSON parser, upload limits, and route
+rate limits constrain request-size/resource abuse in the development preview. Add
+shared per-resource schemas before production onboarding, once the business limits
+for names, notes, goals, messages, and descriptions are approved.
 
 ### P2 — CORS can reflect every origin while credentials are enabled (fixed locally)
 
@@ -137,9 +142,9 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
 - Admin client reassignment and package mutations now return stable `404`s for missing/archived records.
 - Message read-marking now excludes archived messages.
 - Shared/global workouts remain readable by coaches but are now admin-only to edit/archive.
-- The client dashboard always returns `coach_name: null` even though the client has a coach relationship.
+- The client dashboard now resolves the active assigned coach name; the 76-check
+  real-auth matrix asserts the returned value.
 - Backend error logging now emits only safe error name/code/status metadata; a regression proves messages, stacks, request objects, and nested secrets are omitted.
-- Duplicate statements exist in the program route (`error.status`, exercise update loop, and `frequency_days` property). They are harmless but should be removed during scoped cleanup.
 
 ## Controls verified as present
 
@@ -156,11 +161,11 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
 - Legacy Python and destructive proof-of-concept runners were removed.
 - Secret-free CI runs backend regressions, frontend build, preview-mode browser
   tests, and production audits.
-- Backend regressions: 29 passing.
+- Backend regressions: 30 passing.
 - Preview browser regressions: four passing across coach, client, admin, route
   protection, and mobile navigation. The suite also guards against browser-incompatible
   module imports that previously left the preview page blank.
-- Opt-in API integration harness: 32/32 passing with dedicated fake accounts,
+- Opt-in API integration harness: 76/76 passing with dedicated fake accounts,
   target allowlisting, hard-delete prohibition, and soft-archive cleanup.
 - All four migrations and transactional RPC assertions executed successfully
   against isolated PostgreSQL 16, including rollback-on-child-failure and
@@ -168,6 +173,9 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
   zero policies, eight service-role-only invoker RPCs, and no direct anon/auth table grants.
 - Protected Vercel auth smoke: 12/12 role/login/profile/dashboard checks plus 7/7
   invite, signup, refresh, identity, and soft-archive checks passing.
-- Real-auth browser flows: 3/3 passing across client, coach, and admin. The run found
-  and fixed the archived-client restore boundary; see the Phase 3/4 flow report for
-  blocked and not-applicable cases.
+- Expanded real-auth browser flows: 6/6 passing across auth-negative and
+  fault-injected retry states, client, coach/Training Builder,
+  session/payment/progress/booking/messaging, and admin management. The run found
+  and fixed both the archived-client restore boundary and indefinite loading after
+  initial API failures; see the Phase 3/4 flow report for blocked and
+  not-applicable cases.
