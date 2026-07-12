@@ -49,9 +49,11 @@ Point a TEST-mode webhook at `https://<backend-domain>/api/payments/webhook` for
 ---
 
 ## 3. Database
-Schema lives in `supabase/migrations/`; `backend/migration.sql` mirrors the current
-baseline for review. Apply versioned migrations only to the explicitly confirmed
-development project and verify the resulting schema before deploying either app.
+The canonical schema history lives in `supabase/migrations/`.
+`backend/migration.sql` is a frozen historical record of the pre-versioning schema;
+do not edit or re-run it against a database with the versioned migrations applied.
+Apply new numbered migrations only to the explicitly confirmed development project
+and verify the resulting schema before deploying either app.
 The current hosted development schema has five applied migrations. Program save
 and import accept one to five days for deterministic paste drafts; CSV/PDF parsing
 continues to validate three to five days. Paste-created exercises that do not match

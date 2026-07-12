@@ -20,6 +20,16 @@ CVF PT is the internal personal training management app for Core Value Fitness (
 
 Vite ONLY. CRA/craco were removed — never reintroduce `react-scripts`.
 
+## Migrations
+
+- `supabase/migrations/` is the single source of truth for the database schema
+  and migration history. Manage it with the Supabase CLI.
+- Every schema change must be captured in a **new numbered migration**. Never
+  edit, rename, replace, or delete a migration that has already been applied.
+- `backend/migration.sql` is frozen as a historical record of the schema before
+  versioned migrations. Do not edit it or run it against a database where the
+  versioned migrations have been applied.
+
 ## Browser Automation
 
 Use `agent-browser` for web automation. Run `agent-browser --help` for all commands.

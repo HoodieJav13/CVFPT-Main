@@ -1,7 +1,14 @@
--- ============================================================
--- CVF PT (Core Value Fitness) - Full Database Schema v1
--- Canonical baseline; apply through the versioned Supabase migrations.
--- ============================================================
+-- ============================================================================
+-- FROZEN HISTORICAL FILE — DO NOT EDIT OR RE-RUN
+--
+-- This file preserves the pre-versioning CVF PT schema for historical reference.
+-- The canonical schema history is supabase/migrations/, managed by the Supabase
+-- CLI. Every future schema change must be a new numbered migration in that
+-- directory; never add schema changes here.
+--
+-- Do not run this file against any database where the versioned migrations have
+-- been applied.
+-- ============================================================================
 
 create extension if not exists pgcrypto;
 
