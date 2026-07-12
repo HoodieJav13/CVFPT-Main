@@ -38,13 +38,13 @@ Credential/deployment verification updated: 2026-07-11
 |---|---:|---:|---|
 | Application tables | 23 | 23 | Match |
 | Application columns | 213; signature `57f36167ac6ab398b58ca6d8ddc44da4` | 213; same signature | Match |
-| Table constraints | 83; signature `ca23af16605e787f45b7ad2e960b2a15` | 83; same signature | Match |
+| Table constraints | 83; signature `0eda29fc97ae9b661806552294802199` | 83; same signature | Match |
 | Explicit application indexes | 27 | 27 applied; 56 total including PK/constraint indexes | Match |
 | RLS-enabled application tables | 23 | 23 | Match |
 | RLS policies | 0 intentionally | 0 | Match: service-role-only architecture |
 | Application routines | 8 transactional routines | 8 | Match |
-| Versioned migrations | 4 | 4 hosted migration records | Match |
-| Program Builder storage | 8 tables + `commit_program_import` | Present | Match |
+| Versioned migrations | 5 | 5 hosted migration records | Match |
+| Program Builder storage | 8 tables + `commit_program_import`; program frequency 1–5 | Present | Match |
 | Direct table grants | service-role read/insert/update only | 23/23 service-role; 0 anon/authenticated; 0 service-role DELETE | Match |
 
 All eight routines are `SECURITY INVOKER`, use an empty fixed `search_path`, deny
@@ -64,8 +64,9 @@ PostgreSQL 17.
 
 ### High: application schema absent (resolved)
 
-The API could not function while the project was empty. Four reviewed migrations
-now provide the complete application schema and transactional RPC set.
+The API could not function while the project was empty. The reviewed baseline and
+four follow-up migrations now provide the complete application schema and
+transactional RPC set.
 
 ### High: hosted `rls_auto_enable()` helper is Data API executable (resolved)
 
@@ -81,6 +82,18 @@ The applied baseline changes it to `SECURITY INVOKER`, fixes `search_path` to em
 with schema-qualified relations, revokes `PUBLIC`/`anon`/`authenticated`, grants
 only `service_role`, and tightens future function default privileges. The follow-up
 transactional RPCs use the same permission model.
+
+The fifth migration widens persisted program frequency and both transactional
+program-write routines from three-to-five to one-to-five days. This supports
+single-block deterministic paste drafts without creating a parallel storage path.
+CSV/PDF parsing retains its existing three-to-five-day validation boundary.
+
+### Exercise source decision: use existing manual source (verified)
+
+`exercise_library.source` has no check constraint. Deterministic paste import
+therefore reuses the existing `manual` source for unmatched normalized exercise
+names and sets `review_status='needs_review'`; existing normalized names are reused.
+No source-column migration or new source vocabulary was needed.
 
 ### High: Data API table grants depended on project defaults (resolved)
 
@@ -98,21 +111,35 @@ to future objects. DELETE remains intentionally ungranted.
 - Transactional hardening: `supabase/migrations/20260710202908_transactional_business_mutations.sql`.
 - Transactional compound writes: `supabase/migrations/20260711051129_transactional_program_writes.sql`.
 - Explicit Data API grants: `supabase/migrations/20260711060556_restrict_data_api_to_service_role.sql`.
-- All four migrations are applied to hosted PostgreSQL 17 and recorded as versions
-  `20260711060153`, `20260711060202`, `20260711060208`, and `20260711060803`.
-- All four migrations executed successfully against isolated PostgreSQL 16. Behavioral
+- One-to-five-day programs: `supabase/migrations/20260711234414_allow_one_to_five_day_programs.sql`
+  (hosted version `20260711234414`).
+- All five migrations are applied to hosted PostgreSQL 17 and present in its
+  migration history.
+- All five migrations executed successfully against isolated PostgreSQL 16. Behavioral
   assertions verified booking/session/purchase idempotency, atomic credit/ledger
   updates, waiver-signature/version uniqueness, compound-write rollback, and RPC
-  grants. Current and future table-grant assertions also pass locally and hosted.
-- Pre-change recovery evidence is this empty-schema inventory plus the remote migration list (empty). Because there is no application data or schema, rollback can safely remove only the objects introduced by the baseline; the reviewed reverse-order rollback is `docs/hardening/phase-2a-baseline-rollback.sql`.
+  grants. A rolled-back one-day import/edit probe and zero-day rejection also pass.
+  Current and future table-grant assertions pass locally and hosted.
+- The original empty-schema inventory and
+  `docs/hardening/phase-2a-baseline-rollback.sql` remain historical recovery
+  evidence; the full baseline rollback must not be run now that the hosted
+  development schema contains labeled fake records. Application rollback is a
+  prior Vercel deployment. Database rollback of the fifth migration may restore
+  the old routines, but must retain the widened constraint until no one- or
+  two-day rows exist or an approved non-destructive data migration transforms
+  them. Hard deletion is not an acceptable recovery step.
 
 ## Advisor results
 
-- Security Advisor: zero warning/error findings. Its 23 informational notices are
-  the expected “RLS enabled, no policy” state for the accepted service-role-only design.
+- Security Advisor: one project-level warning reports that leaked-password
+  protection is disabled. Its 23 informational notices are the expected “RLS
+  enabled, no policy” state for the accepted service-role-only design. The warning
+  is an Auth configuration follow-up; it does not change the verified database
+  grants, RLS posture, or service-role-only API boundary.
 - Performance Advisor: 12 informational unindexed-foreign-key notices and 24
-  unused-index notices. The unused-index results are expected on an empty database;
-  index additions are deferred until representative development flows provide query evidence.
+  unused-index notices. At the current fake-data volume these are informational;
+  index additions are deferred until representative development flows provide
+  query evidence.
 - Advisor remediation reference: [Supabase database linter](https://supabase.com/docs/guides/database/database-linter).
 
 ## Documentation basis

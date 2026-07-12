@@ -120,13 +120,13 @@ create table if not exists programs (
   coach_id uuid not null references coaches(id),
   name text not null,
   description text,
-  frequency_days int check (frequency_days in (3,4,5)),
+  frequency_days int check (frequency_days between 1 and 5),
   archived boolean not null default false,
   created_at timestamptz not null default now()
 );
 create index if not exists idx_programs_coach on programs(coach_id);
 
-alter table programs add column if not exists frequency_days int check (frequency_days in (3,4,5));
+alter table programs add column if not exists frequency_days int check (frequency_days between 1 and 5);
 
 -- New structured workout model starts clean; legacy flat programs are archived.
 update programs set archived = true where archived = false and frequency_days is null;
@@ -260,8 +260,8 @@ begin
   if v_program_name = '' then
     raise exception 'Program name is required';
   end if;
-  if v_frequency not in (3, 4, 5) then
-    raise exception 'Program frequency must be 3, 4, or 5';
+  if v_frequency is null or v_frequency < 1 or v_frequency > 5 then
+    raise exception 'Program frequency must be between 1 and 5';
   end if;
   if v_day_count <> v_frequency then
     raise exception 'Program day count must match frequency';

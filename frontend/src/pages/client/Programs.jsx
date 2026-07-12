@@ -68,6 +68,7 @@ export default function ClientPrograms() {
 
 function ProgramAssignmentCard({ assignment }) {
   const program = assignment.program || {};
+  const frequency = program.frequency_days || program.days?.length || 0;
   return (
     <Card data-testid="client-program-card">
       <CardHeader className="pb-3">
@@ -76,7 +77,7 @@ function ProgramAssignmentCard({ assignment }) {
             <CardTitle className="text-lg font-display">{program.name}</CardTitle>
             {program.description && <p className="text-sm text-muted-foreground mt-1">{program.description}</p>}
           </div>
-          <Badge variant="outline" className="w-fit">{program.frequency_days || program.days?.length || 0} days/week</Badge>
+          <Badge variant="outline" className="w-fit">{frequency} {frequency === 1 ? 'day' : 'days'}/week</Badge>
         </div>
         {assignment.notes && <AssignmentNote>{assignment.notes}</AssignmentNote>}
       </CardHeader>

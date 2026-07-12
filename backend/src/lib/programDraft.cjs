@@ -1,5 +1,8 @@
-// Duplicated in frontend/src/lib/programDraft.cjs — keep both in sync manually. See CLAUDE.md.
+// Duplicated in frontend/src/lib/programDraft.js — keep both in sync manually. See CLAUDE.md.
 const PARSER_VERSION = 'program-draft-v1';
+const EXERCISE_LINE_PATTERN = /^(.+?)\s+(\d+)[xX](\d+(?:-\d+)?)(.*)$/;
+const REST_DETAIL_PATTERN = /^rest\b/i;
+const DETAIL_SEPARATOR_PATTERN = /\s+(?:-|\u2013|\u2014|\u2212)\s+/;
 
 const REQUIRED_CSV_COLUMNS = ['day_number', 'workout_name', 'exercise_name'];
 const KNOWN_CSV_COLUMNS = [
@@ -257,6 +260,123 @@ function parseCsvDraft(text, options = {}) {
   return draft;
 }
 
+function matchExerciseLine(line) {
+  const match = cleanString(line).match(EXERCISE_LINE_PATTERN);
+  if (!match) return null;
+  return {
+    name: cleanString(match[1]),
+    sets: match[2],
+    reps: match[3],
+    client_notes: cleanString(match[4]),
+  };
+}
+
+function parseRestDetail(line) {
+  const segments = cleanString(line).split(DETAIL_SEPARATOR_PATTERN);
+  const rest = cleanString((segments.shift() || '').replace(/^rest\b\s*:?\s*/i, ''));
+  let tempo = '';
+  const cueSegments = [];
+
+  for (const segment of segments) {
+    const tempoMatch = segment.match(/^tempo\b\s*:?\s*(.*)$/i);
+    if (tempoMatch && !tempo) tempo = cleanString(tempoMatch[1]);
+    else if (cleanString(segment)) cueSegments.push(cleanString(segment));
+  }
+
+  return { rest, tempo, cue: cueSegments.join(' ') };
+}
+
+function parsePasteDraft(text) {
+  const normalizedText = String(text || '').replace(/\r\n?/g, '\n').trim();
+  if (!normalizedText) {
+    const error = new Error("Couldn't find any exercises in this text.");
+    error.code = 'NO_EXERCISES_FOUND';
+    error.validation = { no_exercises: true };
+    throw error;
+  }
+
+  const warnings = [];
+  let exerciseCount = 0;
+  const blocks = normalizedText.split(/\n(?:[ \t]*\n)+/);
+  const days = blocks.map((block, blockIndex) => {
+    const lines = block.split('\n').map(cleanString).filter(Boolean);
+    const dayNumber = blockIndex + 1;
+    const firstLineIsExercise = Boolean(matchExerciseLine(lines[0]));
+    const notes = [];
+    const exercises = [];
+    let lineIndex = firstLineIsExercise ? 0 : 1;
+
+    while (lineIndex < lines.length) {
+      const exerciseMatch = matchExerciseLine(lines[lineIndex]);
+      if (!exerciseMatch) {
+        notes.push(lines[lineIndex]);
+        warnings.push(`Day ${dayNumber}, line ${lineIndex + 1}: kept unmatched text as a day note: "${lines[lineIndex]}"`);
+        lineIndex += 1;
+        continue;
+      }
+
+      const exercise = {
+        name: exerciseMatch.name,
+        sets: exerciseMatch.sets,
+        reps: exerciseMatch.reps,
+        rest: '',
+        tempo: '',
+        client_notes: exerciseMatch.client_notes,
+        coach_notes: '',
+        video_url: '',
+        category: '',
+        equipment: '',
+        primary_muscle: '',
+      };
+      const detailLine = lines[lineIndex + 1];
+      if (detailLine && REST_DETAIL_PATTERN.test(detailLine) && !matchExerciseLine(detailLine)) {
+        const detail = parseRestDetail(detailLine);
+        exercise.rest = detail.rest;
+        exercise.tempo = detail.tempo;
+        exercise.client_notes = [exercise.client_notes, detail.cue].filter(Boolean).join(' ');
+        lineIndex += 1;
+      }
+      exercises.push(exercise);
+      exerciseCount += 1;
+      lineIndex += 1;
+    }
+
+    return {
+      day_number: dayNumber,
+      name: firstLineIsExercise ? `Day ${dayNumber}` : lines[0],
+      goal: '',
+      notes: notes.join('; '),
+      exercises,
+    };
+  });
+
+  if (!exerciseCount) {
+    const error = new Error("Couldn't find any exercises in this text.");
+    error.code = 'NO_EXERCISES_FOUND';
+    error.validation = { no_exercises: true };
+    throw error;
+  }
+
+  return normalizeDraft({
+    program: {
+      name: '',
+      description: '',
+      frequency_days: blocks.length,
+      source: 'paste',
+    },
+    days,
+    import_meta: {
+      source_type: 'paste',
+      original_filename: '',
+      parser_version: PARSER_VERSION,
+      confidence: null,
+      warnings,
+      new_exercises_detected: [],
+      possible_duplicates: [],
+    },
+  });
+}
+
 function normalizeDraft(input = {}) {
   const draft = {
     program: {
@@ -300,8 +420,15 @@ function normalizeDraft(input = {}) {
 function validateDraft(input) {
   const draft = normalizeDraft(input);
   const errors = [];
+  const isPasteDraft = draft.import_meta.source_type === 'paste';
+  const supportedFrequencies = isPasteDraft ? [1, 2, 3, 4, 5] : [3, 4, 5];
   if (!draft.program.name) errors.push({ path: 'program.name', message: 'Program name is required' });
-  if (![3, 4, 5].includes(draft.program.frequency_days)) errors.push({ path: 'program.frequency_days', message: 'Choose 3, 4, or 5 days per week' });
+  if (!supportedFrequencies.includes(draft.program.frequency_days)) {
+    errors.push({
+      path: 'program.frequency_days',
+      message: isPasteDraft ? 'Choose 1 to 5 days per week' : 'Choose 3, 4, or 5 days per week',
+    });
+  }
   if (draft.days.length !== draft.program.frequency_days) errors.push({ path: 'days', message: `Add exactly ${draft.program.frequency_days || 0} workout days` });
   const dayNumbers = new Set();
   draft.days.forEach((day, dayIndex) => {
@@ -363,6 +490,7 @@ module.exports = {
   normalizeName,
   parseCsv,
   parseCsvDraft,
+  parsePasteDraft,
   csvTemplate,
   normalizeDraft,
   validateDraft,

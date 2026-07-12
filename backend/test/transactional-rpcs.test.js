@@ -16,6 +16,10 @@ const versionedBaseline = fs.readFileSync(
   path.join(root, 'supabase', 'migrations', '20260710151327_baseline_schema.sql'),
   'utf8',
 );
+const programFrequencyMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260711234414_allow_one_to_five_day_programs.sql'),
+  'utf8',
+);
 const baseline = fs.readFileSync(path.join(root, 'backend', 'migration.sql'), 'utf8');
 
 const functions = [
@@ -66,6 +70,34 @@ test('priority import RPC is invoker-security and unavailable to public API role
     versionedBaseline,
     /grant execute on function public\.commit_program_import\(uuid, text, jsonb\) to service_role;/,
   );
+});
+
+test('one-to-five day programs preserve transactional RPC security', () => {
+  assert.match(
+    programFrequencyMigration,
+    /add constraint programs_frequency_days_check\s+check \(frequency_days between 1 and 5\);/,
+  );
+  for (const [name, signature] of [
+    ['commit_program_import', 'uuid, text, jsonb'],
+    ['save_program', 'uuid, uuid, boolean, text, text, integer, jsonb'],
+  ]) {
+    assert.match(
+      programFrequencyMigration,
+      new RegExp(`create or replace function public\\.${name}[\\s\\S]*?security invoker[\\s\\S]*?set search_path = ''`),
+    );
+    assert.match(
+      programFrequencyMigration,
+      new RegExp(`revoke execute on function public\\.${name}\\(${signature}\\)[\\s\\S]*?from public, anon, authenticated;`),
+    );
+    assert.match(
+      programFrequencyMigration,
+      new RegExp(`grant execute on function public\\.${name}\\(${signature}\\)[\\s\\S]*?to service_role;`),
+    );
+  }
+  assert.match(programFrequencyMigration, /v_frequency is null or v_frequency < 1 or v_frequency > 5/);
+  assert.match(programFrequencyMigration, /p_frequency_days is null or p_frequency_days < 1 or p_frequency_days > 5/);
+  assert.match(baseline, /v_frequency is null or v_frequency < 1 or v_frequency > 5/);
+  assert.doesNotMatch(programFrequencyMigration, /security definer/i);
 });
 
 test('Data API table grants are service-role-only and prohibit hard deletes', () => {

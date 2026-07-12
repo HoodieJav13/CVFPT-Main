@@ -1,14 +1,15 @@
 # Authentication and ownership audit findings
 
 Audit date: 2026-07-10
+Verification updated: 2026-07-11
 
-Scope: all 94 Express endpoints registered under `backend/src/routes`, the global authentication middleware, Supabase service-role isolation, CORS, payment/webhook handling, and state-changing multi-step flows.
+Scope: all 95 Express endpoints registered under `backend/src/routes`, the global authentication middleware, Supabase service-role isolation, CORS, payment/webhook handling, and state-changing multi-step flows.
 
-Verification now includes 30 backend regression tests, four preview-mode browser
-tests, six expanded real-auth browser flows, a 76-check hosted-Supabase integration run,
-12 protected-Vercel role checks, and seven hosted invite/refresh checks. All four
-migrations also pass isolated PostgreSQL execution and hosted PostgreSQL 17
-schema/grant verification.
+Verification now includes 38 backend regression tests, four preview-mode browser
+tests, six expanded real-auth browser flows, an 80-check hosted-Supabase integration
+run, 12 protected-Vercel role checks, and seven hosted invite/refresh checks. Those
+checks pass, and all five migrations pass isolated PostgreSQL execution and hosted
+PostgreSQL 17 schema/grant verification.
 
 ## Critical and high findings
 
@@ -74,7 +75,7 @@ calls do not double-apply credits.
 Login, signup, token refresh, CSV parsing, PDF parsing/OpenAI requests, and bulk exercise import have no application-level throttling. Supabase Auth limits do not cover the Express/OpenAI/PDF processing boundary.
 
 Resolution: proxy-aware limiters cover login, signup, refresh, library import,
-CSV/PDF parsing, import commit, and PDF export. The generic `429` response and
+paste/CSV/PDF parsing, import commit, and PDF export. The generic `429` response and
 standard headers are regression-tested. Secret-dependent integration remains opt-in.
 
 ## Moderate findings
@@ -142,8 +143,14 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
 - Admin client reassignment and package mutations now return stable `404`s for missing/archived records.
 - Message read-marking now excludes archived messages.
 - Shared/global workouts remain readable by coaches but are now admin-only to edit/archive.
-- The client dashboard now resolves the active assigned coach name; the 76-check
+- The client dashboard now resolves the active assigned coach name; the 80-check
   real-auth matrix asserts the returned value.
+- Deterministic paste import uses the existing Program Draft review/edit and
+  `commit_program_import` path. Paste drafts accept one to five days, while CSV/PDF
+  validation remains three to five days. Normalized exercise matches are reused;
+  unmatched paste exercises use `source='manual'` and
+  `review_status='needs_review'`. Because `exercise_library.source` has no check
+  constraint, no source-column migration was needed.
 - Backend error logging now emits only safe error name/code/status metadata; a regression proves messages, stacks, request objects, and nested secrets are omitted.
 
 ## Controls verified as present
@@ -161,15 +168,16 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
 - Legacy Python and destructive proof-of-concept runners were removed.
 - Secret-free CI runs backend regressions, frontend build, preview-mode browser
   tests, and production audits.
-- Backend regressions: 30 passing.
+- Backend regressions: 38/38 passing.
 - Preview browser regressions: four passing across coach, client, admin, route
   protection, and mobile navigation. The suite also guards against browser-incompatible
   module imports that previously left the preview page blank.
-- Opt-in API integration harness: 76/76 passing with dedicated fake accounts,
+- Opt-in API integration harness: 80/80 passing with dedicated fake accounts,
   target allowlisting, hard-delete prohibition, and soft-archive cleanup.
-- All four migrations and transactional RPC assertions executed successfully
+- All five migrations and transactional RPC assertions executed successfully
   against isolated PostgreSQL 16, including rollback-on-child-failure and
-  current/future grant tests. Hosted PostgreSQL 17 has 23/23 RLS-enabled tables,
+  one-to-five-day program import/edit behavior, and current/future grant tests.
+  Hosted PostgreSQL 17 has 23/23 RLS-enabled tables,
   zero policies, eight service-role-only invoker RPCs, and no direct anon/auth table grants.
 - Protected Vercel auth smoke: 12/12 role/login/profile/dashboard checks plus 7/7
   invite, signup, refresh, identity, and soft-archive checks passing.
@@ -179,3 +187,5 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
   and fixed both the archived-client restore boundary and indefinite loading after
   initial API failures; see the Phase 3/4 flow report for blocked and
   not-applicable cases.
+- AI-assisted PDF parsing is explicitly deferred by scope; approved waiver text is
+  the only remaining verification gate.

@@ -11,14 +11,14 @@ Deploy them as two Vercel projects (recommended) pointing at the respective subd
 - All routes are already prefixed `/api/...`.
 - Local/server mode also works anywhere with `npm start` (binds `0.0.0.0:$PORT`, default 8001).
 
-### Required environment variables (Vercel -> Settings -> Environment Variables)
+### Environment variables (Vercel -> Settings -> Environment Variables)
 | Variable | Value |
 |---|---|
 | `SUPABASE_URL` | The explicitly confirmed development Supabase project URL |
 | `SUPABASE_ANON_KEY` | Current `sb_publishable_...` key (the legacy variable name is retained for application compatibility) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Current `sb_secret_...` server key; never expose it to the frontend |
 | `OPENAI_API_KEY` | Optional secret for AI-assisted PDF program import; omit to return a safe `503` from that path |
-| `PROGRAM_IMPORT_MODEL` | Required model identifier when AI-assisted PDF import is enabled; document and pin the preview choice |
+| `PROGRAM_IMPORT_MODEL` | Optional until AI-assisted PDF import is enabled; then document and pin the model choice |
 | `STRIPE_SECRET_KEY` | `sk_test_...` (TEST mode; leave empty to disable payments gracefully) |
 | `STRIPE_PUBLISHABLE_KEY` | `pk_test_...` (optional) |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_...` (optional; payment verification also works without webhooks via `/api/payments/verify` polling on the success redirect) |
@@ -26,8 +26,10 @@ Deploy them as two Vercel projects (recommended) pointing at the respective subd
 | `CORS_ORIGINS` | Comma-separated exact frontend origins; wildcards and paths are rejected |
 
 The current hardening preview intentionally leaves `OPENAI_API_KEY` and
-`PROGRAM_IMPORT_MODEL` unset, so AI PDF parsing is the only unverified deployment
-path. CSV parsing, atomic import commit, and branded PDF export do not require them.
+`PROGRAM_IMPORT_MODEL` unset because AI-assisted PDF parsing is explicitly deferred.
+Deterministic pasted-text parsing, CSV parsing, atomic import commit, and branded
+PDF export do not require either variable. The PDF route fails closed with a safe
+`503` while the optional AI configuration is absent.
 
 ### Stripe webhook (optional but recommended)
 Point a TEST-mode webhook at `https://<backend-domain>/api/payments/webhook` for event `checkout.session.completed`, then set `STRIPE_WEBHOOK_SECRET`.
@@ -50,6 +52,11 @@ Point a TEST-mode webhook at `https://<backend-domain>/api/payments/webhook` for
 Schema lives in `supabase/migrations/`; `backend/migration.sql` mirrors the current
 baseline for review. Apply versioned migrations only to the explicitly confirmed
 development project and verify the resulting schema before deploying either app.
+The current hosted development schema has five applied migrations. Program save
+and import accept one to five days for deterministic paste drafts; CSV/PDF parsing
+continues to validate three to five days. Paste-created exercises that do not match
+an existing normalized name use the existing unconstrained source value `manual`
+and `review_status='needs_review'`; no source-column migration is required.
 
 The idempotent seed is development/preview-only and fails closed unless
 `CVF_SEED_CONFIRM_DEVELOPMENT=true`, the exact Supabase hostname is allowlisted,
@@ -63,8 +70,9 @@ after those safeguards are configured.
 - Backend branch alias: `https://cvfpt-backend-git-codex-phase-2-5-hardening-cvf.vercel.app`
 
 Both previews remain behind Vercel Authentication. Verification covered backend
-health, exact-origin CORS, real login/refresh, CSV parse, atomic commit, branded
-PDF export, frontend root/bundle/backend target, and logo delivery. Runtime logs
+health, exact-origin CORS, real login/refresh, deterministic paste and CSV parsing,
+one-to-five-day atomic commit/edit behavior, branded PDF export, frontend
+root/bundle/backend target, and logo delivery. Runtime logs
 were reviewed after the final healthy requests: no new error entry accompanied the
 successful health/auth/import/export probes. Earlier isolated failures for missing
 variables and serverless PDF loading are retained in Vercel history and resolved by

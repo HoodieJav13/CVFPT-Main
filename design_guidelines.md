@@ -30,12 +30,12 @@
   "typography": {
     "google_fonts": {
       "display": {
-        "family": "Space Grotesk",
+        "family": "Oswald",
         "weights": ["500", "600", "700"],
         "usage": "Headings, stat numbers, tab labels"
       },
       "body": {
-        "family": "Figtree",
+        "family": "Inter",
         "weights": ["400", "500", "600"],
         "usage": "Body, forms, tables, long notes"
       }
@@ -43,8 +43,8 @@
     "tailwind_font_setup": {
       "instruction": "Add Google Fonts <link> in index.html and set Tailwind fontFamily in tailwind.config.js (or use CSS variables in index.css).",
       "css_vars": {
-        "--font-display": "'Space Grotesk', ui-sans-serif, system-ui",
-        "--font-body": "'Figtree', ui-sans-serif, system-ui"
+        "--font-display": "'Oswald', ui-sans-serif, system-ui",
+        "--font-body": "'Inter', ui-sans-serif, system-ui"
       },
       "classes": {
         "heading": "font-[var(--font-display)] tracking-[-0.02em]",

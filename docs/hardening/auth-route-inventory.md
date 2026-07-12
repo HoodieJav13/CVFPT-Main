@@ -1,7 +1,8 @@
 # Express authorization route inventory
 
 Audit date: 2026-07-10
-Inventory source: the routers mounted in `backend/src/app.js` and all 94 handlers in `backend/src/routes/*.js`.
+Inventory updated: 2026-07-11
+Inventory source: the routers mounted in `backend/src/app.js` and all 95 handlers in `backend/src/routes/*.js`.
 
 Common behavior:
 
@@ -86,8 +87,9 @@ All routes require authenticated coach/admin access.
 | `PATCH /api/programs/workouts/:id/archive` | Coach/admin | Coach: own only; admin: all including global | Archive only | Yes | Ownership-hiding `404` |
 | `GET /api/programs/import/template.csv` | Coach/admin | No record ownership | N/A | No | `401` / `403` |
 | `POST /api/programs/import/parse-csv` | Coach/admin | No database mutation | N/A | CPU/memory only | File `400`/`413`; draft `422` |
+| `POST /api/programs/import/parse-paste` | Coach/admin | No database mutation; deterministic parser only | N/A | CPU/memory only | No exercises/request `400`; draft `422` |
 | `POST /api/programs/import/parse-pdf` | Coach/admin | Sends extracted program text to configured AI | N/A | External AI request | File `400`/`413`; config `503`; draft `422` |
-| `POST /api/programs/import/commit` | Coach/admin | RPC receives authenticated coach ID; admin uses own coach profile | Creates active | Yes, transaction | Draft `422`; RPC `500` |
+| `POST /api/programs/import/commit` | Coach/admin | RPC receives authenticated coach ID; admin uses own coach profile; paste reuses normalized exercise matches and creates unmatched exercises as manual/needs-review | Creates active one-to-five-day program | Yes, transaction | Draft `422`; RPC `500` |
 | `GET /api/programs` | Coach/admin | Coach: own; admin: all | Programs excluded | No | `401` / `403` |
 | `POST /api/programs` | Coach/admin | Program owned by caller; all day workouts resolved as own/global/admin-accessible | Creates active | Yes, transactional compound write | Validation `400`; workout `404` |
 | `GET /api/programs/:id/export.pdf` | Coach/admin | Coach: own; admin: all | Program must be active | CPU/PDF only | Ownership-hiding `404` |
@@ -213,10 +215,10 @@ identified below.
 
 Evidence codes:
 
-- **U30** — 30 backend regressions under `backend/test`, including access,
+- **U38** — 38 backend regressions under `backend/test`, including access,
   archived-boundary, validation, CORS, rate-limit, Stripe-mode, claim-race,
-  logging, PDF, grant, and transactional source contracts.
-- **L76** — `backend/integration/api-hardening.mjs`, 76/76 against the hosted
+  logging, deterministic paste/CSV/PDF drafts, grant, and transactional source contracts.
+- **L80** — `backend/integration/api-hardening.mjs`, 80/80 against the hosted
   development database with real auth and labeled fake records.
 - **B6** — `frontend/e2e/live-auth.spec.mjs`, 6/6 real-auth browser flows.
 - **P4** — `frontend/e2e/preview-critical.spec.mjs`, 4/4 deterministic browser flows.
@@ -231,21 +233,22 @@ handler. External/gated exceptions are called out explicitly.
 
 | Inventory section / endpoints | Relevant tests |
 |---|---|
-| Authentication — all four endpoints | **L76**, **B6**, **H19**; signup race and archived refresh: **U30** |
-| Clients — all six endpoints | **L76**, **B6**, **U30**; archive/restore boundary: **B6** + **U30** |
-| Sessions and notes — all nine endpoints | **L76**, **B6**, **U30**; atomic completion/credits: **PG** |
-| Progress — all seven endpoints | **L76**, **B6**, **U30** |
-| Daily check-ins — all six endpoints | **L76**, **B6**, **U30** |
-| Exercise library/workout CRUD — first ten Program Builder endpoints | **L76**, **B6**, **P4**, **U30**, **PG** |
-| CSV template/parse, import commit, PDF export | **L76**, **B6**, **P4**, **PG** |
-| AI PDF parse | File/config/error boundaries: **U30**; successful external-AI request blocked pending OpenAI preview credential |
-| Program CRUD and both assignment families | **L76**, **B6**, **P4**, **U30**, **PG** |
-| Messages — all five endpoints | **L76**, **B6**, **U30** |
-| Booking requests — all five endpoints | **L76**, **B6**, **U30**, **PG** |
-| Waiver reads/status | **L76**, **B6**, **U30**, **PG** |
-| Waiver version/sign/paper mutations | Uniqueness/grants/transaction boundaries: **U30**, **PG**; UI success blocked pending approved legal text |
-| Packages — all four endpoints | **L76**, **B6**, **U30** |
-| Payment config/manual/history/credits | **L76**, **B6**, **U30**, **PG** |
-| Stripe webhook/checkout/verify | Signature, test-mode, ownership, and idempotency: **U30**, **PG**; no live Stripe operation by invariant |
-| Admin — all four endpoints | **L76**, **B6**, **H19** |
-| Coach/client dashboards | **L76**, **B6**, **P4**, **H19** |
+| Authentication — all four endpoints | **L80**, **B6**, **H19**; signup race and archived refresh: **U38** |
+| Clients — all six endpoints | **L80**, **B6**, **U38**; archive/restore boundary: **B6** + **U38** |
+| Sessions and notes — all nine endpoints | **L80**, **B6**, **U38**; atomic completion/credits: **PG** |
+| Progress — all seven endpoints | **L80**, **B6**, **U38** |
+| Daily check-ins — all six endpoints | **L80**, **B6**, **U38** |
+| Exercise library/workout CRUD — first ten Program Builder endpoints | **L80**, **B6**, **P4**, **U38**, **PG** |
+| Deterministic paste parse, shared review/commit, and one-to-five-day edit | **L80**, **B6**, **P4**, **U38**, **PG**; normalized-name reuse and manual/needs-review source tagging verified |
+| CSV template/parse, import commit, PDF export | **L80**, **B6**, **P4**, **PG**; CSV/PDF draft validation remains three to five days |
+| AI PDF parse | File/config/error boundaries: **U38**; successful external-AI parsing explicitly deferred by scope |
+| Program CRUD and both assignment families | **L80**, **B6**, **P4**, **U38**, **PG** |
+| Messages — all five endpoints | **L80**, **B6**, **U38** |
+| Booking requests — all five endpoints | **L80**, **B6**, **U38**, **PG** |
+| Waiver reads/status | **L80**, **B6**, **U38**, **PG** |
+| Waiver version/sign/paper mutations | Uniqueness/grants/transaction boundaries: **U38**, **PG**; UI success blocked pending approved legal text |
+| Packages — all four endpoints | **L80**, **B6**, **U38** |
+| Payment config/manual/history/credits | **L80**, **B6**, **U38**, **PG** |
+| Stripe webhook/checkout/verify | Signature, test-mode, ownership, and idempotency: **U38**, **PG**; no live Stripe operation by invariant |
+| Admin — all four endpoints | **L80**, **B6**, **H19** |
+| Coach/client dashboards | **L80**, **B6**, **P4**, **H19** |

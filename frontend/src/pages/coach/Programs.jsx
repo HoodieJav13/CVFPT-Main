@@ -44,6 +44,13 @@ const EMPTY_DRAFT_EXERCISE = {
   equipment: '',
   primary_muscle: '',
 };
+const PROGRAM_FREQUENCIES = ['1', '2', '3', '4', '5'];
+const IMPORT_FREQUENCIES = ['3', '4', '5'];
+const PASTE_NO_EXERCISES_MESSAGE = "Couldn't find any exercises in this text.";
+
+function frequencyLabel(value) {
+  return `${value} ${String(value) === '1' ? 'day' : 'days'}/week`;
+}
 
 export default function Programs() {
   const [library, setLibrary] = useState(null);
@@ -416,7 +423,7 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
         <Button variant="secondary" className="rounded-xl" onClick={() => setImportOpen(true)} data-testid="program-import-open-button"><FileUp className="h-4 w-4 mr-1.5" /> Import program</Button>
         <Button className="rounded-xl" onClick={openCreate} data-testid="program-create-button"><Plus className="h-4 w-4 mr-1.5" /> New program</Button>
       </div>
-      {programs.length === 0 && <EmptyState icon={CalendarDays} title="No structured programs yet" subtitle="Build a 3-5 day weekly program from saved workout days." />}
+      {programs.length === 0 && <EmptyState icon={CalendarDays} title="No structured programs yet" subtitle="Build a 1-5 day weekly program from saved workout days." />}
       <div className="space-y-3">
         {programs.map((program) => (
           <Card key={program.id} data-testid="program-card">
@@ -424,7 +431,7 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-display font-semibold">{program.name}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{program.frequency_days} days/week - {program.exercise_count} total exercises</p>
+                  <p className="text-xs text-muted-foreground mt-1">{frequencyLabel(program.frequency_days)} - {program.exercise_count} total exercises</p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     {(program.days || []).map((day) => (
                       <div key={day.id || day.day_number} className="rounded-xl border border-border bg-card/60 px-3 py-2">
@@ -454,7 +461,7 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
               <Label>Days per week</Label>
               <Select value={form.frequency_days} onValueChange={setFrequency}>
                 <SelectTrigger className="rounded-xl" data-testid="program-frequency-select"><SelectValue /></SelectTrigger>
-                <SelectContent>{['3', '4', '5'].map((d) => <SelectItem key={d} value={d}>{d} days/week</SelectItem>)}</SelectContent>
+                <SelectContent>{PROGRAM_FREQUENCIES.map((d) => <SelectItem key={d} value={d}>{frequencyLabel(d)}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-3">
@@ -481,6 +488,8 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
 function ProgramImportDialog({ open, onOpenChange, library, reload }) {
   const [sourceType, setSourceType] = useState('csv');
   const [file, setFile] = useState(null);
+  const [pasteText, setPasteText] = useState('');
+  const [pasteError, setPasteError] = useState('');
   const [draft, setDraft] = useState(null);
   const [errors, setErrors] = useState([]);
   const [parsing, setParsing] = useState(false);
@@ -493,10 +502,23 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
     onOpenChange(value);
     if (!value) {
       setFile(null);
+      setPasteText('');
+      setPasteError('');
       setDraft(null);
       setErrors([]);
       setSourceType('csv');
     }
+  };
+
+  const selectSource = (nextSource) => {
+    if (sourceType === 'paste' || nextSource === 'paste') {
+      setFile(null);
+      setPasteText('');
+      setPasteError('');
+      setDraft(null);
+      setErrors([]);
+    }
+    setSourceType(nextSource);
   };
 
   const downloadTemplate = async () => {
@@ -530,39 +552,81 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
     }
   };
 
+  const showPasteDraft = (response) => {
+    const nextDraft = normalizeDraft(response.draft);
+    setDraft(nextDraft);
+    setErrors(response.errors || validateDraft(nextDraft).errors);
+    setPasteError('');
+    toast.success(response.message || 'Text parsed. Review before saving.');
+  };
+
+  const parsePaste = async () => {
+    if (!pasteText.trim()) {
+      setDraft(null);
+      setErrors([]);
+      setPasteError(PASTE_NO_EXERCISES_MESSAGE);
+      return;
+    }
+    setParsing(true);
+    setDraft(null);
+    setErrors([]);
+    setPasteError('');
+    try {
+      const { data } = await api.post('/programs/import/parse-paste', { text: pasteText });
+      showPasteDraft(data);
+    } catch (e) {
+      const response = e.response?.data;
+      if (response?.draft) {
+        showPasteDraft(response);
+      } else {
+        const message = response?.error || errMsg(e, PASTE_NO_EXERCISES_MESSAGE);
+        setPasteError(message);
+        toast.error(message);
+      }
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const updateDraft = (input) => {
+    const nextDraft = normalizeDraft(input);
+    setDraft(nextDraft);
+    if (sourceType === 'paste') setErrors(validateDraft(nextDraft).errors);
+  };
+
   const setProgram = (updates) => {
     const nextFrequency = updates.frequency_days ? Number(updates.frequency_days) : draft.program.frequency_days;
-    setDraft(normalizeDraft({
+    updateDraft({
       ...draft,
       program: { ...draft.program, ...updates, frequency_days: nextFrequency },
       days: updates.frequency_days ? resizeDraftDays(draft.days, nextFrequency) : draft.days,
-    }));
+    });
   };
-  const setDay = (dayIndex, updates) => setDraft(normalizeDraft({
+  const setDay = (dayIndex, updates) => updateDraft({
     ...draft,
     days: draft.days.map((day, i) => i === dayIndex ? { ...day, ...updates } : day),
-  }));
-  const setExercise = (dayIndex, exerciseIndex, updates) => setDraft(normalizeDraft({
+  });
+  const setExercise = (dayIndex, exerciseIndex, updates) => updateDraft({
     ...draft,
     days: draft.days.map((day, i) => i === dayIndex ? {
       ...day,
       exercises: day.exercises.map((exercise, j) => j === exerciseIndex ? { ...exercise, ...updates } : exercise),
     } : day),
-  }));
-  const addExercise = (dayIndex) => setDraft(normalizeDraft({
+  });
+  const addExercise = (dayIndex) => updateDraft({
     ...draft,
     days: draft.days.map((day, i) => i === dayIndex ? {
       ...day,
       exercises: [...day.exercises, { ...EMPTY_DRAFT_EXERCISE }],
     } : day),
-  }));
-  const removeExercise = (dayIndex, exerciseIndex) => setDraft(normalizeDraft({
+  });
+  const removeExercise = (dayIndex, exerciseIndex) => updateDraft({
     ...draft,
     days: draft.days.map((day, i) => i === dayIndex ? {
       ...day,
       exercises: day.exercises.filter((_, j) => j !== exerciseIndex),
     } : day),
-  }));
+  });
 
   const commit = async () => {
     const checked = validateDraft(draft);
@@ -596,23 +660,60 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
           <div className="grid gap-3 lg:grid-cols-[180px_1fr_auto] lg:items-end">
             <div className="space-y-1.5">
               <Label>Source</Label>
-              <Select value={sourceType} onValueChange={setSourceType}>
+              <Select value={sourceType} onValueChange={selectSource}>
                 <SelectTrigger className="rounded-xl" data-testid="program-import-source-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="csv">CSV template</SelectItem>
+                  <SelectItem value="paste">Paste program</SelectItem>
                   <SelectItem value="pdf">PDF extraction</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label>{sourceType === 'pdf' ? 'PDF file' : 'CSV file'}</Label>
-              <Input type="file" accept={sourceType === 'pdf' ? '.pdf,application/pdf' : '.csv,text/csv'} onChange={(e) => setFile(e.target.files?.[0] || null)} data-testid="program-import-file-input" />
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" className="rounded-xl" type="button" onClick={downloadTemplate} data-testid="program-import-template-button"><FileText className="h-4 w-4 mr-1.5" /> Template</Button>
-              <Button className="rounded-xl" type="button" onClick={parseFile} disabled={parsing || !file} data-testid="program-import-parse-button">{parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Parse'}</Button>
-            </div>
+            {sourceType === 'paste' ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="program-import-paste-textarea">Program text</Label>
+                  <Textarea
+                    id="program-import-paste-textarea"
+                    rows={8}
+                    value={pasteText}
+                    disabled={parsing}
+                    onChange={(e) => {
+                      setPasteText(e.target.value);
+                      setPasteError('');
+                      setDraft(null);
+                      setErrors([]);
+                    }}
+                    placeholder="Paste workout days and exercises here..."
+                    data-testid="program-import-paste-textarea"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button className="rounded-xl" type="button" onClick={parsePaste} disabled={parsing} data-testid="program-import-paste-parse-button">
+                    {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Parse'}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label>{sourceType === 'pdf' ? 'PDF file' : 'CSV file'}</Label>
+                  <Input type="file" accept={sourceType === 'pdf' ? '.pdf,application/pdf' : '.csv,text/csv'} onChange={(e) => setFile(e.target.files?.[0] || null)} data-testid="program-import-file-input" />
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="rounded-xl" type="button" onClick={downloadTemplate} data-testid="program-import-template-button"><FileText className="h-4 w-4 mr-1.5" /> Template</Button>
+                  <Button className="rounded-xl" type="button" onClick={parseFile} disabled={parsing || !file} data-testid="program-import-parse-button">{parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Parse'}</Button>
+                </div>
+              </>
+            )}
           </div>
+
+          {sourceType === 'paste' && pasteError && (
+            <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" data-testid="program-import-paste-empty-state">
+              <div className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" /> Could not parse program</div>
+              <p className="mt-1">{pasteError}</p>
+            </div>
+          )}
 
           {draft?.import_meta?.warnings?.length > 0 && (
             <div className="rounded-xl border border-gold/30 bg-gold/10 p-3 text-sm text-gold">
@@ -633,16 +734,16 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
           )}
 
           {draft && (
-            <div className="space-y-4">
+            <div className="space-y-4" data-testid="program-import-review">
               <div className="rounded-xl border border-border bg-card/50 p-4 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
                   <Input value={draft.program.name} onChange={(e) => setProgram({ name: e.target.value })} placeholder="Program name" data-testid="program-import-name-input" />
                   <Select value={String(draft.program.frequency_days)} onValueChange={(value) => setProgram({ frequency_days: Number(value) })}>
-                    <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>{['3', '4', '5'].map((d) => <SelectItem key={d} value={d}>{d} days/week</SelectItem>)}</SelectContent>
+                    <SelectTrigger className="rounded-xl" data-testid="program-import-frequency-select"><SelectValue /></SelectTrigger>
+                    <SelectContent>{(sourceType === 'paste' ? PROGRAM_FREQUENCIES : IMPORT_FREQUENCIES).map((d) => <SelectItem key={d} value={d}>{frequencyLabel(d)}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <Textarea rows={2} value={draft.program.description} onChange={(e) => setProgram({ description: e.target.value })} placeholder="Program description" />
+                <Textarea rows={2} value={draft.program.description} onChange={(e) => setProgram({ description: e.target.value })} placeholder="Program description" data-testid="program-import-description-input" />
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -657,20 +758,20 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
               </div>
 
               {draft.days.map((day, dayIndex) => (
-                <Card key={day.day_number}>
+                <Card key={day.day_number} data-testid="program-import-day-card">
                   <CardHeader className="pb-3">
                     <div className="grid gap-2 sm:grid-cols-[90px_1fr_1fr]">
-                      <Input type="number" min="1" max="5" value={day.day_number} onChange={(e) => setDay(dayIndex, { day_number: Number(e.target.value) })} />
-                      <Input value={day.name} onChange={(e) => setDay(dayIndex, { name: e.target.value })} placeholder="Workout day name" />
-                      <Input value={day.goal} onChange={(e) => setDay(dayIndex, { goal: e.target.value })} placeholder="Goal/focus" />
+                      <Input type="number" min="1" max="5" value={day.day_number} onChange={(e) => setDay(dayIndex, { day_number: Number(e.target.value) })} data-testid="program-import-day-number-input" />
+                      <Input value={day.name} onChange={(e) => setDay(dayIndex, { name: e.target.value })} placeholder="Workout day name" data-testid="program-import-day-name-input" />
+                      <Input value={day.goal} onChange={(e) => setDay(dayIndex, { goal: e.target.value })} placeholder="Goal/focus" data-testid="program-import-day-goal-input" />
                     </div>
-                    <Input value={day.notes} onChange={(e) => setDay(dayIndex, { notes: e.target.value })} placeholder="Day notes" />
+                    <Input value={day.notes} onChange={(e) => setDay(dayIndex, { notes: e.target.value })} placeholder="Day notes" data-testid="program-import-day-notes-input" />
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {day.exercises.map((exercise, exerciseIndex) => (
-                      <div key={`${day.day_number}-${exerciseIndex}`} className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
+                      <div key={`${day.day_number}-${exerciseIndex}`} className="rounded-xl border border-border bg-card/50 p-3 space-y-2" data-testid="program-import-exercise-card">
                         <div className="flex gap-2">
-                          <Input value={exercise.name} onChange={(e) => setExercise(dayIndex, exerciseIndex, { name: e.target.value })} placeholder={`Exercise ${exerciseIndex + 1}`} />
+                          <Input value={exercise.name} onChange={(e) => setExercise(dayIndex, exerciseIndex, { name: e.target.value })} placeholder={`Exercise ${exerciseIndex + 1}`} data-testid="program-import-exercise-name-input" />
                           <Button
                             type="button"
                             variant="ghost"
@@ -678,28 +779,29 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
                             className="shrink-0 rounded-xl text-muted-foreground"
                             onClick={() => removeExercise(dayIndex, exerciseIndex)}
                             aria-label="Remove exercise"
+                            data-testid="program-import-exercise-remove-button"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                          <Input value={exercise.sets} onChange={(e) => setExercise(dayIndex, exerciseIndex, { sets: e.target.value })} placeholder="Sets" />
-                          <Input value={exercise.reps} onChange={(e) => setExercise(dayIndex, exerciseIndex, { reps: e.target.value })} placeholder="Reps" />
-                          <Input value={exercise.rest} onChange={(e) => setExercise(dayIndex, exerciseIndex, { rest: e.target.value })} placeholder="Rest" />
-                          <Input value={exercise.tempo} onChange={(e) => setExercise(dayIndex, exerciseIndex, { tempo: e.target.value })} placeholder="Tempo" />
+                          <Input value={exercise.sets} onChange={(e) => setExercise(dayIndex, exerciseIndex, { sets: e.target.value })} placeholder="Sets" data-testid="program-import-exercise-sets-input" />
+                          <Input value={exercise.reps} onChange={(e) => setExercise(dayIndex, exerciseIndex, { reps: e.target.value })} placeholder="Reps" data-testid="program-import-exercise-reps-input" />
+                          <Input value={exercise.rest} onChange={(e) => setExercise(dayIndex, exerciseIndex, { rest: e.target.value })} placeholder="Rest" data-testid="program-import-exercise-rest-input" />
+                          <Input value={exercise.tempo} onChange={(e) => setExercise(dayIndex, exerciseIndex, { tempo: e.target.value })} placeholder="Tempo" data-testid="program-import-exercise-tempo-input" />
                         </div>
                         <div className="grid gap-2 sm:grid-cols-2">
-                          <Input value={exercise.client_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { client_notes: e.target.value })} placeholder="Client notes" />
-                          <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" />
+                          <Input value={exercise.client_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { client_notes: e.target.value })} placeholder="Client notes" data-testid="program-import-exercise-client-notes-input" />
+                          <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" data-testid="program-import-exercise-coach-notes-input" />
                         </div>
                         <div className="grid gap-2 sm:grid-cols-4">
-                          <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value })} placeholder="Video URL" className="sm:col-span-2" />
-                          <Input value={exercise.equipment} onChange={(e) => setExercise(dayIndex, exerciseIndex, { equipment: e.target.value })} placeholder="Equipment" />
-                          <Input value={exercise.primary_muscle} onChange={(e) => setExercise(dayIndex, exerciseIndex, { primary_muscle: e.target.value })} placeholder="Primary muscle" />
+                          <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value })} placeholder="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
+                          <Input value={exercise.equipment} onChange={(e) => setExercise(dayIndex, exerciseIndex, { equipment: e.target.value })} placeholder="Equipment" data-testid="program-import-exercise-equipment-input" />
+                          <Input value={exercise.primary_muscle} onChange={(e) => setExercise(dayIndex, exerciseIndex, { primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="program-import-exercise-primary-muscle-input" />
                         </div>
                       </div>
                     ))}
-                    <Button type="button" variant="outline" className="rounded-xl" onClick={() => addExercise(dayIndex)}>
+                    <Button type="button" variant="outline" className="rounded-xl" onClick={() => addExercise(dayIndex)} data-testid="program-import-exercise-add-button">
                       <Plus className="h-4 w-4 mr-1.5" /> Add exercise
                     </Button>
                   </CardContent>

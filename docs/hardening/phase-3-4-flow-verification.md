@@ -2,19 +2,25 @@
 
 Verification date: 2026-07-11
 
-Target: protected Vercel previews plus the hosted fake-data Supabase development
-project. All identities and created records were labeled test data. Cleanup used
-soft archive/state transitions only; no business record was hard-deleted.
+Targets: protected Vercel previews, plus an isolated local frontend/backend pointed
+at the hosted fake-data Supabase development project. The 12-check protected role
+smoke covers deployed boundaries; the expanded real-auth browser and 80-check API
+harness exercise the local candidate code against hosted data. All identities and
+created records were labeled test data. Cleanup used soft archive/state transitions
+only; no business record was hard-deleted.
 
 ## Evidence summary
 
 - Expanded real-auth browser suite: 6/6 passing (auth-negative, recoverable
   load failures, client, coach/Training Builder, session/payment/progress, admin).
-- Hosted-Supabase API harness: 76/76 passing.
+- Hosted-Supabase API harness: 80/80 passing.
 - Protected Vercel role smoke: 12/12 passing.
 - Hosted invite/signup/refresh flow: 7/7 passing.
-- Preview browser regressions: 4/4 passing; backend regressions: 30/30 passing.
-- Backend/frontend production audits: zero known vulnerabilities; frontend build passes.
+- Preview browser regressions: 4/4 passing; backend regressions: 38/38 passing.
+- Backend/frontend production audits: zero known vulnerabilities; frontend build
+  passes. The full frontend audit additionally reports two low-severity dev-only
+  `@eslint/plugin-kit` findings; the forced fix would move ESLint outside its
+  declared range and was not applied.
 
 ## Phase 3 — coach/admin flows
 
@@ -24,10 +30,10 @@ soft archive/state transitions only; no business record was hard-deleted.
 | Token refresh | Pass | Hosted refresh followed by authenticated identity read |
 | Dashboard, loading/empty/error states | Pass | Real-auth fault injection proves client and coach failures expose an accessible retry state and recover; initial skeleton, empty, and success states also pass |
 | Client create, edit, invite, archive, restore | Pass | Real-auth browser lifecycle plus hosted invite/signup/archive |
-| Reassign and ownership boundaries | Pass | Real admin UI reassigns the authenticated client away and back; 76-check live matrix verifies former/new coach access, cross-coach `404`, and admin access |
+| Reassign and ownership boundaries | Pass | Real admin UI reassigns the authenticated client away and back; 80-check live matrix verifies former/new coach access, cross-coach `404`, and admin access |
 | Sessions, notes, cancel/complete, credits | Pass | Real UI schedule/edit/cancel, shared-note create/share toggles, complete, past filtering, client shared-note read, and credit deduction; API idempotency also passes |
 | Progress and daily check-ins | Pass | Real browser coach/client check-in and metric entry/edit/archive controls plus API ownership checks |
-| Programs, assignments, exercise library | Pass with one block | Real UI covers library search/import/create/edit/archive; workout add/remove/create/edit/archive; program frequency/day notes/create/edit/archive; CSV template/parse/atomic commit; active/dated assignment/unassignment; client video-link read; and branded PDF export. Cross-coach `404` passes. AI PDF import is blocked by missing OpenAI preview configuration. |
+| Programs, assignments, exercise library | Pass | The local candidate UI against hosted data covers library search/import/create/edit/archive; workout add/remove/create/edit/archive; program frequency/day notes/create/edit/archive; deterministic paste and CSV parsing through the shared review/edit and atomic commit path; active/dated assignment/unassignment; client video-link read; and branded PDF export. Paste import accepts one to five days, reuses normalized exercise matches, and creates unmatched exercises as `manual`/`needs_review`; CSV/PDF validation remains three to five days. Cross-coach `404` passes. AI-assisted PDF parsing is explicitly deferred. |
 | Messaging | Pass | Real client send, coach thread/reply, and client reply read all pass |
 | Booking approve/decline | Pass | Real UI request plus exact approve and decline controls; atomic approval creates the session shown in the coach/client lifecycle |
 | Manual purchases/packages | Pass | Real UI package recurring/create/edit/archive/restore, manual purchase/history, credit grant, session deduction, and client history/balance. Stripe remains intentionally disabled. |
@@ -44,7 +50,7 @@ soft archive/state transitions only; no business record was hard-deleted.
 | Home dashboard and daily check-in | Pass | Live browser save/update and soft-archive cleanup |
 | Sessions and booking requests | Pass | Real request/pending display, coach approve/decline, completed-session read, and shared-note read |
 | Progress | Pass | Live client entry creation/update, coach metric lifecycle, ownership checks, and browser empty state |
-| Programs/workouts/video links | Pass | Live assignment/read with a video-bearing exercise plus empty-state browser coverage |
+| Programs/workouts/video links | Pass | Live one-day paste import/edit, assignment/read with a video-bearing exercise, normalized exercise reuse/source verification, and empty-state browser coverage |
 | Messaging | Pass | Real browser client send, coach reply, and client receipt |
 | Waiver | Blocked by legal-data gate | Status works; signing is unavailable without approved waiver text |
 | Packages, payments-disabled, credits/history | Pass | Live payment-disabled state plus manual-purchase history and credit grant/use balance; no live Stripe |
@@ -68,6 +74,8 @@ No other Phase 3/4 failures were confirmed. Every labeled, archivable
 soft-archived with the guarded,
 allowlisted `npm run test:cleanup` command; a second idempotency pass reported zero
 active rows across parents, child rows, purchases, ledgers, bookings, and messages.
-Remaining blocked items require
-either an OpenAI preview credential or approved legal waiver content; they do not
-justify weakening the current security model.
+An initial live-suite attempt also exposed test-harness configuration/order issues
+only; after correcting the harness, the final real-auth run passed 6/6. AI-assisted
+PDF parsing is explicitly deferred by scope. Approved legal waiver content is the
+only remaining verification gate, and it does not justify weakening the current
+security model.

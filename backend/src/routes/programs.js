@@ -27,6 +27,7 @@ const {
   normalizeDraft,
   normalizeName,
   parseCsvDraft,
+  parsePasteDraft,
   validateDraft,
 } = require('../lib/programDraft.cjs');
 const { extractPdfText } = require('../lib/pdfText');
@@ -70,7 +71,13 @@ function isPdfUpload(file) {
 }
 
 function sourceForImport(sourceType) {
-  return sourceType === 'pdf' ? 'import_pdf_ai' : 'import_csv';
+  if (sourceType === 'pdf') return 'import_pdf_ai';
+  if (sourceType === 'paste') return 'manual';
+  return 'import_csv';
+}
+
+function isSupportedProgramFrequency(value) {
+  return Number.isInteger(value) && value >= 1 && value <= 5;
 }
 
 function safeFilename(value) {
@@ -136,7 +143,8 @@ function generateProgramPdf(program, user, options = {}) {
     doc.fillColor('#111827').font('Helvetica').fontSize(10);
     const generated = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     const coachName = user?.coach?.name || 'CVF Coach';
-    doc.text(`${program.frequency_days || program.days?.length || 0} days/week`, { continued: true });
+    const frequency = program.frequency_days || program.days?.length || 0;
+    doc.text(`${frequency} ${frequency === 1 ? 'day' : 'days'}/week`, { continued: true });
     doc.fillColor(muted).text(`   Coach: ${coachName}   Generated: ${generated}`);
     if (program.description) {
       doc.moveDown(0.8);
@@ -470,6 +478,27 @@ router.post('/import/parse-csv', requireCoach, csvImportLimiter, programImportUp
   }
 });
 
+router.post('/import/parse-paste', requireCoach, csvImportLimiter, async (req, res) => {
+  try {
+    const draft = parsePasteDraft(req.body?.text);
+    const validation = validateDraft(draft);
+    if (!validation.valid) {
+      return res.status(422).json({
+        error: 'Paste parsed, but the draft needs fixes before saving.',
+        draft: validation.draft,
+        errors: validation.errors,
+      });
+    }
+    return res.json({ message: 'Paste parsed. Review imported program before saving.', draft: validation.draft, errors: [] });
+  } catch (e) {
+    if (e.code === 'NO_EXERCISES_FOUND' || e.validation?.no_exercises) {
+      return res.status(400).json({ error: "Couldn't find any exercises in this text." });
+    }
+    logError('parse pasted program error', e);
+    return res.status(500).json({ error: 'Could not parse pasted program' });
+  }
+});
+
 router.post('/import/parse-pdf', requireCoach, pdfImportLimiter, programImportUpload, async (req, res) => {
   try {
     if (!isPdfUpload(req.file)) return res.status(400).json({ error: 'Upload a PDF file.' });
@@ -549,7 +578,7 @@ router.post('/', requireCoach, async (req, res) => {
     const { name, description, frequency_days, days } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Program name is required' });
     const frequency = Number(frequency_days);
-    if (![3, 4, 5].includes(frequency)) return res.status(400).json({ error: 'Choose 3, 4, or 5 days per week' });
+    if (!isSupportedProgramFrequency(frequency)) return res.status(400).json({ error: 'Choose 1 to 5 days per week' });
     const validDays = Array.isArray(days) ? days.filter((d) => d.workout_id) : [];
     if (validDays.length !== frequency) return res.status(400).json({ error: `Assign one workout to each of the ${frequency} days` });
     if (!await programDaysAreAccessible(req.user, validDays)) return res.status(404).json({ error: 'Workout not found' });
@@ -608,7 +637,7 @@ router.put('/:id', requireCoach, async (req, res) => {
     const name = 'name' in body ? String(body.name || '').trim() : program.name;
     if (!name) return res.status(400).json({ error: 'Program name is required' });
     const frequency = 'frequency_days' in body ? Number(body.frequency_days) : program.frequency_days;
-    if (![3, 4, 5].includes(frequency)) return res.status(400).json({ error: 'Choose 3, 4, or 5 days per week' });
+    if (!isSupportedProgramFrequency(frequency)) return res.status(400).json({ error: 'Choose 1 to 5 days per week' });
     const validDays = Array.isArray(body.days)
       ? body.days.filter((day) => day.workout_id)
       : program.days.map((day) => ({ day_number: day.day_number, workout_id: day.workout_id, notes: day.notes }));

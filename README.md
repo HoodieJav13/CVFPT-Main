@@ -24,7 +24,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment details.
 ## Verification
 
 Backend unit/regression checks, the frontend production build, and preview-mode
-browser checks are secret-free:
+browser checks are secret-free. The current results are 38/38 backend checks and
+4/4 preview browser flows:
 
 ```sh
 cd backend && npm test
@@ -37,8 +38,9 @@ allowlisted development or preview target. Copy `backend/integration/.env.exampl
 to a local ignored environment file, export its values, then run
 `cd backend && npm run test:integration`. It uses dedicated fake-data accounts,
 forbids hard-delete requests, and soft-archives the records it creates. The current
-matrix covers 76 health, authentication, ownership, client, session, note, credit,
-package, progress, booking, messaging, Training Builder, and assignment checks.
+matrix covers 80/80 health, authentication, ownership, client, session, note,
+credit, package, progress, booking, messaging, Training Builder, and assignment
+checks.
 For real-auth browser artifacts that have no public archive endpoint, the guarded
 `cd backend && npm run test:cleanup` command requires an allowlisted fake-data
 Supabase host and a `CVF LIVE`/`CVF TEST` label prefix, then performs soft archives
@@ -52,3 +54,10 @@ from `frontend/`. The live config explicitly disables preview mode. The current
 six-flow suite covers negative auth, recoverable loading errors, client and coach
 controls, Training Builder, session/payment/progress/booking/messaging lifecycles,
 admin management, and responsive navigation.
+
+Training Builder accepts deterministic pasted text through the same Program Draft
+review/edit and atomic commit flow used by CSV/PDF imports. Blank-line blocks map
+to one to five days; unmatched new exercises are stored as manual entries needing
+review. CSV and PDF imports retain their existing three-to-five-day validation.
+AI-assisted PDF parsing is explicitly deferred and safely returns `503` when its
+optional OpenAI configuration is absent.

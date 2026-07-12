@@ -377,6 +377,29 @@ async function main() {
     method: 'POST', token: coachA.access_token, expected: 201, json: { content: `CVF TEST COACH MESSAGE ${runId}` },
   }));
 
+  await check('Training Builder paste parser preserves flat eight-exercise input', async () => {
+    const text = [
+      'ATG DB Incline 3x12',
+      'DB fly 2x12',
+      'Lower traps 3x8',
+      'Powell raise 2x10',
+      'Flat bench 2x7 to true failure',
+      'Decline bench 2x7 to true failure',
+      'Pullovers 2x12',
+      'Tiddy lift 2x10',
+    ].join('\n');
+    const { payload } = await request('/programs/import/parse-paste', {
+      method: 'POST', token: coachA.access_token, json: { text }, expected: 422,
+    });
+    if (payload.draft?.program?.frequency_days !== 1 || payload.draft?.days?.[0]?.exercises?.length !== 8) {
+      throw new Error('flat paste did not produce one day with eight exercises');
+    }
+    const flatBench = payload.draft.days[0].exercises.find((exercise) => exercise.name === 'Flat bench');
+    if (flatBench?.sets !== '2' || flatBench?.reps !== '7' || flatBench?.client_notes !== 'to true failure') {
+      throw new Error('flat paste lost sets, reps, or trailing cue');
+    }
+  });
+
   const template = await check('Training Builder CSV template', () => request('/programs/import/template.csv', { token: coachA.access_token }));
   const parsed = await check('Training Builder CSV parse', async () => {
     if (!template) throw new Error('template unavailable');
@@ -412,6 +435,54 @@ async function main() {
       if (!response.headers.get('content-type')?.includes('application/pdf') || payload.byteLength < 100) throw new Error('invalid PDF response');
     });
     await check('other coach cannot read imported program', () => request(`/programs/${imported.programId}`, { token: coachB.access_token, expected: 404 }));
+  }
+
+  const pasted = await check('Training Builder one-day paste uses the atomic import path', async () => {
+    const reusedName = `CVF TEST ${runId} D1 E1`;
+    const newExerciseName = `CVF TEST PASTE ${runId}`;
+    const text = `${reusedName.toLowerCase().replace(/ /g, '  ')} 2x7 to true failure\n${newExerciseName} 3x8`;
+    const { payload: parsedPaste } = await request('/programs/import/parse-paste', {
+      method: 'POST', token: coachA.access_token, json: { text }, expected: 422,
+    });
+    parsedPaste.draft.program.name = `CVF TEST PASTE PROGRAM ${runId}`;
+    parsedPaste.draft.days[0].name = `CVF TEST PASTE DAY ${runId}`;
+    const { payload } = await request('/programs/import/commit', {
+      method: 'POST', token: coachA.access_token, json: { draft: parsedPaste.draft }, expected: 201,
+    });
+    const programId = payload.program_id || payload.program?.id;
+    if (!programId || payload.program?.frequency_days !== 1) throw new Error('one-day pasted program missing');
+    cleanup.push(() => request(`/programs/${programId}/archive`, { method: 'PATCH', token: coachA.access_token }));
+    return { programId, reusedName, newExerciseName, result: payload };
+  });
+  if (pasted) {
+    await check('paste import reuses normalized names and tags new exercises manual', async () => {
+      const normalizedReusedName = pasted.reusedName.toLowerCase().trim().replace(/\s+/g, ' ');
+      if (!pasted.result.reused_exercises?.some((exercise) => (
+        String(exercise.name || '').toLowerCase().trim().replace(/\s+/g, ' ') === normalizedReusedName
+      ))) {
+        throw new Error('normalized exercise was not reused');
+      }
+      const { payload } = await request('/programs/exercise-library', { token: coachA.access_token });
+      const createdExercise = payload.find((exercise) => exercise.name === pasted.newExerciseName);
+      if (createdExercise?.source !== 'manual' || createdExercise?.review_status !== 'needs_review') {
+        throw new Error('pasted exercise source/review state mismatch');
+      }
+    });
+    await check('one-day pasted program remains editable', async () => {
+      const { payload: current } = await request(`/programs/${pasted.programId}`, { token: coachA.access_token });
+      const { payload } = await request(`/programs/${pasted.programId}`, {
+        method: 'PUT', token: coachA.access_token,
+        json: {
+          name: current.name,
+          description: `CVF TEST PASTE UPDATED ${runId}`,
+          frequency_days: 1,
+          days: current.days.map((day) => ({ day_number: day.day_number, workout_id: day.workout_id, notes: day.notes || '' })),
+        },
+      });
+      if (payload.frequency_days !== 1 || payload.description !== `CVF TEST PASTE UPDATED ${runId}`) {
+        throw new Error('one-day pasted program edit did not persist');
+      }
+    });
   }
 
   await check('client assigned-program view', () => request('/programs/client/assigned', { token: client.access_token }));

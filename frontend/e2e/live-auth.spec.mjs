@@ -259,6 +259,8 @@ test('real coach auth covers ownership surfaces and archives created test data',
   const workoutName = `${marker} Workout`;
   const programName = `${marker} Program`;
   const importedProgramName = `${marker} Imported Program`;
+  const pastedProgramName = `${marker} Pasted Program`;
+  const pastedExerciseName = `${marker} Pasted Exercise`;
   const programAssignmentNote = `${marker} program assignment`;
   const workoutAssignmentNote = `${marker} workout assignment`;
   const activeWorkoutAssignmentNote = `${marker} active workout assignment`;
@@ -362,6 +364,29 @@ test('real coach auth covers ownership surfaces and archives created test data',
   await expect(page.getByText('Program imported to vault')).toBeVisible();
   await expect(page.getByTestId('program-card').filter({ hasText: importedProgramName })).toBeVisible();
 
+  await page.getByTestId('program-import-open-button').click();
+  await page.getByTestId('program-import-source-select').click();
+  await page.getByRole('option', { name: 'Paste program', exact: true }).click();
+  const pastedText = `${exerciseName.toLowerCase().replace(/ /g, '  ')} 2x7 to true failure\n${pastedExerciseName} 3x8`;
+  await page.getByTestId('program-import-paste-textarea').fill(pastedText);
+  await page.getByTestId('program-import-paste-parse-button').click();
+  await expect(page.getByTestId('program-import-review')).toBeVisible();
+  await expect(page.getByTestId('program-import-frequency-select')).toContainText('1 day/week');
+  await expect(page.getByTestId('program-import-exercise-card')).toHaveCount(2);
+  await expect(page.getByTestId('program-import-exercise-client-notes-input').first()).toHaveValue('to true failure');
+  await page.getByTestId('program-import-name-input').fill(pastedProgramName);
+  await page.getByTestId('program-import-day-name-input').fill(`${marker} Pasted Day`);
+  await expect(page.getByTestId('program-import-save-button')).toBeEnabled();
+  await page.getByTestId('program-import-save-button').click();
+  await expect(page.getByText('Program imported to vault')).toBeVisible();
+  const pastedProgramCard = page.getByTestId('program-card').filter({ hasText: pastedProgramName });
+  await expect(pastedProgramCard).toBeVisible();
+  await pastedProgramCard.getByTestId('program-edit-button').click();
+  await expect(page.getByTestId('program-frequency-select')).toContainText('1 day/week');
+  await page.getByTestId('program-description-input').fill('Updated one-day pasted program');
+  await page.getByTestId('program-save-button').click();
+  await expect(page.getByText('Program updated')).toBeVisible();
+
   await page.getByTestId('training-builder-tab-assignments').click();
   await page.getByTestId('assignment-client-select').click();
   await page.getByRole('option', { name: authenticatedClient.name, exact: true }).click();
@@ -417,9 +442,10 @@ test('real coach auth covers ownership surfaces and archives created test data',
     headers: { authorization: `Bearer ${accessToken}` },
   });
   expect(programListResponse.ok()).toBeTruthy();
-  const testPrograms = (await programListResponse.json()).filter((row) => [programName, importedProgramName].includes(row.name));
+  const testPrograms = (await programListResponse.json()).filter((row) => [programName, importedProgramName, pastedProgramName].includes(row.name));
   const assignedTestProgram = testPrograms.find((row) => row.name === programName);
   expect(assignedTestProgram).toBeTruthy();
+  expect(testPrograms.find((row) => row.name === pastedProgramName)?.frequency_days).toBe(1);
   const programDetailResponse = await request.get(`${backendUrl}/api/programs/${assignedTestProgram.id}`, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
@@ -442,7 +468,7 @@ test('real coach auth covers ownership surfaces and archives created test data',
   }
 
   await page.getByTestId('training-builder-tab-programs').click();
-  for (const name of [programName, importedProgramName]) {
+  for (const name of [programName, importedProgramName, pastedProgramName]) {
     const card = page.getByTestId('program-card').filter({ hasText: name });
     await card.getByTestId('program-archive-button').click();
     await expect(page.getByText('Program archived').last()).toBeVisible();
@@ -452,6 +478,18 @@ test('real coach auth covers ownership surfaces and archives created test data',
   await workoutCard.getByTestId('workout-archive-button').click();
   await expect(page.getByText('Workout archived')).toBeVisible();
   await page.getByTestId('training-builder-tab-library').click();
+
+  const preCleanupExercisesResponse = await request.get(`${backendUrl}/api/programs/exercise-library`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  expect(preCleanupExercisesResponse.ok()).toBeTruthy();
+  const preCleanupExercises = await preCleanupExercisesResponse.json();
+  const pastedExercise = preCleanupExercises.find((row) => row.name === pastedExerciseName);
+  expect(pastedExercise?.source).toBe('manual');
+  expect(pastedExercise?.review_status).toBe('needs_review');
+  const normalizedExerciseName = exerciseName.toLowerCase().trim().replace(/\s+/g, ' ');
+  expect(preCleanupExercises.filter((row) => row.name.toLowerCase().trim().replace(/\s+/g, ' ') === normalizedExerciseName)).toHaveLength(1);
+
   for (const name of [exerciseName, csvExerciseName]) {
     const card = page.getByTestId('exercise-library-card').filter({ hasText: name });
     await card.getByTestId('exercise-library-archive-button').click();
@@ -472,7 +510,8 @@ test('real coach auth covers ownership surfaces and archives created test data',
     headers: { authorization: `Bearer ${accessToken}` },
   });
   expect(remainingExercisesResponse.ok()).toBeTruthy();
-  for (const exercise of (await remainingExercisesResponse.json()).filter((row) => row.name.startsWith(marker))) {
+  const remainingExercises = await remainingExercisesResponse.json();
+  for (const exercise of remainingExercises.filter((row) => row.name.startsWith(marker))) {
     const archived = await request.patch(`${backendUrl}/api/programs/exercise-library/${exercise.id}/archive`, {
       headers: { authorization: `Bearer ${accessToken}` },
     });

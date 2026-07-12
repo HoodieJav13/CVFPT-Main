@@ -1,5 +1,14 @@
 import { test, expect } from '@playwright/test';
 
+const FLAT_PASTE = `ATG DB Incline 3x12
+DB fly 2x12
+Lower traps 3x8
+Powell raise 2x10
+Flat bench 2x7 to true failure
+Decline bench 2x7 to true failure
+Pullovers 2x12
+Tiddy lift 2x10`;
+
 async function usePreviewRole(page, role, clientId = 'client_sarah') {
   await page.addInitScript(({ selectedRole, selectedClient }) => {
     localStorage.setItem('cvf_preview_role', selectedRole);
@@ -32,6 +41,36 @@ test('coach preview covers dashboard, clients, sessions, builder, and messages',
   await expect(page.getByRole('tab', { name: 'Workout Days' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Programs' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Assignments' })).toBeVisible();
+
+  await page.getByTestId('training-builder-tab-programs').click();
+  await page.getByTestId('program-import-open-button').click();
+  await page.getByTestId('program-import-source-select').click();
+  await page.getByRole('option', { name: 'Paste program' }).click();
+  await page.getByTestId('program-import-paste-textarea').fill('Mobility notes only');
+  await page.getByTestId('program-import-paste-parse-button').click();
+  await expect(page.getByTestId('program-import-paste-empty-state')).toContainText("Couldn't find any exercises in this text.");
+
+  await page.getByTestId('program-import-paste-textarea').fill(FLAT_PASTE);
+  await page.getByTestId('program-import-paste-parse-button').click();
+  await expect(page.getByTestId('program-import-review')).toBeVisible();
+  await expect(page.getByTestId('program-import-frequency-select')).toContainText('1 day/week');
+  await expect(page.getByTestId('program-import-day-card')).toHaveCount(1);
+  await expect(page.getByTestId('program-import-day-name-input')).toHaveValue('Day 1');
+  await expect(page.getByTestId('program-import-exercise-card')).toHaveCount(8);
+  await expect(page.getByTestId('program-import-exercise-name-input').nth(4)).toHaveValue('Flat bench');
+  await expect(page.getByTestId('program-import-exercise-sets-input').nth(4)).toHaveValue('2');
+  await expect(page.getByTestId('program-import-exercise-reps-input').nth(4)).toHaveValue('7');
+  await expect(page.getByTestId('program-import-exercise-client-notes-input').nth(4)).toHaveValue('to true failure');
+  await page.getByTestId('program-import-paste-textarea').fill(`${FLAT_PASTE}\nEdited after parsing`);
+  await expect(page.getByTestId('program-import-review')).toHaveCount(0);
+  await page.getByTestId('program-import-paste-textarea').fill(FLAT_PASTE);
+  await page.getByTestId('program-import-paste-parse-button').click();
+  await expect(page.getByTestId('program-import-review')).toBeVisible();
+  await page.getByTestId('program-import-name-input').fill('CVF TEST Preview Paste Program');
+  await expect(page.getByTestId('program-import-save-button')).toBeEnabled();
+  await page.getByTestId('program-import-save-button').click();
+  await expect(page.getByText('Program imported to vault')).toBeVisible();
+  await expect(page.getByTestId('program-card').filter({ hasText: 'CVF TEST Preview Paste Program' })).toBeVisible();
 
   await page.getByTestId('sidebar-nav-messages').click();
   await expect(page.getByTestId('message-thread-row').first()).toBeVisible();

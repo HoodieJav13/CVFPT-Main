@@ -869,7 +869,7 @@ function ProgramsTab({ clientId }) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-display font-semibold">{p.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} days/week - {p.exercise_count} exercises</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} {p.frequency_days === 1 ? 'day' : 'days'}/week - {p.exercise_count} exercises</p>
               </div>
               <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">
                 Unassign
