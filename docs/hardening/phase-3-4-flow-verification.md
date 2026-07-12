@@ -37,7 +37,7 @@ only; no business record was hard-deleted.
 | Messaging | Pass | Real client send, coach thread/reply, and client reply read all pass |
 | Booking approve/decline | Pass | Real UI request plus exact approve and decline controls; atomic approval creates the session shown in the coach/client lifecycle |
 | Manual purchases/packages | Pass | Real UI package recurring/create/edit/archive/restore, manual purchase/history, credit grant, session deduction, and client history/balance. Stripe remains intentionally disabled. |
-| Waiver status/sign/paper workflow | Blocked by legal-data gate | Status and append-only route controls pass. No waiver text was created or changed, so signing/paper-sign UI was not exercised. |
+| Waiver status/sign/paper workflow | Deferred by owner | Status and append-only route controls pass. On 2026-07-11 the owner explicitly deferred successful signing/paper-sign verification until business-approved legal text exists. No waiver text was created or changed. |
 | Admin-only surfaces | Pass | Real admin browser covers tabs, safe duplicate-coach rejection, blank waiver-publish gate, package lifecycle, client reassignment round trip, mobile admin link, and client-route redirect; hosted coach creation also passes |
 | Responsive/mobile navigation | Pass | Real client and coach browser flows click all five bottom tabs; coach quick-add and admin mobile link pass |
 
@@ -52,7 +52,7 @@ only; no business record was hard-deleted.
 | Progress | Pass | Live client entry creation/update, coach metric lifecycle, ownership checks, and browser empty state |
 | Programs/workouts/video links | Pass | Live one-day paste import/edit, assignment/read with a video-bearing exercise, normalized exercise reuse/source verification, and empty-state browser coverage |
 | Messaging | Pass | Real browser client send, coach reply, and client receipt |
-| Waiver | Blocked by legal-data gate | Status works; signing is unavailable without approved waiver text |
+| Waiver | Deferred by owner | Status works. Successful signing verification was explicitly deferred on 2026-07-11 until approved waiver text exists. |
 | Packages, payments-disabled, credits/history | Pass | Live payment-disabled state plus manual-purchase history and credit grant/use balance; no live Stripe |
 | Coach/admin and other-owner access attempts | Pass | Browser redirect plus live authorization matrix |
 | Loading, success, empty, error, mobile states | Pass | Real-auth skeleton/error/retry fault injection, explicit empty states, successful mutations, and all client mobile destinations; preview regressions remain deterministic |
@@ -76,6 +76,7 @@ allowlisted `npm run test:cleanup` command; a second idempotency pass reported z
 active rows across parents, child rows, purchases, ledgers, bookings, and messages.
 An initial live-suite attempt also exposed test-harness configuration/order issues
 only; after correcting the harness, the final real-auth run passed 6/6. AI-assisted
-PDF parsing is explicitly deferred by scope. Approved legal waiver content is the
-only remaining verification gate, and it does not justify weakening the current
-security model.
+PDF parsing is explicitly deferred by scope. Successful waiver signing/paper-sign
+verification is also explicitly deferred by the owner until approved legal text
+exists. Those accepted deferrals leave no remaining verification gate in the
+Phase 2–5 hardening scope and do not justify weakening the current security model.

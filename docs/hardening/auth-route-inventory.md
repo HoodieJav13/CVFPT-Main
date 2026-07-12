@@ -246,7 +246,7 @@ handler. External/gated exceptions are called out explicitly.
 | Messages — all five endpoints | **L80**, **B6**, **U38** |
 | Booking requests — all five endpoints | **L80**, **B6**, **U38**, **PG** |
 | Waiver reads/status | **L80**, **B6**, **U38**, **PG** |
-| Waiver version/sign/paper mutations | Uniqueness/grants/transaction boundaries: **U38**, **PG**; UI success blocked pending approved legal text |
+| Waiver version/sign/paper mutations | Uniqueness/grants/transaction boundaries: **U38**, **PG**; successful UI signing/paper-sign verification explicitly deferred by the owner on 2026-07-11 pending approved legal text |
 | Packages — all four endpoints | **L80**, **B6**, **U38** |
 | Payment config/manual/history/credits | **L80**, **B6**, **U38**, **PG** |
 | Stripe webhook/checkout/verify | Signature, test-mode, ownership, and idempotency: **U38**, **PG**; no live Stripe operation by invariant |

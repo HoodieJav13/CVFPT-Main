@@ -185,7 +185,9 @@ when the claim race is lost. Token refresh also rejects archived/unlinked profil
   fault-injected retry states, client, coach/Training Builder,
   session/payment/progress/booking/messaging, and admin management. The run found
   and fixed both the archived-client restore boundary and indefinite loading after
-  initial API failures; see the Phase 3/4 flow report for blocked and
+  initial API failures; see the Phase 3/4 flow report for deferred and
   not-applicable cases.
-- AI-assisted PDF parsing is explicitly deferred by scope; approved waiver text is
-  the only remaining verification gate.
+- AI-assisted PDF parsing is explicitly deferred by scope; successful waiver
+  signing/paper-sign verification was explicitly deferred by the owner on
+  2026-07-11 until approved waiver text exists. Those accepted deferrals leave no
+  remaining verification gate in the Phase 2–5 hardening scope.
