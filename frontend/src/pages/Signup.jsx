@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CircleAlert, Loader2, Dumbbell } from 'lucide-react';
+import { CircleAlert, Loader2 } from 'lucide-react';
 import { errMsg } from '@/lib/api';
 
 export default function Signup() {
@@ -16,6 +16,7 @@ export default function Signup() {
   const [confirm, setConfirm] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [logoBroken, setLogoBroken] = useState(false);
 
   if (!loading && user) return <Navigate to={user.role === 'client' ? '/client' : '/coach'} replace />;
 
@@ -41,9 +42,18 @@ export default function Signup() {
       <div className="top-glow absolute inset-x-0 top-0 h-72 pointer-events-none" />
       <div className="relative w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_10px_30px_rgba(91,194,212,.35)]">
-            <Dumbbell className="h-7 w-7" />
-          </div>
+          {logoBroken ? (
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground font-display font-bold text-lg shadow-lg shadow-primary/30">
+              CVF
+            </div>
+          ) : (
+            <img
+              src="/logo.png"
+              alt="CVF PT"
+              className="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-primary/30"
+              onError={() => setLogoBroken(true)}
+            />
+          )}
           <h1 className="mt-4 font-display text-2xl font-semibold tracking-tight">Claim your account</h1>
           <p className="text-sm text-muted-foreground mt-1 text-center max-w-xs">
             Use the same email your coach has on file. You must be invited by your coach to sign up.

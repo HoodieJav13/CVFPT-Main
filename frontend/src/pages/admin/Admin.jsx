@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, LoadErrorState, StatTile, EmptyState } from '@/components/common';
+import { PageHeader, LoadingScreen, LoadErrorState, StatTile, EmptyState, IconButton } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -327,12 +327,12 @@ function PackagesTab() {
               <p className="text-xs text-muted-foreground mt-0.5">{fmtMoney(p.price)} - {p.session_credits} credits</p>
             </div>
             <div className="flex gap-1.5 shrink-0">
-              <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEdit(p)} data-testid="package-edit-button">
+              <IconButton label={`Edit ${p.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(p)} data-testid="package-edit-button">
                 <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => toggleArchive(p)} data-testid="package-archive-button">
+              </IconButton>
+              <IconButton label={`${p.archived ? 'Restore' : 'Archive'} ${p.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleArchive(p)} data-testid="package-archive-button">
                 {p.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
-              </Button>
+              </IconButton>
             </div>
           </CardContent>
         </Card>

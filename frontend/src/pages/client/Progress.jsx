@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, ChartSkeleton, LoadErrorState, EmptyState, MetricChart } from '@/components/common';
+import { PageHeader, ChartSkeleton, LoadErrorState, EmptyState, MetricChart, IconButton } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -132,9 +132,9 @@ export default function ClientProgress() {
                             <p className="text-sm font-medium tabular-nums">{entry.value}{m.unit ? ` ${m.unit}` : ''}</p>
                             <p className="text-xs text-muted-foreground">{fmtDate(entry.recorded_on)}{entry.notes ? ` - ${entry.notes}` : ''}</p>
                           </div>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="client-edit-entry-button">
+                          <IconButton label={`Edit ${m.name} entry from ${fmtDate(entry.recorded_on)}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="client-edit-entry-button">
                             <Pencil className="h-3.5 w-3.5" />
-                          </Button>
+                          </IconButton>
                         </div>
                       ))}
                     </div>

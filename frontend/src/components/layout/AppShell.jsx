@@ -131,7 +131,7 @@ export default function AppShell() {
           size="icon"
           onClick={() => navigate('/coach/sessions?new=1')}
           data-testid="coach-quick-add-button"
-          className="lg:hidden fixed bottom-20 right-4 z-50 h-[52px] w-[52px] rounded-full shadow-[0_10px_24px_rgba(91,194,212,.3)]"
+          className="lg:hidden fixed bottom-20 right-4 z-50 h-[52px] w-[52px] rounded-full shadow-lg shadow-primary/30"
         >
           <Plus className="h-6 w-6" />
         </Button>

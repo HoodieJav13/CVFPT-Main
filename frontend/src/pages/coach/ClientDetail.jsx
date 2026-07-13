@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { LoadingScreen, LoadErrorState, StatusBadge, MetricChart, EmptyState, SectionLabel, CheckInStats } from '@/components/common';
+import { LoadingScreen, LoadErrorState, StatusBadge, MetricChart, EmptyState, SectionLabel, CheckInStats, IconButton } from '@/components/common';
 import CheckInForm from '@/components/CheckInForm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,9 +101,9 @@ export default function ClientDetail() {
             <Badge variant="outline" className="bg-gold/10 text-gold border-gold/25" data-testid="client-credits-badge">{credits} credits</Badge>
           </div>
         </div>
-        <Button variant="secondary" size="icon" className="rounded-xl shrink-0" onClick={() => navigate(`/coach/messages/${client.id}`)} data-testid="client-message-button">
+        <IconButton label={`Message ${client.name}`} variant="secondary" size="touchIcon" className="rounded-xl shrink-0" onClick={() => navigate(`/coach/messages/${client.id}`)} data-testid="client-message-button">
           <MessageSquare className="h-4 w-4" />
-        </Button>
+        </IconButton>
       </div>
 
       <Tabs key={client.id} defaultValue="overview">
@@ -425,9 +425,9 @@ function CheckInsTab({ clientId }) {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <StatusBadge status={checkIn.review_status} />
-                <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => startEdit(checkIn)} data-testid="coach-edit-check-in-button">
+                <IconButton label="Edit check-in" size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => startEdit(checkIn)} data-testid="coach-edit-check-in-button">
                   <Pencil className="h-3.5 w-3.5" />
-                </Button>
+                </IconButton>
               </div>
             </div>
             {(checkIn.body_notes || checkIn.training_notes || checkIn.general_notes || checkIn.coach_notes) && (
@@ -593,9 +593,9 @@ function ProgressTab({ clientId }) {
                 <Button size="sm" variant="secondary" className="rounded-lg" onClick={() => openNewEntry(m)} data-testid="log-entry-button">
                   <Plus className="h-3.5 w-3.5 mr-1" /> Log
                 </Button>
-                <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archiveMetric(m)} data-testid="archive-metric-button">
+                <IconButton label={`Archive ${m.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archiveMetric(m)} data-testid="archive-metric-button">
                   <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                </IconButton>
               </div>
             </CardHeader>
             <CardContent>
@@ -609,9 +609,9 @@ function ProgressTab({ clientId }) {
                           <p className="text-sm font-medium tabular-nums">{entry.value}{m.unit ? ` ${m.unit}` : ''}</p>
                           <p className="text-xs text-muted-foreground">{fmtDate(entry.recorded_on)}{entry.notes ? ` - ${entry.notes}` : ''}</p>
                         </div>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="coach-edit-entry-button">
+                        <IconButton label={`Edit ${m.name} entry from ${fmtDate(entry.recorded_on)}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="coach-edit-entry-button">
                           <Pencil className="h-3.5 w-3.5" />
-                        </Button>
+                        </IconButton>
                       </div>
                     ))}
                   </div>

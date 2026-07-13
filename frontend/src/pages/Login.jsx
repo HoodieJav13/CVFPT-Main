@@ -43,14 +43,14 @@ export default function Login() {
       <div className="relative w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
           {logoBroken ? (
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground font-display font-bold text-lg shadow-[0_10px_30px_rgba(91,194,212,.35)]">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground font-display font-bold text-lg shadow-lg shadow-primary/30">
               CVF
             </div>
           ) : (
             <img
               src="/logo.png"
               alt="CVF PT"
-              className="h-14 w-14 rounded-2xl object-contain shadow-[0_10px_30px_rgba(91,194,212,.35)]"
+              className="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-primary/30"
               onError={() => setLogoBroken(true)}
             />
           )}

@@ -3,6 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -46,6 +47,21 @@ export function PageHeader({ title, subtitle, action, testId }) {
       </div>
       {action}
     </div>
+  );
+}
+
+export function IconButton({ label, children, ...props }) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <UiTooltip>
+        <TooltipTrigger asChild>
+          <Button type="button" {...props} aria-label={label}>
+            {children}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">{label}</TooltipContent>
+      </UiTooltip>
+    </TooltipProvider>
   );
 }
 
@@ -238,9 +254,9 @@ export function MetricChart({ entries = [], unit }) {
               <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="rgba(167,179,191,.1)" strokeDasharray="3 6" vertical={false} />
-          <XAxis dataKey="date" tick={{ fill: 'rgba(167,179,191,.75)', fontSize: 11 }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-          <YAxis tick={{ fill: 'rgba(167,179,191,.75)', fontSize: 11 }} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
+          <CartesianGrid stroke="hsl(var(--border) / 0.55)" strokeDasharray="3 6" vertical={false} />
+          <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+          <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
           <Tooltip
             contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 12, color: 'hsl(var(--foreground))' }}
             formatter={(v) => [`${v}${unit ? ` ${unit}` : ''}`, 'Value']}
