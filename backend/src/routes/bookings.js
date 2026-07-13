@@ -1,6 +1,8 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
+const { validateSchedulePayload } = require('../validation/business');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -9,22 +11,26 @@ router.use(requireAuth);
 router.post('/', requireClient, async (req, res) => {
   try {
     const { requested_time, duration_minutes, location, note } = req.body || {};
-    if (!requested_time) return res.status(400).json({ error: 'Please choose a date and time' });
-    if (new Date(requested_time).getTime() < Date.now()) {
+    const validation = validateSchedulePayload(
+      { scheduled_at: requested_time, duration_minutes },
+      { requireDate: true },
+    );
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    if (new Date(validation.value.scheduled_at).getTime() <= Date.now()) {
       return res.status(400).json({ error: 'Requested time must be in the future' });
     }
     const { data, error } = await supabaseAdmin.from('booking_requests').insert({
       client_id: req.user.client.id,
       coach_id: req.user.client.coach_id,
-      requested_time,
-      duration_minutes: duration_minutes || 60,
+      requested_time: validation.value.scheduled_at,
+      duration_minutes: validation.value.duration_minutes,
       location: location || null,
       note: note || null,
     }).select().single();
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create booking error', e);
+    logError('create booking error', e);
     return res.status(500).json({ error: 'Failed to send booking request' });
   }
 });
@@ -38,7 +44,7 @@ router.get('/mine', requireClient, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('client bookings error', e);
+    logError('client bookings error', e);
     return res.status(500).json({ error: 'Failed to load your requests' });
   }
 });
@@ -54,13 +60,14 @@ router.get('/', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('list bookings error', e);
+    logError('list bookings error', e);
     return res.status(500).json({ error: 'Failed to load booking requests' });
   }
 });
 
 async function loadBookingForCoach(req, res) {
-  const { data: booking } = await supabaseAdmin.from('booking_requests').select('*').eq('id', req.params.id).maybeSingle();
+  const { data: booking } = await supabaseAdmin.from('booking_requests').select('*')
+    .eq('id', req.params.id).eq('archived', false).maybeSingle();
   if (!booking || (req.user.role !== 'admin' && booking.coach_id !== req.user.coach.id)) {
     res.status(404).json({ error: 'Booking request not found' });
     return null;
@@ -74,21 +81,12 @@ router.patch('/:id/approve', requireCoach, async (req, res) => {
     const booking = await loadBookingForCoach(req, res);
     if (!booking) return;
     if (booking.status !== 'pending') return res.status(400).json({ error: 'This request was already handled' });
-    const { data: session, error: sErr } = await supabaseAdmin.from('sessions').insert({
-      client_id: booking.client_id,
-      coach_id: booking.coach_id,
-      scheduled_at: booking.requested_time,
-      duration_minutes: booking.duration_minutes,
-      location: booking.location,
-    }).select().single();
-    if (sErr) throw sErr;
-    const { data, error } = await supabaseAdmin.from('booking_requests')
-      .update({ status: 'approved', updated_at: new Date().toISOString() })
-      .eq('id', booking.id).select('*, client:clients(id, name)').single();
+    const { data, error } = await supabaseAdmin.rpc('approve_booking', { p_booking_id: booking.id });
     if (error) throw error;
-    return res.json({ booking: data, session });
+    if (!data) return res.status(400).json({ error: 'This request was already handled' });
+    return res.json(data);
   } catch (e) {
-    console.error('approve booking error', e);
+    logError('approve booking error', e);
     return res.status(500).json({ error: 'Failed to approve request' });
   }
 });
@@ -101,11 +99,13 @@ router.patch('/:id/decline', requireCoach, async (req, res) => {
     if (booking.status !== 'pending') return res.status(400).json({ error: 'This request was already handled' });
     const { data, error } = await supabaseAdmin.from('booking_requests')
       .update({ status: 'declined', updated_at: new Date().toISOString() })
-      .eq('id', booking.id).select('*, client:clients(id, name)').single();
+      .eq('id', booking.id).eq('status', 'pending').eq('archived', false)
+      .select('*, client:clients(id, name)').maybeSingle();
     if (error) throw error;
+    if (!data) return res.status(400).json({ error: 'This request was already handled' });
     return res.json(data);
   } catch (e) {
-    console.error('decline booking error', e);
+    logError('decline booking error', e);
     return res.status(500).json({ error: 'Failed to decline request' });
   }
 });

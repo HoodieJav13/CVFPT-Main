@@ -18,6 +18,9 @@ node_modules/
 
 # Testing
 /coverage
+playwright-report/
+test-results/
+blob-report/
 
 # Next.js
 /.next/
@@ -31,6 +34,15 @@ dist/
 dist
 
 # Environment files (comprehensive coverage)
+
+.env
+.env.*
+!.env.example
+!**/.env.example
+.secrets/
+*.secret
+*.p12
+*.pfx
 
 *token.json*
 *credentials.json*

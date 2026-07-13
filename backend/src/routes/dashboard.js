@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
 const { getBalance } = require('../utils/credits');
 const { todayRangeInTz, todayDateInTz } = require('../utils/time');
@@ -67,7 +68,7 @@ router.get('/coach', requireCoach, async (req, res) => {
       recent_check_ins: recentCheckIns,
     });
   } catch (e) {
-    console.error('coach dashboard error', e);
+    logError('coach dashboard error', e);
     return res.status(500).json({ error: 'Failed to load dashboard' });
   }
 });
@@ -79,7 +80,7 @@ router.get('/client', requireClient, async (req, res) => {
     const nowIso = new Date().toISOString();
     const today = todayDateInTz();
 
-    const [{ data: nextSessions }, { data: recentMessages }, { count: unreadMessages }, balance] = await Promise.all([
+    const [{ data: nextSessions }, { data: recentMessages }, { count: unreadMessages }, balance, { data: coach }] = await Promise.all([
       supabaseAdmin.from('sessions').select('*, coach:coaches(id, name)')
         .eq('client_id', clientId).eq('archived', false).eq('status', 'scheduled')
         .gte('scheduled_at', nowIso).order('scheduled_at').limit(3),
@@ -88,6 +89,8 @@ router.get('/client', requireClient, async (req, res) => {
       supabaseAdmin.from('messages').select('id', { count: 'exact', head: true })
         .eq('client_id', clientId).eq('sender_role', 'coach').eq('read_by_recipient', false).eq('archived', false),
       getBalance(clientId),
+      supabaseAdmin.from('coaches').select('name')
+        .eq('id', req.user.client.coach_id).eq('archived', false).maybeSingle(),
     ]);
 
     const [{ data: todayCheckIn }, { data: latestCheckIns }, { data: metrics }] = await Promise.all([
@@ -137,10 +140,10 @@ router.get('/client', requireClient, async (req, res) => {
       credits: balance,
       waiver: { has_version: Boolean(latest), signed_latest: signedLatest },
       program_count: programCount || 0,
-      coach_name: null,
+      coach_name: coach?.name || null,
     });
   } catch (e) {
-    console.error('client dashboard error', e);
+    logError('client dashboard error', e);
     return res.status(500).json({ error: 'Failed to load your home' });
   }
 });

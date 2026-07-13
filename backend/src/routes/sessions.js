@@ -1,13 +1,15 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
-const { deductCredit, getBalance } = require('../utils/credits');
+const { validateSchedulePayload } = require('../validation/business');
 
 const router = express.Router();
 router.use(requireAuth);
 
 async function loadSessionForCoach(req, res) {
-  const { data: session } = await supabaseAdmin.from('sessions').select('*').eq('id', req.params.id).maybeSingle();
+  const { data: session } = await supabaseAdmin.from('sessions').select('*')
+    .eq('id', req.params.id).eq('archived', false).maybeSingle();
   if (!session || (req.user.role !== 'admin' && session.coach_id !== req.user.coach.id)) {
     res.status(404).json({ error: 'Session not found' });
     return null;
@@ -31,7 +33,7 @@ router.get('/', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('list sessions error', e);
+    logError('list sessions error', e);
     return res.status(500).json({ error: 'Failed to load sessions' });
   }
 });
@@ -40,21 +42,24 @@ router.get('/', requireCoach, async (req, res) => {
 router.post('/', requireCoach, async (req, res) => {
   try {
     const { client_id, scheduled_at, duration_minutes, location } = req.body || {};
-    if (!client_id || !scheduled_at) return res.status(400).json({ error: 'Client and date/time are required' });
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', client_id).maybeSingle();
+    if (!client_id) return res.status(400).json({ error: 'Client and date/time are required' });
+    const validation = validateSchedulePayload({ scheduled_at, duration_minutes }, { requireDate: true });
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', client_id).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const coachId = req.user.role === 'admin' ? clientRow.coach_id : req.user.coach.id;
     const { data, error } = await supabaseAdmin.from('sessions').insert({
       client_id,
       coach_id: coachId,
-      scheduled_at,
-      duration_minutes: duration_minutes || 60,
+      scheduled_at: validation.value.scheduled_at,
+      duration_minutes: validation.value.duration_minutes,
       location: location || null,
     }).select('*, client:clients(id, name)').single();
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create session error', e);
+    logError('create session error', e);
     return res.status(500).json({ error: 'Failed to create session' });
   }
 });
@@ -64,16 +69,18 @@ router.put('/:id', requireCoach, async (req, res) => {
   try {
     const session = await loadSessionForCoach(req, res);
     if (!session) return;
-    const allowed = ['scheduled_at', 'duration_minutes', 'location'];
-    const updates = {};
-    for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k];
+    const validation = validateSchedulePayload(req.body || {});
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    const updates = { ...validation.value };
+    if ('location' in (req.body || {})) updates.location = req.body.location || null;
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide a session field to update' });
     updates.updated_at = new Date().toISOString();
     const { data, error } = await supabaseAdmin.from('sessions').update(updates).eq('id', session.id)
       .select('*, client:clients(id, name)').single();
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('update session error', e);
+    logError('update session error', e);
     return res.status(500).json({ error: 'Failed to update session' });
   }
 });
@@ -90,7 +97,7 @@ router.patch('/:id/cancel', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('cancel session error', e);
+    logError('cancel session error', e);
     return res.status(500).json({ error: 'Failed to cancel session' });
   }
 });
@@ -103,14 +110,12 @@ router.patch('/:id/complete', requireCoach, async (req, res) => {
     if (session.status === 'completed') return res.status(400).json({ error: 'Session already completed' });
     if (session.status === 'cancelled') return res.status(400).json({ error: 'Cancelled sessions cannot be completed' });
 
-    const newBalance = await deductCredit(session.client_id);
-    const { data, error } = await supabaseAdmin.from('sessions')
-      .update({ status: 'completed', credit_deducted: newBalance !== null, updated_at: new Date().toISOString() })
-      .eq('id', session.id).select('*, client:clients(id, name)').single();
+    const { data, error } = await supabaseAdmin.rpc('complete_session', { p_session_id: session.id });
     if (error) throw error;
-    return res.json({ session: data, credit_deducted: newBalance !== null, credits_remaining: newBalance !== null ? newBalance : await getBalance(session.client_id) });
+    if (!data) return res.status(400).json({ error: 'Session was already handled' });
+    return res.json(data);
   } catch (e) {
-    console.error('complete session error', e);
+    logError('complete session error', e);
     return res.status(500).json({ error: 'Failed to complete session' });
   }
 });
@@ -126,7 +131,7 @@ router.get('/:id/notes', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('get notes error', e);
+    logError('get notes error', e);
     return res.status(500).json({ error: 'Failed to load notes' });
   }
 });
@@ -147,7 +152,7 @@ router.post('/:id/notes', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create note error', e);
+    logError('create note error', e);
     return res.status(500).json({ error: 'Failed to save note' });
   }
 });
@@ -155,8 +160,10 @@ router.post('/:id/notes', requireCoach, async (req, res) => {
 // PUT /api/sessions/notes/:noteId  { content, shared_with_client }
 router.put('/notes/:noteId', requireCoach, async (req, res) => {
   try {
-    const { data: note } = await supabaseAdmin.from('session_notes').select('*, session:sessions(coach_id)').eq('id', req.params.noteId).maybeSingle();
-    if (!note || (req.user.role !== 'admin' && note.session?.coach_id !== req.user.coach.id)) {
+    const { data: note } = await supabaseAdmin.from('session_notes')
+      .select('*, session:sessions(coach_id, archived)')
+      .eq('id', req.params.noteId).eq('archived', false).maybeSingle();
+    if (!note || note.session?.archived || (req.user.role !== 'admin' && note.session?.coach_id !== req.user.coach.id)) {
       return res.status(404).json({ error: 'Note not found' });
     }
     const updates = { updated_at: new Date().toISOString() };
@@ -166,7 +173,7 @@ router.put('/notes/:noteId', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('update note error', e);
+    logError('update note error', e);
     return res.status(500).json({ error: 'Failed to update note' });
   }
 });
@@ -193,7 +200,7 @@ router.get('/client/mine', requireClient, async (req, res) => {
     }
     return res.json((sessions || []).map((s) => ({ ...s, shared_notes: notesBySession[s.id] || [] })));
   } catch (e) {
-    console.error('client sessions error', e);
+    logError('client sessions error', e);
     return res.status(500).json({ error: 'Failed to load your sessions' });
   }
 });

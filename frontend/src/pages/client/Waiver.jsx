@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, SectionLabel } from '@/components/common';
+import { PageHeader, LoadingScreen, LoadErrorState, SectionLabel } from '@/components/common';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 export default function ClientWaiver() {
   const [status, setStatus] = useState(null);
   const [waiver, setWaiver] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [name, setName] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -25,9 +26,14 @@ export default function ClientWaiver() {
       if (st.latest_version) {
         const { data: w } = await api.get('/waivers/latest');
         setWaiver(w);
+      } else {
+        setWaiver(null);
       }
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load waiver'));
+      const message = errMsg(e, 'Failed to load waiver');
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
@@ -51,13 +57,15 @@ export default function ClientWaiver() {
     }
   };
 
-  if (!status) return <LoadingScreen />;
+  const awaitingInitialData = !status || (status.latest_version && !waiver);
+  if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="client-waiver" onRetry={() => { setLoadError(null); load(); }} />;
+  if (awaitingInitialData) return <LoadingScreen />;
 
   if (!status.latest_version) {
     return (
       <div>
         <PageHeader title="Waiver" />
-        <p className="text-sm text-muted-foreground">No waiver is available yet. Check back later.</p>
+        <p className="text-sm text-muted-foreground" data-testid="waiver-unavailable-state">No waiver is available yet. Check back later.</p>
       </div>
     );
   }

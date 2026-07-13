@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
-  TrendingUp, FileSignature, CreditCard, ShieldCheck, LogOut, Plus, Home,
+  TrendingUp, FileSignature, CreditCard, ShieldCheck, LogOut, Plus, Home, Library,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -19,6 +19,7 @@ const COACH_NAV = [
   { to: '/coach/clients', label: 'Clients', icon: Users },
   { to: '/coach/sessions', label: 'Sessions', icon: CalendarDays },
   { to: '/coach/programs', label: 'Programs', icon: Dumbbell },
+  { to: '/coach/resources', label: 'Resources', icon: Library },
   { to: '/coach/messages', label: 'Messages', icon: MessageSquare },
 ];
 
@@ -27,6 +28,7 @@ const CLIENT_NAV = [
   { to: '/client/sessions', label: 'Sessions', icon: CalendarDays },
   { to: '/client/progress', label: 'Progress', icon: TrendingUp },
   { to: '/client/programs', label: 'Programs', icon: Dumbbell },
+  { to: '/client/resources', label: 'Resources', icon: Library },
   { to: '/client/messages', label: 'Messages', icon: MessageSquare },
 ];
 
@@ -102,12 +104,12 @@ export default function AppShell() {
 
         <div className="relative z-10">
           {/* Mobile top bar */}
-          <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur">
+          <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur" data-testid="mobile-header">
             <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2" data-testid="mobile-brand">
               <BrandLogo size="mobile" />
               <span className="font-display font-semibold">CVF PT</span>
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" data-testid="mobile-header-actions">
               {user.role === 'admin' && (
                 <Button variant="ghost" size="icon" onClick={() => navigate('/admin')} data-testid="mobile-admin-link">
                   <ShieldCheck className="h-5 w-5 text-primary" />
@@ -136,8 +138,8 @@ export default function AppShell() {
       )}
 
       {/* Mobile bottom tabs */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-        <div className="grid grid-cols-5 h-16">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70" data-testid="mobile-bottom-navigation">
+        <div className="grid grid-cols-6 h-16">
           {nav.map((item) => (
             <NavLink
               key={item.to}

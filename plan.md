@@ -1,4 +1,9 @@
-# CVF PT — Development Plan (UPDATED — All Phases Complete)
+# CVF PT — Original Development Plan (archived)
+
+> Historical record only. Counts, paths, credentials, and deployment instructions
+> below describe the original build and must not be used operationally. Current
+> status lives in `CLAUDE.md`; deployment guidance lives in `DEPLOYMENT.md`; and
+> evidence lives in `docs/hardening/`.
 
 ## 1) Objectives
 - Deliver a complete, mobile-first **dark-theme** personal training management web app (**CVF PT**) for Core Value Fitness.

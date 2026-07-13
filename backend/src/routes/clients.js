@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, canAccessClient } = require('../middleware/auth');
 
 const router = express.Router();
@@ -15,7 +16,7 @@ router.get('/', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('list clients error', e);
+    logError('list clients error', e);
     return res.status(500).json({ error: 'Failed to load clients' });
   }
 });
@@ -27,7 +28,12 @@ router.post('/', async (req, res) => {
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Client name is required' });
 
     // Coaches always create under themselves; admin may assign any coach.
-    let targetCoachId = req.user.role === 'admin' ? (coach_id || req.user.coach.id) : req.user.coach.id;
+    const targetCoachId = req.user.role === 'admin' ? (coach_id || req.user.coach.id) : req.user.coach.id;
+    if (req.user.role === 'admin') {
+      const { data: targetCoach } = await supabaseAdmin.from('coaches').select('id')
+        .eq('id', targetCoachId).eq('archived', false).maybeSingle();
+      if (!targetCoach) return res.status(404).json({ error: 'Coach not found' });
+    }
 
     const { data, error } = await supabaseAdmin
       .from('clients')
@@ -44,13 +50,15 @@ router.post('/', async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create client error', e);
+    logError('create client error', e);
     return res.status(500).json({ error: 'Failed to create client' });
   }
 });
 
-async function loadClientOr404(req, res) {
-  const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.id).maybeSingle();
+async function loadClientOr404(req, res, { includeArchived = false } = {}) {
+  let query = supabaseAdmin.from('clients').select('*').eq('id', req.params.id);
+  if (!includeArchived) query = query.eq('archived', false);
+  const { data: clientRow } = await query.maybeSingle();
   if (!clientRow || !canAccessClient(req.user, clientRow)) {
     res.status(404).json({ error: 'Client not found' });
     return null;
@@ -61,11 +69,13 @@ async function loadClientOr404(req, res) {
 // GET /api/clients/:id
 router.get('/:id', async (req, res) => {
   try {
-    const clientRow = await loadClientOr404(req, res);
+    const clientRow = await loadClientOr404(req, res, {
+      includeArchived: req.query.include_archived === 'true',
+    });
     if (!clientRow) return;
     return res.json(clientRow);
   } catch (e) {
-    console.error('get client error', e);
+    logError('get client error', e);
     return res.status(500).json({ error: 'Failed to load client' });
   }
 });
@@ -85,7 +95,7 @@ router.put('/:id', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('update client error', e);
+    logError('update client error', e);
     return res.status(500).json({ error: 'Failed to update client' });
   }
 });
@@ -109,7 +119,7 @@ router.patch('/:id/invite', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('invite client error', e);
+    logError('invite client error', e);
     return res.status(500).json({ error: 'Failed to update invite status' });
   }
 });
@@ -117,7 +127,7 @@ router.patch('/:id/invite', async (req, res) => {
 // PATCH /api/clients/:id/archive { archived: boolean }  (soft delete only)
 router.patch('/:id/archive', async (req, res) => {
   try {
-    const clientRow = await loadClientOr404(req, res);
+    const clientRow = await loadClientOr404(req, res, { includeArchived: true });
     if (!clientRow) return;
     const archived = Boolean(req.body.archived);
     const { data, error } = await supabaseAdmin
@@ -129,7 +139,7 @@ router.patch('/:id/archive', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive client error', e);
+    logError('archive client error', e);
     return res.status(500).json({ error: 'Failed to archive client' });
   }
 });

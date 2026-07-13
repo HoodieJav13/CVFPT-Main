@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, EmptyState } from '@/components/common';
+import { PageHeader, LoadingScreen, LoadErrorState, EmptyState } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CalendarDays, Dumbbell, Play, StickyNote } from 'lucide-react';
@@ -9,13 +9,23 @@ import { toast } from 'sonner';
 
 export default function ClientPrograms() {
   const [assignments, setAssignments] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
-  useEffect(() => {
-    api.get('/programs/client/assigned')
-      .then(({ data }) => setAssignments(Array.isArray(data) ? { programs: data, workouts: [] } : data))
-      .catch((e) => toast.error(errMsg(e, 'Failed to load programs')));
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get('/programs/client/assigned');
+      setAssignments(Array.isArray(data) ? { programs: data, workouts: [] } : data);
+      setLoadError(null);
+    } catch (e) {
+      const message = errMsg(e, 'Failed to load programs');
+      setLoadError(message);
+      toast.error(message);
+    }
   }, []);
 
+  useEffect(() => { load(); }, [load]);
+
+  if (!assignments && loadError) return <LoadErrorState message={loadError} scope="client-programs" onRetry={() => { setLoadError(null); load(); }} />;
   if (!assignments) return <LoadingScreen />;
 
   const programAssignments = assignments.programs || [];
@@ -58,6 +68,7 @@ export default function ClientPrograms() {
 
 function ProgramAssignmentCard({ assignment }) {
   const program = assignment.program || {};
+  const frequency = program.frequency_days || program.days?.length || 0;
   return (
     <Card data-testid="client-program-card">
       <CardHeader className="pb-3">
@@ -66,7 +77,7 @@ function ProgramAssignmentCard({ assignment }) {
             <CardTitle className="text-lg font-display">{program.name}</CardTitle>
             {program.description && <p className="text-sm text-muted-foreground mt-1">{program.description}</p>}
           </div>
-          <Badge variant="outline" className="w-fit">{program.frequency_days || program.days?.length || 0} days/week</Badge>
+          <Badge variant="outline" className="w-fit">{frequency} {frequency === 1 ? 'day' : 'days'}/week</Badge>
         </div>
         {assignment.notes && <AssignmentNote>{assignment.notes}</AssignmentNote>}
       </CardHeader>

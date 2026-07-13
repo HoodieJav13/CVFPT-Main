@@ -1,15 +1,15 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
-const { completePurchase, addCredits, getBalance } = require('../utils/credits');
+const { completePurchase, getBalance } = require('../utils/credits');
+const { createStripeClient, stripeConfiguration } = require('../config/stripe');
 
 const router = express.Router();
 
 function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) return null;
   const Stripe = require('stripe');
-  return new Stripe(key);
+  return createStripeClient(process.env, Stripe);
 }
 
 const NOT_CONFIGURED_MSG = 'Online payments are not yet configured. Please pay your coach directly, or check back soon.';
@@ -28,18 +28,18 @@ router.post('/webhook', async (req, res) => {
     try {
       event = stripe.webhooks.constructEvent(req.rawBody, sig, secret);
     } catch (err) {
-      console.error('Webhook signature verification failed', err.message);
+      logError('Webhook signature verification failed', err);
       return res.status(400).json({ error: 'Invalid signature' });
     }
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       const { data: purchase } = await supabaseAdmin.from('purchases').select('*')
-        .eq('stripe_session_id', session.id).maybeSingle();
+        .eq('stripe_session_id', session.id).eq('archived', false).maybeSingle();
       if (purchase) await completePurchase(purchase.id);
     }
     return res.json({ received: true });
   } catch (e) {
-    console.error('webhook error', e);
+    logError('webhook error', e);
     return res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
@@ -48,10 +48,11 @@ router.use(requireAuth);
 
 // GET /api/payments/config
 router.get('/config', async (_req, res) => {
+  const configuration = stripeConfiguration(process.env);
   return res.json({
-    configured: Boolean(process.env.STRIPE_SECRET_KEY),
-    publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || null,
-    message: process.env.STRIPE_SECRET_KEY ? null : NOT_CONFIGURED_MSG,
+    configured: configuration.configured,
+    publishable_key: configuration.configured ? configuration.publishableKey : null,
+    message: configuration.configured ? null : NOT_CONFIGURED_MSG,
   });
 });
 
@@ -92,7 +93,7 @@ router.post('/checkout', requireClient, async (req, res) => {
     if (error) throw error;
     return res.json({ url: session.url });
   } catch (e) {
-    console.error('checkout error', e);
+    logError('checkout error', e);
     return res.status(500).json({ error: 'Failed to start checkout. Please try again.' });
   }
 });
@@ -105,7 +106,7 @@ router.get('/verify', requireClient, async (req, res) => {
     const sessionId = req.query.session_id;
     if (!sessionId) return res.status(400).json({ error: 'session_id required' });
     const { data: purchase } = await supabaseAdmin.from('purchases').select('*')
-      .eq('stripe_session_id', sessionId).eq('client_id', req.user.client.id).maybeSingle();
+      .eq('stripe_session_id', sessionId).eq('client_id', req.user.client.id).eq('archived', false).maybeSingle();
     if (!purchase) return res.status(404).json({ error: 'Purchase not found' });
     if (purchase.status === 'completed') {
       return res.json({ status: 'completed', credits: await getBalance(req.user.client.id) });
@@ -117,7 +118,7 @@ router.get('/verify', requireClient, async (req, res) => {
     }
     return res.json({ status: session.payment_status });
   } catch (e) {
-    console.error('verify error', e);
+    logError('verify error', e);
     return res.status(500).json({ error: 'Failed to verify payment' });
   }
 });
@@ -125,25 +126,28 @@ router.get('/verify', requireClient, async (req, res) => {
 // POST /api/payments/manual (coach records cash/manual purchase) { client_id, package_id, amount? }
 router.post('/manual', requireCoach, async (req, res) => {
   try {
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.body?.client_id).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.body?.client_id).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
-    const { data: pkg } = await supabaseAdmin.from('packages').select('*').eq('id', req.body?.package_id).maybeSingle();
+    const { data: pkg } = await supabaseAdmin.from('packages').select('*')
+      .eq('id', req.body?.package_id).eq('archived', false).maybeSingle();
     if (!pkg) return res.status(404).json({ error: 'Package not found' });
     const amount = req.body?.amount !== undefined && !isNaN(Number(req.body.amount)) ? Number(req.body.amount) : Number(pkg.price);
-    const { data: purchase, error } = await supabaseAdmin.from('purchases').insert({
-      client_id: clientRow.id,
-      package_id: pkg.id,
-      amount,
-      credits_granted: pkg.session_credits,
-      method: 'manual',
-      status: 'completed',
-      recorded_by_coach_id: req.user.coach.id,
-    }).select('*, package:packages(id, name)').single();
+    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'Amount must be a non-negative number' });
+    const { data, error } = await supabaseAdmin.rpc('record_manual_purchase', {
+      p_client_id: clientRow.id,
+      p_package_id: pkg.id,
+      p_amount: amount,
+      p_recorded_by_coach_id: req.user.coach.id,
+    });
     if (error) throw error;
-    const balance = await addCredits(clientRow.id, pkg.session_credits);
-    return res.status(201).json({ purchase, credits: balance });
+    if (!data) return res.status(404).json({ error: 'Client or package not found' });
+    return res.status(201).json({
+      purchase: { ...data.purchase, package: { id: pkg.id, name: pkg.name } },
+      credits: data.credits,
+    });
   } catch (e) {
-    console.error('manual purchase error', e);
+    logError('manual purchase error', e);
     return res.status(500).json({ error: 'Failed to record purchase' });
   }
 });
@@ -158,7 +162,7 @@ router.get('/history', requireClient, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('history error', e);
+    logError('history error', e);
     return res.status(500).json({ error: 'Failed to load payment history' });
   }
 });
@@ -166,7 +170,8 @@ router.get('/history', requireClient, async (req, res) => {
 // GET /api/payments/history/:clientId (coach)
 router.get('/history/:clientId', requireCoach, async (req, res) => {
   try {
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const { data, error } = await supabaseAdmin.from('purchases')
       .select('*, package:packages(id, name), recorded_by:coaches(id, name)')
@@ -175,7 +180,7 @@ router.get('/history/:clientId', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('coach history error', e);
+    logError('coach history error', e);
     return res.status(500).json({ error: 'Failed to load payment history' });
   }
 });
@@ -187,7 +192,8 @@ router.get('/credits', requireClient, async (req, res) => {
 
 // GET /api/payments/credits/:clientId (coach)
 router.get('/credits/:clientId', requireCoach, async (req, res) => {
-  const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+  const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+    .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
   if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
   return res.json({ balance: await getBalance(clientRow.id) });
 });

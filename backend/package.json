@@ -7,16 +7,21 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
+    "test": "node --test",
+    "test:integration": "node integration/api-hardening.mjs",
+    "test:cleanup": "node integration/soft-archive-test-data.mjs",
     "seed": "node scripts/seed.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
+    "@napi-rs/canvas": "0.1.80",
     "@supabase/supabase-js": "^2.108.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^4",
+    "express-rate-limit": "8.5.2",
     "multer": "^2.2.0",
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.19.1",

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, LoadingScreen, StatTile, EmptyState } from '@/components/common';
+import { PageHeader, LoadingScreen, LoadErrorState, StatTile, EmptyState } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,13 +19,23 @@ import { toast } from 'sonner';
 
 export default function AdminPage() {
   const [overview, setOverview] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
-  useEffect(() => {
-    api.get('/admin/overview')
-      .then(({ data }) => setOverview(data))
-      .catch((e) => toast.error(errMsg(e, 'Failed to load admin overview')));
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get('/admin/overview');
+      setOverview(data);
+      setLoadError(null);
+    } catch (e) {
+      const message = errMsg(e, 'Failed to load admin overview');
+      setLoadError(message);
+      toast.error(message);
+    }
   }, []);
 
+  useEffect(() => { load(); }, [load]);
+
+  if (!overview && loadError) return <LoadErrorState message={loadError} scope="admin-overview" onRetry={() => { setLoadError(null); load(); }} />;
   if (!overview) return <LoadingScreen />;
 
   return (
@@ -54,6 +64,7 @@ export default function AdminPage() {
 
 function CoachesTab() {
   const [coaches, setCoaches] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', is_admin: false });
   const [saving, setSaving] = useState(false);
@@ -62,8 +73,11 @@ function CoachesTab() {
     try {
       const { data } = await api.get('/admin/coaches');
       setCoaches(data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e));
+      const message = errMsg(e);
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
@@ -85,6 +99,7 @@ function CoachesTab() {
     }
   };
 
+  if (!coaches && loadError) return <LoadErrorState message={loadError} scope="admin-coaches" onRetry={() => { setLoadError(null); load(); }} />;
   if (!coaches) return <LoadingScreen />;
 
   return (
@@ -96,9 +111,9 @@ function CoachesTab() {
               <Plus className="h-4 w-4 mr-1.5" /> Add coach
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-sm" data-testid="admin-coach-create-dialog">
             <DialogHeader><DialogTitle>New coach account</DialogTitle></DialogHeader>
-            <form onSubmit={create} className="space-y-3.5">
+            <form onSubmit={create} className="space-y-3.5" data-testid="admin-coach-create-form">
               <div className="space-y-1.5"><Label>Name *</Label>
                 <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="coach-name-input" /></div>
               <div className="space-y-1.5"><Label>Email *</Label>
@@ -137,6 +152,7 @@ function CoachesTab() {
 
 function WaiversTab() {
   const [versions, setVersions] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState(null);
   const [text, setText] = useState('');
@@ -146,8 +162,11 @@ function WaiversTab() {
     try {
       const { data } = await api.get('/waivers/versions');
       setVersions(data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e));
+      const message = errMsg(e);
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
@@ -169,6 +188,7 @@ function WaiversTab() {
     }
   };
 
+  if (!versions && loadError) return <LoadErrorState message={loadError} scope="admin-waivers" onRetry={() => { setLoadError(null); load(); }} />;
   if (!versions) return <LoadingScreen />;
 
   return (
@@ -181,7 +201,7 @@ function WaiversTab() {
               <Plus className="h-4 w-4 mr-1.5" /> New version
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg" data-testid="admin-waiver-create-dialog">
             <DialogHeader><DialogTitle>Publish new waiver version</DialogTitle></DialogHeader>
             <form onSubmit={create} className="space-y-4">
               <Textarea required rows={12} value={text} onChange={(e) => setText(e.target.value)} placeholder="Paste the full waiver text..." data-testid="waiver-text-input" />
@@ -222,6 +242,7 @@ function WaiversTab() {
 
 function PackagesTab() {
   const [packages, setPackages] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', description: '', price: '', session_credits: '', is_recurring: false });
@@ -231,8 +252,11 @@ function PackagesTab() {
     try {
       const { data } = await api.get('/packages?include_archived=true');
       setPackages(data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e));
+      const message = errMsg(e);
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
@@ -281,6 +305,7 @@ function PackagesTab() {
     }
   };
 
+  if (!packages && loadError) return <LoadErrorState message={loadError} scope="admin-packages" onRetry={() => { setLoadError(null); load(); }} />;
   if (!packages) return <LoadingScreen />;
 
   return (

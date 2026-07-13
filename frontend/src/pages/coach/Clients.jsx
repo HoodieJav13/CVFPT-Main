@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { PageHeader, ListSkeleton, EmptyState } from '@/components/common';
+import { PageHeader, ListSkeleton, LoadErrorState, EmptyState } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +21,7 @@ export default function Clients() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [clients, setClients] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState(false);
@@ -31,8 +32,11 @@ export default function Clients() {
     try {
       const { data } = await api.get(`/clients?include_archived=${showArchived}`);
       setClients(data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load clients'));
+      const message = errMsg(e, 'Failed to load clients');
+      setLoadError(message);
+      toast.error(message);
     }
   }, [showArchived]);
 
@@ -60,6 +64,7 @@ export default function Clients() {
     }
   };
 
+  if (!clients && loadError) return <LoadErrorState message={loadError} scope="coach-clients" onRetry={() => { setLoadError(null); load(); }} />;
   if (!clients) return <ListSkeleton rows={3} />;
 
   return (

@@ -3,9 +3,23 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const PDFDocument = require('pdfkit');
-const pdfParse = require('pdf-parse');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
+const {
+  canAccessProgram,
+  canAccessWorkout,
+  canAccessWorkoutAssignment,
+  canManageWorkout,
+  programDaysUseAccessibleWorkouts,
+} = require('../security/access');
+const {
+  csvImportLimiter,
+  libraryImportLimiter,
+  pdfExportLimiter,
+  pdfImportLimiter,
+  programCommitLimiter,
+} = require('../middleware/rateLimits');
 const {
   PARSER_VERSION,
   csvTemplate,
@@ -13,8 +27,10 @@ const {
   normalizeDraft,
   normalizeName,
   parseCsvDraft,
+  parsePasteDraft,
   validateDraft,
 } = require('../lib/programDraft.cjs');
+const { extractPdfText } = require('../lib/pdfText');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -30,7 +46,7 @@ function programImportUpload(req, res, next) {
     if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({ error: 'Import files must be 5 MB or smaller.' });
     }
-    console.error('program import upload error', err);
+    logError('program import upload error', err);
     return res.status(400).json({ error: 'Could not read the uploaded file.' });
   });
 }
@@ -55,7 +71,13 @@ function isPdfUpload(file) {
 }
 
 function sourceForImport(sourceType) {
-  return sourceType === 'pdf' ? 'import_pdf_ai' : 'import_csv';
+  if (sourceType === 'pdf') return 'import_pdf_ai';
+  if (sourceType === 'paste') return 'manual';
+  return 'import_csv';
+}
+
+function isSupportedProgramFrequency(value) {
+  return Number.isInteger(value) && value >= 1 && value <= 5;
 }
 
 function safeFilename(value) {
@@ -121,7 +143,8 @@ function generateProgramPdf(program, user, options = {}) {
     doc.fillColor('#111827').font('Helvetica').fontSize(10);
     const generated = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     const coachName = user?.coach?.name || 'CVF Coach';
-    doc.text(`${program.frequency_days || program.days?.length || 0} days/week`, { continued: true });
+    const frequency = program.frequency_days || program.days?.length || 0;
+    doc.text(`${frequency} ${frequency === 1 ? 'day' : 'days'}/week`, { continued: true });
     doc.fillColor(muted).text(`   Coach: ${coachName}   Generated: ${generated}`);
     if (program.description) {
       doc.moveDown(0.8);
@@ -214,20 +237,9 @@ async function callOpenAiForDraft(pdfText, originalFilename) {
   return JSON.parse(text);
 }
 
-function canAccessWorkout(user, workout) {
-  if (!workout) return false;
-  if (user.role === 'admin') return true;
-  return !workout.coach_id || workout.coach_id === user.coach?.id;
-}
-
-function canAccessProgram(user, program) {
-  if (!program) return false;
-  if (user.role === 'admin') return true;
-  return program.coach_id === user.coach?.id;
-}
-
 async function workoutWithDetails(workoutId) {
-  const { data: workout } = await supabaseAdmin.from('workouts').select('*').eq('id', workoutId).maybeSingle();
+  const { data: workout } = await supabaseAdmin.from('workouts').select('*')
+    .eq('id', workoutId).eq('archived', false).maybeSingle();
   if (!workout) return null;
   const { data: exercises, error } = await supabaseAdmin
     .from('workout_exercises')
@@ -240,7 +252,8 @@ async function workoutWithDetails(workoutId) {
 }
 
 async function programWithDetails(programId) {
-  const { data: program } = await supabaseAdmin.from('programs').select('*').eq('id', programId).maybeSingle();
+  const { data: program } = await supabaseAdmin.from('programs').select('*')
+    .eq('id', programId).eq('archived', false).maybeSingle();
   if (!program) return null;
   const { data: days, error } = await supabaseAdmin
     .from('program_days')
@@ -271,49 +284,12 @@ async function listWorkouts(user) {
   return result;
 }
 
-function cleanExerciseRows(workoutId, exercises = []) {
-  return exercises
-    .filter((ex) => ex.exercise_library_id || (ex.custom_name || ex.name || '').trim())
-    .map((ex, position) => ({
-      workout_id: workoutId,
-      exercise_library_id: ex.exercise_library_id || null,
-      custom_name: ex.custom_name || ex.name || null,
-      sets: ex.sets || null,
-      reps: ex.reps || null,
-      rest: ex.rest || null,
-      tempo: ex.tempo || null,
-      notes: ex.client_notes || ex.notes || null,
-      client_notes: ex.client_notes || ex.notes || null,
-      coach_notes: ex.coach_notes || null,
-      video_url: ex.video_url || null,
-      position,
-    }));
-}
-
-async function replaceWorkoutExercises(workoutId, exercises) {
-  await supabaseAdmin.from('workout_exercises').update({ archived: true }).eq('workout_id', workoutId);
-  const rows = cleanExerciseRows(workoutId, exercises);
-  if (rows.length) {
-    const { error } = await supabaseAdmin.from('workout_exercises').insert(rows);
-    if (error) throw error;
-  }
-}
-
-async function replaceProgramDays(programId, days = []) {
-  await supabaseAdmin.from('program_days').update({ archived: true }).eq('program_id', programId);
-  const rows = days
-    .filter((day) => day.workout_id)
-    .map((day, i) => ({
-      program_id: programId,
-      day_number: Number(day.day_number || i + 1),
-      workout_id: day.workout_id,
-      notes: day.notes || null,
-      archived: false,
-    }));
-  if (rows.length) {
-    const { error } = await supabaseAdmin.from('program_days').upsert(rows, { onConflict: 'program_id,day_number' });
-    if (error) throw error;
-  }
+async function programDaysAreAccessible(user, days) {
+  const workoutIds = [...new Set((days || []).map((day) => day.workout_id).filter(Boolean))];
+  if (!workoutIds.length) return true;
+  const { data, error } = await supabaseAdmin.from('workouts').select('*').in('id', workoutIds);
+  if (error) throw error;
+  return programDaysUseAccessibleWorkouts(user, days, data || []);
 }
 
 // ----- Exercise library -----
@@ -325,7 +301,7 @@ router.get('/exercise-library', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data || []);
   } catch (e) {
-    console.error('exercise library error', e);
+    logError('exercise library error', e);
     return res.status(500).json({ error: 'Failed to load exercise library' });
   }
 });
@@ -342,14 +318,15 @@ router.post('/exercise-library', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create library exercise error', e);
+    logError('create library exercise error', e);
     return res.status(500).json({ error: 'Failed to save exercise' });
   }
 });
 
-router.post('/exercise-library/import', requireCoach, async (req, res) => {
+router.post('/exercise-library/import', requireCoach, libraryImportLimiter, async (req, res) => {
   try {
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (rows.length > 500) return res.status(413).json({ error: 'Exercise imports are limited to 500 rows' });
     const cleaned = rows
       .filter((row) => row.name && String(row.name).trim())
       .map((row) => ({
@@ -368,7 +345,7 @@ router.post('/exercise-library/import', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json({ imported: data.length, exercises: data });
   } catch (e) {
-    console.error('import library error', e);
+    logError('import library error', e);
     return res.status(500).json({ error: 'Failed to import exercises' });
   }
 });
@@ -379,11 +356,13 @@ router.put('/exercise-library/:id', requireCoach, async (req, res) => {
     const updates = { updated_at: new Date().toISOString() };
     for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k] || null;
     if (updates.name !== undefined && !String(updates.name).trim()) return res.status(400).json({ error: 'Exercise name is required' });
-    const { data, error } = await supabaseAdmin.from('exercise_library').update(updates).eq('id', req.params.id).select().single();
+    const { data, error } = await supabaseAdmin.from('exercise_library').update(updates)
+      .eq('id', req.params.id).eq('archived', false).select().maybeSingle();
     if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Exercise not found' });
     return res.json(data);
   } catch (e) {
-    console.error('update library exercise error', e);
+    logError('update library exercise error', e);
     return res.status(500).json({ error: 'Failed to update exercise' });
   }
 });
@@ -394,7 +373,7 @@ router.patch('/exercise-library/:id/archive', requireCoach, async (req, res) => 
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive library exercise error', e);
+    logError('archive library exercise error', e);
     return res.status(500).json({ error: 'Failed to archive exercise' });
   }
 });
@@ -404,7 +383,7 @@ router.get('/workouts', requireCoach, async (req, res) => {
   try {
     return res.json(await listWorkouts(req.user));
   } catch (e) {
-    console.error('list workouts error', e);
+    logError('list workouts error', e);
     return res.status(500).json({ error: 'Failed to load workouts' });
   }
 });
@@ -413,17 +392,18 @@ router.post('/workouts', requireCoach, async (req, res) => {
   try {
     const { name, description, goal, exercises } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Workout name is required' });
-    const { data: workout, error } = await supabaseAdmin.from('workouts').insert({
-      coach_id: req.user.role === 'admin' ? null : req.user.coach.id,
-      name: String(name).trim(),
-      description: description || null,
-      goal: goal || null,
-    }).select().single();
+    const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
+      p_workout_id: null,
+      p_coach_id: req.user.role === 'admin' ? null : req.user.coach.id,
+      p_name: String(name).trim(),
+      p_description: description || null,
+      p_goal: goal || null,
+      p_exercises: Array.isArray(exercises) ? exercises : [],
+    });
     if (error) throw error;
-    await replaceWorkoutExercises(workout.id, exercises || []);
-    return res.status(201).json(await workoutWithDetails(workout.id));
+    return res.status(201).json(await workoutWithDetails(workoutId));
   } catch (e) {
-    console.error('create workout error', e);
+    logError('create workout error', e);
     return res.status(500).json({ error: 'Failed to create workout' });
   }
 });
@@ -434,7 +414,7 @@ router.get('/workouts/:id', requireCoach, async (req, res) => {
     if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
     return res.json(workout);
   } catch (e) {
-    console.error('get workout error', e);
+    logError('get workout error', e);
     return res.status(500).json({ error: 'Failed to load workout' });
   }
 });
@@ -442,16 +422,23 @@ router.get('/workouts/:id', requireCoach, async (req, res) => {
 router.put('/workouts/:id', requireCoach, async (req, res) => {
   try {
     const workout = await workoutWithDetails(req.params.id);
-    if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
-    const updates = { updated_at: new Date().toISOString() };
-    for (const k of ['name', 'description', 'goal']) if (k in (req.body || {})) updates[k] = req.body[k] || null;
-    if (updates.name !== undefined && !String(updates.name).trim()) return res.status(400).json({ error: 'Workout name is required' });
-    const { error } = await supabaseAdmin.from('workouts').update(updates).eq('id', workout.id);
+    if (!canManageWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    const body = req.body || {};
+    const name = 'name' in body ? String(body.name || '').trim() : workout.name;
+    if (!name) return res.status(400).json({ error: 'Workout name is required' });
+    const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
+      p_workout_id: workout.id,
+      p_coach_id: workout.coach_id,
+      p_name: name,
+      p_description: 'description' in body ? body.description || null : workout.description,
+      p_goal: 'goal' in body ? body.goal || null : workout.goal,
+      p_exercises: Array.isArray(body.exercises) ? body.exercises : workout.exercises,
+    });
     if (error) throw error;
-    if (Array.isArray(req.body.exercises)) await replaceWorkoutExercises(workout.id, req.body.exercises);
-    return res.json(await workoutWithDetails(workout.id));
+    if (!workoutId) return res.status(404).json({ error: 'Workout not found' });
+    return res.json(await workoutWithDetails(workoutId));
   } catch (e) {
-    console.error('update workout error', e);
+    logError('update workout error', e);
     return res.status(500).json({ error: 'Failed to update workout' });
   }
 });
@@ -459,12 +446,12 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
 router.patch('/workouts/:id/archive', requireCoach, async (req, res) => {
   try {
     const workout = await workoutWithDetails(req.params.id);
-    if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    if (!canManageWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
     const { data, error } = await supabaseAdmin.from('workouts').update({ archived: true, updated_at: new Date().toISOString() }).eq('id', workout.id).select().single();
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive workout error', e);
+    logError('archive workout error', e);
     return res.status(500).json({ error: 'Failed to archive workout' });
   }
 });
@@ -476,7 +463,7 @@ router.get('/import/template.csv', requireCoach, async (_req, res) => {
   return res.send(csvTemplate());
 });
 
-router.post('/import/parse-csv', requireCoach, programImportUpload, async (req, res) => {
+router.post('/import/parse-csv', requireCoach, csvImportLimiter, programImportUpload, async (req, res) => {
   try {
     if (!isCsvUpload(req.file)) return res.status(400).json({ error: 'Upload a CSV file using the program import template.' });
     const text = req.file.buffer.toString('utf8');
@@ -486,17 +473,38 @@ router.post('/import/parse-csv', requireCoach, programImportUpload, async (req, 
     return res.json({ message: 'CSV parsed. Review imported program before saving.', draft: validation.draft, errors: [] });
   } catch (e) {
     const status = e.validation ? 400 : 500;
-    console.error('parse csv program error', e);
+    logError('parse csv program error', e);
     return res.status(status).json({ error: e.message || 'Could not parse CSV import' });
   }
 });
 
-router.post('/import/parse-pdf', requireCoach, programImportUpload, async (req, res) => {
+router.post('/import/parse-paste', requireCoach, csvImportLimiter, async (req, res) => {
+  try {
+    const draft = parsePasteDraft(req.body?.text);
+    const validation = validateDraft(draft);
+    if (!validation.valid) {
+      return res.status(422).json({
+        error: 'Paste parsed, but the draft needs fixes before saving.',
+        draft: validation.draft,
+        errors: validation.errors,
+      });
+    }
+    return res.json({ message: 'Paste parsed. Review imported program before saving.', draft: validation.draft, errors: [] });
+  } catch (e) {
+    if (e.code === 'NO_EXERCISES_FOUND' || e.validation?.no_exercises) {
+      return res.status(400).json({ error: "Couldn't find any exercises in this text." });
+    }
+    logError('parse pasted program error', e);
+    return res.status(500).json({ error: 'Could not parse pasted program' });
+  }
+});
+
+router.post('/import/parse-pdf', requireCoach, pdfImportLimiter, programImportUpload, async (req, res) => {
   try {
     if (!isPdfUpload(req.file)) return res.status(400).json({ error: 'Upload a PDF file.' });
-    const parsed = await pdfParse(req.file.buffer);
-    if (!String(parsed.text || '').trim()) return res.status(400).json({ error: 'Could not extract readable text from this PDF. Try the CSV template instead.' });
-    const aiDraft = await callOpenAiForDraft(parsed.text, req.file.originalname);
+    const text = await extractPdfText(req.file.buffer);
+    if (!text.trim()) return res.status(400).json({ error: 'Could not extract readable text from this PDF. Try the CSV template instead.' });
+    const aiDraft = await callOpenAiForDraft(text, req.file.originalname);
     const draft = normalizeDraft({
       ...aiDraft,
       import_meta: {
@@ -510,12 +518,12 @@ router.post('/import/parse-pdf', requireCoach, programImportUpload, async (req, 
     if (!validation.valid) return res.status(422).json({ error: 'PDF parsed, but the draft needs fixes before saving.', draft: validation.draft, errors: validation.errors });
     return res.json({ message: 'PDF parsed. Review extracted program before saving.', draft: validation.draft, errors: [] });
   } catch (e) {
-    console.error('parse pdf program error', e);
+    logError('parse pdf program error', e);
     return res.status(e.status || 500).json({ error: e.message || 'Could not parse PDF import' });
   }
 });
 
-router.post('/import/commit', requireCoach, async (req, res) => {
+router.post('/import/commit', requireCoach, programCommitLimiter, async (req, res) => {
   try {
     const validation = validateDraft(req.body?.draft || req.body);
     if (!validation.valid) return res.status(422).json({ error: 'Fix import draft errors before saving.', errors: validation.errors, draft: validation.draft });
@@ -526,13 +534,13 @@ router.post('/import/commit', requireCoach, async (req, res) => {
       p_draft: validation.draft,
     });
     if (error) {
-      console.error('commit program import rpc error', error);
+      logError('commit program import rpc error', error);
       return res.status(500).json({ error: 'Program import could not be saved. Confirm the latest database migration has been applied.' });
     }
     const program = data?.program_id ? await programWithDetails(data.program_id) : null;
     return res.status(201).json({ ...data, program });
   } catch (e) {
-    console.error('commit program import error', e);
+    logError('commit program import error', e);
     return res.status(500).json({ error: 'Failed to save imported program' });
   }
 });
@@ -560,7 +568,7 @@ router.get('/', requireCoach, async (req, res) => {
     }
     return res.json(result);
   } catch (e) {
-    console.error('list programs error', e);
+    logError('list programs error', e);
     return res.status(500).json({ error: 'Failed to load programs' });
   }
 });
@@ -570,25 +578,28 @@ router.post('/', requireCoach, async (req, res) => {
     const { name, description, frequency_days, days } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Program name is required' });
     const frequency = Number(frequency_days);
-    if (![3, 4, 5].includes(frequency)) return res.status(400).json({ error: 'Choose 3, 4, or 5 days per week' });
+    if (!isSupportedProgramFrequency(frequency)) return res.status(400).json({ error: 'Choose 1 to 5 days per week' });
     const validDays = Array.isArray(days) ? days.filter((d) => d.workout_id) : [];
     if (validDays.length !== frequency) return res.status(400).json({ error: `Assign one workout to each of the ${frequency} days` });
-    const { data: program, error } = await supabaseAdmin.from('programs').insert({
-      coach_id: req.user.role === 'admin' ? req.user.coach.id : req.user.coach.id,
-      name: String(name).trim(),
-      description: description || null,
-      frequency_days: frequency,
-    }).select().single();
+    if (!await programDaysAreAccessible(req.user, validDays)) return res.status(404).json({ error: 'Workout not found' });
+    const { data: programId, error } = await supabaseAdmin.rpc('save_program', {
+      p_program_id: null,
+      p_coach_id: req.user.coach.id,
+      p_is_admin: req.user.role === 'admin',
+      p_name: String(name).trim(),
+      p_description: description || null,
+      p_frequency_days: frequency,
+      p_days: validDays,
+    });
     if (error) throw error;
-    await replaceProgramDays(program.id, validDays);
-    return res.status(201).json(await programWithDetails(program.id));
+    return res.status(201).json(await programWithDetails(programId));
   } catch (e) {
-    console.error('create program error', e);
+    logError('create program error', e);
     return res.status(500).json({ error: e.message || 'Failed to create program' });
   }
 });
 
-router.get('/:id/export.pdf', requireCoach, async (req, res) => {
+router.get('/:id/export.pdf', requireCoach, pdfExportLimiter, async (req, res) => {
   try {
     const program = await programWithDetails(req.params.id);
     if (!program || !canAccessProgram(req.user, program) || program.archived) return res.status(404).json({ error: 'Program not found' });
@@ -602,7 +613,7 @@ router.get('/:id/export.pdf', requireCoach, async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return res.send(pdf);
   } catch (e) {
-    console.error('export program pdf error', e);
+    logError('export program pdf error', e);
     return res.status(500).json({ error: 'Failed to export program PDF' });
   }
 });
@@ -613,7 +624,7 @@ router.get('/:id', requireCoach, async (req, res) => {
     if (!program || !canAccessProgram(req.user, program) || program.archived) return res.status(404).json({ error: 'Program not found' });
     return res.json(program);
   } catch (e) {
-    console.error('get program error', e);
+    logError('get program error', e);
     return res.status(500).json({ error: 'Failed to load program' });
   }
 });
@@ -622,22 +633,32 @@ router.put('/:id', requireCoach, async (req, res) => {
   try {
     const program = await programWithDetails(req.params.id);
     if (!program || !canAccessProgram(req.user, program)) return res.status(404).json({ error: 'Program not found' });
-    const updates = {};
-    if ('name' in req.body) updates.name = req.body.name;
-    if ('description' in req.body) updates.description = req.body.description || null;
-    if ('frequency_days' in req.body) {
-      const frequency = Number(req.body.frequency_days);
-      if (![3, 4, 5].includes(frequency)) return res.status(400).json({ error: 'Choose 3, 4, or 5 days per week' });
-      updates.frequency_days = frequency;
+    const body = req.body || {};
+    const name = 'name' in body ? String(body.name || '').trim() : program.name;
+    if (!name) return res.status(400).json({ error: 'Program name is required' });
+    const frequency = 'frequency_days' in body ? Number(body.frequency_days) : program.frequency_days;
+    if (!isSupportedProgramFrequency(frequency)) return res.status(400).json({ error: 'Choose 1 to 5 days per week' });
+    const validDays = Array.isArray(body.days)
+      ? body.days.filter((day) => day.workout_id)
+      : program.days.map((day) => ({ day_number: day.day_number, workout_id: day.workout_id, notes: day.notes }));
+    if (validDays.length !== frequency) {
+      return res.status(400).json({ error: `Assign one workout to each of the ${frequency} days` });
     }
-    if (Object.keys(updates).length) {
-      const { error } = await supabaseAdmin.from('programs').update(updates).eq('id', program.id);
-      if (error) throw error;
-    }
-    if (Array.isArray(req.body.days)) await replaceProgramDays(program.id, req.body.days);
-    return res.json(await programWithDetails(program.id));
+    if (!await programDaysAreAccessible(req.user, validDays)) return res.status(404).json({ error: 'Workout not found' });
+    const { data: programId, error } = await supabaseAdmin.rpc('save_program', {
+      p_program_id: program.id,
+      p_coach_id: program.coach_id,
+      p_is_admin: req.user.role === 'admin',
+      p_name: name,
+      p_description: 'description' in body ? body.description || null : program.description,
+      p_frequency_days: frequency,
+      p_days: validDays,
+    });
+    if (error) throw error;
+    if (!programId) return res.status(404).json({ error: 'Program not found' });
+    return res.json(await programWithDetails(programId));
   } catch (e) {
-    console.error('update program error', e);
+    logError('update program error', e);
     return res.status(500).json({ error: 'Failed to update program' });
   }
 });
@@ -650,7 +671,7 @@ router.patch('/:id/archive', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive program error', e);
+    logError('archive program error', e);
     return res.status(500).json({ error: 'Failed to archive program' });
   }
 });
@@ -659,7 +680,8 @@ router.post('/:id/assign', requireCoach, async (req, res) => {
   try {
     const program = await programWithDetails(req.params.id);
     if (!program || !canAccessProgram(req.user, program)) return res.status(404).json({ error: 'Program not found' });
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.body.client_id).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.body.client_id).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const { data: existing } = await supabaseAdmin.from('program_assignments').select('id')
       .eq('program_id', program.id).eq('client_id', clientRow.id).eq('archived', false).maybeSingle();
@@ -670,7 +692,7 @@ router.post('/:id/assign', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('assign program error', e);
+    logError('assign program error', e);
     return res.status(500).json({ error: 'Failed to assign program' });
   }
 });
@@ -678,13 +700,15 @@ router.post('/:id/assign', requireCoach, async (req, res) => {
 router.patch('/assignments/:assignmentId/archive', requireCoach, async (req, res) => {
   try {
     const { data: assignment } = await supabaseAdmin.from('program_assignments')
-      .select('*, program:programs(*)').eq('id', req.params.assignmentId).maybeSingle();
-    if (!assignment || !canAccessProgram(req.user, assignment.program)) return res.status(404).json({ error: 'Assignment not found' });
+      .select('*, program:programs(*)').eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
+    if (!assignment || assignment.program?.archived || !canAccessProgram(req.user, assignment.program)) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
     const { data, error } = await supabaseAdmin.from('program_assignments').update({ archived: true }).eq('id', assignment.id).select().single();
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('unassign error', e);
+    logError('unassign error', e);
     return res.status(500).json({ error: 'Failed to unassign program' });
   }
 });
@@ -692,16 +716,20 @@ router.patch('/assignments/:assignmentId/archive', requireCoach, async (req, res
 // ----- Standalone workout assignments -----
 router.get('/workout-assignments/client/:clientId', requireCoach, async (req, res) => {
   try {
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const { data, error } = await supabaseAdmin.from('workout_assignments').select('*')
       .eq('client_id', clientRow.id).eq('archived', false).order('assigned_for', { ascending: true, nullsFirst: false });
     if (error) throw error;
     const result = [];
-    for (const a of data || []) result.push({ ...a, workout: await workoutWithDetails(a.workout_id) });
+    for (const a of data || []) {
+      const workout = await workoutWithDetails(a.workout_id);
+      if (workout) result.push({ ...a, workout });
+    }
     return res.json(result);
   } catch (e) {
-    console.error('workout assignments error', e);
+    logError('workout assignments error', e);
     return res.status(500).json({ error: 'Failed to load workout assignments' });
   }
 });
@@ -709,7 +737,8 @@ router.get('/workout-assignments/client/:clientId', requireCoach, async (req, re
 router.post('/workout-assignments', requireCoach, async (req, res) => {
   try {
     const { client_id, workout_id, assignment_mode, assigned_for, notes } = req.body || {};
-    const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', client_id).maybeSingle();
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', client_id).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const workout = await workoutWithDetails(workout_id);
     if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
@@ -721,18 +750,32 @@ router.post('/workout-assignments', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json({ ...data, workout });
   } catch (e) {
-    console.error('assign workout error', e);
+    logError('assign workout error', e);
     return res.status(500).json({ error: 'Failed to assign workout' });
   }
 });
 
 router.patch('/workout-assignments/:assignmentId/archive', requireCoach, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin.from('workout_assignments').update({ archived: true }).eq('id', req.params.assignmentId).select().single();
+    const { data: assignment, error: loadError } = await supabaseAdmin.from('workout_assignments')
+      .select('*, client:clients(*)')
+      .eq('id', req.params.assignmentId)
+      .eq('archived', false)
+      .maybeSingle();
+    if (loadError) throw loadError;
+    if (assignment?.client?.archived || !canAccessWorkoutAssignment(req.user, assignment)) {
+      return res.status(404).json({ error: 'Workout assignment not found' });
+    }
+    const { data, error } = await supabaseAdmin.from('workout_assignments')
+      .update({ archived: true })
+      .eq('id', assignment.id)
+      .eq('archived', false)
+      .select()
+      .single();
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive workout assignment error', e);
+    logError('archive workout assignment error', e);
     return res.status(500).json({ error: 'Failed to remove workout assignment' });
   }
 });
@@ -750,10 +793,13 @@ router.get('/client/assigned', requireClient, async (req, res) => {
       .eq('client_id', req.user.client.id).eq('archived', false).order('assigned_for', { ascending: true, nullsFirst: false });
     if (waErr) throw waErr;
     const workouts = [];
-    for (const assignment of workoutAssignments || []) workouts.push({ ...assignment, workout: await workoutWithDetails(assignment.workout_id) });
+    for (const assignment of workoutAssignments || []) {
+      const workout = await workoutWithDetails(assignment.workout_id);
+      if (workout) workouts.push({ ...assignment, workout });
+    }
     return res.json({ programs, workouts });
   } catch (e) {
-    console.error('client programs error', e);
+    logError('client programs error', e);
     return res.status(500).json({ error: 'Failed to load your programs' });
   }
 });

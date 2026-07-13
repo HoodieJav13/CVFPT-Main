@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { DashboardSkeleton, StatTile, SectionLabel, CheckInStats } from '@/components/common';
+import { DashboardSkeleton, LoadErrorState, StatTile, SectionLabel, CheckInStats } from '@/components/common';
 import CheckInForm from '@/components/CheckInForm';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 export default function ClientHome() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -27,8 +28,11 @@ export default function ClientHome() {
     try {
       const { data } = await api.get('/dashboard/client');
       setData(data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load'));
+      const message = errMsg(e, 'Failed to load');
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
@@ -48,6 +52,7 @@ export default function ClientHome() {
     }
   };
 
+  if (!data && loadError) return <LoadErrorState message={loadError} scope="client-home" onRetry={() => { setLoadError(null); load(); }} />;
   if (!data) return <DashboardSkeleton tiles={2} />;
 
   const firstName = (user.profile?.name || '').split(' ')[0];

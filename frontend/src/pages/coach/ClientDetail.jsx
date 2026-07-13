@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { LoadingScreen, StatusBadge, MetricChart, EmptyState, SectionLabel, CheckInStats } from '@/components/common';
+import { LoadingScreen, LoadErrorState, StatusBadge, MetricChart, EmptyState, SectionLabel, CheckInStats } from '@/components/common';
 import CheckInForm from '@/components/CheckInForm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,28 +35,47 @@ export default function ClientDetail() {
   const [credits, setCredits] = useState(0);
   const [waiver, setWaiver] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadedId, setLoadedId] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     try {
-      const [c, cr, w] = await Promise.all([
-        api.get(`/clients/${id}`),
+      const c = await api.get(`/clients/${id}?include_archived=true`);
+      if (sequence !== loadSequence.current) return;
+      setClient(c.data);
+      if (c.data.archived) {
+        setCredits(0);
+        setWaiver(null);
+        setLoadedId(id);
+        setLoadError(null);
+        return;
+      }
+      const [cr, w] = await Promise.all([
         api.get(`/payments/credits/${id}`),
         api.get(`/waivers/client/${id}/status`),
       ]);
-      setClient(c.data);
+      if (sequence !== loadSequence.current) return;
       setCredits(cr.data.balance);
       setWaiver(w.data);
+      setLoadedId(id);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load client'));
-      navigate('/coach/clients');
+      if (sequence !== loadSequence.current) return;
+      const message = errMsg(e, 'Failed to load client');
+      setLoadError({ id, message });
+      toast.error(message);
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
-  }, [id, navigate]);
+  }, [id]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading || !client) return <LoadingScreen />;
+  const hasCurrentClient = loadedId === id;
+  if (!hasCurrentClient && loadError?.id === id) return <LoadErrorState message={loadError.message} scope="client-detail" onRetry={() => { setLoading(true); setLoadError(null); load(); }} />;
+  if (loading || !hasCurrentClient || !client) return <LoadingScreen />;
 
   return (
     <div>
@@ -87,7 +106,7 @@ export default function ClientDetail() {
         </Button>
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs key={client.id} defaultValue="overview">
         <TabsList className="w-full justify-start overflow-x-auto rounded-xl">
           <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="check-ins" data-testid="tab-check-ins">Check-ins</TabsTrigger>
@@ -300,7 +319,7 @@ function OverviewTab({ client, credits, waiver, reload, user }) {
               </SelectTrigger>
               <SelectContent>
                 {coaches.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}{c.is_admin ? ' (admin)' : ''}</SelectItem>
+                  <SelectItem key={c.id} value={c.id} data-testid="admin-reassign-coach-option">{c.name}{c.is_admin ? ' (admin)' : ''}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -326,6 +345,7 @@ function Row({ label, value }) {
 
 function CheckInsTab({ clientId }) {
   const [checkIns, setCheckIns] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [editing, setEditing] = useState(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -334,8 +354,11 @@ function CheckInsTab({ clientId }) {
     try {
       const { data } = await api.get(`/check-ins/clients/${clientId}`);
       setCheckIns(data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load check-ins'));
+      const message = errMsg(e, 'Failed to load check-ins');
+      setLoadError(message);
+      toast.error(message);
     }
   }, [clientId]);
 
@@ -371,6 +394,7 @@ function CheckInsTab({ clientId }) {
     }
   };
 
+  if (!checkIns && loadError) return <LoadErrorState message={loadError} scope="client-detail-check-ins" onRetry={() => { setLoadError(null); load(); }} />;
   if (!checkIns) return <LoadingScreen />;
 
   return (
@@ -439,6 +463,7 @@ function NoteBlock({ label, value, accent }) {
 
 function ProgressTab({ clientId }) {
   const [metrics, setMetrics] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [metricOpen, setMetricOpen] = useState(false);
   const [metricForm, setMetricForm] = useState({ name: '', unit: '' });
   const [entryFor, setEntryFor] = useState(null);
@@ -450,8 +475,11 @@ function ProgressTab({ clientId }) {
     try {
       const { data } = await api.get(`/progress/clients/${clientId}/metrics`);
       setMetrics(data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e));
+      const message = errMsg(e);
+      setLoadError(message);
+      toast.error(message);
     }
   }, [clientId]);
 
@@ -517,6 +545,7 @@ function ProgressTab({ clientId }) {
     }
   };
 
+  if (!metrics && loadError) return <LoadErrorState message={loadError} scope="client-detail-progress" onRetry={() => { setLoadError(null); load(); }} />;
   if (!metrics) return <LoadingScreen />;
 
   return (
@@ -622,11 +651,23 @@ function ProgressTab({ clientId }) {
 function SessionsTab({ clientId }) {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
-  useEffect(() => {
-    api.get(`/sessions?client_id=${clientId}`).then(({ data }) => setSessions(data.reverse())).catch((e) => toast.error(errMsg(e)));
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get(`/sessions?client_id=${clientId}`);
+      setSessions(data.reverse());
+      setLoadError(null);
+    } catch (e) {
+      const message = errMsg(e);
+      setLoadError(message);
+      toast.error(message);
+    }
   }, [clientId]);
 
+  useEffect(() => { load(); }, [load]);
+
+  if (!sessions && loadError) return <LoadErrorState message={loadError} scope="client-detail-sessions" onRetry={() => { setLoadError(null); load(); }} />;
   if (!sessions) return <LoadingScreen />;
 
   return (
@@ -654,6 +695,7 @@ function ProgramsTab({ clientId }) {
   const [programs, setPrograms] = useState(null);
   const [workouts, setWorkouts] = useState(null);
   const [workoutAssignments, setWorkoutAssignments] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignmentType, setAssignmentType] = useState('program');
   const [selectedProgram, setSelectedProgram] = useState('');
@@ -673,14 +715,19 @@ function ProgramsTab({ clientId }) {
       setPrograms(programRes.data);
       setWorkouts(workoutRes.data);
       setWorkoutAssignments(assignmentRes.data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e));
+      const message = errMsg(e);
+      setLoadError(message);
+      toast.error(message);
     }
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (!programs || !workouts || !workoutAssignments) return <LoadingScreen />;
+  const awaitingInitialData = !programs || !workouts || !workoutAssignments;
+  if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="client-detail-programs" onRetry={() => { setLoadError(null); load(); }} />;
+  if (awaitingInitialData) return <LoadingScreen />;
 
   const assigned = programs.filter((p) => (p.active_assignments || []).some((a) => a.client?.id === clientId));
   const available = programs.filter((p) => !p.active_assignments.some((a) => a.client?.id === clientId));
@@ -762,7 +809,7 @@ function ProgramsTab({ clientId }) {
             <DialogHeader><DialogTitle>Assign training</DialogTitle></DialogHeader>
             <form onSubmit={assign} className="space-y-4">
               <Select value={assignmentType} onValueChange={setAssignmentType}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-xl" data-testid="client-assignment-type-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="program">Long-term program</SelectItem>
                   <SelectItem value="workout">Standalone workout</SelectItem>
@@ -785,14 +832,14 @@ function ProgramsTab({ clientId }) {
                   <div className="space-y-1.5 sm:col-span-3">
                     <Label>Workout</Label>
                     <Select value={selectedWorkout} onValueChange={setSelectedWorkout}>
-                      <SelectTrigger className="rounded-xl"><SelectValue placeholder="Choose workout..." /></SelectTrigger>
+                      <SelectTrigger className="rounded-xl" data-testid="client-assignment-workout-select"><SelectValue placeholder="Choose workout..." /></SelectTrigger>
                       <SelectContent>{workouts.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1.5">
                     <Label>Mode</Label>
                     <Select value={assignmentMode} onValueChange={setAssignmentMode}>
-                      <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="rounded-xl" data-testid="client-assignment-mode-select"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="active">Active template</SelectItem>
                         <SelectItem value="dated">Dated workout</SelectItem>
@@ -801,11 +848,11 @@ function ProgramsTab({ clientId }) {
                   </div>
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label>Date</Label>
-                    <Input type="date" disabled={assignmentMode !== 'dated'} value={assignedFor} onChange={(e) => setAssignedFor(e.target.value)} />
+                    <Input type="date" disabled={assignmentMode !== 'dated'} value={assignedFor} onChange={(e) => setAssignedFor(e.target.value)} data-testid="client-assignment-date-input" />
                   </div>
                 </div>
               )}
-              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" />
+              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" data-testid="client-assignment-notes-input" />
               <DialogFooter>
                 <Button type="submit" disabled={saving || (assignmentType === 'program' ? !selectedProgram : !selectedWorkout)} className="rounded-xl w-full sm:w-auto" data-testid="assign-confirm-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign'}
@@ -822,7 +869,7 @@ function ProgramsTab({ clientId }) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-display font-semibold">{p.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} days/week - {p.exercise_count} exercises</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} {p.frequency_days === 1 ? 'day' : 'days'}/week - {p.exercise_count} exercises</p>
               </div>
               <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">
                 Unassign
@@ -861,14 +908,14 @@ function CoachWorkoutAssignment({ assignment, onArchive }) {
     : 'Active template';
 
   return (
-    <Card>
+    <Card data-testid="assigned-workout-card">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-display font-semibold">{workout.name}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{label} - {(workout.exercises || []).length} exercises</p>
           </div>
-          <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onArchive(assignment)}>
+          <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">
             Unassign
           </Button>
         </div>
@@ -918,6 +965,7 @@ function coachExerciseName(exercise) {
 function PaymentsTab({ clientId, reloadParent }) {
   const [history, setHistory] = useState(null);
   const [packages, setPackages] = useState([]);
+  const [loadError, setLoadError] = useState(null);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState('');
   const [saving, setSaving] = useState(false);
@@ -930,8 +978,11 @@ function PaymentsTab({ clientId, reloadParent }) {
       ]);
       setHistory(h.data);
       setPackages(p.data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e));
+      const message = errMsg(e);
+      setLoadError(message);
+      toast.error(message);
     }
   }, [clientId]);
 
@@ -955,6 +1006,7 @@ function PaymentsTab({ clientId, reloadParent }) {
     }
   };
 
+  if (!history && loadError) return <LoadErrorState message={loadError} scope="client-detail-payments" onRetry={() => { setLoadError(null); load(); }} />;
   if (!history) return <LoadingScreen />;
 
   return (
@@ -966,7 +1018,7 @@ function PaymentsTab({ clientId, reloadParent }) {
               <Plus className="h-4 w-4 mr-1.5" /> Record purchase
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-sm" data-testid="manual-purchase-dialog">
             <DialogHeader><DialogTitle>Record manual purchase</DialogTitle></DialogHeader>
             <p className="text-xs text-muted-foreground -mt-2">For cash / in-person payments. Credits are added immediately.</p>
             <form onSubmit={record} className="space-y-4">
@@ -976,7 +1028,7 @@ function PaymentsTab({ clientId, reloadParent }) {
                 </SelectTrigger>
                 <SelectContent>
                   {packages.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name} - {fmtMoney(p.price)} ({p.session_credits} credits)</SelectItem>
+                    <SelectItem key={p.id} value={p.id} data-testid="purchase-package-option">{p.name} - {fmtMoney(p.price)} ({p.session_credits} credits)</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

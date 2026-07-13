@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
 
 const router = express.Router();
@@ -23,7 +24,8 @@ async function metricsWithEntries(clientId) {
 }
 
 async function guardClient(req, res) {
-  const { data: clientRow } = await supabaseAdmin.from('clients').select('*').eq('id', req.params.clientId).maybeSingle();
+  const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+    .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
   if (!clientRow || !canAccessClient(req.user, clientRow)) {
     res.status(404).json({ error: 'Client not found' });
     return null;
@@ -38,7 +40,7 @@ router.get('/clients/:clientId/metrics', requireCoach, async (req, res) => {
     if (!clientRow) return;
     return res.json(await metricsWithEntries(clientRow.id));
   } catch (e) {
-    console.error('get metrics error', e);
+    logError('get metrics error', e);
     return res.status(500).json({ error: 'Failed to load progress' });
   }
 });
@@ -56,7 +58,7 @@ router.post('/clients/:clientId/metrics', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.status(201).json({ ...data, entries: [] });
   } catch (e) {
-    console.error('create metric error', e);
+    logError('create metric error', e);
     return res.status(500).json({ error: 'Failed to create metric' });
   }
 });
@@ -65,7 +67,7 @@ async function guardMetric(req, res) {
   const { data: metric } = await supabaseAdmin.from('metrics').select('*, client:clients(*)')
     .eq('id', req.params.metricId).eq('archived', false).maybeSingle();
   const clientOwnsMetric = req.user.role === 'client' && metric?.client_id === req.user.client.id;
-  if (!metric || (!clientOwnsMetric && !canAccessClient(req.user, metric.client))) {
+  if (!metric || metric.client?.archived || (!clientOwnsMetric && !canAccessClient(req.user, metric.client))) {
     res.status(404).json({ error: 'Metric not found' });
     return null;
   }
@@ -90,7 +92,7 @@ router.post('/metrics/:metricId/entries', async (req, res) => {
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create entry error', e);
+    logError('create entry error', e);
     return res.status(500).json({ error: 'Failed to log entry' });
   }
 });
@@ -118,7 +120,7 @@ router.put('/entries/:entryId', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('update entry error', e);
+    logError('update entry error', e);
     return res.status(500).json({ error: 'Failed to update entry' });
   }
 });
@@ -132,7 +134,7 @@ router.patch('/metrics/:metricId/archive', requireCoach, async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive metric error', e);
+    logError('archive metric error', e);
     return res.status(500).json({ error: 'Failed to archive metric' });
   }
 });
@@ -141,13 +143,16 @@ router.patch('/metrics/:metricId/archive', requireCoach, async (req, res) => {
 router.patch('/entries/:entryId/archive', requireCoach, async (req, res) => {
   try {
     const { data: entry } = await supabaseAdmin.from('metric_entries')
-      .select('*, metric:metrics(*, client:clients(*))').eq('id', req.params.entryId).maybeSingle();
-    if (!entry || !canAccessClient(req.user, entry.metric?.client)) return res.status(404).json({ error: 'Entry not found' });
+      .select('*, metric:metrics(*, client:clients(*))')
+      .eq('id', req.params.entryId).eq('archived', false).maybeSingle();
+    if (!entry || entry.metric?.archived || entry.metric?.client?.archived || !canAccessClient(req.user, entry.metric?.client)) {
+      return res.status(404).json({ error: 'Entry not found' });
+    }
     const { data, error } = await supabaseAdmin.from('metric_entries').update({ archived: true }).eq('id', entry.id).select().single();
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('archive entry error', e);
+    logError('archive entry error', e);
     return res.status(500).json({ error: 'Failed to remove entry' });
   }
 });
@@ -157,7 +162,7 @@ router.get('/mine', requireClient, async (req, res) => {
   try {
     return res.json(await metricsWithEntries(req.user.client.id));
   } catch (e) {
-    console.error('client metrics error', e);
+    logError('client metrics error', e);
     return res.status(500).json({ error: 'Failed to load your progress' });
   }
 });

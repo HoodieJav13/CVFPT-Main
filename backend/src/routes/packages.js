@@ -1,6 +1,8 @@
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { validatePackagePayload } = require('../validation/business');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -18,7 +20,7 @@ router.get('/', async (req, res) => {
     if (error) throw error;
     return res.json(data);
   } catch (e) {
-    console.error('list packages error', e);
+    logError('list packages error', e);
     return res.status(500).json({ error: 'Failed to load packages' });
   }
 });
@@ -26,21 +28,13 @@ router.get('/', async (req, res) => {
 // POST /api/packages (admin)
 router.post('/', requireAdmin, async (req, res) => {
   try {
-    const { name, description, price, session_credits, is_recurring } = req.body || {};
-    if (!name || price === undefined || isNaN(Number(price))) {
-      return res.status(400).json({ error: 'Name and a numeric price are required' });
-    }
-    const { data, error } = await supabaseAdmin.from('packages').insert({
-      name: String(name).trim(),
-      description: description || null,
-      price: Number(price),
-      session_credits: Number(session_credits) || 0,
-      is_recurring: Boolean(is_recurring),
-    }).select().single();
+    const validation = validatePackagePayload(req.body || {});
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    const { data, error } = await supabaseAdmin.from('packages').insert(validation.value).select().single();
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
-    console.error('create package error', e);
+    logError('create package error', e);
     return res.status(500).json({ error: 'Failed to create package' });
   }
 });
@@ -48,14 +42,15 @@ router.post('/', requireAdmin, async (req, res) => {
 // PUT /api/packages/:id (admin)
 router.put('/:id', requireAdmin, async (req, res) => {
   try {
-    const allowed = ['name', 'description', 'price', 'session_credits', 'is_recurring'];
-    const updates = {};
-    for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k];
-    const { data, error } = await supabaseAdmin.from('packages').update(updates).eq('id', req.params.id).select().single();
+    const validation = validatePackagePayload(req.body || {}, { partial: true });
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    const { data, error } = await supabaseAdmin.from('packages').update(validation.value)
+      .eq('id', req.params.id).eq('archived', false).select().maybeSingle();
     if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Package not found' });
     return res.json(data);
   } catch (e) {
-    console.error('update package error', e);
+    logError('update package error', e);
     return res.status(500).json({ error: 'Failed to update package' });
   }
 });
@@ -64,11 +59,13 @@ router.put('/:id', requireAdmin, async (req, res) => {
 router.patch('/:id/archive', requireAdmin, async (req, res) => {
   try {
     const archived = req.body?.archived !== false;
-    const { data, error } = await supabaseAdmin.from('packages').update({ archived }).eq('id', req.params.id).select().single();
+    const { data, error } = await supabaseAdmin.from('packages').update({ archived })
+      .eq('id', req.params.id).select().maybeSingle();
     if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Package not found' });
     return res.json(data);
   } catch (e) {
-    console.error('archive package error', e);
+    logError('archive package error', e);
     return res.status(500).json({ error: 'Failed to archive package' });
   }
 });

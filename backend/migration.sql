@@ -1,8 +1,14 @@
--- ============================================================
--- CVF PT (Core Value Fitness) - Full Database Schema v1
--- Run this ONCE in the Supabase SQL Editor:
--- https://supabase.com/dashboard/project/kzmsgwkmewbjnhmioduj/sql/new
--- ============================================================
+-- ============================================================================
+-- FROZEN HISTORICAL FILE — DO NOT EDIT OR RE-RUN
+--
+-- This file preserves the pre-versioning CVF PT schema for historical reference.
+-- The canonical schema history is supabase/migrations/, managed by the Supabase
+-- CLI. Every future schema change must be a new numbered migration in that
+-- directory; never add schema changes here.
+--
+-- Do not run this file against any database where the versioned migrations have
+-- been applied.
+-- ============================================================================
 
 create extension if not exists pgcrypto;
 
@@ -121,13 +127,13 @@ create table if not exists programs (
   coach_id uuid not null references coaches(id),
   name text not null,
   description text,
-  frequency_days int check (frequency_days in (3,4,5)),
+  frequency_days int check (frequency_days between 1 and 5),
   archived boolean not null default false,
   created_at timestamptz not null default now()
 );
 create index if not exists idx_programs_coach on programs(coach_id);
 
-alter table programs add column if not exists frequency_days int check (frequency_days in (3,4,5));
+alter table programs add column if not exists frequency_days int check (frequency_days between 1 and 5);
 
 -- New structured workout model starts clean; legacy flat programs are archived.
 update programs set archived = true where archived = false and frequency_days is null;
@@ -241,7 +247,8 @@ create index if not exists idx_program_assignments_client on program_assignments
 create or replace function commit_program_import(p_coach_id uuid, p_source text, p_draft jsonb)
 returns jsonb
 language plpgsql
-security definer
+security invoker
+set search_path = ''
 as $$
 declare
   v_program_id uuid;
@@ -260,14 +267,14 @@ begin
   if v_program_name = '' then
     raise exception 'Program name is required';
   end if;
-  if v_frequency not in (3, 4, 5) then
-    raise exception 'Program frequency must be 3, 4, or 5';
+  if v_frequency is null or v_frequency < 1 or v_frequency > 5 then
+    raise exception 'Program frequency must be between 1 and 5';
   end if;
   if v_day_count <> v_frequency then
     raise exception 'Program day count must match frequency';
   end if;
 
-  insert into programs (coach_id, name, description, frequency_days)
+  insert into public.programs (coach_id, name, description, frequency_days)
   values (
     p_coach_id,
     v_program_name,
@@ -278,7 +285,7 @@ begin
 
   for v_day in select * from jsonb_array_elements(p_draft -> 'days')
   loop
-    insert into workouts (coach_id, name, description, goal)
+    insert into public.workouts (coach_id, name, description, goal)
     values (
       p_coach_id,
       coalesce(nullif(v_day ->> 'name', ''), 'Day ' || (v_day ->> 'day_number')),
@@ -295,14 +302,14 @@ begin
       end if;
 
       select id into v_exercise_id
-      from exercise_library
+      from public.exercise_library
       where archived = false
         and regexp_replace(lower(btrim(name)), '\s+', ' ', 'g') = v_normalized_name
       order by created_at asc
       limit 1;
 
       if v_exercise_id is null then
-        insert into exercise_library (
+        insert into public.exercise_library (
           name, category, equipment, primary_muscle, video_url, notes, source, review_status
         )
         values (
@@ -321,7 +328,7 @@ begin
         v_reused := v_reused || jsonb_build_array(jsonb_build_object('id', v_exercise_id, 'name', btrim(v_exercise ->> 'name')));
       end if;
 
-      insert into workout_exercises (
+      insert into public.workout_exercises (
         workout_id, exercise_library_id, custom_name, sets, reps, rest, tempo, notes,
         client_notes, coach_notes, video_url, position
       )
@@ -337,11 +344,11 @@ begin
         nullif(v_exercise ->> 'client_notes', ''),
         nullif(v_exercise ->> 'coach_notes', ''),
         nullif(v_exercise ->> 'video_url', ''),
-        coalesce((select count(*) from workout_exercises where workout_id = v_workout_id), 0)
+        coalesce((select count(*) from public.workout_exercises where workout_id = v_workout_id), 0)
       );
     end loop;
 
-    insert into program_days (program_id, day_number, workout_id, notes)
+    insert into public.program_days (program_id, day_number, workout_id, notes)
     values (
       v_program_id,
       (v_day ->> 'day_number')::int,
@@ -356,6 +363,29 @@ begin
     'reused_exercises', v_reused,
     'warnings', v_warnings
   );
+end;
+$$;
+
+-- The Express backend is the only caller. Supabase grants function execution
+-- broadly by default, so explicitly remove Data API callers and retain only the
+-- service role used by the isolated backend.
+revoke execute on function public.commit_program_import(uuid, text, jsonb) from public;
+revoke execute on function public.commit_program_import(uuid, text, jsonb) from anon, authenticated;
+grant execute on function public.commit_program_import(uuid, text, jsonb) to service_role;
+
+-- Protect future functions created by this migration owner from inheriting
+-- broad Data API execution grants.
+alter default privileges in schema public revoke execute on functions from public;
+alter default privileges in schema public revoke execute on functions from anon, authenticated;
+alter default privileges in schema public grant execute on functions to service_role;
+
+-- Hosted projects may contain Supabase's RLS auto-enable event-trigger helper.
+-- It does not need to be callable through the Data API.
+do $$
+begin
+  if to_regprocedure('public.rls_auto_enable()') is not null then
+    execute 'revoke execute on function public.rls_auto_enable() from public, anon, authenticated';
+  end if;
 end;
 $$;
 
@@ -489,5 +519,26 @@ alter table packages enable row level security;
 alter table purchases enable row level security;
 alter table client_credits enable row level security;
 alter table credit_transactions enable row level security;
+
+-- The Express backend is the only Data API caller. Make table access explicit
+-- because Supabase project defaults vary, and intentionally omit DELETE so
+-- business records remain soft-delete/archive only.
+revoke all privileges on all tables in schema public
+  from public, anon, authenticated, service_role;
+grant select, insert, update on all tables in schema public to service_role;
+
+revoke all privileges on all sequences in schema public
+  from public, anon, authenticated, service_role;
+grant usage, select on all sequences in schema public to service_role;
+
+alter default privileges for role postgres in schema public
+  revoke all privileges on tables from public, anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  grant select, insert, update on tables to service_role;
+
+alter default privileges for role postgres in schema public
+  revoke all privileges on sequences from public, anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  grant usage, select on sequences to service_role;
 
 select 'CVF PT schema created successfully' as result;

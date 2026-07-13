@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const ws = require('ws');
+const { createSecretKeyFetch } = require('./lib/supabaseFetch');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -12,6 +13,7 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
 // Admin client: bypasses RLS, used for all data access + auth admin operations.
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
+  global: { fetch: createSecretKeyFetch(SERVICE_ROLE_KEY) },
   realtime: { transport: ws },
 });
 

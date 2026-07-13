@@ -6,10 +6,39 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const { supabaseAdmin } = require('../src/supabase');
 
+function requiredEnv(name) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`Missing required seed environment variable: ${name}`);
+  return value;
+}
+
+function validateSeedTarget() {
+  const environment = requiredEnv('CVF_SEED_ENV').toLowerCase();
+  if (!['development', 'preview'].includes(environment)) {
+    throw new Error('CVF_SEED_ENV must be development or preview');
+  }
+  if (process.env.CVF_SEED_CONFIRM_DEVELOPMENT !== 'true') {
+    throw new Error('Refusing to seed without CVF_SEED_CONFIRM_DEVELOPMENT=true');
+  }
+
+  const target = new URL(requiredEnv('SUPABASE_URL'));
+  const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+  const allowedHosts = new Set(
+    (process.env.CVF_SEED_ALLOWED_HOSTS || '')
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (!localHosts.has(target.hostname) && !allowedHosts.has(target.hostname.toLowerCase())) {
+    throw new Error('Refusing unapproved Supabase target; allow its exact hostname in CVF_SEED_ALLOWED_HOSTS');
+  }
+  console.log(`Seed target: ${environment} (${target.hostname})`);
+}
+
 const COACHES = [
-  { name: 'Marcus Rivera', email: 'admin@corevaluefitness.com', phone: '505-555-0101', is_admin: true, password: 'CVFadmin2025!' },
-  { name: 'Jordan Banks', email: 'coach.jordan@corevaluefitness.com', phone: '505-555-0102', is_admin: false, password: 'CVFcoach2025!' },
-  { name: 'Alex Trujillo', email: 'coach.alex@corevaluefitness.com', phone: '505-555-0103', is_admin: false, password: 'CVFcoach2025!' },
+  { name: 'Marcus Rivera', email: requiredEnv('CVF_SEED_ADMIN_EMAIL'), phone: '505-555-0101', is_admin: true, password: requiredEnv('CVF_SEED_ADMIN_PASSWORD') },
+  { name: 'Jordan Banks', email: requiredEnv('CVF_SEED_COACH_A_EMAIL'), phone: '505-555-0102', is_admin: false, password: requiredEnv('CVF_SEED_COACH_A_PASSWORD') },
+  { name: 'Alex Trujillo', email: requiredEnv('CVF_SEED_COACH_B_EMAIL'), phone: '505-555-0103', is_admin: false, password: requiredEnv('CVF_SEED_COACH_B_PASSWORD') },
 ];
 
 async function ensureAuthUser(email, password) {
@@ -37,6 +66,7 @@ function daysFromNow(days, hour = 9, minute = 0) {
 }
 
 async function main() {
+  validateSeedTarget();
   console.log('Seeding CVF PT...');
 
   // ---- Coaches ----
@@ -56,13 +86,13 @@ async function main() {
     }
     coachRows[c.email] = existing;
   }
-  const marcus = coachRows['admin@corevaluefitness.com'];
-  const jordan = coachRows['coach.jordan@corevaluefitness.com'];
-  const alex = coachRows['coach.alex@corevaluefitness.com'];
+  const marcus = coachRows[COACHES[0].email];
+  const jordan = coachRows[COACHES[1].email];
+  const alex = coachRows[COACHES[2].email];
 
   // ---- Clients ----
   const CLIENTS = [
-    { name: 'Sarah Martinez', email: 'client.demo@corevaluefitness.com', phone: '505-555-0201', coach: marcus, goals: 'Build strength and run a 10k in spring', health_notes: 'Mild left knee tendinitis - avoid deep lunges', invited: true, claim: true, password: 'CVFclient2025!' },
+    { name: 'Sarah Martinez', email: requiredEnv('CVF_SEED_CLIENT_EMAIL'), phone: '505-555-0201', coach: marcus, goals: 'Build strength and run a 10k in spring', health_notes: 'Mild left knee tendinitis - avoid deep lunges', invited: true, claim: true, password: requiredEnv('CVF_SEED_CLIENT_PASSWORD') },
     { name: 'David Chen', email: 'david.chen@example.com', phone: '505-555-0202', coach: marcus, goals: 'Lose 20 lbs, improve energy', health_notes: 'Hypertension, cleared by physician', invited: true, claim: false },
     { name: 'Emily Romero', email: 'emily.romero@example.com', phone: '505-555-0203', coach: jordan, goals: 'Postpartum strength rebuild', health_notes: 'Diastasis recti - core progressions only', invited: false },
     { name: 'Mike Thompson', email: 'mike.thompson@example.com', phone: '505-555-0204', coach: jordan, goals: 'Back squat 315, general athleticism', health_notes: null, invited: false },
@@ -260,12 +290,7 @@ async function main() {
   }
 
   console.log('\nSeed complete.');
-  console.log('Logins:');
-  console.log('  Admin coach: admin@corevaluefitness.com / CVFadmin2025!');
-  console.log('  Coach: coach.jordan@corevaluefitness.com / CVFcoach2025!');
-  console.log('  Coach: coach.alex@corevaluefitness.com / CVFcoach2025!');
-  console.log('  Client: client.demo@corevaluefitness.com / CVFclient2025!');
-  console.log('  Invited (unclaimed) client email: david.chen@example.com');
+  console.log('Dedicated fake-data account credentials were read from the environment and were not printed.');
   process.exit(0);
 }
 

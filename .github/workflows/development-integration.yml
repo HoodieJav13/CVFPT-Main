@@ -1,0 +1,37 @@
+name: Development integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    environment: development
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      CVF_TEST_ENV: development
+      CVF_TEST_ALLOW_MUTATIONS: "true"
+      CVF_TEST_BASE_URL: ${{ secrets.CVF_TEST_BASE_URL }}
+      CVF_TEST_ALLOWED_HOSTS: ${{ secrets.CVF_TEST_ALLOWED_HOSTS }}
+      CVF_TEST_ADMIN_EMAIL: ${{ secrets.CVF_TEST_ADMIN_EMAIL }}
+      CVF_TEST_ADMIN_PASSWORD: ${{ secrets.CVF_TEST_ADMIN_PASSWORD }}
+      CVF_TEST_COACH_A_EMAIL: ${{ secrets.CVF_TEST_COACH_A_EMAIL }}
+      CVF_TEST_COACH_A_PASSWORD: ${{ secrets.CVF_TEST_COACH_A_PASSWORD }}
+      CVF_TEST_COACH_B_EMAIL: ${{ secrets.CVF_TEST_COACH_B_EMAIL }}
+      CVF_TEST_COACH_B_PASSWORD: ${{ secrets.CVF_TEST_COACH_B_PASSWORD }}
+      CVF_TEST_CLIENT_EMAIL: ${{ secrets.CVF_TEST_CLIENT_EMAIL }}
+      CVF_TEST_CLIENT_PASSWORD: ${{ secrets.CVF_TEST_CLIENT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run test:integration

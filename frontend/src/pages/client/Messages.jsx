@@ -1,19 +1,23 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, errMsg } from '@/lib/api';
-import { PageHeader, ListSkeleton } from '@/components/common';
+import { PageHeader, ListSkeleton, LoadErrorState } from '@/components/common';
 import { ChatThread } from '@/components/Chat';
 import { toast } from 'sonner';
 
 export default function ClientMessages() {
   const [data, setData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [sending, setSending] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const { data } = await api.get('/messages/mine');
       setData(data);
+      setLoadError(null);
     } catch (e) {
-      toast.error(errMsg(e, 'Failed to load messages'));
+      const message = errMsg(e, 'Failed to load messages');
+      setLoadError(message);
+      toast.error(message);
     }
   }, []);
 
@@ -37,6 +41,7 @@ export default function ClientMessages() {
     }
   };
 
+  if (!data && loadError) return <LoadErrorState message={loadError} scope="client-messages" onRetry={() => { setLoadError(null); load(); }} />;
   if (!data) return <ListSkeleton rows={4} />;
 
   return (
