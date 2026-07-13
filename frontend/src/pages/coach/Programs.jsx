@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -334,12 +335,23 @@ function WorkoutsTab({ workouts, library, reload }) {
               </div>
             </CardHeader>
             <CardContent>
-              <Badge variant="outline" className="text-muted-foreground">{workout.exercise_count} exercises</Badge>
-              <div className="mt-3 space-y-1.5">
-                {workout.exercises.slice(0, 4).map((ex, i) => (
-                  <p key={ex.id} className="text-sm text-muted-foreground"><span className="tabular-nums">{i + 1}.</span> {exerciseName(ex)}</p>
-                ))}
-              </div>
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="exercises" className="last:border-b-0">
+                  <AccordionTrigger className="min-h-11 py-2 hover:no-underline">
+                    <span className="flex items-center gap-2">
+                      Exercises
+                      <Badge variant="outline" className="text-muted-foreground">{workout.exercise_count}</Badge>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-1">
+                    <div className="space-y-1.5">
+                      {workout.exercises.map((ex, i) => (
+                        <p key={ex.id} className="text-sm text-muted-foreground"><span className="tabular-nums">{i + 1}.</span> {exerciseName(ex)}</p>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </CardContent>
           </Card>
         ))}
@@ -443,14 +455,36 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
                 <div className="min-w-0">
                   <p className="font-display font-semibold">{program.name}</p>
                   <p className="text-xs text-muted-foreground mt-1">{frequencyLabel(program.frequency_days)} - {program.exercise_count} total exercises</p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <Accordion
+                    type="multiple"
+                    defaultValue={(program.days || []).length ? [`day-${program.days[0].day_number}`] : []}
+                    className="mt-3 w-full"
+                  >
                     {(program.days || []).map((day) => (
-                      <div key={day.id || day.day_number} className="rounded-xl border border-border bg-card/60 px-3 py-2">
-                        <p className="text-xs font-semibold text-muted-foreground">Day {day.day_number}</p>
-                        <p className="text-sm font-medium mt-0.5">{day.workout?.name || 'No workout'}</p>
-                      </div>
+                      <AccordionItem key={day.id || day.day_number} value={`day-${day.day_number}`} className="last:border-b-0">
+                        <AccordionTrigger className="min-h-11 py-2.5 hover:no-underline">
+                          <span className="text-left">
+                            <span className="block text-xs font-semibold text-muted-foreground">Day {day.day_number}</span>
+                            <span className="mt-0.5 block text-sm font-medium">{day.workout?.name || 'No workout'}</span>
+                          </span>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-3">
+                          {day.notes && <p className="mb-2 text-xs text-muted-foreground">{day.notes}</p>}
+                          {(day.workout?.exercises || []).length > 0 ? (
+                            <div className="space-y-1.5">
+                              {day.workout.exercises.map((exercise, index) => (
+                                <p key={exercise.id || index} className="text-sm text-muted-foreground">
+                                  <span className="mr-2 tabular-nums">{index + 1}.</span>{exerciseName(exercise)}
+                                </p>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">No exercise details available.</p>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
                     ))}
-                  </div>
+                  </Accordion>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
                   <Button size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => exportPdf(program)} title="Export PDF" data-testid="program-export-pdf-button"><Download className="h-3.5 w-3.5" /></Button>
@@ -503,11 +537,19 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
   const [pasteError, setPasteError] = useState('');
   const [draft, setDraft] = useState(null);
   const [errors, setErrors] = useState([]);
+  const [openReviewDays, setOpenReviewDays] = useState([]);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const validation = draft ? validateDraft(draft) : { valid: false, errors: [] };
   const exercisePlan = draft ? summarizeExercisePlan(draft, library) : { reused: [], created: [] };
+  const requiredReviewDays = draft ? reviewAttentionDayValues(draft, [...errors, ...validation.errors], exercisePlan.created) : [];
+  const availableReviewDays = draft ? draft.days.map((_, index) => `day-${index}`) : [];
+  const reviewOpenValues = [...new Set([
+    ...openReviewDays.filter((value) => availableReviewDays.includes(value)),
+    ...requiredReviewDays,
+  ])];
+  if (draft && reviewOpenValues.length === 0 && availableReviewDays.length > 0) reviewOpenValues.push(availableReviewDays[0]);
 
   const close = (value) => {
     onOpenChange(value);
@@ -517,6 +559,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
       setPasteError('');
       setDraft(null);
       setErrors([]);
+      setOpenReviewDays([]);
       setSourceType('csv');
     }
   };
@@ -528,6 +571,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
       setPasteError('');
       setDraft(null);
       setErrors([]);
+      setOpenReviewDays([]);
     }
     setSourceType(nextSource);
   };
@@ -545,6 +589,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
     if (!file) return toast.error('Choose a file to import');
     setParsing(true);
     setErrors([]);
+    setOpenReviewDays([]);
     try {
       const form = new FormData();
       form.append('file', file);
@@ -565,6 +610,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
 
   const showPasteDraft = (response) => {
     const nextDraft = normalizeDraft(response.draft);
+    setOpenReviewDays([]);
     setDraft(nextDraft);
     setErrors(response.errors || validateDraft(nextDraft).errors);
     setPasteError('');
@@ -575,12 +621,14 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
     if (!pasteText.trim()) {
       setDraft(null);
       setErrors([]);
+      setOpenReviewDays([]);
       setPasteError(PASTE_NO_EXERCISES_MESSAGE);
       return;
     }
     setParsing(true);
     setDraft(null);
     setErrors([]);
+    setOpenReviewDays([]);
     setPasteError('');
     try {
       const { data } = await api.post('/programs/import/parse-paste', { text: pasteText });
@@ -768,56 +816,73 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
                 </div>
               </div>
 
-              {draft.days.map((day, dayIndex) => (
-                <Card key={day.day_number} data-testid="program-import-day-card">
-                  <CardHeader className="pb-3">
-                    <div className="grid gap-2 sm:grid-cols-[90px_1fr_1fr]">
-                      <Input type="number" min="1" max="5" value={day.day_number} onChange={(e) => setDay(dayIndex, { day_number: Number(e.target.value) })} data-testid="program-import-day-number-input" />
-                      <Input value={day.name} onChange={(e) => setDay(dayIndex, { name: e.target.value })} placeholder="Workout day name" data-testid="program-import-day-name-input" />
-                      <Input value={day.goal} onChange={(e) => setDay(dayIndex, { goal: e.target.value })} placeholder="Goal/focus" data-testid="program-import-day-goal-input" />
-                    </div>
-                    <Input value={day.notes} onChange={(e) => setDay(dayIndex, { notes: e.target.value })} placeholder="Day notes" data-testid="program-import-day-notes-input" />
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {day.exercises.map((exercise, exerciseIndex) => (
-                      <div key={`${day.day_number}-${exerciseIndex}`} className="rounded-xl border border-border bg-card/50 p-3 space-y-2" data-testid="program-import-exercise-card">
-                        <div className="flex gap-2">
-                          <Input value={exercise.name} onChange={(e) => setExercise(dayIndex, exerciseIndex, { name: e.target.value })} placeholder={`Exercise ${exerciseIndex + 1}`} data-testid="program-import-exercise-name-input" />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="touchIcon"
-                            className="shrink-0 rounded-xl text-muted-foreground"
-                            onClick={() => removeExercise(dayIndex, exerciseIndex)}
-                            aria-label="Remove exercise"
-                            data-testid="program-import-exercise-remove-button"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+              <Accordion
+                type="multiple"
+                value={reviewOpenValues}
+                onValueChange={(values) => setOpenReviewDays([...new Set([...values, ...requiredReviewDays])])}
+                className="space-y-3"
+                data-testid="program-import-days-accordion"
+              >
+                {draft.days.map((day, dayIndex) => {
+                  const dayValue = `day-${dayIndex}`;
+                  const needsAttention = requiredReviewDays.includes(dayValue);
+                  return (
+                    <AccordionItem key={`${day.day_number}-${dayIndex}`} value={dayValue} className="rounded-xl border border-border bg-card px-4 shadow-sm" data-testid="program-import-day-card">
+                      <AccordionTrigger className="min-h-11 py-3 hover:no-underline">
+                        <span className="flex min-w-0 items-center gap-2 text-left">
+                          <span className="font-display font-semibold">Day {day.day_number}</span>
+                          <span className="truncate text-sm text-muted-foreground">{day.name || 'Untitled workout day'}</span>
+                          {needsAttention && <Badge variant="outline" className="shrink-0 border-gold/25 bg-gold/10 text-gold">Needs review</Badge>}
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-3 pb-4">
+                        <div className="grid gap-2 sm:grid-cols-[90px_1fr_1fr]">
+                          <Input type="number" min="1" max="5" value={day.day_number} onChange={(e) => setDay(dayIndex, { day_number: Number(e.target.value) })} data-testid="program-import-day-number-input" />
+                          <Input value={day.name} onChange={(e) => setDay(dayIndex, { name: e.target.value })} placeholder="Workout day name" data-testid="program-import-day-name-input" />
+                          <Input value={day.goal} onChange={(e) => setDay(dayIndex, { goal: e.target.value })} placeholder="Goal/focus" data-testid="program-import-day-goal-input" />
                         </div>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                          <Input value={exercise.sets} onChange={(e) => setExercise(dayIndex, exerciseIndex, { sets: e.target.value })} placeholder="Sets" data-testid="program-import-exercise-sets-input" />
-                          <Input value={exercise.reps} onChange={(e) => setExercise(dayIndex, exerciseIndex, { reps: e.target.value })} placeholder="Reps" data-testid="program-import-exercise-reps-input" />
-                          <Input value={exercise.rest} onChange={(e) => setExercise(dayIndex, exerciseIndex, { rest: e.target.value })} placeholder="Rest" data-testid="program-import-exercise-rest-input" />
-                          <Input value={exercise.tempo} onChange={(e) => setExercise(dayIndex, exerciseIndex, { tempo: e.target.value })} placeholder="Tempo" data-testid="program-import-exercise-tempo-input" />
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <Input value={exercise.client_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { client_notes: e.target.value })} placeholder="Client notes" data-testid="program-import-exercise-client-notes-input" />
-                          <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" data-testid="program-import-exercise-coach-notes-input" />
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-4">
-                          <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value })} placeholder="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
-                          <Input value={exercise.equipment} onChange={(e) => setExercise(dayIndex, exerciseIndex, { equipment: e.target.value })} placeholder="Equipment" data-testid="program-import-exercise-equipment-input" />
-                          <Input value={exercise.primary_muscle} onChange={(e) => setExercise(dayIndex, exerciseIndex, { primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="program-import-exercise-primary-muscle-input" />
-                        </div>
-                      </div>
-                    ))}
-                    <Button type="button" variant="outline" className="rounded-xl" onClick={() => addExercise(dayIndex)} data-testid="program-import-exercise-add-button">
-                      <Plus className="h-4 w-4 mr-1.5" /> Add exercise
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+                        <Input value={day.notes} onChange={(e) => setDay(dayIndex, { notes: e.target.value })} placeholder="Day notes" data-testid="program-import-day-notes-input" />
+                        {day.exercises.map((exercise, exerciseIndex) => (
+                          <div key={`${day.day_number}-${exerciseIndex}`} className="space-y-2 rounded-xl border border-border bg-card/50 p-3" data-testid="program-import-exercise-card">
+                            <div className="flex gap-2">
+                              <Input value={exercise.name} onChange={(e) => setExercise(dayIndex, exerciseIndex, { name: e.target.value })} placeholder={`Exercise ${exerciseIndex + 1}`} data-testid="program-import-exercise-name-input" />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="touchIcon"
+                                className="shrink-0 rounded-xl text-muted-foreground"
+                                onClick={() => removeExercise(dayIndex, exerciseIndex)}
+                                aria-label="Remove exercise"
+                                data-testid="program-import-exercise-remove-button"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                              <Input value={exercise.sets} onChange={(e) => setExercise(dayIndex, exerciseIndex, { sets: e.target.value })} placeholder="Sets" data-testid="program-import-exercise-sets-input" />
+                              <Input value={exercise.reps} onChange={(e) => setExercise(dayIndex, exerciseIndex, { reps: e.target.value })} placeholder="Reps" data-testid="program-import-exercise-reps-input" />
+                              <Input value={exercise.rest} onChange={(e) => setExercise(dayIndex, exerciseIndex, { rest: e.target.value })} placeholder="Rest" data-testid="program-import-exercise-rest-input" />
+                              <Input value={exercise.tempo} onChange={(e) => setExercise(dayIndex, exerciseIndex, { tempo: e.target.value })} placeholder="Tempo" data-testid="program-import-exercise-tempo-input" />
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <Input value={exercise.client_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { client_notes: e.target.value })} placeholder="Client notes" data-testid="program-import-exercise-client-notes-input" />
+                              <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" data-testid="program-import-exercise-coach-notes-input" />
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-4">
+                              <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value })} placeholder="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
+                              <Input value={exercise.equipment} onChange={(e) => setExercise(dayIndex, exerciseIndex, { equipment: e.target.value })} placeholder="Equipment" data-testid="program-import-exercise-equipment-input" />
+                              <Input value={exercise.primary_muscle} onChange={(e) => setExercise(dayIndex, exerciseIndex, { primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="program-import-exercise-primary-muscle-input" />
+                            </div>
+                          </div>
+                        ))}
+                        <Button type="button" variant="outline" className="rounded-xl" onClick={() => addExercise(dayIndex)} data-testid="program-import-exercise-add-button">
+                          <Plus className="h-4 w-4 mr-1.5" /> Add exercise
+                        </Button>
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
 
               <DialogFooter>
                 <Button variant="outline" className="rounded-xl" onClick={() => close(false)}>Cancel</Button>
@@ -960,28 +1025,41 @@ function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onS
           <datalist id="exercise-library-options">
             {library.map((exercise) => <option key={exercise.id} value={exercise.name} />)}
           </datalist>
-          <div className="space-y-3">
+          <Accordion
+            type="multiple"
+            defaultValue={form.exercises.length ? ['exercise-0'] : []}
+            className="space-y-3"
+            data-testid="workout-exercises-accordion"
+          >
             {form.exercises.map((exercise, index) => (
-              <div key={index} className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Input list="exercise-library-options" value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
-                  <Button type="button" size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== index) })} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></Button>
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />
-                  <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />
-                  <Input value={exercise.rest} onChange={(e) => setExercise(index, { rest: e.target.value })} placeholder="Rest" data-testid="workout-exercise-rest-input" />
-                  <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" />
-                </div>
-                <div className="relative">
-                  <Video className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" />
-                </div>
-                <Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" />
-                <Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" />
-              </div>
+              <AccordionItem key={index} value={`exercise-${index}`} className="rounded-xl border border-border bg-card/50 px-3">
+                <AccordionTrigger className="min-h-11 py-3 hover:no-underline">
+                  <span className="flex min-w-0 items-center gap-2 text-left">
+                    <span className="truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
+                    {(exercise.sets || exercise.reps) && <Badge variant="outline" className="shrink-0 tabular-nums">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-2 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Input list="exercise-library-options" value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
+                    <Button type="button" size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== index) })} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />
+                    <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />
+                    <Input value={exercise.rest} onChange={(e) => setExercise(index, { rest: e.target.value })} placeholder="Rest" data-testid="workout-exercise-rest-input" />
+                    <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" />
+                  </div>
+                  <div className="relative">
+                    <Video className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" />
+                  </div>
+                  <Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" />
+                  <Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" />
+                </AccordionContent>
+              </AccordionItem>
             ))}
-          </div>
+          </Accordion>
           <Button type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setForm({ ...form, exercises: [...form.exercises, { ...EMPTY_EXERCISE }] })} data-testid="workout-exercise-add-button">
             <Plus className="h-4 w-4 mr-1.5" /> Add exercise
           </Button>
@@ -1011,6 +1089,23 @@ function summarizeExercisePlan(draft, library) {
     });
   });
   return { reused, created };
+}
+
+function reviewAttentionDayValues(draft, errors, createdExercises) {
+  const attention = new Set();
+  (errors || []).forEach((error) => {
+    const match = String(error?.path || '').match(/^days\.(\d+)/);
+    if (match) attention.add(`day-${match[1]}`);
+  });
+
+  const createdNames = new Set((createdExercises || []).map((exercise) => normalizeName(exercise.name)));
+  (draft.days || []).forEach((day, dayIndex) => {
+    if ((day.exercises || []).some((exercise) => createdNames.has(normalizeName(exercise.name)))) {
+      attention.add(`day-${dayIndex}`);
+    }
+  });
+
+  return [...attention];
 }
 
 function resizeDraftDays(days, frequency) {

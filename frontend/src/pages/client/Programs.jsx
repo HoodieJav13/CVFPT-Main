@@ -3,6 +3,7 @@ import { api, errMsg } from '@/lib/api';
 import { PageHeader, LoadingScreen, LoadErrorState, EmptyState } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { CalendarDays, Dumbbell, Play, StickyNote } from 'lucide-react';
 import { fmtDate } from '@/lib/format';
 import { toast } from 'sonner';
@@ -81,10 +82,16 @@ function ProgramAssignmentCard({ assignment }) {
         </div>
         {assignment.notes && <AssignmentNote>{assignment.notes}</AssignmentNote>}
       </CardHeader>
-      <CardContent className="divide-y divide-border">
-        {(program.days || []).map((day) => (
-          <WorkoutDay key={day.id || day.day_number} dayNumber={day.day_number} workout={day.workout} notes={day.notes} />
-        ))}
+      <CardContent>
+        <Accordion
+          type="multiple"
+          defaultValue={(program.days || []).length ? [`day-${program.days[0].day_number}`] : []}
+          className="w-full"
+        >
+          {(program.days || []).map((day) => (
+            <WorkoutDay key={day.id || day.day_number} dayNumber={day.day_number} workout={day.workout} notes={day.notes} />
+          ))}
+        </Accordion>
       </CardContent>
     </Card>
   );
@@ -109,7 +116,19 @@ function WorkoutAssignmentCard({ assignment }) {
           </Badge>
         </div>
         {assignment.notes && <AssignmentNote>{assignment.notes}</AssignmentNote>}
-        <ExerciseList exercises={workout.exercises || []} />
+        <Accordion type="single" collapsible className="w-full">
+          <AccordionItem value="exercises" className="last:border-b-0">
+            <AccordionTrigger className="min-h-11 py-2.5 hover:no-underline">
+              <span className="flex items-center gap-2">
+                Exercises
+                <Badge variant="outline" className="tabular-nums">{(workout.exercises || []).length}</Badge>
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="pb-0">
+              <ExerciseList exercises={workout.exercises || []} />
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </CardContent>
     </Card>
   );
@@ -117,17 +136,23 @@ function WorkoutAssignmentCard({ assignment }) {
 
 function WorkoutDay({ dayNumber, workout, notes }) {
   return (
-    <section className="py-4 first:pt-0 last:pb-0">
-      <div className="flex items-center gap-2.5 flex-wrap">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary text-xs font-display font-semibold tabular-nums shrink-0">
-          {dayNumber}
+    <AccordionItem value={`day-${dayNumber}`} className="last:border-b-0">
+      <AccordionTrigger className="min-h-11 py-3 hover:no-underline">
+        <span className="flex min-w-0 items-center gap-2.5 text-left">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/15 font-display text-xs font-semibold tabular-nums text-primary">
+            {dayNumber}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate font-medium">{workout?.name || 'Workout day'}</span>
+            {workout?.goal && <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">{workout.goal}</span>}
+          </span>
         </span>
-        <p className="font-medium">{workout?.name || 'Workout day'}</p>
-        {workout?.goal && <Badge variant="outline" className="w-fit text-muted-foreground">{workout.goal}</Badge>}
-      </div>
-      {notes && <p className="text-xs text-muted-foreground mt-2">{notes}</p>}
-      <ExerciseList exercises={workout?.exercises || []} />
-    </section>
+      </AccordionTrigger>
+      <AccordionContent className="pb-3">
+        {notes && <p className="mb-2 text-xs text-muted-foreground">{notes}</p>}
+        <ExerciseList exercises={workout?.exercises || []} />
+      </AccordionContent>
+    </AccordionItem>
   );
 }
 
