@@ -177,7 +177,7 @@ export default function CoachSessions() {
             key={f.key}
             onClick={() => setFilter(f.key)}
             data-testid={`session-filter-${f.key}`}
-            className={`rounded-full px-4 py-1.5 text-xs font-medium border transition-colors shrink-0 ${filter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
+            className={`min-h-11 shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${filter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
           >
             {f.label}
           </button>

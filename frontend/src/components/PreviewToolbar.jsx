@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import {
   getPreviewClientId,
   getPreviewClients,
@@ -42,6 +43,7 @@ export default function PreviewToolbar() {
   const location = useLocation();
   const [role, setRole] = useState(getPreviewRole());
   const [clientId, setClientId] = useState(getPreviewClientId());
+  const [expanded, setExpanded] = useState(false);
   const clients = useMemo(() => getPreviewClients(), []);
 
   useEffect(() => onPreviewChange(() => {
@@ -65,50 +67,70 @@ export default function PreviewToolbar() {
   const links = LINKS[role] || LINKS.client;
 
   return (
-    <div className="fixed inset-x-3 bottom-[76px] z-[80] rounded-xl border border-gold/30 bg-background/95 p-2 shadow-[0_16px_40px_rgba(0,0,0,.35)] backdrop-blur lg:bottom-4 lg:left-auto lg:right-4 lg:w-[520px]" data-testid="preview-toolbar">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-lg bg-gold/15 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">
-          Preview Mode
-        </span>
-        <select
-          value={role}
-          onChange={(e) => changeRole(e.target.value)}
-          className="h-8 rounded-lg border border-border bg-card px-2 text-xs"
-          data-testid="preview-role-select"
-        >
-          <option value="client">Client</option>
-          <option value="coach">Coach</option>
-          <option value="admin">Admin</option>
-        </select>
-        <select
-          value={clientId}
-          onChange={(e) => changeClient(e.target.value)}
-          className="h-8 min-w-[150px] rounded-lg border border-border bg-card px-2 text-xs"
-          data-testid="preview-client-select"
-        >
-          {clients.map((client) => (
-            <option key={client.id} value={client.id}>{client.name}</option>
-          ))}
-        </select>
-      </div>
-      <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
-        {links.map(([label, to]) => {
-          const finalTo = to === '/coach/clients/client_sarah' ? `/coach/clients/${clientId}` : to;
-          const active = location.pathname === finalTo;
-          return (
-            <button
-              key={label}
-              onClick={() => navigate(finalTo)}
-              className={cn(
-                'shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
-                active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card/70 text-muted-foreground hover:text-foreground'
-              )}
-              data-testid="preview-quick-link"
-            >
-              {label}
-            </button>
-          );
-        })}
+    <div
+      className={cn(
+        'fixed bottom-[76px] right-3 z-40 rounded-xl border border-border bg-muted/95 p-2 shadow-xl backdrop-blur lg:bottom-4 lg:left-auto lg:right-4 lg:w-[520px]',
+        expanded && 'left-3'
+      )}
+      data-testid="preview-toolbar"
+    >
+      <button
+        type="button"
+        className="flex h-11 items-center gap-2 rounded-lg px-3 text-xs font-bold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
+        aria-expanded={expanded}
+        aria-controls="preview-toolbar-controls"
+        onClick={() => setExpanded((current) => !current)}
+        data-testid="preview-toolbar-toggle"
+      >
+        Preview Mode
+        {expanded ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronUp className="h-4 w-4" aria-hidden />}
+      </button>
+      <div id="preview-toolbar-controls" className={cn(expanded ? 'block' : 'hidden', 'lg:block')}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="hidden rounded-lg bg-secondary px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-secondary-foreground lg:inline-flex">
+            Preview Mode
+          </span>
+          <select
+            value={role}
+            onChange={(e) => changeRole(e.target.value)}
+            className="h-11 rounded-lg border border-border bg-card px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:h-8"
+            data-testid="preview-role-select"
+          >
+            <option value="client">Client</option>
+            <option value="coach">Coach</option>
+            <option value="admin">Admin</option>
+          </select>
+          <select
+            value={clientId}
+            onChange={(e) => changeClient(e.target.value)}
+            className="h-11 min-w-[150px] rounded-lg border border-border bg-card px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:h-8"
+            data-testid="preview-client-select"
+          >
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>{client.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
+          {links.map(([label, to]) => {
+            const finalTo = to === '/coach/clients/client_sarah' ? `/coach/clients/${clientId}` : to;
+            const active = location.pathname === finalTo;
+            return (
+              <button
+                type="button"
+                key={label}
+                onClick={() => navigate(finalTo)}
+                className={cn(
+                  'min-h-11 shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:min-h-0',
+                  active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card/70 text-muted-foreground hover:text-foreground'
+                )}
+                data-testid="preview-quick-link"
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

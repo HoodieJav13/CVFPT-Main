@@ -79,7 +79,7 @@ export default function ClientDetail() {
 
   return (
     <div>
-      <button onClick={() => navigate('/coach/clients')} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4" data-testid="back-to-clients-button">
+      <button onClick={() => navigate('/coach/clients')} className="mb-4 flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background" data-testid="back-to-clients-button">
         <ArrowLeft className="h-4 w-4" /> Clients
       </button>
 
@@ -337,8 +337,8 @@ function OverviewTab({ client, credits, waiver, reload, user }) {
 function Row({ label, value }) {
   return (
     <div className="flex gap-3">
-      <p className="w-28 shrink-0 text-muted-foreground">{label}</p>
-      <p className="flex-1 whitespace-pre-wrap">{value}</p>
+      <p className="w-24 shrink-0 text-muted-foreground sm:w-28">{label}</p>
+      <p className="min-w-0 flex-1 break-words whitespace-pre-wrap">{value}</p>
     </div>
   );
 }

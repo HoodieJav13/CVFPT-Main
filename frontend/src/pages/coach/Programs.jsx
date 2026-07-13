@@ -89,11 +89,11 @@ export default function Programs() {
     <div>
       <PageHeader title="Training builder" subtitle="Manage exercise library, workout days, structured programs, and assignments" />
       <Tabs defaultValue="library">
-        <TabsList className="w-full justify-start overflow-x-auto rounded-xl">
-          <TabsTrigger value="library" data-testid="training-builder-tab-library">Exercise Library</TabsTrigger>
-          <TabsTrigger value="workouts" data-testid="training-builder-tab-workouts">Workout Days</TabsTrigger>
-          <TabsTrigger value="programs" data-testid="training-builder-tab-programs">Programs</TabsTrigger>
-          <TabsTrigger value="assignments" data-testid="training-builder-tab-assignments">Assignments</TabsTrigger>
+        <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl">
+          <TabsTrigger className="min-h-11" value="library" data-testid="training-builder-tab-library">Exercise Library</TabsTrigger>
+          <TabsTrigger className="min-h-11" value="workouts" data-testid="training-builder-tab-workouts">Workout Days</TabsTrigger>
+          <TabsTrigger className="min-h-11" value="programs" data-testid="training-builder-tab-programs">Programs</TabsTrigger>
+          <TabsTrigger className="min-h-11" value="assignments" data-testid="training-builder-tab-assignments">Assignments</TabsTrigger>
         </TabsList>
         <TabsContent value="library"><ExerciseLibraryTab library={library} reload={load} /></TabsContent>
         <TabsContent value="workouts"><WorkoutsTab workouts={workouts} library={library} reload={load} /></TabsContent>
@@ -181,7 +181,17 @@ function ExerciseLibraryTab({ library, reload }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search exercises..." className="h-11 rounded-xl sm:max-w-sm" data-testid="exercise-library-search-input" />
         <div className="flex gap-2">
-          <label className="inline-flex h-10 cursor-pointer items-center rounded-xl border border-border px-3 text-sm font-medium hover:bg-accent">
+          <label
+            className="inline-flex h-11 cursor-pointer items-center rounded-xl border border-border px-3 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.currentTarget.querySelector('input')?.click();
+              }
+            }}
+          >
             <FileUp className="h-4 w-4 mr-1.5" /> Import CSV
             <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => importCsv(e.target.files?.[0])} data-testid="exercise-library-import-input" />
           </label>
@@ -205,8 +215,8 @@ function ExerciseLibraryTab({ library, reload }) {
                   {exercise.video_url && <a href={exercise.video_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">Video</a>}
                 </div>
                 <div className="flex gap-1.5">
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEdit(exercise)} data-testid="exercise-library-edit-button"><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archive(exercise)} data-testid="exercise-library-archive-button"><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(exercise)} data-testid="exercise-library-edit-button"><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(exercise)} data-testid="exercise-library-archive-button"><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>
             </CardContent>
@@ -317,8 +327,8 @@ function WorkoutsTab({ workouts, library, reload }) {
                   <p className="text-xs text-muted-foreground mt-1">{workout.goal || workout.description || 'Workout day template'}</p>
                 </div>
                 <div className="flex gap-1.5">
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEdit(workout)} data-testid="workout-edit-button"><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archive(workout)} data-testid="workout-archive-button"><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(workout)} data-testid="workout-edit-button"><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(workout)} data-testid="workout-archive-button"><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>
             </CardHeader>
@@ -442,9 +452,9 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
                   </div>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => exportPdf(program)} title="Export PDF" data-testid="program-export-pdf-button"><Download className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => openEdit(program)} data-testid="program-edit-button"><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-muted-foreground" onClick={() => archive(program)} data-testid="program-archive-button"><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => exportPdf(program)} title="Export PDF" data-testid="program-export-pdf-button"><Download className="h-3.5 w-3.5" /></Button>
+                  <Button size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(program)} data-testid="program-edit-button"><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(program)} data-testid="program-archive-button"><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>
             </CardContent>
@@ -661,7 +671,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
             <div className="space-y-1.5">
               <Label>Source</Label>
               <Select value={sourceType} onValueChange={selectSource}>
-                <SelectTrigger className="rounded-xl" data-testid="program-import-source-select"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-11 rounded-xl" data-testid="program-import-source-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="csv">CSV template</SelectItem>
                   <SelectItem value="paste">Paste program</SelectItem>
@@ -689,7 +699,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
                   />
                 </div>
                 <div className="flex gap-2">
-                  <Button className="rounded-xl" type="button" onClick={parsePaste} disabled={parsing} data-testid="program-import-paste-parse-button">
+                  <Button size="touch" className="rounded-xl" type="button" onClick={parsePaste} disabled={parsing} data-testid="program-import-paste-parse-button">
                     {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Parse'}
                   </Button>
                 </div>
@@ -698,11 +708,11 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
               <>
                 <div className="space-y-1.5">
                   <Label>{sourceType === 'pdf' ? 'PDF file' : 'CSV file'}</Label>
-                  <Input type="file" accept={sourceType === 'pdf' ? '.pdf,application/pdf' : '.csv,text/csv'} onChange={(e) => setFile(e.target.files?.[0] || null)} data-testid="program-import-file-input" />
+                  <Input size="touch" type="file" accept={sourceType === 'pdf' ? '.pdf,application/pdf' : '.csv,text/csv'} onChange={(e) => setFile(e.target.files?.[0] || null)} data-testid="program-import-file-input" />
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" className="rounded-xl" type="button" onClick={downloadTemplate} data-testid="program-import-template-button"><FileText className="h-4 w-4 mr-1.5" /> Template</Button>
-                  <Button className="rounded-xl" type="button" onClick={parseFile} disabled={parsing || !file} data-testid="program-import-parse-button">{parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Parse'}</Button>
+                  <Button size="touch" variant="outline" className="rounded-xl" type="button" onClick={downloadTemplate} data-testid="program-import-template-button"><FileText className="h-4 w-4 mr-1.5" /> Template</Button>
+                  <Button size="touch" className="rounded-xl" type="button" onClick={parseFile} disabled={parsing || !file} data-testid="program-import-parse-button">{parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Parse'}</Button>
                 </div>
               </>
             )}
@@ -775,7 +785,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
                           <Button
                             type="button"
                             variant="ghost"
-                            size="icon"
+                            size="touchIcon"
                             className="shrink-0 rounded-xl text-muted-foreground"
                             onClick={() => removeExercise(dayIndex, exerciseIndex)}
                             aria-label="Remove exercise"
@@ -954,7 +964,7 @@ function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onS
               <div key={index} className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
                 <div className="flex items-center gap-2">
                   <Input list="exercise-library-options" value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
-                  <Button type="button" size="icon" variant="ghost" className="h-9 w-9 rounded-lg text-muted-foreground" onClick={() => setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== index) })} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></Button>
+                  <Button type="button" size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== index) })} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></Button>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />

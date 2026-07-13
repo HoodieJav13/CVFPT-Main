@@ -157,7 +157,7 @@ export default function CoachResources() {
 function CategorySelect({ value, onValueChange, categories, testId }) {
   return (
     <Select value={value || 'uncategorized'} onValueChange={(next) => onValueChange(next === 'uncategorized' ? '' : next)}>
-      <SelectTrigger className="rounded-xl" data-testid={testId}><SelectValue placeholder="Uncategorized" /></SelectTrigger>
+      <SelectTrigger className="h-11 rounded-xl" data-testid={testId}><SelectValue placeholder="Uncategorized" /></SelectTrigger>
       <SelectContent>
         <SelectItem value="uncategorized">Uncategorized</SelectItem>
         {categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
@@ -215,26 +215,26 @@ function UploadDialog({ open, onOpenChange, categories, setCategories, onSaved }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild><Button className="rounded-xl" data-testid="resource-upload-open"><Plus className="mr-1.5 h-4 w-4" /> Upload PDF</Button></DialogTrigger>
+      <DialogTrigger asChild><Button size="touch" className="rounded-xl" data-testid="resource-upload-open"><Plus className="mr-1.5 h-4 w-4" /> Upload PDF</Button></DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>Upload resource</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-4">
-          <div className="space-y-1.5"><Label>Title *</Label><Input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} data-testid="resource-title-input" /></div>
+          <div className="space-y-1.5"><Label>Title *</Label><Input size="touch" required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} data-testid="resource-title-input" /></div>
           <div className="space-y-1.5"><Label>Description</Label><Textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} data-testid="resource-description-input" /></div>
           <div className="space-y-1.5"><Label>Category</Label><CategorySelect value={form.category_id} onValueChange={(category_id) => setForm({ ...form, category_id })} categories={categories} testId="resource-category-select" /></div>
           <div className="rounded-xl border border-border bg-card/50 p-3">
             <Label htmlFor="new-resource-category">+ Add new category</Label>
             <div className="mt-2 flex gap-2">
-              <Input id="new-resource-category" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="Category name" data-testid="resource-new-category-input" />
-              <Button type="button" variant="outline" className="rounded-xl" disabled={addingCategory || !newCategory.trim()} onClick={addCategory} data-testid="resource-new-category-save">{addingCategory ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}</Button>
+              <Input size="touch" id="new-resource-category" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="Category name" data-testid="resource-new-category-input" />
+              <Button size="touch" type="button" variant="outline" className="rounded-xl" disabled={addingCategory || !newCategory.trim()} onClick={addCategory} data-testid="resource-new-category-save">{addingCategory ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}</Button>
             </div>
           </div>
-          <div className="space-y-1.5"><Label>PDF file *</Label><Input type="file" accept=".pdf,application/pdf" required onChange={(event) => setFile(event.target.files?.[0] || null)} data-testid="resource-file-input" /></div>
+          <div className="space-y-1.5"><Label>PDF file *</Label><Input size="touch" type="file" accept=".pdf,application/pdf" required onChange={(event) => setFile(event.target.files?.[0] || null)} data-testid="resource-file-input" /></div>
           <label className="flex items-center justify-between gap-4 rounded-xl border border-border p-3 text-sm">
             <span><span className="font-medium">Public resource</span><span className="block text-xs text-muted-foreground">Visible to every logged-in client</span></span>
             <Switch checked={form.is_public} onCheckedChange={(is_public) => setForm({ ...form, is_public })} data-testid="resource-public-switch" />
           </label>
-          <DialogFooter><Button type="submit" className="rounded-xl" disabled={saving || !form.title.trim() || !file} data-testid="resource-upload-save">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Upload resource'}</Button></DialogFooter>
+          <DialogFooter><Button size="touch" type="submit" className="rounded-xl" disabled={saving || !form.title.trim() || !file} data-testid="resource-upload-save">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Upload resource'}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
