@@ -15,11 +15,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  AlertTriangle, Archive, BookOpen, CalendarDays, CheckCircle2, Download,
+  AlertTriangle, Archive, BookOpen, CalendarDays, CheckCircle2, CircleAlert, Download,
   Dumbbell, FileText, FileUp, Loader2, Pencil, Plus, Trash2, UserPlus, Video,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import draftTools from '@/lib/programDraft.js';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const {
   normalizeDraft,
@@ -591,7 +592,6 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
       } else {
         const message = response?.error || errMsg(e, PASTE_NO_EXERCISES_MESSAGE);
         setPasteError(message);
-        toast.error(message);
       }
     } finally {
       setParsing(false);
@@ -719,10 +719,11 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
           </div>
 
           {sourceType === 'paste' && pasteError && (
-            <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" data-testid="program-import-paste-empty-state">
-              <div className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" /> Could not parse program</div>
-              <p className="mt-1">{pasteError}</p>
-            </div>
+            <Alert className="border-primary/30 bg-primary/10" aria-live="polite" data-testid="program-import-paste-empty-state">
+              <CircleAlert className="h-4 w-4 text-primary" aria-hidden />
+              <AlertTitle>Could not parse program</AlertTitle>
+              <AlertDescription>{pasteError}</AlertDescription>
+            </Alert>
           )}
 
           {draft?.import_meta?.warnings?.length > 0 && (

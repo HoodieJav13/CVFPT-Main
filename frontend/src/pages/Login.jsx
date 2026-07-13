@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { CircleAlert, Loader2 } from 'lucide-react';
 import { errMsg } from '@/lib/api';
 
 export default function Login() {
@@ -69,7 +70,13 @@ export default function Login() {
                 <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
                   placeholder="Your password" className="h-11 rounded-xl" data-testid="login-password-input" />
               </div>
-              {error && <p className="text-sm text-destructive" data-testid="login-error-text">{error}</p>}
+              {error && (
+                <Alert className="border-primary/30 bg-primary/10" aria-live="polite" data-testid="login-error-text">
+                  <CircleAlert className="h-4 w-4 text-primary" aria-hidden />
+                  <AlertTitle>Unable to log in</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
               <Button type="submit" className="w-full h-11 rounded-xl font-semibold" disabled={submitting} data-testid="login-submit-button">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log in'}
               </Button>
