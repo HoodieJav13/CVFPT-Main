@@ -36,6 +36,18 @@ const state = {
     { id: 'client_david', coach_id: 'coach_marcus', name: 'David Chen', email: 'david.chen@example.com', phone: '505-555-0202', goals: 'Lose 20 lbs, improve energy', health_notes: 'Hypertension, cleared by physician', invited: true, auth_user_id: null, archived: false, created_at: iso(-90), updated_at: iso(-4) },
     { id: 'client_emily', coach_id: 'coach_jordan', name: 'Emily Romero', email: 'emily.romero@example.com', phone: '505-555-0203', goals: 'Postpartum strength rebuild', health_notes: 'Core progressions only', invited: false, auth_user_id: null, archived: false, created_at: iso(-60), updated_at: iso(-6) },
   ],
+  resourceCategories: [
+    { id: 'resource_category_general', name: 'General Info', created_at: iso(-90) },
+    { id: 'resource_category_recovery', name: 'Injury & Recovery', created_at: iso(-90) },
+    { id: 'resource_category_nutrition', name: 'Nutrition', created_at: iso(-90) },
+  ],
+  resources: [
+    { id: 'resource_public_welcome', title: 'Welcome to CVF PT', description: 'What to expect from your coaching experience.', category_id: 'resource_category_general', storage_path: 'preview/welcome.pdf', file_name: 'CVF-Welcome.pdf', file_size_bytes: 82432, is_public: true, archived: false, uploaded_by_coach_id: 'coach_jordan', created_at: iso(-28) },
+    { id: 'resource_sarah_recovery', title: 'Knee Recovery Basics', description: 'Simple recovery guidance for training days.', category_id: 'resource_category_recovery', storage_path: 'preview/knee-recovery.pdf', file_name: 'Knee-Recovery-Basics.pdf', file_size_bytes: 126640, is_public: false, archived: false, uploaded_by_coach_id: 'coach_jordan', created_at: iso(-14) },
+  ],
+  resourceAssignments: [
+    { id: 'resource_assignment_sarah', resource_id: 'resource_sarah_recovery', client_id: 'client_sarah', active: true, assigned_at: iso(-12) },
+  ],
   credits: { client_sarah: 8, client_david: 2, client_emily: 5 },
   sessions: [
     { id: 'session_today', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(0, 15), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-20), updated_at: iso(-1) },
@@ -182,6 +194,44 @@ function clientById(clientId) {
 
 function coachById(coachId) {
   return state.coaches.find((c) => c.id === coachId) || state.coaches[0];
+}
+
+function resourceCategoryById(categoryId) {
+  return state.resourceCategories.find((category) => category.id === categoryId) || null;
+}
+
+function previewResource(resource, includeAssignments = false) {
+  const shaped = {
+    id: resource.id,
+    title: resource.title,
+    description: resource.description,
+    category_id: resource.category_id,
+    file_name: resource.file_name,
+    file_size_bytes: resource.file_size_bytes,
+    is_public: resource.is_public,
+    archived: resource.archived,
+    uploaded_by_coach_id: resource.uploaded_by_coach_id,
+    created_at: resource.created_at,
+    category: resourceCategoryById(resource.category_id),
+  };
+  if (includeAssignments) {
+    shaped.uploader = coachById(resource.uploaded_by_coach_id);
+    shaped.assignments = state.resourceAssignments
+      .filter((assignment) => assignment.resource_id === resource.id && assignment.active)
+      .map((assignment) => ({ ...assignment, client: clientById(assignment.client_id) }));
+  }
+  return shaped;
+}
+
+function previewClientCanAccessResource(resource, clientId) {
+  return Boolean(resource && !resource.archived && (
+    resource.is_public
+    || state.resourceAssignments.some((assignment) => (
+      assignment.resource_id === resource.id
+      && assignment.client_id === clientId
+      && assignment.active
+    ))
+  ));
 }
 
 function shapeClient(client) {
@@ -527,6 +577,93 @@ export function installPreviewApi(api) {
       const row = { id: id('client'), coach_id: payload.coach_id || currentCoach().id, name: payload.name, email: payload.email || null, phone: payload.phone || null, goals: payload.goals || null, health_notes: payload.health_notes || null, invited: false, auth_user_id: null, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       state.clients.push(row);
       return ok(row, config, 201);
+    }
+
+    if (path === '/resource-categories' && method === 'get') {
+      if (role === 'client') return fail(config, 403, 'Coach access required');
+      return ok(state.resourceCategories.slice().sort((a, b) => a.name.localeCompare(b.name)), config);
+    }
+    if (path === '/resource-categories' && method === 'post') {
+      if (role === 'client') return fail(config, 403, 'Coach access required');
+      const name = String(payload.name || '').trim().replace(/\s+/g, ' ');
+      if (!name) return fail(config, 400, 'Category name is required');
+      const existing = state.resourceCategories.find((category) => category.name.toLowerCase() === name.toLowerCase());
+      if (existing) return ok({ ...existing, reused: true }, config);
+      const row = { id: id('resource_category'), name, created_at: new Date().toISOString(), reused: false };
+      state.resourceCategories.push(row);
+      return ok(row, config, 201);
+    }
+
+    if (path === '/resources' && method === 'get') {
+      const categoryId = search.get('category_id');
+      const query = String(search.get('q') || '').toLowerCase();
+      let rows = state.resources.filter((resource) => !resource.archived);
+      if (role === 'client') rows = rows.filter((resource) => previewClientCanAccessResource(resource, client.id));
+      if (categoryId) rows = rows.filter((resource) => resource.category_id === categoryId);
+      if (query) rows = rows.filter((resource) => resource.title.toLowerCase().includes(query));
+      return ok(rows.map((resource) => previewResource(resource, role !== 'client')), config);
+    }
+    if (path === '/resources' && method === 'post') {
+      if (role === 'client') return fail(config, 403, 'Coach access required');
+      const file = payload?.get?.('file');
+      const title = String(payload?.get?.('title') || '').trim();
+      if (!title) return fail(config, 400, 'Resource title is required');
+      if (!file || file.type !== 'application/pdf') return fail(config, 400, 'Upload a valid PDF file.');
+      const header = await file.slice(0, 1024).text();
+      if (!header.includes('%PDF-')) return fail(config, 400, 'Upload a valid PDF file.');
+      const row = {
+        id: id('resource'),
+        title,
+        description: String(payload.get('description') || '').trim() || null,
+        category_id: String(payload.get('category_id') || '') || null,
+        storage_path: `preview/${id('pdf')}.pdf`,
+        file_name: file.name || 'resource.pdf',
+        file_size_bytes: file.size,
+        is_public: payload.get('is_public') === 'true',
+        archived: false,
+        uploaded_by_coach_id: currentCoach().id,
+        created_at: new Date().toISOString(),
+      };
+      state.resources.unshift(row);
+      return ok(previewResource(row, true), config, 201);
+    }
+    const resourceDownload = path.match(/^\/resources\/([^/]+)\/download-link$/);
+    if (resourceDownload && method === 'get') {
+      const resource = state.resources.find((row) => row.id === resourceDownload[1] && !row.archived);
+      if (!resource || (role === 'client' && !previewClientCanAccessResource(resource, client.id))) {
+        return fail(config, 404, 'Resource not found');
+      }
+      return ok({ signed_url: `https://example.invalid/cvf-preview-resource.pdf?token=${resource.id}`, expires_in: 60, file_name: resource.file_name }, config);
+    }
+    const resourceEdit = path.match(/^\/resources\/([^/]+)$/);
+    if (resourceEdit && method === 'patch') {
+      if (role === 'client') return fail(config, 403, 'Coach access required');
+      const resource = state.resources.find((row) => row.id === resourceEdit[1]);
+      if (!resource) return fail(config, 404, 'Resource not found');
+      Object.assign(resource, payload);
+      return ok(previewResource(resource, true), config);
+    }
+    const resourceAssign = path.match(/^\/resources\/([^/]+)\/assign$/);
+    if (resourceAssign && method === 'post') {
+      if (role === 'client') return fail(config, 403, 'Coach access required');
+      let assignment = state.resourceAssignments.find((row) => row.resource_id === resourceAssign[1] && row.client_id === payload.client_id);
+      if (assignment) Object.assign(assignment, { active: true, assigned_at: new Date().toISOString() });
+      else {
+        assignment = { id: id('resource_assignment'), resource_id: resourceAssign[1], client_id: payload.client_id, active: true, assigned_at: new Date().toISOString() };
+        state.resourceAssignments.push(assignment);
+      }
+      return ok(assignment, config, 201);
+    }
+    const resourceUnassign = path.match(/^\/resources\/([^/]+)\/assignments\/([^/]+)$/);
+    if (resourceUnassign && method === 'patch') {
+      if (role === 'client') return fail(config, 403, 'Coach access required');
+      let assignment = state.resourceAssignments.find((row) => row.resource_id === resourceUnassign[1] && row.client_id === resourceUnassign[2]);
+      if (assignment) assignment.active = false;
+      else {
+        assignment = { id: id('resource_assignment'), resource_id: resourceUnassign[1], client_id: resourceUnassign[2], active: false, assigned_at: new Date().toISOString() };
+        state.resourceAssignments.push(assignment);
+      }
+      return ok(assignment, config);
     }
     const clientMatch = path.match(/^\/clients\/([^/]+)$/);
     if (clientMatch) {

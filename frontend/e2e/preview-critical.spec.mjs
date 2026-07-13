@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.setTimeout(60_000);
+
 const FLAT_PASTE = `ATG DB Incline 3x12
 DB fly 2x12
 Lower traps 3x8
@@ -16,7 +18,7 @@ async function usePreviewRole(page, role, clientId = 'client_sarah') {
   }, { selectedRole: role, selectedClient: clientId });
 }
 
-test('coach preview covers dashboard, clients, sessions, builder, and messages', async ({ page }) => {
+test('coach preview covers dashboard, clients, sessions, builder, resources, and messages', async ({ page }) => {
   await usePreviewRole(page, 'coach');
   await page.goto('/coach');
   await expect(page.getByRole('heading', { name: 'Hey, Marcus' })).toBeVisible();
@@ -72,6 +74,37 @@ test('coach preview covers dashboard, clients, sessions, builder, and messages',
   await expect(page.getByText('Program imported to vault')).toBeVisible();
   await expect(page.getByTestId('program-card').filter({ hasText: 'CVF TEST Preview Paste Program' })).toBeVisible();
 
+  await page.getByTestId('sidebar-nav-resources').click();
+  await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
+  await expect(page.getByTestId('coach-resource-card').filter({ hasText: 'Knee Recovery Basics' })).toBeVisible();
+  await page.getByTestId('resource-upload-open').click();
+  await page.getByTestId('resource-new-category-input').fill('Mobility Handouts');
+  await page.getByTestId('resource-new-category-save').click();
+  await expect(page.getByText('Category added')).toBeVisible();
+  await page.getByTestId('resource-new-category-input').fill('mobility handouts');
+  await page.getByTestId('resource-new-category-save').click();
+  await expect(page.getByText('Existing category selected')).toBeVisible();
+  await page.getByTestId('resource-category-select').click();
+  await expect(page.getByRole('option', { name: 'Mobility Handouts' })).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await page.getByTestId('resource-title-input').fill('CVF TEST Preview Mobility PDF');
+  await page.getByTestId('resource-file-input').setInputFiles({ name: 'not-a-pdf.txt', mimeType: 'text/plain', buffer: Buffer.from('not a pdf') });
+  await page.getByTestId('resource-upload-save').click();
+  await expect(page.getByText('Upload a valid PDF file.')).toBeVisible();
+  await page.getByTestId('resource-file-input').setInputFiles({ name: 'mobility.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF') });
+  await page.getByTestId('resource-upload-save').click();
+  await expect(page.getByText('Resource uploaded')).toBeVisible();
+  const uploadedResource = page.getByTestId('coach-resource-card').filter({ hasText: 'CVF TEST Preview Mobility PDF' });
+  await expect(uploadedResource).toBeVisible();
+  await uploadedResource.getByTestId('coach-resource-assign').click();
+  await page.getByTestId('resource-client-client_sarah').click();
+  await page.getByTestId('resource-assignment-save').click();
+  await expect(page.getByText('Resource assignments updated')).toBeVisible();
+  await uploadedResource.getByTestId('coach-resource-edit').click();
+  await page.getByTestId('resource-edit-public-switch').click();
+  await page.getByTestId('resource-edit-save').click();
+  await expect(uploadedResource.getByText('Public — visible to all clients')).toBeVisible();
+
   await page.getByTestId('sidebar-nav-messages').click();
   await expect(page.getByTestId('message-thread-row').first()).toBeVisible();
 });
@@ -91,6 +124,12 @@ test('client preview covers dashboard and every client navigation destination', 
 
   await page.goto('/client/programs');
   await expect(page.getByTestId('client-program-card').first()).toBeVisible();
+
+  await page.goto('/client/resources');
+  await expect(page.getByTestId('client-resource-card')).toHaveCount(2);
+  await expect(page.getByText('Welcome to CVF PT')).toBeVisible();
+  await expect(page.getByText('Knee Recovery Basics')).toBeVisible();
+  await expect(page.getByTestId('client-resource-download')).toHaveCount(2);
 
   await page.goto('/client/messages');
   await expect(page.getByTestId('chat-input')).toBeVisible();
@@ -123,4 +162,13 @@ test('client mobile navigation reaches critical pages', async ({ page }) => {
   await page.getByTestId('bottom-tab-sessions').click();
   await expect(page).toHaveURL(/\/client\/sessions$/);
   await expect(page.getByTestId('booking-request-button')).toBeVisible();
+  await expect(page.getByTestId('bottom-tab-resources')).toBeVisible();
+});
+
+test('client preview hides another client assigned resource', async ({ page }) => {
+  await usePreviewRole(page, 'client', 'client_david');
+  await page.goto('/client/resources');
+  await expect(page.getByTestId('client-resource-card')).toHaveCount(1);
+  await expect(page.getByText('Welcome to CVF PT')).toBeVisible();
+  await expect(page.getByText('Knee Recovery Basics')).toHaveCount(0);
 });

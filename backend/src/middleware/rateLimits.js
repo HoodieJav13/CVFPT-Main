@@ -70,6 +70,12 @@ const pdfExportLimiter = createRateLimiter({
   limit: 30,
 });
 
+const resourceUploadLimiter = createRateLimiter({
+  identifier: 'resource-upload-pdf',
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+});
+
 module.exports = {
   RATE_LIMIT_MESSAGE,
   createRateLimiter,
@@ -80,6 +86,7 @@ module.exports = {
   pdfImportLimiter,
   programCommitLimiter,
   refreshLimiter,
+  resourceUploadLimiter,
   requestKey,
   signupLimiter,
 };

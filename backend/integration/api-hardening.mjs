@@ -107,6 +107,87 @@ async function main() {
   });
   await check('admin overview', () => request('/admin/overview', { token: admin.access_token }));
 
+  const resourceCategory = await check('resource category creation reuses case-insensitive matches', async () => {
+    const { payload } = await request('/resource-categories', {
+      method: 'POST', token: coachA.access_token, json: { name: '  general   info  ' },
+    });
+    if (payload.name !== 'General Info' || payload.reused !== true) throw new Error('seed category was not reused');
+    return payload;
+  });
+  await check('resource upload rejects a non-PDF payload', async () => {
+    const form = new FormData();
+    form.set('title', `CVF TEST INVALID RESOURCE ${runId}`);
+    form.set('file', new Blob(['not a pdf'], { type: 'text/plain' }), 'invalid.txt');
+    return request('/resources', { method: 'POST', token: coachA.access_token, body: form, expected: 400 });
+  });
+  const resource = await check('coach uploads private PDF resource', async () => {
+    if (!resourceCategory) throw new Error('resource category unavailable');
+    const form = new FormData();
+    form.set('title', `CVF TEST RESOURCE ${runId}`);
+    form.set('description', 'Automated resource access verification');
+    form.set('category_id', resourceCategory.id);
+    form.set('is_public', 'false');
+    form.set('file', new Blob(['%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n'], { type: 'application/pdf' }), `CVF-TEST-${runId}.pdf`);
+    const { payload } = await request('/resources', {
+      method: 'POST', token: coachA.access_token, body: form, expected: 201,
+    });
+    if (payload.storage_path || payload.signed_url) throw new Error('storage internals leaked from upload response');
+    cleanup.push(() => request(`/resources/${payload.id}`, {
+      method: 'PATCH', token: coachA.access_token, json: { archived: true },
+    }));
+    cleanup.push(() => request(`/resources/${payload.id}/assignments/${client.profile.id}`, {
+      method: 'PATCH', token: coachA.access_token,
+    }));
+    return payload;
+  });
+  if (resource) {
+    await check('other coach sees and manages resource regardless of uploader', async () => {
+      const { payload: resources } = await request('/resources', { token: coachB.access_token });
+      if (!resources.some((row) => row.id === resource.id)) throw new Error('cross-coach resource missing');
+      const { payload } = await request(`/resources/${resource.id}`, {
+        method: 'PATCH', token: coachB.access_token,
+        json: { description: `CVF TEST CROSS-COACH UPDATED ${runId}` },
+      });
+      if (payload.description !== `CVF TEST CROSS-COACH UPDATED ${runId}`) throw new Error('cross-coach update failed');
+    });
+    await check('unassigned private resource is hidden with direct-link 404', async () => {
+      const { payload } = await request('/resources', { token: client.access_token });
+      if (payload.some((row) => row.id === resource.id)) throw new Error('private resource leaked into client list');
+      return request(`/resources/${resource.id}/download-link`, { token: client.access_token, expected: 404 });
+    });
+    await check('public resource is visible and signed for client without leaking storage path', async () => {
+      await request(`/resources/${resource.id}`, {
+        method: 'PATCH', token: coachA.access_token, json: { is_public: true },
+      });
+      const { payload } = await request('/resources', { token: client.access_token });
+      const visible = payload.find((row) => row.id === resource.id);
+      if (!visible || visible.storage_path) throw new Error('public resource visibility or response shape mismatch');
+      const { payload: link } = await request(`/resources/${resource.id}/download-link`, { token: client.access_token });
+      if (!link.signed_url || link.storage_path || link.expires_in !== 60) throw new Error('signed-link response mismatch');
+    });
+    await check('private assignment grants client access', async () => {
+      await request(`/resources/${resource.id}`, {
+        method: 'PATCH', token: coachA.access_token, json: { is_public: false },
+      });
+      await request(`/resources/${resource.id}/assign`, {
+        method: 'POST', token: coachA.access_token, expected: 201, json: { client_id: client.profile.id },
+      });
+      const { payload } = await request('/resources', { token: client.access_token });
+      if (!payload.some((row) => row.id === resource.id)) throw new Error('assigned resource missing');
+      return request(`/resources/${resource.id}/download-link`, { token: client.access_token });
+    });
+    await check('unassign revokes access and reassign reactivates the same pair', async () => {
+      await request(`/resources/${resource.id}/assignments/${client.profile.id}`, {
+        method: 'PATCH', token: coachA.access_token,
+      });
+      await request(`/resources/${resource.id}/download-link`, { token: client.access_token, expected: 404 });
+      await request(`/resources/${resource.id}/assign`, {
+        method: 'POST', token: coachA.access_token, expected: 201, json: { client_id: client.profile.id },
+      });
+      return request(`/resources/${resource.id}/download-link`, { token: client.access_token });
+    });
+  }
+
   const email = `cvf-test-${runId}@example.invalid`;
   const created = await check('coach creates isolated fake client', async () => {
     const { payload } = await request('/clients', {

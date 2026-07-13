@@ -61,11 +61,13 @@ const activeNamedWorkoutIds = await idsLike('workouts', 'name');
 const activeExerciseIds = await idsLike('exercise_library', 'name');
 const activeMetricIds = await idsLike('metrics', 'name');
 const activePackageIds = await idsLike('packages', 'name');
+const activeResourceIds = await idsLike('resource_library', 'title');
 const sessionIds = await allIdsLike('sessions', 'location');
 const programIds = await allIdsLike('programs', 'name');
 const namedWorkoutIds = await allIdsLike('workouts', 'name');
 const metricIds = await allIdsLike('metrics', 'name');
 const packageIds = await allIdsLike('packages', 'name');
+const resourceIds = await allIdsLike('resource_library', 'title');
 
 let programWorkoutIds = [];
 if (programIds.length) {
@@ -124,6 +126,19 @@ if (ledgerSources.length) {
   ledgerIds = (data || []).map((row) => row.id);
 }
 
+if (resourceIds.length) {
+  const { data, error } = await supabase
+    .from('resource_assignments')
+    .update({ active: false })
+    .eq('active', true)
+    .in('resource_id', resourceIds)
+    .select('id');
+  if (error) throw error;
+  counts.resource_assignments = (data || []).length;
+} else {
+  counts.resource_assignments = 0;
+}
+
 for (const [table, ids] of Object.entries(linked)) await archiveIds(table, ids);
 await archiveIds('credit_transactions', ledgerIds);
 await archiveIds('messages', messageIds);
@@ -134,6 +149,7 @@ await archiveIds('programs', activeProgramIds);
 await archiveIds('workouts', activeWorkoutIds);
 await archiveIds('exercise_library', activeExerciseIds);
 await archiveIds('packages', activePackageIds);
+await archiveIds('resource_library', activeResourceIds);
 await archiveIds('sessions', activeSessionIds);
 await archiveIds('clients', clientIds);
 await archiveIds('coaches', coachIds);

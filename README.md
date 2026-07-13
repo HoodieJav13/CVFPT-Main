@@ -24,8 +24,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment details.
 ## Verification
 
 Backend unit/regression checks, the frontend production build, and preview-mode
-browser checks are secret-free. The current results are 38/38 backend checks and
-4/4 preview browser flows:
+browser checks are secret-free. The current results are 44/44 backend checks and
+5/5 preview browser flows:
 
 ```sh
 cd backend && npm test
@@ -38,8 +38,8 @@ allowlisted development or preview target. Copy `backend/integration/.env.exampl
 to a local ignored environment file, export its values, then run
 `cd backend && npm run test:integration`. It uses dedicated fake-data accounts,
 forbids hard-delete requests, and soft-archives the records it creates. The current
-matrix covers 80/80 health, authentication, ownership, client, session, note,
-credit, package, progress, booking, messaging, Training Builder, and assignment
+matrix covers 88/88 health, authentication, ownership, client, session, note,
+credit, package, progress, booking, messaging, Training Builder, Resource Library, and assignment
 checks.
 For real-auth browser artifacts that have no public archive endpoint, the guarded
 `cd backend && npm run test:cleanup` command requires an allowlisted fake-data

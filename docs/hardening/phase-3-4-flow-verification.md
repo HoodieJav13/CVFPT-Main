@@ -1,10 +1,10 @@
 # Phase 3–4 coach and client flow verification
 
-Verification date: 2026-07-11
+Verification date: 2026-07-12
 
 Targets: protected Vercel previews, plus an isolated local frontend/backend pointed
 at the hosted fake-data Supabase development project. The 12-check protected role
-smoke covers deployed boundaries; the expanded real-auth browser and 80-check API
+smoke covers deployed boundaries; the expanded real-auth browser and 88-check API
 harness exercise the local candidate code against hosted data. All identities and
 created records were labeled test data. Cleanup used soft archive/state transitions
 only; no business record was hard-deleted.
@@ -13,10 +13,10 @@ only; no business record was hard-deleted.
 
 - Expanded real-auth browser suite: 6/6 passing (auth-negative, recoverable
   load failures, client, coach/Training Builder, session/payment/progress, admin).
-- Hosted-Supabase API harness: 80/80 passing.
+- Hosted-Supabase API harness: 88/88 passing.
 - Protected Vercel role smoke: 12/12 passing.
 - Hosted invite/signup/refresh flow: 7/7 passing.
-- Preview browser regressions: 4/4 passing; backend regressions: 38/38 passing.
+- Preview browser regressions: 5/5 passing; backend regressions: 44/44 passing.
 - Backend/frontend production audits: zero known vulnerabilities; frontend build
   passes. The full frontend audit additionally reports two low-severity dev-only
   `@eslint/plugin-kit` findings; the forced fix would move ESLint outside its
@@ -30,10 +30,11 @@ only; no business record was hard-deleted.
 | Token refresh | Pass | Hosted refresh followed by authenticated identity read |
 | Dashboard, loading/empty/error states | Pass | Real-auth fault injection proves client and coach failures expose an accessible retry state and recover; initial skeleton, empty, and success states also pass |
 | Client create, edit, invite, archive, restore | Pass | Real-auth browser lifecycle plus hosted invite/signup/archive |
-| Reassign and ownership boundaries | Pass | Real admin UI reassigns the authenticated client away and back; 80-check live matrix verifies former/new coach access, cross-coach `404`, and admin access |
+| Reassign and ownership boundaries | Pass | Real admin UI reassigns the authenticated client away and back; 88-check live matrix verifies former/new coach access, cross-coach `404`, and admin access |
 | Sessions, notes, cancel/complete, credits | Pass | Real UI schedule/edit/cancel, shared-note create/share toggles, complete, past filtering, client shared-note read, and credit deduction; API idempotency also passes |
 | Progress and daily check-ins | Pass | Real browser coach/client check-in and metric entry/edit/archive controls plus API ownership checks |
 | Programs, assignments, exercise library | Pass | The local candidate UI against hosted data covers library search/import/create/edit/archive; workout add/remove/create/edit/archive; program frequency/day notes/create/edit/archive; deterministic paste and CSV parsing through the shared review/edit and atomic commit path; active/dated assignment/unassignment; client video-link read; and branded PDF export. Paste import accepts one to five days, reuses normalized exercise matches, and creates unmatched exercises as `manual`/`needs_review`; CSV/PDF validation remains three to five days. Cross-coach `404` passes. AI-assisted PDF parsing is explicitly deferred. |
+| Resource Library | Pass | Coaches globally list/manage resources regardless of uploader; valid PDF upload, non-PDF rejection, category reuse, public access, private assignment, unassign/reassign, 60-second signed links, client response redaction, and access-hiding `404` all pass. Cleanup archives test resources and deactivates assignments without deleting stored PDFs. |
 | Messaging | Pass | Real client send, coach thread/reply, and client reply read all pass |
 | Booking approve/decline | Pass | Real UI request plus exact approve and decline controls; atomic approval creates the session shown in the coach/client lifecycle |
 | Manual purchases/packages | Pass | Real UI package recurring/create/edit/archive/restore, manual purchase/history, credit grant, session deduction, and client history/balance. Stripe remains intentionally disabled. |
@@ -51,6 +52,7 @@ only; no business record was hard-deleted.
 | Sessions and booking requests | Pass | Real request/pending display, coach approve/decline, completed-session read, and shared-note read |
 | Progress | Pass | Live client entry creation/update, coach metric lifecycle, ownership checks, and browser empty state |
 | Programs/workouts/video links | Pass | Live one-day paste import/edit, assignment/read with a video-bearing exercise, normalized exercise reuse/source verification, and empty-state browser coverage |
+| Resource Library | Pass | Client list/download includes public or actively assigned PDFs only; another fake client cannot list or directly request a private assignment, and responses never expose storage paths. |
 | Messaging | Pass | Real browser client send, coach reply, and client receipt |
 | Waiver | Deferred by owner | Status works. Successful signing verification was explicitly deferred on 2026-07-11 until approved waiver text exists. |
 | Packages, payments-disabled, credits/history | Pass | Live payment-disabled state plus manual-purchase history and credit grant/use balance; no live Stripe |

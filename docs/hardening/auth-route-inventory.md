@@ -1,8 +1,8 @@
 # Express authorization route inventory
 
 Audit date: 2026-07-10
-Inventory updated: 2026-07-11
-Inventory source: the routers mounted in `backend/src/app.js` and all 95 handlers in `backend/src/routes/*.js`.
+Inventory updated: 2026-07-12
+Inventory source: the routers mounted in `backend/src/app.js` and all 103 handlers in `backend/src/routes/*.js`.
 
 Common behavior:
 
@@ -102,6 +102,23 @@ All routes require authenticated coach/admin access.
 | `POST /api/programs/workout-assignments` | Coach/admin | Active client and workout must be accessible; admin: all | Archived client/workout hidden | Yes | Ownership-hiding `404` |
 | `PATCH /api/programs/workout-assignments/:assignmentId/archive` | Coach/admin | Active assignment's client ownership checked; admin: all | Active assignment/client only | Yes | Ownership-hiding `404` |
 | `GET /api/programs/client/assigned` | Client | Authenticated client's ID only | Archived assignments/programs/workouts hidden | No | `401` / `403` |
+
+## Resource library
+
+The library is business-wide for coach/admin management. Client visibility is
+derived from the authenticated client profile and requires either public state
+or an active assignment; storage paths never leave the backend.
+
+| Method and path | Auth / role | Ownership and admin behavior | Archived behavior | Mutates | Missing / unauthorized |
+|---|---|---|---|---:|---|
+| `GET /api/resources` | Any authenticated | Coach/admin: all resources; client: public or actively assigned only | Resources excluded | No | `401`; inaccessible rows omitted |
+| `POST /api/resources` | Coach/admin | Business-wide library; uploader recorded from authenticated coach profile | Creates active | Yes, private Storage upload + row | File/category validation `400`; size `413` |
+| `GET /api/resources/:id/download-link` | Any authenticated | Coach/admin: any active resource; client: public or actively assigned | Archived hidden | Yes, creates 60-second signed URL | Client access-hiding `404` |
+| `PATCH /api/resources/:id` | Coach/admin | Any coach/admin may edit visibility, metadata, or archive state regardless of uploader | Intentional archive/restore boundary | Yes | Missing `404` |
+| `POST /api/resources/:id/assign` | Coach/admin | Any resource; target client must pass existing coach ownership/admin access | Archived resource/client hidden | Yes, activates unique pair | Ownership-hiding `404` |
+| `PATCH /api/resources/:id/assignments/:clientId` | Coach/admin | Any resource; target client must pass existing coach ownership/admin access | Assignment retained with `active=false` | Yes | Ownership-hiding `404` |
+| `GET /api/resource-categories` | Coach/admin | Business-wide categories | Categories are retained | No | `401` / `403` |
+| `POST /api/resource-categories` | Coach/admin | Business-wide; case/whitespace-insensitive reuse | Categories are retained | Yes | Validation `400` |
 
 ## Messages
 
@@ -205,6 +222,7 @@ identified below.
 | Progress / entries | `401` | Own read/write entry | — | Allow | `404` | Allow | `404` | `404` |
 | Check-ins | `401` | Own read/write/archive | — | Allow | `404` | Allow | `404` | `404` |
 | Programs / workouts / assignments | `401` | Own assigned read | — | Own/global policy | `404` | Allow | `404` | `404` |
+| Resource library | `401` | Public/actively assigned read | Other-client assignments omitted | Global manage | Global manage | Global manage | `404` | `404`, except explicit restore |
 | Messages | `401` | Own thread | — | Own-client threads | `404` | Allow | `404` | `404` |
 | Booking requests | `401` | Own create/read | — | Own-client requests | `404` | Allow | `404` | `404` |
 | Packages / payments / credits | `401` | Own reads/checkout | — | Own-client reads/manual | `404` | Allow | `404` | `404` |
@@ -215,13 +233,13 @@ identified below.
 
 Evidence codes:
 
-- **U38** — 38 backend regressions under `backend/test`, including access,
+- **U44** — 44 backend regressions under `backend/test`, including access,
   archived-boundary, validation, CORS, rate-limit, Stripe-mode, claim-race,
   logging, deterministic paste/CSV/PDF drafts, grant, and transactional source contracts.
-- **L80** — `backend/integration/api-hardening.mjs`, 80/80 against the hosted
+- **L88** — `backend/integration/api-hardening.mjs`, 88/88 against the hosted
   development database with real auth and labeled fake records.
 - **B6** — `frontend/e2e/live-auth.spec.mjs`, 6/6 real-auth browser flows.
-- **P4** — `frontend/e2e/preview-critical.spec.mjs`, 4/4 deterministic browser flows.
+- **P5** — `frontend/e2e/preview-critical.spec.mjs`, 5/5 deterministic browser flows.
 - **PG** — isolated PostgreSQL migration/RPC behavior and hosted grant probes.
 - **H19** — 12 protected-Vercel role/profile checks plus seven hosted
   invite/signup/refresh/identity/archive checks.
@@ -233,22 +251,23 @@ handler. External/gated exceptions are called out explicitly.
 
 | Inventory section / endpoints | Relevant tests |
 |---|---|
-| Authentication — all four endpoints | **L80**, **B6**, **H19**; signup race and archived refresh: **U38** |
-| Clients — all six endpoints | **L80**, **B6**, **U38**; archive/restore boundary: **B6** + **U38** |
-| Sessions and notes — all nine endpoints | **L80**, **B6**, **U38**; atomic completion/credits: **PG** |
-| Progress — all seven endpoints | **L80**, **B6**, **U38** |
-| Daily check-ins — all six endpoints | **L80**, **B6**, **U38** |
-| Exercise library/workout CRUD — first ten Program Builder endpoints | **L80**, **B6**, **P4**, **U38**, **PG** |
-| Deterministic paste parse, shared review/commit, and one-to-five-day edit | **L80**, **B6**, **P4**, **U38**, **PG**; normalized-name reuse and manual/needs-review source tagging verified |
-| CSV template/parse, import commit, PDF export | **L80**, **B6**, **P4**, **PG**; CSV/PDF draft validation remains three to five days |
-| AI PDF parse | File/config/error boundaries: **U38**; successful external-AI parsing explicitly deferred by scope |
-| Program CRUD and both assignment families | **L80**, **B6**, **P4**, **U38**, **PG** |
-| Messages — all five endpoints | **L80**, **B6**, **U38** |
-| Booking requests — all five endpoints | **L80**, **B6**, **U38**, **PG** |
-| Waiver reads/status | **L80**, **B6**, **U38**, **PG** |
-| Waiver version/sign/paper mutations | Uniqueness/grants/transaction boundaries: **U38**, **PG**; successful UI signing/paper-sign verification explicitly deferred by the owner on 2026-07-11 pending approved legal text |
-| Packages — all four endpoints | **L80**, **B6**, **U38** |
-| Payment config/manual/history/credits | **L80**, **B6**, **U38**, **PG** |
-| Stripe webhook/checkout/verify | Signature, test-mode, ownership, and idempotency: **U38**, **PG**; no live Stripe operation by invariant |
-| Admin — all four endpoints | **L80**, **B6**, **H19** |
-| Coach/client dashboards | **L80**, **B6**, **P4**, **H19** |
+| Authentication — all four endpoints | **L88**, **B6**, **H19**; signup race and archived refresh: **U44** |
+| Clients — all six endpoints | **L88**, **B6**, **U44**; archive/restore boundary: **B6** + **U44** |
+| Sessions and notes — all nine endpoints | **L88**, **B6**, **U44**; atomic completion/credits: **PG** |
+| Progress — all seven endpoints | **L88**, **B6**, **U44** |
+| Daily check-ins — all six endpoints | **L88**, **B6**, **U44** |
+| Exercise library/workout CRUD — first ten Program Builder endpoints | **L88**, **B6**, **P5**, **U44**, **PG** |
+| Deterministic paste parse, shared review/commit, and one-to-five-day edit | **L88**, **B6**, **P5**, **U44**, **PG**; normalized-name reuse and manual/needs-review source tagging verified |
+| CSV template/parse, import commit, PDF export | **L88**, **B6**, **P5**, **PG**; CSV/PDF draft validation remains three to five days |
+| AI PDF parse | File/config/error boundaries: **U44**; successful external-AI parsing explicitly deferred by scope |
+| Program CRUD and both assignment families | **L88**, **B6**, **P5**, **U44**, **PG** |
+| Resource Library and categories — all eight endpoints | **L88**, **P5**, **U44**, **PG**; public/assigned access, cross-client hiding, cross-uploader management, upload rejection, signing order, and soft unassign/reassign verified |
+| Messages — all five endpoints | **L88**, **B6**, **U44** |
+| Booking requests — all five endpoints | **L88**, **B6**, **U44**, **PG** |
+| Waiver reads/status | **L88**, **B6**, **U44**, **PG** |
+| Waiver version/sign/paper mutations | Uniqueness/grants/transaction boundaries: **U44**, **PG**; successful UI signing/paper-sign verification explicitly deferred by the owner on 2026-07-11 pending approved legal text |
+| Packages — all four endpoints | **L88**, **B6**, **U44** |
+| Payment config/manual/history/credits | **L88**, **B6**, **U44**, **PG** |
+| Stripe webhook/checkout/verify | Signature, test-mode, ownership, and idempotency: **U44**, **PG**; no live Stripe operation by invariant |
+| Admin — all four endpoints | **L88**, **B6**, **H19** |
+| Coach/client dashboards | **L88**, **B6**, **P5**, **H19** |

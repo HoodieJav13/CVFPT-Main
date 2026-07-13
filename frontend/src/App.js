@@ -11,12 +11,14 @@ import Clients from '@/pages/coach/Clients';
 import ClientDetail from '@/pages/coach/ClientDetail';
 import CoachSessions from '@/pages/coach/Sessions';
 import Programs from '@/pages/coach/Programs';
+import CoachResources from '@/pages/coach/Resources';
 import CoachMessages from '@/pages/coach/Messages';
 import CoachConversation from '@/pages/coach/Conversation';
 import ClientHome from '@/pages/client/Home';
 import ClientSessions from '@/pages/client/Sessions';
 import ClientProgress from '@/pages/client/Progress';
 import ClientPrograms from '@/pages/client/Programs';
+import ClientResources from '@/pages/client/Resources';
 import ClientMessages from '@/pages/client/Messages';
 import ClientWaiver from '@/pages/client/Waiver';
 import ClientPackages from '@/pages/client/Packages';
@@ -62,6 +64,7 @@ export default function App() {
             <Route path="clients/:id" element={<ClientDetail />} />
             <Route path="sessions" element={<CoachSessions />} />
             <Route path="programs" element={<Programs />} />
+            <Route path="resources" element={<CoachResources />} />
             <Route path="messages" element={<CoachMessages />} />
             <Route path="messages/:clientId" element={<CoachConversation />} />
           </Route>
@@ -78,6 +81,7 @@ export default function App() {
             <Route path="sessions" element={<ClientSessions />} />
             <Route path="progress" element={<ClientProgress />} />
             <Route path="programs" element={<ClientPrograms />} />
+            <Route path="resources" element={<ClientResources />} />
             <Route path="messages" element={<ClientMessages />} />
             <Route path="waiver" element={<ClientWaiver />} />
             <Route path="packages" element={<ClientPackages />} />

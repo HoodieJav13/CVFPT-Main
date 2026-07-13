@@ -29,6 +29,8 @@ app.use('/api/sessions', require('./routes/sessions'));
 app.use('/api/progress', require('./routes/progress'));
 app.use('/api/check-ins', require('./routes/checkins'));
 app.use('/api/programs', require('./routes/programs'));
+app.use('/api/resources', require('./routes/resources'));
+app.use('/api/resource-categories', require('./routes/resourceCategories'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/waivers', require('./routes/waivers'));
