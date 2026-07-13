@@ -1,86 +1,144 @@
-# CVF PT - Deployment Guide (Vercel)
+# CVF PT deployment guide
 
-The app is two deployables: a **Node/Express API** (`/backend`) and a **React/Vite SPA** (`/frontend`).
-Deploy them as two Vercel projects (recommended) pointing at the respective subdirectories.
+CVF PT deploys as two isolated Vercel projects from one repository:
 
----
+- `frontend/` — React/Vite single-page application
+- `backend/` — Node/Express API
 
-## 1. Backend (Vercel project root: `backend/`)
+Each Vercel project must use its own directory as the project root. A deployment
+cannot import files from the other project or from a repository-root shared
+folder. See [CLAUDE.md](CLAUDE.md) for the locked deploy-boundary rules.
 
-- `api/index.js` exports the Express app as a serverless function; `vercel.json` rewrites all paths to it.
-- All routes are already prefixed `/api/...`.
-- Local/server mode also works anywhere with `npm start` (binds `0.0.0.0:$PORT`, default 8001).
+## Current environment model
 
-### Environment variables (Vercel -> Settings -> Environment Variables)
-| Variable | Value |
+Preview and Production are separate Vercel environment scopes. They currently
+point to the same Supabase project and intentionally share one surviving
+current-format server secret. This is temporary while CVF PT has no real launch
+domain. At launch, Production must receive its own Supabase project and its own
+owner-created key before real users or live data are onboarded.
+
+Supabase key creation, copying, rotation, and retirement are always manual,
+owner-only dashboard actions. An agent may verify variable names/scopes and test
+deployed endpoints, but must never create, retrieve, reveal, copy, or disable a
+Supabase key. Environment changes apply only to new Vercel deployments, so
+redeploy the affected scope after changing a variable.
+
+Current scope expectations:
+
+| Vercel scope | Frontend project | Backend project |
+|---|---|---|
+| Preview | `REACT_APP_BACKEND_URL` targets the protected backend Preview alias | Supabase variables plus exact Preview `CORS_ORIGINS` and `FRONTEND_URL` |
+| Production | Deployment exists, but the real launch domain/configuration is pending | Supabase variables are configured; `CORS_ORIGINS` and `FRONTEND_URL` remain unset until a real frontend domain exists |
+
+## Backend project
+
+Vercel project root: `backend/`.
+
+`api/index.js` exports the Express application as a serverless function, and
+`vercel.json` rewrites API traffic to it. Application routes are under `/api`.
+
+### Required Supabase variables
+
+| Variable | Purpose |
 |---|---|
-| `SUPABASE_URL` | The explicitly confirmed development Supabase project URL |
-| `SUPABASE_ANON_KEY` | Current `sb_publishable_...` key (the legacy variable name is retained for application compatibility) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Current `sb_secret_...` server key; never expose it to the frontend |
-| `OPENAI_API_KEY` | Optional secret for AI-assisted PDF program import; omit to return a safe `503` from that path |
-| `PROGRAM_IMPORT_MODEL` | Optional until AI-assisted PDF import is enabled; then document and pin the model choice |
-| `STRIPE_SECRET_KEY` | `sk_test_...` (TEST mode; leave empty to disable payments gracefully) |
-| `STRIPE_PUBLISHABLE_KEY` | `pk_test_...` (optional) |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_...` (optional; payment verification also works without webhooks via `/api/payments/verify` polling on the success redirect) |
-| `FRONTEND_URL` | The deployed frontend URL, e.g. `https://cvfpt.vercel.app` (used for Stripe success/cancel redirects) |
-| `CORS_ORIGINS` | Comma-separated exact frontend origins; wildcards and paths are rejected |
+| `SUPABASE_URL` | Explicitly confirmed Supabase project URL for the target environment |
+| `SUPABASE_ANON_KEY` | Current publishable key; the legacy variable name is retained for application compatibility |
+| `SUPABASE_SERVICE_ROLE_KEY` | Current server-only secret; never expose it to the frontend |
 
-The current hardening preview intentionally leaves `OPENAI_API_KEY` and
-`PROGRAM_IMPORT_MODEL` unset because AI-assisted PDF parsing is explicitly deferred.
-Deterministic pasted-text parsing, CSV parsing, atomic import commit, and branded
-PDF export do not require either variable. The PDF route fails closed with a safe
-`503` while the optional AI configuration is absent.
+### Origin and redirect variables
 
-### Stripe webhook (optional but recommended)
-Point a TEST-mode webhook at `https://<backend-domain>/api/payments/webhook` for event `checkout.session.completed`, then set `STRIPE_WEBHOOK_SECRET`.
+- `CORS_ORIGINS` is a comma-separated list of exact HTTP(S) origins. Each value
+  must contain only scheme, host, and optional port. Wildcards, paths, malformed
+  URLs, and partial-host matching are rejected. Browser credential support is
+  disabled.
+- With no Production `CORS_ORIGINS`, cross-origin browser requests receive no
+  allow-origin grant. Requests without an `Origin` header, including server-side
+  health checks, remain available.
+- `FRONTEND_URL` is used for Stripe checkout success/cancel redirects. It is
+  conditional until a real frontend domain exists and Stripe remains test-only.
 
----
+### Optional integrations
 
-## 2. Frontend (Vercel project root: `frontend/`)
+- `OPENAI_API_KEY` and `PROGRAM_IMPORT_MODEL` are intentionally absent while
+  AI-assisted PDF parsing is deferred. That route fails closed with `503`;
+  deterministic paste/CSV parsing and branded PDF export do not need them.
+- `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, and
+  `STRIPE_WEBHOOK_SECRET` are optional test-mode settings. Without them, the app
+  exposes its supported “payments not configured” state. Live Stripe keys are
+  rejected by application configuration.
 
-- Framework preset: **Vite**. Build: `yarn build` (or `npm run build`), output `dist/`.
-- `vercel.json` contains the SPA fallback rewrite.
+If test-mode webhooks are enabled, send `checkout.session.completed` to
+`https://<backend-domain>/api/payments/webhook` and configure the corresponding
+test webhook secret manually.
 
-### Required environment variable
-| Variable | Value |
-|---|---|
-| `REACT_APP_BACKEND_URL` | The deployed **backend** URL (no trailing slash), e.g. `https://cvfpt-api.vercel.app` |
+## Frontend project
 
----
+Vercel project root: `frontend/`.
 
-## 3. Database
-The canonical schema history lives in `supabase/migrations/`.
-`backend/migration.sql` is a frozen historical record of the pre-versioning schema;
-do not edit or re-run it against a database with the versioned migrations applied.
-Apply new numbered migrations only to the explicitly confirmed development project
-and verify the resulting schema before deploying either app.
-The current hosted development schema has five applied migrations. Program save
-and import accept one to five days for deterministic paste drafts; CSV/PDF parsing
-continues to validate three to five days. Paste-created exercises that do not match
-an existing normalized name use the existing unconstrained source value `manual`
-and `review_status='needs_review'`; no source-column migration is required.
+- Framework preset: Vite
+- Build command: `npm run build`
+- Output directory: `dist/`
+- `frontend/vercel.json` supplies the single-page application fallback.
 
-The idempotent seed is development/preview-only and fails closed unless
-`CVF_SEED_CONFIRM_DEVELOPMENT=true`, the exact Supabase hostname is allowlisted,
-and dedicated fake-account credentials are supplied through the environment.
-It never prints those credentials. Run it with `cd backend && npm run seed` only
-after those safeguards are configured.
+`REACT_APP_BACKEND_URL` must contain the target backend origin without a trailing
+slash. Preview must target the protected backend Preview alias. Production should
+be configured only when its final backend/frontend domain pair is approved.
 
-## 4. Verified hardening previews
+## Database migrations
 
-- Frontend branch alias: `https://cvfpt-frontend-git-codex-phase-2-5-hardening-cvf.vercel.app`
-- Backend branch alias: `https://cvfpt-backend-git-codex-phase-2-5-hardening-cvf.vercel.app`
+`supabase/migrations/` is the canonical schema history. It currently contains
+**six applied versioned migrations**, matching the hosted PostgreSQL 17
+development project. Every future schema change must be a new numbered migration;
+never edit an applied migration.
 
-Both previews remain behind Vercel Authentication. Verification covered backend
-health, exact-origin CORS, real login/refresh, deterministic paste and CSV parsing,
-one-to-five-day atomic commit/edit behavior, branded PDF export, frontend
-root/bundle/backend target, and logo delivery. Runtime logs
-were reviewed after the final healthy requests: no new error entry accompanied the
-successful health/auth/import/export probes. Earlier isolated failures for missing
-variables and serverless PDF loading are retained in Vercel history and resolved by
-the current commits. Rollback is re-aliasing either project to its prior Ready
-deployment; the originally empty database rollback is documented under
+`backend/migration.sql` is frozen historical evidence from before versioning. Do
+not edit it or run it against a database where the versioned migrations have been
+applied.
+
+The development seed is opt-in and fails closed unless its development target,
+hostname allowlist, and dedicated fake-account settings are explicitly supplied.
+It must never run against a future standalone Production project.
+
+## Local development
+
+Use the ordinary Node and Vite processes; there is no Python/uvicorn proxy.
+
+Backend:
+
+```sh
+cd backend
+npm install
+npm run dev
+```
+
+The API listens on port 8001 by default. Use `npm start` for non-watch mode.
+
+Frontend:
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+The Vite development server listens on port 3000. Start from the sanitized
+`backend/.env.example` and `frontend/.env.example` templates; keep real values in
+ignored local files or secure deployment settings.
+
+## Verification and rollback
+
+After deploying either backend scope, verify health, authentication boundaries,
+service-backed reads, and the applicable exact-origin CORS behavior. Production
+CORS/redirect checks are not applicable until its real frontend domain exists.
+The protected development evidence and accepted deferrals are recorded under
 `docs/hardening/`.
 
-## 5. Local development (this workspace)
-Supervisor runs `backend/server.py`, a thin ASGI proxy that spawns the Node server (port 8002) and proxies port 8001 -> Node. This is local-environment glue only; Vercel uses the Node app directly.
+Application rollback means re-aliasing the Vercel project to a previously Ready
+deployment. Database recovery must follow the migration-specific guidance in the
+hardening audit and must not hard-delete business records.
+
+## Related current documentation
+
+- [Product overview](docs/product-overview.md)
+- [Design principles](docs/design-principles.md)
+- [Repository invariants and current status](CLAUDE.md)
