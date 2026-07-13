@@ -161,3 +161,16 @@ to future objects. DELETE remains intentionally ungranted.
 - [Supabase database functions](https://supabase.com/docs/guides/database/functions): prefer invoker security, fix `search_path` for definer functions, and revoke broad default execution.
 - [Supabase API security](https://supabase.com/docs/guides/api/securing-your-api): grants control object reachability; RLS controls accessible rows.
 - [Supabase API keys](https://supabase.com/docs/guides/getting-started/api-keys): current `sb_secret_` keys replace legacy `service_role`; creating new keys does not disable legacy keys.
+
+## Credential-state correction (2026-07-13)
+
+After the audit verification above, the owner intentionally configured Preview
+and Production to share the same hosted Supabase project and one surviving
+current-format server secret until a real launch domain triggers a separate
+Production project. The superseded current-format secret was already deleted
+manually by the owner, and both legacy JWT-based keys remain disabled. The backend
+Preview branch alias was redeployed after the final environment-scope correction;
+non-destructive health, authentication-boundary, exact-origin CORS, and
+service-backed read checks pass on Preview, and health/service-backed reads pass
+on Production. This dated note supersedes only the earlier credential-history
+statements; the rest of this file remains the original audit record.
