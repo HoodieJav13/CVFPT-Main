@@ -63,7 +63,6 @@ export default function CoachMessages() {
           </button>
         ))}
       </div>
-      <div aria-hidden className="ridge-fade hidden lg:block mt-14 h-20 opacity-[0.04]" />
     </div>
   );
 }

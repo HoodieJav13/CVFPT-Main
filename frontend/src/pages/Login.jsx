@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { errMsg } from '@/lib/api';
+import { BrandBackdrop } from '@/components/BrandBackdrop';
 
 export default function Login() {
   const { user, loading, login } = useAuth();
@@ -33,13 +34,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-dvh app-noise flex items-center justify-center px-4 relative">
-      <div
-        className="absolute inset-0 opacity-[0.14] bg-cover bg-center"
-        style={{ backgroundImage: "url('https://images.unsplash.com/photo-1595886509089-b691b210fc5c?crop=entropy&cs=srgb&fm=jpg&ixlib=rb-4.1.0&q=85&w=1600')" }}
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/90 to-background" />
-      <div aria-hidden className="ridge-fade absolute inset-x-0 bottom-0 h-32 opacity-[0.05]" />
+    <div className="min-h-dvh app-noise flex items-center justify-center overflow-hidden px-4 relative">
+      <BrandBackdrop variant="auth" photoSlot="auth" />
       <div className="relative w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
           {logoBroken ? (

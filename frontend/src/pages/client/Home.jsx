@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { fmtDay, fmtTime, fmtDateTime, fmtDate } from '@/lib/format';
 import { toast } from 'sonner';
+import { DashboardHero } from '@/components/BrandBackdrop';
 
 export default function ClientHome() {
   const { user } = useAuth();
@@ -60,11 +61,11 @@ export default function ClientHome() {
 
   return (
     <div>
-      <div className="mb-5">
-        <div className="h-[3px] w-7 rounded-full bg-primary mb-2" aria-hidden />
-        <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight">Today, {firstName}</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Check in and make today count.</p>
-      </div>
+      <DashboardHero
+        title={`Today, ${firstName}`}
+        subtitle="Check in and make today count."
+        testId="client-dashboard-header"
+      />
 
       {data.waiver.has_version && !data.waiver.signed_latest && (
         <Link to="/client/waiver" className="block mb-4" data-testid="waiver-alert-card">
@@ -215,9 +216,10 @@ export default function ClientHome() {
           <CreditCard className="h-5 w-5 text-gold" />
           <div>
             <p className="text-sm font-medium">Session credits</p>
-            <p className="text-xs text-muted-foreground">Current balance: {data.credits}</p>
+            <p className="text-xs text-muted-foreground">Current balance</p>
           </div>
         </div>
+        <span className="font-display text-3xl font-semibold tabular-nums text-gold" data-testid="credits-hero-number">{data.credits}</span>
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </Link>
 

@@ -11,6 +11,11 @@ import {
   setPreviewRole,
 } from '@/lib/previewMode';
 import { cn } from '@/lib/utils';
+import {
+  getVisualIntensity,
+  setVisualIntensity,
+  VISUAL_INTENSITIES,
+} from '@/lib/visualIntensity';
 
 const LINKS = {
   client: [
@@ -44,6 +49,7 @@ export default function PreviewToolbar() {
   const [role, setRole] = useState(getPreviewRole());
   const [clientId, setClientId] = useState(getPreviewClientId());
   const [expanded, setExpanded] = useState(false);
+  const [intensity, setIntensity] = useState(getVisualIntensity());
   const clients = useMemo(() => getPreviewClients(), []);
 
   useEffect(() => onPreviewChange(() => {
@@ -65,6 +71,11 @@ export default function PreviewToolbar() {
   };
 
   const links = LINKS[role] || LINKS.client;
+
+  const changeIntensity = (nextIntensity) => {
+    setVisualIntensity(nextIntensity);
+    setIntensity(nextIntensity);
+  };
 
   return (
     <div
@@ -108,6 +119,17 @@ export default function PreviewToolbar() {
           >
             {clients.map((client) => (
               <option key={client.id} value={client.id}>{client.name}</option>
+            ))}
+          </select>
+          <select
+            value={intensity}
+            onChange={(e) => changeIntensity(e.target.value)}
+            aria-label="Visual intensity"
+            className="h-11 rounded-lg border border-border bg-card px-2 text-xs capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:h-8"
+            data-testid="preview-intensity-select"
+          >
+            {VISUAL_INTENSITIES.map((value) => (
+              <option key={value} value={value}>{value}</option>
             ))}
           </select>
         </div>

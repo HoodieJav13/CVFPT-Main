@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { PageHeader, StatTile, DashboardSkeleton, LoadErrorState, StatusBadge, SectionLabel, CheckInStats } from '@/components/common';
+import { StatTile, DashboardSkeleton, LoadErrorState, StatusBadge, SectionLabel, CheckInStats } from '@/components/common';
+import { DashboardHero } from '@/components/BrandBackdrop';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, Users, Inbox, MessageSquare, Check, Plus, ChevronRight, ClipboardCheck } from 'lucide-react';
@@ -50,7 +51,7 @@ export default function CoachDashboard() {
 
   return (
     <div>
-      <PageHeader
+      <DashboardHero
         title={`Hey, ${firstName}`}
         subtitle={user.role === 'admin' ? 'Admin view - all coaches' : 'Your day at CVF'}
         testId="coach-dashboard-header"

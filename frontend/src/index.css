@@ -49,6 +49,7 @@
     --font-body: 'Inter', ui-sans-serif, system-ui;
     --app-elev: 0 10px 30px rgba(0, 0, 0, 0.35);
     --app-elev-soft: 0 8px 18px rgba(0, 0, 0, 0.25);
+    --brand-glow: 0 12px 38px hsl(var(--gold) / 0.18);
     --focus-ring: 0 0 0 3px rgba(91, 194, 212, 0.35);
   }
 
@@ -127,11 +128,94 @@
     .skeleton::after { animation: none; }
   }
 
-  .ridge-fade {
-    background-image: url('/backgrounds/sandia-wide-hero-bg.svg');
-    background-repeat: repeat-x;
-    background-position: bottom center;
-    background-size: 1200px 100%;
+  .brand-backdrop {
+    --brand-photo-opacity: 0.08;
+    --brand-ridge-opacity: 0.1;
+    --brand-glow-opacity: 0.12;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
     pointer-events: none;
+    isolation: isolate;
+  }
+
+  .brand-backdrop[data-intensity='cinematic'] {
+    --brand-photo-opacity: 0.14;
+    --brand-ridge-opacity: 0.18;
+    --brand-glow-opacity: 0.18;
+  }
+
+  .brand-backdrop[data-intensity='spectacle'] {
+    --brand-photo-opacity: 0.2;
+    --brand-ridge-opacity: 0.28;
+    --brand-glow-opacity: 0.26;
+  }
+
+  .brand-backdrop__photo,
+  .brand-backdrop__glow,
+  .brand-backdrop__ridge,
+  .brand-backdrop__veil {
+    position: absolute;
+    inset: 0;
+  }
+
+  .brand-backdrop__photo {
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    filter: saturate(0.72) contrast(1.08);
+    opacity: var(--brand-photo-opacity);
+  }
+
+  .brand-backdrop__glow {
+    background:
+      radial-gradient(80% 90% at 16% 2%, hsl(var(--primary) / 0.42), transparent 68%),
+      radial-gradient(42% 55% at 88% 24%, hsl(var(--gold) / 0.18), transparent 72%);
+    opacity: var(--brand-glow-opacity);
+  }
+
+  .brand-backdrop__ridge {
+    inset: auto -8% -2px;
+    height: 76%;
+    background-image: url('/backgrounds/sandia-wide-hero-bg.svg');
+    background-position: bottom center;
+    background-repeat: repeat-x;
+    background-size: 960px 100%;
+    opacity: var(--brand-ridge-opacity);
+    mix-blend-mode: screen;
+  }
+
+  .brand-backdrop__veil {
+    background: linear-gradient(90deg, hsl(var(--background) / 0.8) 0%, hsl(var(--background) / 0.44) 54%, hsl(var(--background) / 0.72) 100%);
+  }
+
+  .brand-backdrop[data-photo-state='fallback'] .brand-backdrop__veil {
+    background: linear-gradient(90deg, hsl(var(--background) / 0.42) 0%, hsl(var(--background) / 0.08) 58%, hsl(var(--background) / 0.28) 100%);
+  }
+
+  .brand-backdrop[data-variant='auth'] .brand-backdrop__ridge {
+    height: 44%;
+    background-size: 1200px 100%;
+  }
+
+  .brand-backdrop[data-variant='auth'] .brand-backdrop__veil {
+    background: linear-gradient(180deg, hsl(var(--background) / 0.54) 0%, hsl(var(--background) / 0.83) 58%, hsl(var(--background)) 100%);
+  }
+
+  .brand-backdrop[data-variant='auth'][data-photo-state='fallback'] .brand-backdrop__veil {
+    background: linear-gradient(180deg, hsl(var(--background) / 0.22) 0%, hsl(var(--background) / 0.68) 58%, hsl(var(--background)) 100%);
+  }
+
+  .brand-backdrop[data-variant='achievement'] {
+    --brand-ridge-opacity: 0.32;
+    --brand-glow-opacity: 0.28;
+  }
+
+  .brand-backdrop[data-variant='achievement'] .brand-backdrop__glow {
+    background: radial-gradient(70% 100% at 50% 100%, hsl(var(--gold) / 0.32), transparent 72%);
+  }
+
+  .brand-backdrop[data-variant='achievement'] .brand-backdrop__veil {
+    background: linear-gradient(180deg, hsl(var(--card) / 0.18), hsl(var(--card) / 0.88));
   }
 }

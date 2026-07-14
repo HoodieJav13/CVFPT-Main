@@ -58,8 +58,26 @@ as interface icons.
 
 ## Motion intent
 
-Motion should be fast, subtle, and purposeful. Use it to explain state changes,
-confirm direct manipulation, or preserve context—not to make every surface move.
-Avoid heavy parallax, long entrances, universal transitions, and animation that
-delays a coach's task. Respect reduced-motion preferences and provide the same
-information without animation.
+Motion should be purposeful and choreographed. A small number of page-load and
+achievement sequences may be expressive, while forms, builders, and repetitive
+task surfaces remain calm. Avoid decorative loops, heavy parallax, and animation
+that delays a coach's task. Every sequence must respect reduced-motion
+preferences and provide the same information without animation.
+
+## Signature backdrop and intensity
+
+`BrandBackdrop` is the single visual grammar for the Sandia ridge, atmospheric
+glow, and future owner-supplied photography. Use it only on Login/Signup,
+coach/client dashboard greetings, and a live personal-record moment on Progress.
+Do not place the ridge as generic page decoration.
+
+The system has three calibrated intensity variants: `restrained`, `cinematic`,
+and `spectacle`. Cinematic is the product default; the preview toolbar exposes
+all three for review. These are strength settings within one brand system, not
+separate themes.
+
+The current target is the no-photo fallback. Approved photography may later be
+added at `frontend/src/assets/photos/login-bg.jpg` and
+`frontend/src/assets/photos/dashboard-header.jpg`. Missing files intentionally
+produce no network request or console error. Final image crop, overlay, and
+duotone tuning waits until the real consented assets exist.

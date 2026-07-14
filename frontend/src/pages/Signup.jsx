@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { errMsg } from '@/lib/api';
+import { BrandBackdrop } from '@/components/BrandBackdrop';
 
 export default function Signup() {
   const { user, loading, signup } = useAuth();
@@ -38,8 +39,8 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-dvh app-noise flex items-center justify-center px-4 relative">
-      <div className="top-glow absolute inset-x-0 top-0 h-72 pointer-events-none" />
+    <div className="min-h-dvh app-noise flex items-center justify-center overflow-hidden px-4 relative">
+      <BrandBackdrop variant="auth" photoSlot="auth" />
       <div className="relative w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
           {logoBroken ? (
