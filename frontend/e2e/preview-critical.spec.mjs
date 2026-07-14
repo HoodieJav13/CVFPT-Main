@@ -180,6 +180,26 @@ test('brand backdrop variants, one-time dashboard motion, and genuine PR moment 
   await expect(bodyWeight).toHaveAttribute('data-achievement', 'true');
 });
 
+test('coach metrics quietly surface track-only metrics at mobile width', async ({ page }) => {
+  await usePreviewRole(page, 'coach');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-progress').click();
+  await expect(page.getByTestId('neutral-metrics-nudge')).toHaveCount(0);
+
+  await page.getByTestId('add-metric-button').click();
+  await page.getByTestId('metric-name-input').fill('Training Readiness');
+  await page.getByTestId('metric-save-button').click();
+
+  const nudge = page.getByTestId('neutral-metrics-nudge');
+  await expect(nudge).toContainText('1 metric is still track-only');
+  await expect(nudge).toContainText('Set an improvement direction to enable PR recognition');
+  await expect(nudge).toBeVisible();
+  const box = await nudge.boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(375);
+});
+
 test('admin preview exposes admin-only management surfaces', async ({ page }) => {
   await usePreviewRole(page, 'admin');
   await page.goto('/admin');
