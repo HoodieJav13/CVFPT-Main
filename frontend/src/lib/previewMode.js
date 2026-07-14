@@ -130,11 +130,17 @@ const state = {
     { id: 'sig_sarah', client_id: 'client_sarah', waiver_version_id: 'waiver_v1', signed_at: iso(-80), signed_name: 'Sarah Martinez', ip_address: '127.0.0.1', entered_by: 'client', entered_by_coach_id: null, version: { id: 'waiver_v1', version_number: 1 } },
   ],
   packages: [
-    { id: 'pkg_4', name: '4 Session Pack', description: 'Starter pack for weekly training.', price: 320, session_credits: 4, is_recurring: false, archived: false, created_at: iso(-70) },
-    { id: 'pkg_8', name: '8 Session Pack', description: 'Best for steady progress.', price: 600, session_credits: 8, is_recurring: false, archived: false, created_at: iso(-70) },
+    { id: 'pkg_monthly', name: 'Monthly Training', description: 'Eight rolling sessions per paid month.', price: 600, session_credits: 8, is_recurring: true, billing_interval: 'month', stripe_price_id: 'price_preview_monthly', currency: 'usd', credits_rollover: true, archived: false, created_at: iso(-70) },
+    { id: 'pkg_4', name: '4 Session Pack', description: 'One-time training package.', price: 320, session_credits: 4, is_recurring: false, billing_interval: null, stripe_price_id: 'price_preview_pack', currency: 'usd', credits_rollover: true, archived: false, created_at: iso(-70) },
   ],
   purchases: [
-    { id: 'purchase_1', client_id: 'client_sarah', package_id: 'pkg_8', amount: 600, credits_granted: 8, method: 'manual', status: 'completed', stripe_session_id: null, recorded_by_coach_id: 'coach_marcus', archived: false, created_at: iso(-22) },
+    { id: 'purchase_1', client_id: 'client_sarah', package_id: 'pkg_monthly', package_name: 'Monthly Training', amount: 600, currency: 'usd', credits_granted: 8, method: 'cash', purchase_type: 'cash', status: 'completed', cash_receipt_number: 'CVF-CASH-PREVIEW', stripe_session_id: null, recorded_by_coach_id: 'coach_marcus', archived: false, created_at: iso(-22), completed_at: iso(-22) },
+  ],
+  subscriptions: [],
+  courtesyGrants: [],
+  paymentReviews: [],
+  creditTransactions: [
+    { id: 'credit_session_preview', client_id: 'client_sarah', event_type: 'session_use', amount: -1, balance_after: 8, source_type: 'session', source_id: 'session_done', archived: false, created_at: iso(-3) },
   ],
 };
 
@@ -465,6 +471,37 @@ function paymentHistory(clientId) {
       recorded_by: coachById(p.recorded_by_coach_id),
     }))
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+function paymentActivity(clientId, includePrivate = false) {
+  const purchases = paymentHistory(clientId).map((purchase) => ({
+    id: `purchase:${purchase.id}`,
+    type: purchase.method === 'cash' || purchase.method === 'manual' ? 'cash_payment' : 'stripe_payment',
+    title: purchase.package_name || purchase.package?.name || 'Package',
+    amount: Number(purchase.amount),
+    currency: purchase.currency || 'usd',
+    credits: purchase.credits_granted,
+    purchase_type: purchase.purchase_type,
+    status: purchase.status,
+    receipt_number: purchase.cash_receipt_number || null,
+    note: includePrivate ? purchase.note || null : null,
+    created_at: purchase.completed_at || purchase.created_at,
+  }));
+  const transactions = state.creditTransactions.filter((transaction) => transaction.client_id === clientId && !transaction.archived).map((transaction) => {
+    const courtesy = state.courtesyGrants.find((grant) => grant.id === transaction.source_id);
+    return {
+      id: `credit:${transaction.id}`,
+      type: transaction.event_type === 'manual_grant' ? 'courtesy_grant' : transaction.event_type,
+      title: transaction.event_type === 'manual_grant' ? 'Courtesy credits' : transaction.event_type === 'session_use' ? 'Session completed' : 'Credit adjustment',
+      credits: transaction.amount,
+      balance_after: transaction.balance_after,
+      status: courtesy?.status || 'completed',
+      reason: includePrivate ? courtesy?.reason || null : null,
+      note: includePrivate ? transaction.note || null : null,
+      created_at: transaction.created_at,
+    };
+  });
+  return [...purchases, ...transactions].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
 
 function dashboardClient() {
@@ -1111,7 +1148,7 @@ export function installPreviewApi(api) {
       return ok(state.packages.filter((p) => includeArchived || !p.archived), config);
     }
     if (path === '/packages' && method === 'post') {
-      const row = { id: id('pkg'), name: payload.name, description: payload.description || null, price: Number(payload.price), session_credits: Number(payload.session_credits) || 0, is_recurring: Boolean(payload.is_recurring), archived: false, created_at: new Date().toISOString() };
+      const row = { id: id('pkg'), name: payload.name, description: payload.description || null, price: Number(payload.price), session_credits: Number(payload.session_credits) || 0, is_recurring: Boolean(payload.is_recurring), billing_interval: payload.is_recurring ? 'month' : null, stripe_price_id: payload.stripe_price_id || null, currency: 'usd', credits_rollover: true, archived: false, created_at: new Date().toISOString() };
       state.packages.push(row);
       return ok(row, config, 201);
     }
@@ -1128,19 +1165,59 @@ export function installPreviewApi(api) {
       return ok(row, config);
     }
 
-    if (path === '/payments/config') return ok({ configured: false, publishable_key: null, message: 'Preview mode: online payments are disabled.' }, config);
+    if (path === '/payments/config') return ok({ configured: false, message: 'Preview mode: online payments are disabled.' }, config);
     if (path === '/payments/credits') return ok({ balance: state.credits[client.id] || 0 }, config);
     const payCredits = path.match(/^\/payments\/credits\/([^/]+)$/);
     if (payCredits) return ok({ balance: state.credits[payCredits[1]] || 0 }, config);
     if (path === '/payments/history') return ok(paymentHistory(client.id), config);
     const payHistory = path.match(/^\/payments\/history\/([^/]+)$/);
     if (payHistory) return ok(paymentHistory(payHistory[1]), config);
-    if (path === '/payments/manual' && method === 'post') {
-      const pkg = state.packages.find((p) => p.id === payload.package_id);
-      const row = { id: id('purchase'), client_id: payload.client_id, package_id: pkg.id, amount: payload.amount || pkg.price, credits_granted: pkg.session_credits, method: 'manual', status: 'completed', stripe_session_id: null, recorded_by_coach_id: currentCoach().id, archived: false, created_at: new Date().toISOString(), package: pkg };
+    if (path === '/payments/activity') return ok(paymentActivity(client.id, false), config);
+    const payActivity = path.match(/^\/payments\/activity\/([^/]+)$/);
+    if (payActivity) return ok(paymentActivity(payActivity[1], true), config);
+    if (path === '/payments/subscriptions') {
+      return ok(state.subscriptions.filter((subscription) => subscription.client_id === client.id && !subscription.archived).map((subscription) => ({ ...subscription, package: state.packages.find((pkg) => pkg.id === subscription.package_id) })), config);
+    }
+    if (path === '/payments/portal' && method === 'post') return fail(config, 404, 'No Stripe billing profile found');
+    if (path === '/payments/cash' && method === 'post') {
+      const pkg = state.packages.find((item) => item.id === payload.package_id);
+      const receipt = `CVF-CASH-${String(Date.now()).slice(-8)}`;
+      const row = { id: id('purchase'), client_id: payload.client_id, package_id: pkg.id, package_name: pkg.name, amount: Number(payload.amount), currency: 'usd', credits_granted: pkg.session_credits, method: 'cash', purchase_type: 'cash', status: 'completed', cash_receipt_number: receipt, note: payload.note || null, recorded_by_coach_id: currentCoach().id, archived: false, created_at: new Date().toISOString(), completed_at: new Date().toISOString(), package: pkg };
       state.purchases.push(row);
       state.credits[payload.client_id] = (state.credits[payload.client_id] || 0) + pkg.session_credits;
       return ok({ purchase: row, credits: state.credits[payload.client_id] }, config, 201);
+    }
+    if (path === '/payments/courtesy' && method === 'post') {
+      const pending = role !== 'admin' && Number(payload.credits) > 10;
+      const grant = { id: id('courtesy'), client_id: payload.client_id, credits: Number(payload.credits), reason: payload.reason, note: payload.note || null, status: pending ? 'pending' : 'approved', requested_by_coach_id: currentCoach().id, archived: false, created_at: new Date().toISOString() };
+      state.courtesyGrants.push(grant);
+      if (!pending) {
+        state.credits[payload.client_id] = (state.credits[payload.client_id] || 0) + grant.credits;
+        state.creditTransactions.push({ id: id('credit'), client_id: payload.client_id, event_type: 'manual_grant', amount: grant.credits, balance_after: state.credits[payload.client_id], source_type: 'courtesy_grant', source_id: grant.id, note: grant.note, archived: false, created_at: new Date().toISOString() });
+      }
+      return ok({ request: grant, credits: state.credits[payload.client_id] || 0, pending_approval: pending }, config, pending ? 202 : 201);
+    }
+    if (path === '/payments/courtesy/pending' && method === 'get') {
+      return ok(state.courtesyGrants.filter((grant) => grant.status === 'pending' && !grant.archived).map((grant) => ({ ...grant, client: clientById(grant.client_id), requested_by: coachById(grant.requested_by_coach_id) })), config);
+    }
+    const courtesyReview = path.match(/^\/payments\/courtesy\/([^/]+)\/review$/);
+    if (courtesyReview && method === 'post') {
+      const grant = state.courtesyGrants.find((item) => item.id === courtesyReview[1] && item.status === 'pending');
+      if (!grant) return fail(config, 404, 'Pending courtesy request not found');
+      grant.status = payload.approve ? 'approved' : 'rejected';
+      if (payload.approve) {
+        state.credits[grant.client_id] = (state.credits[grant.client_id] || 0) + grant.credits;
+        state.creditTransactions.push({ id: id('credit'), client_id: grant.client_id, event_type: 'manual_grant', amount: grant.credits, balance_after: state.credits[grant.client_id], source_type: 'courtesy_grant', source_id: grant.id, note: grant.note, archived: false, created_at: new Date().toISOString() });
+      }
+      return ok({ request: grant, credits: state.credits[grant.client_id] || 0 }, config);
+    }
+    if (path === '/payments/reviews' && method === 'get') return ok(state.paymentReviews, config);
+    const resolveReview = path.match(/^\/payments\/reviews\/([^/]+)\/resolve$/);
+    if (resolveReview && method === 'post') {
+      const review = state.paymentReviews.find((item) => item.id === resolveReview[1]);
+      if (!review) return fail(config, 404, 'Open payment review not found');
+      Object.assign(review, { status: payload.resolution, resolution_note: payload.note, resolved_at: new Date().toISOString() });
+      return ok(review, config);
     }
     if (path === '/payments/checkout' && method === 'post') return fail(config, 503, 'Preview mode: checkout is disabled.');
 

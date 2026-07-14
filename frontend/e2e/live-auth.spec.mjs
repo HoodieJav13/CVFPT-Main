@@ -642,7 +642,7 @@ test('real session, payment, progress, booking, and messaging controls complete 
     await page.getByTestId('purchase-package-select').click();
     await page.getByTestId('purchase-package-option').filter({ hasText: packageName }).click();
     await page.getByTestId('purchase-confirm-button').click();
-    await expect(page.getByText(/Purchase recorded - balance now/)).toBeVisible();
+    await expect(page.getByText(/Cash payment recorded/)).toBeVisible();
     await expect(page.getByTestId('payment-history-row').filter({ hasText: packageName })).toBeVisible();
     await expect(page.getByTestId('client-credits-badge')).toContainText(`${startingCredits + 1} credits`);
 

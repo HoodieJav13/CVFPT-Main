@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -22,7 +22,7 @@ import {
 import {
   ArrowLeft, Pencil, Archive, ArchiveRestore, Loader2, Plus, FileSignature,
   CreditCard, TrendingUp, Dumbbell, CalendarDays, MessageSquare, Trash2,
-  ClipboardCheck, Play, StickyNote,
+  ClipboardCheck, Play, StickyNote, Banknote, Gift, RotateCcw,
 } from 'lucide-react';
 import { initials, fmtDate, fmtDateTime, fmtMoney, fmtTime, fmtDay } from '@/lib/format';
 import { toast } from 'sonner';
@@ -1023,20 +1023,26 @@ function coachExerciseName(exercise) {
 }
 
 function PaymentsTab({ clientId, reloadParent }) {
-  const [history, setHistory] = useState(null);
+  const { user } = useAuth();
+  const [activity, setActivity] = useState(null);
   const [packages, setPackages] = useState([]);
   const [loadError, setLoadError] = useState(null);
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState('cash');
   const [selected, setSelected] = useState('');
+  const [amount, setAmount] = useState('');
+  const [credits, setCredits] = useState('');
+  const [reason, setReason] = useState('family');
+  const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const [h, p] = await Promise.all([
-        api.get(`/payments/history/${clientId}`),
+        api.get(`/payments/activity/${clientId}`),
         api.get('/packages'),
       ]);
-      setHistory(h.data);
+      setActivity(h.data);
       setPackages(p.data);
       setLoadError(null);
     } catch (e) {
@@ -1048,15 +1054,47 @@ function PaymentsTab({ clientId, reloadParent }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const reset = () => {
+    setMode('cash');
+    setSelected('');
+    setAmount('');
+    setCredits('');
+    setReason('family');
+    setNote('');
+  };
+
+  const selectPackage = (packageId) => {
+    setSelected(packageId);
+    const pkg = packages.find((item) => item.id === packageId);
+    if (pkg) setAmount(String(pkg.price));
+  };
+
   const record = async (e) => {
     e.preventDefault();
-    if (!selected) return;
+    if (mode === 'cash' && !selected) return;
     setSaving(true);
     try {
-      const { data } = await api.post('/payments/manual', { client_id: clientId, package_id: selected });
-      toast.success(`Purchase recorded - balance now ${data.credits} credits`);
+      if (mode === 'cash') {
+        const { data } = await api.post('/payments/cash', {
+          client_id: clientId,
+          package_id: selected,
+          amount: Number(amount),
+          note,
+        });
+        toast.success(`Cash payment recorded · ${data.purchase.cash_receipt_number}`);
+      } else {
+        const { data } = await api.post('/payments/courtesy', {
+          client_id: clientId,
+          credits: Number(credits),
+          reason,
+          note,
+        });
+        toast.success(data.pending_approval
+          ? 'Courtesy grant sent for admin approval'
+          : `Courtesy credits added · balance now ${data.credits}`);
+      }
       setOpen(false);
-      setSelected('');
+      reset();
       load();
       reloadParent();
     } catch (err) {
@@ -1066,51 +1104,114 @@ function PaymentsTab({ clientId, reloadParent }) {
     }
   };
 
-  if (!history && loadError) return <LoadErrorState message={loadError} scope="client-detail-payments" onRetry={() => { setLoadError(null); load(); }} />;
-  if (!history) return <LoadingScreen />;
+  if (!activity && loadError) return <LoadErrorState message={loadError} scope="client-detail-payments" onRetry={() => { setLoadError(null); load(); }} />;
+  if (!activity) return <LoadingScreen />;
 
   return (
     <div className="space-y-3 mt-1">
       <div className="flex justify-end">
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) reset(); }}>
           <DialogTrigger asChild>
             <Button size="sm" className="rounded-xl" data-testid="record-purchase-button">
-              <Plus className="h-4 w-4 mr-1.5" /> Record purchase
+              <Plus className="h-4 w-4 mr-1.5" /> Add payment or credits
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-sm" data-testid="manual-purchase-dialog">
-            <DialogHeader><DialogTitle>Record manual purchase</DialogTitle></DialogHeader>
-            <p className="text-xs text-muted-foreground -mt-2">For cash / in-person payments. Credits are added immediately.</p>
+            <DialogHeader>
+              <DialogTitle>Payment or courtesy credits</DialogTitle>
+              <DialogDescription>Record cash revenue separately from complimentary or barter credits.</DialogDescription>
+            </DialogHeader>
             <form onSubmit={record} className="space-y-4">
-              <Select value={selected} onValueChange={setSelected}>
-                <SelectTrigger className="rounded-xl" data-testid="purchase-package-select">
-                  <SelectValue placeholder="Choose package..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {packages.map((p) => (
-                    <SelectItem key={p.id} value={p.id} data-testid="purchase-package-option">{p.name} - {fmtMoney(p.price)} ({p.session_credits} credits)</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-1.5">
+                <Label>Entry type</Label>
+                <Select value={mode} onValueChange={setMode}>
+                  <SelectTrigger className="rounded-xl" data-testid="payment-entry-type-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash payment</SelectItem>
+                    <SelectItem value="courtesy">Courtesy / barter credits</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {mode === 'cash' ? (
+                <>
+                  <div className="space-y-1.5">
+                    <Label>Package or membership period</Label>
+                    <Select value={selected} onValueChange={selectPackage}>
+                      <SelectTrigger className="rounded-xl" data-testid="purchase-package-select">
+                        <SelectValue placeholder="Choose package..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {packages.map((p) => (
+                          <SelectItem key={p.id} value={p.id} data-testid="purchase-package-option">{p.name} - {fmtMoney(p.price)} ({p.session_credits} credits)</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Cash received</Label>
+                    <Input required type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} data-testid="cash-payment-amount-input" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Credits</Label>
+                      <Input required type="number" min="1" max="10000" value={credits} onChange={(e) => setCredits(e.target.value)} data-testid="courtesy-credits-input" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Reason</Label>
+                      <Select value={reason} onValueChange={setReason}>
+                        <SelectTrigger className="rounded-xl" data-testid="courtesy-reason-select"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="family">Family</SelectItem>
+                          <SelectItem value="photography_barter">Photography / barter</SelectItem>
+                          <SelectItem value="promotion">Promotion</SelectItem>
+                          <SelectItem value="service_recovery">Service recovery</SelectItem>
+                          <SelectItem value="correction">Correction</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {user.role !== 'admin' && Number(credits) > 10 && (
+                    <p className="text-xs text-gold">More than 10 credits requires admin approval and will not change the balance immediately.</p>
+                  )}
+                </>
+              )}
+
+              <div className="space-y-1.5">
+                <Label>{mode === 'cash' ? 'Receipt note' : 'Internal note'}{mode === 'courtesy' && reason === 'other' ? ' *' : ''}</Label>
+                <Textarea required={mode === 'courtesy' && reason === 'other'} rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder={mode === 'cash' ? 'Optional payment details' : 'Context for the grant'} data-testid="payment-note-input" />
+              </div>
               <DialogFooter>
-                <Button type="submit" disabled={saving || !selected} className="rounded-xl w-full sm:w-auto" data-testid="purchase-confirm-button">
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Record purchase'}
+                <Button type="submit" disabled={saving || (mode === 'cash' ? !selected || !amount : !credits)} className="rounded-xl w-full sm:w-auto" data-testid="purchase-confirm-button">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === 'cash' ? 'Record cash payment' : 'Add courtesy credits'}
                 </Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
-      {history.length === 0 && <EmptyState icon={CreditCard} title="No payments yet" subtitle="Record a manual purchase or have the client buy a package." />}
-      {history.map((p) => (
-        <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="payment-history-row">
-          <div>
-            <p className="font-medium text-sm">{p.package?.name || 'Package'}</p>
-            <p className="text-xs text-muted-foreground">{fmtDateTime(p.created_at)} - {p.method === 'manual' ? 'Cash/manual' : 'Card (Stripe)'}</p>
+      {activity.length === 0 && <EmptyState icon={CreditCard} title="No payment activity" subtitle="Record cash, add courtesy credits, or have the client check out through Stripe." />}
+      {activity.map((item) => (
+        <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="payment-history-row">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              {item.type === 'cash_payment' ? <Banknote className="h-4 w-4" /> : item.type === 'courtesy_grant' ? <Gift className="h-4 w-4" /> : item.type === 'refund' ? <RotateCcw className="h-4 w-4" /> : <CreditCard className="h-4 w-4" />}
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium text-sm truncate">{item.title}</p>
+              <p className="text-xs text-muted-foreground">{fmtDateTime(item.created_at)} · {item.type.replaceAll('_', ' ')}</p>
+              {item.note && <p className="text-xs text-muted-foreground mt-0.5">{item.note}</p>}
+              {item.reason && <p className="text-[11px] text-primary mt-0.5">{item.reason.replaceAll('_', ' ')}</p>}
+            </div>
           </div>
-          <div className="text-right">
-            <p className="font-semibold tabular-nums">{fmtMoney(p.amount)}</p>
-            <p className="text-xs text-muted-foreground">{p.credits_granted} credits - {p.status}</p>
+          <div className="text-right shrink-0">
+            {Number.isFinite(item.amount) && <p className="font-semibold tabular-nums">{fmtMoney(item.amount)}</p>}
+            {Number.isFinite(item.credits) && <p className="text-xs text-muted-foreground tabular-nums">{item.credits > 0 ? '+' : ''}{item.credits} credits</p>}
+            <p className="text-[11px] text-muted-foreground capitalize">{String(item.status || '').replace('_', ' ')}</p>
           </div>
         </div>
       ))}
