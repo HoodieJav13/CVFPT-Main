@@ -2,6 +2,12 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
+const {
+  IMPROVEMENT_DIRECTIONS,
+  normalizeImprovementDirection,
+  personalBestResult,
+  metricProgressSummary,
+} = require('../lib/progress');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -14,13 +20,14 @@ async function metricsWithEntries(clientId) {
   let entriesByMetric = {};
   if (ids.length) {
     const { data: entries } = await supabaseAdmin.from('metric_entries').select('*')
-      .in('metric_id', ids).eq('archived', false).order('recorded_on');
+      .in('metric_id', ids).eq('archived', false)
+      .order('recorded_on').order('created_at');
     for (const e of entries || []) {
       entriesByMetric[e.metric_id] = entriesByMetric[e.metric_id] || [];
       entriesByMetric[e.metric_id].push(e);
     }
   }
-  return (metrics || []).map((m) => ({ ...m, entries: entriesByMetric[m.id] || [] }));
+  return (metrics || []).map((m) => metricProgressSummary(m, entriesByMetric[m.id] || []));
 }
 
 async function guardClient(req, res) {
@@ -45,15 +52,21 @@ router.get('/clients/:clientId/metrics', requireCoach, async (req, res) => {
   }
 });
 
-// POST /api/progress/clients/:clientId/metrics { name, unit }
+// POST /api/progress/clients/:clientId/metrics { name, unit, improvement_direction }
 router.post('/clients/:clientId/metrics', requireCoach, async (req, res) => {
   try {
     const clientRow = await guardClient(req, res);
     if (!clientRow) return;
-    const { name, unit } = req.body || {};
+    const { name, unit, improvement_direction = 'neutral' } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Metric name is required' });
+    if (!IMPROVEMENT_DIRECTIONS.has(improvement_direction)) {
+      return res.status(400).json({ error: 'Choose whether higher, lower, or neither direction represents improvement' });
+    }
     const { data, error } = await supabaseAdmin.from('metrics').insert({
-      client_id: clientRow.id, name: String(name).trim(), unit: unit || null,
+      client_id: clientRow.id,
+      name: String(name).trim(),
+      unit: unit || null,
+      improvement_direction,
     }).select().single();
     if (error) throw error;
     return res.status(201).json({ ...data, entries: [] });
@@ -74,6 +87,36 @@ async function guardMetric(req, res) {
   return metric;
 }
 
+// PATCH /api/progress/metrics/:metricId { name?, unit?, improvement_direction? }
+router.patch('/metrics/:metricId', requireCoach, async (req, res) => {
+  try {
+    const metric = await guardMetric(req, res);
+    if (!metric) return;
+
+    const updates = {};
+    if ('name' in (req.body || {})) {
+      if (!String(req.body.name || '').trim()) return res.status(400).json({ error: 'Metric name is required' });
+      updates.name = String(req.body.name).trim();
+    }
+    if ('unit' in (req.body || {})) updates.unit = req.body.unit || null;
+    if ('improvement_direction' in (req.body || {})) {
+      if (!IMPROVEMENT_DIRECTIONS.has(req.body.improvement_direction)) {
+        return res.status(400).json({ error: 'Choose whether higher, lower, or neither direction represents improvement' });
+      }
+      updates.improvement_direction = req.body.improvement_direction;
+    }
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'No metric changes provided' });
+
+    const { data, error } = await supabaseAdmin.from('metrics')
+      .update(updates).eq('id', metric.id).select().single();
+    if (error) throw error;
+    return res.json({ ...data, improvement_direction: normalizeImprovementDirection(data.improvement_direction) });
+  } catch (e) {
+    logError('update metric error', e);
+    return res.status(500).json({ error: 'Failed to update metric' });
+  }
+});
+
 // POST /api/progress/metrics/:metricId/entries { value, notes, recorded_on }
 router.post('/metrics/:metricId/entries', async (req, res) => {
   try {
@@ -90,7 +133,21 @@ router.post('/metrics/:metricId/entries', async (req, res) => {
       recorded_on: recorded_on || new Date().toISOString().slice(0, 10),
     }).select().single();
     if (error) throw error;
-    return res.status(201).json(data);
+    const { data: comparisonEntries, error: comparisonError } = await supabaseAdmin
+      .from('metric_entries').select('*')
+      .eq('metric_id', metric.id).eq('archived', false).neq('id', data.id);
+    if (comparisonError) throw comparisonError;
+    const result = personalBestResult(
+      comparisonEntries || [],
+      metric.improvement_direction,
+      data.value,
+    );
+    return res.status(201).json({
+      ...data,
+      is_personal_best: result.isPersonalBest,
+      previous_best_value: result.previousBestValue,
+      improvement_amount: result.improvementAmount,
+    });
   } catch (e) {
     logError('create entry error', e);
     return res.status(500).json({ error: 'Failed to log entry' });

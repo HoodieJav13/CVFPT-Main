@@ -401,26 +401,49 @@ async function main() {
   const clientMetric = await check('coach creates metric for authenticated client', async () => {
     const { payload } = await request(`/progress/clients/${client.profile.id}/metrics`, {
       method: 'POST', token: coachA.access_token, expected: 201,
-      json: { name: `CVF TEST METRIC ${runId}`, unit: 'reps' },
+      json: { name: `CVF TEST METRIC ${runId}`, unit: 'reps', improvement_direction: 'higher' },
     });
+    if (payload.improvement_direction !== 'higher') throw new Error('metric improvement direction was not persisted');
     cleanup.push(() => request(`/progress/metrics/${payload.id}/archive`, { method: 'PATCH', token: coachA.access_token }));
     return payload;
   });
   if (clientMetric) {
+    await check('coach updates metric improvement direction', async () => {
+      const { payload } = await request(`/progress/metrics/${clientMetric.id}`, {
+        method: 'PATCH', token: coachA.access_token,
+        json: { improvement_direction: 'higher' },
+      });
+      if (payload.improvement_direction !== 'higher') throw new Error('metric improvement direction update failed');
+      return payload;
+    });
     const entry = await check('client logs permitted progress entry', async () => {
       const { payload } = await request(`/progress/metrics/${clientMetric.id}/entries`, {
         method: 'POST', token: client.access_token, expected: 201,
         json: { value: 8, notes: `CVF TEST ${runId}` },
       });
+      if (payload.is_personal_best !== false) throw new Error('first metric entry must establish a baseline, not a personal best');
       return payload;
     });
     if (entry) {
+      const personalBest = await check('client receives personal-best semantics for improved entry', async () => {
+        const { payload } = await request(`/progress/metrics/${clientMetric.id}/entries`, {
+          method: 'POST', token: client.access_token, expected: 201,
+          json: { value: 9, notes: `CVF TEST PR ${runId}` },
+        });
+        if (!payload.is_personal_best || payload.improvement_amount !== 1) throw new Error('improved entry was not marked as a personal best');
+        return payload;
+      });
       await check('client edits own progress entry', () => request(`/progress/entries/${entry.id}`, {
-        method: 'PUT', token: client.access_token, json: { value: 9, notes: `CVF TEST UPDATED ${runId}` },
+        method: 'PUT', token: client.access_token, json: { value: 8.5, notes: `CVF TEST UPDATED ${runId}` },
       }));
       await check('coach soft-archives progress entry', () => request(`/progress/entries/${entry.id}/archive`, {
         method: 'PATCH', token: coachA.access_token,
       }));
+      if (personalBest) {
+        await check('coach soft-archives personal-best progress entry', () => request(`/progress/entries/${personalBest.id}/archive`, {
+          method: 'PATCH', token: coachA.access_token,
+        }));
+      }
     }
   }
 

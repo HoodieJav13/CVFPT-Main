@@ -59,9 +59,9 @@ const state = {
     { id: 'note_1', session_id: 'session_done', coach_id: 'coach_marcus', content: 'Great pacing today. Keep squats controlled and pain-free.', shared_with_client: true, archived: false, created_at: iso(-3, 11), updated_at: iso(-3, 11) },
   ],
   metrics: [
-    { id: 'metric_weight', client_id: 'client_sarah', name: 'Body Weight', unit: 'lbs', archived: false, created_at: iso(-40) },
-    { id: 'metric_waist', client_id: 'client_sarah', name: 'Waist', unit: 'in', archived: false, created_at: iso(-40) },
-    { id: 'metric_mile', client_id: 'client_david', name: 'Mile Time', unit: 'min', archived: false, created_at: iso(-30) },
+    { id: 'metric_weight', client_id: 'client_sarah', name: 'Body Weight', unit: 'lbs', improvement_direction: 'lower', archived: false, created_at: iso(-40) },
+    { id: 'metric_waist', client_id: 'client_sarah', name: 'Waist', unit: 'in', improvement_direction: 'lower', archived: false, created_at: iso(-40) },
+    { id: 'metric_mile', client_id: 'client_david', name: 'Mile Time', unit: 'min', improvement_direction: 'lower', archived: false, created_at: iso(-30) },
   ],
   metricEntries: [
     { id: 'entry_w1', metric_id: 'metric_weight', value: 168, notes: null, recorded_on: dateOnly(-28), archived: false, created_at: iso(-28) },
@@ -247,11 +247,37 @@ function activeClientsForCoach() {
 }
 
 function metricWithEntries(metric) {
+  const direction = ['higher', 'lower'].includes(metric.improvement_direction)
+    ? metric.improvement_direction
+    : 'neutral';
+  const entries = state.metricEntries
+    .filter((e) => e.metric_id === metric.id && !e.archived)
+    .sort((a, b) => String(a.recorded_on).localeCompare(String(b.recorded_on)));
+  const best = direction === 'neutral' || !entries.length
+    ? null
+    : entries.reduce((current, entry) => {
+      if (direction === 'higher') return Number(entry.value) > Number(current.value) ? entry : current;
+      return Number(entry.value) < Number(current.value) ? entry : current;
+    });
+  const latest = entries[entries.length - 1] || null;
+  const prior = latest ? entries.filter((entry) => entry.id !== latest.id) : [];
+  const priorBest = direction === 'neutral' || !prior.length
+    ? null
+    : prior.reduce((current, entry) => {
+      if (direction === 'higher') return Number(entry.value) > Number(current.value) ? entry : current;
+      return Number(entry.value) < Number(current.value) ? entry : current;
+    });
+  const latestIsBest = Boolean(latest && priorBest && (
+    direction === 'higher'
+      ? Number(latest.value) > Number(priorBest.value)
+      : Number(latest.value) < Number(priorBest.value)
+  ));
   return {
     ...metric,
-    entries: state.metricEntries
-      .filter((e) => e.metric_id === metric.id && !e.archived)
-      .sort((a, b) => String(a.recorded_on).localeCompare(String(b.recorded_on))),
+    improvement_direction: direction,
+    entries,
+    best_value: best ? Number(best.value) : null,
+    latest_is_personal_best: latestIsBest,
   };
 }
 
@@ -778,15 +804,40 @@ export function installPreviewApi(api) {
     const coachMetrics = path.match(/^\/progress\/clients\/([^/]+)\/metrics$/);
     if (coachMetrics && method === 'get') return ok(state.metrics.filter((m) => m.client_id === coachMetrics[1] && !m.archived).map(metricWithEntries), config);
     if (coachMetrics && method === 'post') {
-      const row = { id: id('metric'), client_id: coachMetrics[1], name: payload.name, unit: payload.unit || null, archived: false, created_at: new Date().toISOString(), entries: [] };
+      const row = { id: id('metric'), client_id: coachMetrics[1], name: payload.name, unit: payload.unit || null, improvement_direction: payload.improvement_direction || 'neutral', archived: false, created_at: new Date().toISOString(), entries: [] };
       state.metrics.push(row);
       return ok(row, config, 201);
     }
+    const metricUpdate = path.match(/^\/progress\/metrics\/([^/]+)$/);
+    if (metricUpdate && method === 'patch') {
+      const row = state.metrics.find((m) => m.id === metricUpdate[1]);
+      Object.assign(row, payload);
+      return ok(row, config);
+    }
     const metricEntry = path.match(/^\/progress\/metrics\/([^/]+)\/entries$/);
     if (metricEntry && method === 'post') {
+      const metric = state.metrics.find((m) => m.id === metricEntry[1]);
+      const previous = state.metricEntries.filter((entry) => entry.metric_id === metricEntry[1] && !entry.archived);
+      const direction = metric?.improvement_direction || 'neutral';
+      const previousValues = previous.map((entry) => Number(entry.value));
+      const previousBest = direction === 'higher'
+        ? Math.max(...previousValues)
+        : direction === 'lower'
+          ? Math.min(...previousValues)
+          : null;
+      const numericValue = Number(payload.value);
+      const isPersonalBest = previous.length > 0 && (
+        (direction === 'higher' && numericValue > previousBest)
+        || (direction === 'lower' && numericValue < previousBest)
+      );
       const row = { id: id('entry'), metric_id: metricEntry[1], value: Number(payload.value), notes: payload.notes || null, recorded_on: payload.recorded_on || dateOnly(0), archived: false, created_at: new Date().toISOString() };
       state.metricEntries.push(row);
-      return ok(row, config, 201);
+      return ok({
+        ...row,
+        is_personal_best: isPersonalBest,
+        previous_best_value: Number.isFinite(previousBest) ? previousBest : null,
+        improvement_amount: isPersonalBest ? Math.abs(numericValue - previousBest) : null,
+      }, config, 201);
     }
     const entryPut = path.match(/^\/progress\/entries\/([^/]+)$/);
     if (entryPut && method === 'put') {

@@ -222,9 +222,9 @@ async function main() {
   // ---- Progress metrics for Sarah ----
   const { data: existingMetrics } = await supabaseAdmin.from('metrics').select('id').eq('client_id', sarah.id).limit(1);
   if (!existingMetrics || !existingMetrics.length) {
-    const { data: weightMetric } = await supabaseAdmin.from('metrics').insert({ client_id: sarah.id, name: 'Body Weight', unit: 'lbs' }).select().single();
-    const { data: squatMetric } = await supabaseAdmin.from('metrics').insert({ client_id: sarah.id, name: 'Back Squat 1RM', unit: 'lbs' }).select().single();
-    const { data: mileMetric } = await supabaseAdmin.from('metrics').insert({ client_id: sarah.id, name: 'Mile Time', unit: 'min' }).select().single();
+    const { data: weightMetric } = await supabaseAdmin.from('metrics').insert({ client_id: sarah.id, name: 'Body Weight', unit: 'lbs', improvement_direction: 'lower' }).select().single();
+    const { data: squatMetric } = await supabaseAdmin.from('metrics').insert({ client_id: sarah.id, name: 'Back Squat 1RM', unit: 'lbs', improvement_direction: 'higher' }).select().single();
+    const { data: mileMetric } = await supabaseAdmin.from('metrics').insert({ client_id: sarah.id, name: 'Mile Time', unit: 'min', improvement_direction: 'lower' }).select().single();
     const today = new Date();
     const dateStr = (weeksAgo) => {
       const d = new Date(today); d.setDate(d.getDate() - weeksAgo * 7);

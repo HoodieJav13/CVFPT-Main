@@ -21,12 +21,14 @@ export default function ClientProgress() {
   const [editingEntry, setEditingEntry] = useState(null);
   const [entryForm, setEntryForm] = useState(blankEntry());
   const [saving, setSaving] = useState(false);
+  const [achievement, setAchievement] = useState(null);
 
   const load = useCallback(async () => {
     try {
       const { data } = await api.get('/progress/mine');
       setMetrics(data);
       setLoadError(null);
+      return data;
     } catch (e) {
       const message = errMsg(e, 'Failed to load progress');
       setLoadError(message);
@@ -61,16 +63,29 @@ export default function ClientProgress() {
   const saveEntry = async (e) => {
     e.preventDefault();
     setSaving(true);
+    setAchievement(null);
     try {
+      let savedEntry = null;
       if (editingEntry) {
         await api.put(`/progress/entries/${editingEntry.id}`, entryForm);
         toast.success('Progress entry updated');
       } else {
-        await api.post(`/progress/metrics/${entryFor.id}/entries`, entryForm);
-        toast.success('Progress entry logged');
+        const { data } = await api.post(`/progress/metrics/${entryFor.id}/entries`, entryForm);
+        savedEntry = data;
+        toast.success(data.is_personal_best ? 'New personal record' : 'Progress entry logged');
       }
+      const savedMetric = entryFor;
       closeEntry();
-      load();
+      await load();
+      if (savedEntry?.is_personal_best) {
+        setAchievement({
+          metricId: savedMetric.id,
+          metricName: savedMetric.name,
+          value: Number(savedEntry.value),
+          improvementAmount: savedEntry.improvement_amount,
+          unit: savedMetric.unit,
+        });
+      }
     } catch (err) {
       toast.error(errMsg(err, 'Could not save entry'));
     } finally {
@@ -92,8 +107,9 @@ export default function ClientProgress() {
           const latest = m.entries[m.entries.length - 1];
           const first = m.entries[0];
           const delta = latest && first ? (Number(latest.value) - Number(first.value)).toFixed(1) : null;
+          const isAchievementMetric = achievement?.metricId === m.id;
           return (
-            <Card key={m.id} data-testid="client-metric-card">
+            <Card key={m.id} data-testid="client-metric-card" data-achievement={isAchievementMetric ? 'true' : undefined}>
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -107,11 +123,13 @@ export default function ClientProgress() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {m.latest_is_personal_best && (
+                      <span className="rounded-md border border-gold/25 bg-gold/10 px-2 py-0.5 font-display text-xs font-semibold text-gold" data-testid="personal-best-badge">
+                        PR
+                      </span>
+                    )}
                     {delta !== null && m.entries.length > 1 && (
-                      /* ELEVATION-DEFERRED: "gold when improving" needs a goal-direction on the
-                         metric (e.g. lower-is-better for weight) — a data/logic change. Until then:
-                         gold for any movement, muted when flat. */
-                      <span className={`rounded-md px-2 py-0.5 font-display text-sm font-semibold tabular-nums ${Number(delta) !== 0 ? 'bg-gold/15 text-gold border border-gold/25' : 'bg-secondary text-muted-foreground border border-border'}`}>
+                      <span className={`rounded-md border px-2 py-0.5 font-display text-sm font-semibold tabular-nums ${m.latest_is_personal_best ? 'border-gold/25 bg-gold/15 text-gold' : 'border-border bg-secondary text-muted-foreground'}`}>
                         {delta > 0 ? '+' : ''}{delta}{m.unit ? ` ${m.unit}` : ''}
                       </span>
                     )}

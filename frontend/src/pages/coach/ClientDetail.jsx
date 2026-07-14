@@ -461,11 +461,20 @@ function NoteBlock({ label, value, accent }) {
   );
 }
 
+const blankMetricForm = () => ({ name: '', unit: '', improvement_direction: 'neutral' });
+
+const improvementDirectionLabel = (direction) => ({
+  higher: 'Higher is better',
+  lower: 'Lower is better',
+  neutral: 'Track only',
+}[direction] || 'Track only');
+
 function ProgressTab({ clientId }) {
   const [metrics, setMetrics] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [metricOpen, setMetricOpen] = useState(false);
-  const [metricForm, setMetricForm] = useState({ name: '', unit: '' });
+  const [editingMetric, setEditingMetric] = useState(null);
+  const [metricForm, setMetricForm] = useState(blankMetricForm);
   const [entryFor, setEntryFor] = useState(null);
   const [editingEntry, setEditingEntry] = useState(null);
   const [entryForm, setEntryForm] = useState({ value: '', recorded_on: new Date().toISOString().slice(0, 10), notes: '' });
@@ -485,14 +494,40 @@ function ProgressTab({ clientId }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const addMetric = async (e) => {
+  const closeMetric = () => {
+    setMetricOpen(false);
+    setEditingMetric(null);
+    setMetricForm(blankMetricForm());
+  };
+
+  const openCreateMetric = () => {
+    setEditingMetric(null);
+    setMetricForm(blankMetricForm());
+    setMetricOpen(true);
+  };
+
+  const openEditMetric = (metric) => {
+    setEditingMetric(metric);
+    setMetricForm({
+      name: metric.name,
+      unit: metric.unit || '',
+      improvement_direction: metric.improvement_direction || 'neutral',
+    });
+    setMetricOpen(true);
+  };
+
+  const saveMetric = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post(`/progress/clients/${clientId}/metrics`, metricForm);
-      toast.success('Metric added');
-      setMetricOpen(false);
-      setMetricForm({ name: '', unit: '' });
+      if (editingMetric) {
+        await api.patch(`/progress/metrics/${editingMetric.id}`, metricForm);
+        toast.success('Metric updated');
+      } else {
+        await api.post(`/progress/clients/${clientId}/metrics`, metricForm);
+        toast.success('Metric added');
+      }
+      closeMetric();
       load();
     } catch (err) {
       toast.error(errMsg(err));
@@ -551,22 +586,34 @@ function ProgressTab({ clientId }) {
   return (
     <div className="space-y-4 mt-1">
       <div className="flex justify-end">
-        <Dialog open={metricOpen} onOpenChange={setMetricOpen}>
+        <Dialog open={metricOpen} onOpenChange={(open) => { if (!open) closeMetric(); }}>
           <DialogTrigger asChild>
-            <Button size="sm" className="rounded-xl" data-testid="add-metric-button">
+            <Button size="sm" className="rounded-xl" onClick={openCreateMetric} data-testid="add-metric-button">
               <Plus className="h-4 w-4 mr-1.5" /> New metric
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-sm">
-            <DialogHeader><DialogTitle>New metric</DialogTitle></DialogHeader>
-            <form onSubmit={addMetric} className="space-y-3.5">
+            <DialogHeader><DialogTitle>{editingMetric ? 'Edit metric' : 'New metric'}</DialogTitle></DialogHeader>
+            <form onSubmit={saveMetric} className="space-y-3.5">
               <div className="space-y-1.5"><Label>Name *</Label>
                 <Input required value={metricForm.name} onChange={(e) => setMetricForm({ ...metricForm, name: e.target.value })} placeholder='e.g. "Back Squat 1RM", "Waist"' data-testid="metric-name-input" /></div>
               <div className="space-y-1.5"><Label>Unit</Label>
                 <Input value={metricForm.unit} onChange={(e) => setMetricForm({ ...metricForm, unit: e.target.value })} placeholder="lbs, in, min..." data-testid="metric-unit-input" /></div>
+              <div className="space-y-1.5">
+                <Label>Improvement direction</Label>
+                <Select value={metricForm.improvement_direction} onValueChange={(value) => setMetricForm({ ...metricForm, improvement_direction: value })}>
+                  <SelectTrigger className="rounded-xl" data-testid="metric-improvement-direction-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="higher">Higher is better</SelectItem>
+                    <SelectItem value="lower">Lower is better</SelectItem>
+                    <SelectItem value="neutral">Track only — no PRs</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Used only to recognize genuine personal records.</p>
+              </div>
               <DialogFooter>
                 <Button type="submit" disabled={saving} className="rounded-xl w-full sm:w-auto" data-testid="metric-save-button">
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingMetric ? 'Save changes' : 'Create'}
                 </Button>
               </DialogFooter>
             </form>
@@ -588,11 +635,15 @@ function ProgressTab({ clientId }) {
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {latest ? <>Latest: <span className="text-primary font-semibold tabular-nums">{latest.value}{m.unit ? ` ${m.unit}` : ''}</span> on {fmtDate(latest.recorded_on)}</> : 'No entries yet'}
                 </p>
+                <p className="text-[11px] text-muted-foreground mt-1">{improvementDirectionLabel(m.improvement_direction)}</p>
               </div>
               <div className="flex gap-1.5">
                 <Button size="sm" variant="secondary" className="rounded-lg" onClick={() => openNewEntry(m)} data-testid="log-entry-button">
                   <Plus className="h-3.5 w-3.5 mr-1" /> Log
                 </Button>
+                <IconButton label={`Edit ${m.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => openEditMetric(m)} data-testid="edit-metric-button">
+                  <Pencil className="h-3.5 w-3.5" />
+                </IconButton>
                 <IconButton label={`Archive ${m.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archiveMetric(m)} data-testid="archive-metric-button">
                   <Trash2 className="h-3.5 w-3.5" />
                 </IconButton>
