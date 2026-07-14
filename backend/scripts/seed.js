@@ -174,12 +174,14 @@ async function main() {
   const { data: cc } = await supabaseAdmin.from('client_credits').select('*').eq('client_id', sarah.id).maybeSingle();
   if (!cc) {
     await supabaseAdmin.from('client_credits').insert({ client_id: sarah.id, balance: 6 });
-    // matching manual purchase history
+    // matching cash payment history
     const { data: pkg } = await supabaseAdmin.from('packages').select('*').eq('name', 'Starter Pack').maybeSingle();
     if (pkg) {
       await supabaseAdmin.from('purchases').insert({
         client_id: sarah.id, package_id: pkg.id, amount: pkg.price, credits_granted: pkg.session_credits,
-        method: 'manual', status: 'completed', recorded_by_coach_id: marcus.id,
+        method: 'cash', status: 'completed', purchase_type: 'cash', package_name: pkg.name,
+        currency: 'usd', cash_receipt_number: 'CVF-CASH-SEED-SARAH', completed_at: new Date().toISOString(),
+        recorded_by_coach_id: marcus.id,
       });
     }
     console.log('  credits + purchase history seeded for Sarah');
