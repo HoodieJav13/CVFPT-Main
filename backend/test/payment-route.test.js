@@ -11,6 +11,7 @@ test('Stripe checkout uses catalog Prices for both one-time and subscription mod
   assert.match(payments, /mode: 'payment'[\s\S]*?line_items: \[\{ price: pkg\.stripe_price_id/);
   assert.doesNotMatch(payments, /price_data:/);
   assert.match(packages, /resolveStripePrice\(value\.stripe_price_id\)/);
+  assert.match(packages, /validateRecurringPackage\(\{ \.\.\.existingResult\.data, \.\.\.value \}\)/);
 });
 
 test('webhook is authoritative for credits and covers renewal and reversal events', () => {

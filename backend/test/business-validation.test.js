@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   validateCashPayment, validateCourtesyGrant, validatePackagePayload,
-  validatePaymentReviewResolution, validateSchedulePayload,
+  validatePaymentReviewResolution, validateRecurringPackage, validateSchedulePayload,
 } = require('../src/validation/business');
 
 test('package validation rejects negative, fractional, oversized, and empty values', () => {
@@ -14,6 +14,16 @@ test('package validation rejects negative, fractional, oversized, and empty valu
     validatePackagePayload({ name: '  Pack  ', price: '25', session_credits: '4' }).value,
     { name: 'Pack', price: 25, session_credits: 4 },
   );
+});
+
+test('recurring package validation rejects zero credits before persistence', () => {
+  const invalidPackage = { name: 'Monthly', price: 200, session_credits: 0, is_recurring: true };
+  assert.deepEqual(validatePackagePayload(invalidPackage), {
+    ok: false,
+    error: 'Recurring packages require at least 1 session credit',
+  });
+  assert.equal(validateRecurringPackage({ is_recurring: true, session_credits: 0 }).ok, false);
+  assert.equal(validateRecurringPackage({ is_recurring: true, session_credits: 8 }).ok, true);
 });
 
 test('payment validation separates cash revenue from courtesy credits', () => {

@@ -18,6 +18,9 @@ async function resolveStripePrice(priceId, stripe = getStripeClient()) {
 
   const product = typeof price.product === 'object' ? price.product : null;
   if (product?.deleted || product?.active === false) throw new Error('Stripe Product must be active');
+  if (price.recurring && !['month', 'year'].includes(price.recurring.interval)) {
+    throw new Error('Stripe Price must bill monthly or yearly when recurring');
+  }
 
   return {
     stripe_price_id: price.id,

@@ -42,3 +42,22 @@ test('Stripe catalog resolution rejects inactive or variable-amount Prices', asy
   };
   await assert.rejects(() => resolveStripePrice('price_variable', variableStripe), /fixed unit amount/);
 });
+
+test('Stripe catalog resolution rejects unsupported recurring intervals cleanly', async () => {
+  const weeklyStripe = {
+    prices: {
+      retrieve: async () => ({
+        id: 'price_weekly',
+        active: true,
+        unit_amount: 5000,
+        currency: 'usd',
+        recurring: { interval: 'week' },
+        product: { id: 'prod_weekly', active: true },
+      }),
+    },
+  };
+  await assert.rejects(
+    () => resolveStripePrice('price_weekly', weeklyStripe),
+    /must bill monthly or yearly/,
+  );
+});

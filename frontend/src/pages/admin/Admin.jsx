@@ -543,7 +543,7 @@ function PackagesTab() {
               <div className="space-y-1.5"><Label>Price (USD) *</Label>
                 <Input required type="number" step="0.01" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} data-testid="package-price-input" /></div>
               <div className="space-y-1.5"><Label>Session credits *</Label>
-                <Input required type="number" min="0" value={form.session_credits} onChange={(e) => setForm({ ...form, session_credits: e.target.value })} data-testid="package-credits-input" /></div>
+                <Input required type="number" min={form.is_recurring ? 1 : 0} value={form.session_credits} onChange={(e) => setForm({ ...form, session_credits: e.target.value })} data-testid="package-credits-input" /></div>
             </div>
             <label className="flex items-center gap-2 text-sm">
               <Switch checked={form.is_recurring} onCheckedChange={(v) => setForm({ ...form, is_recurring: v })} data-testid="package-recurring-switch" />

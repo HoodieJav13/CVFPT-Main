@@ -393,6 +393,9 @@ router.post('/checkout', requireClient, async (req, res) => {
     if (packageError) throw packageError;
     if (!pkg) return res.status(404).json({ error: 'Package not found' });
     if (!pkg.stripe_price_id) return res.status(409).json({ error: 'This package is not linked to a Stripe Price yet' });
+    if (pkg.is_recurring && pkg.session_credits <= 0) {
+      return res.status(409).json({ error: 'Recurring packages require at least 1 session credit' });
+    }
 
     const redirectOrigin = frontendUrl();
     if (!redirectOrigin) return res.status(503).json({ error: NOT_CONFIGURED_MSG, not_configured: true });

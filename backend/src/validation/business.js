@@ -6,6 +6,14 @@ function valid(value) {
   return { ok: true, value };
 }
 
+function validateRecurringPackage(value = {}) {
+  if (value.is_recurring
+    && (!Number.isInteger(value.session_credits) || value.session_credits <= 0)) {
+    return invalid('Recurring packages require at least 1 session credit');
+  }
+  return valid(value);
+}
+
 function validatePackagePayload(body = {}, { partial = false } = {}) {
   const value = {};
   if (!partial && (!Object.hasOwn(body, 'name') || !Object.hasOwn(body, 'price'))) {
@@ -44,6 +52,10 @@ function validatePackagePayload(body = {}, { partial = false } = {}) {
     value.stripe_price_id = stripePriceId || null;
   }
   if (partial && !Object.keys(value).length) return invalid('Provide at least one package field to update');
+  if (!partial || Object.hasOwn(value, 'session_credits')) {
+    const recurringValidation = validateRecurringPackage(value);
+    if (!recurringValidation.ok) return recurringValidation;
+  }
   return valid(value);
 }
 
@@ -117,5 +129,6 @@ module.exports = {
   validateCourtesyGrant,
   validatePaymentReviewResolution,
   validatePackagePayload,
+  validateRecurringPackage,
   validateSchedulePayload,
 };
