@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { AnimatePresence, m, useReducedMotion } from 'framer-motion';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, ChartSkeleton, LoadErrorState, EmptyState, MetricChart, IconButton } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,13 +7,61 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { TrendingUp, Plus, Pencil, Loader2 } from 'lucide-react';
 import { fmtDate } from '@/lib/format';
 import { toast } from 'sonner';
+import { BrandBackdrop } from '@/components/BrandBackdrop';
+import { useVisualIntensity } from '@/lib/visualIntensity';
+import { cn } from '@/lib/utils';
 
 const blankEntry = () => ({ value: '', recorded_on: new Date().toISOString().slice(0, 10), notes: '' });
+
+const ACHIEVEMENT_MOTION = {
+  restrained: { distance: 5, duration: 0.35 },
+  cinematic: { distance: 12, duration: 0.52 },
+  spectacle: { distance: 22, duration: 0.7 },
+};
+
+function AchievementMoment({ achievement }) {
+  const reducedMotion = useReducedMotion();
+  const intensity = useVisualIntensity();
+  const recipe = ACHIEVEMENT_MOTION[intensity];
+  const sign = achievement?.direction === 'lower' ? '−' : '+';
+
+  return (
+    <AnimatePresence initial={false}>
+      {achievement ? (
+        <m.section
+          key={`${achievement.metricId}-${achievement.value}`}
+          className="relative isolate mb-4 overflow-hidden rounded-2xl border border-gold/35 bg-card/70 px-4 py-4 shadow-[var(--brand-glow)] sm:px-5"
+          initial={reducedMotion ? false : { opacity: 0, y: recipe.distance, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -recipe.distance / 2, scale: 0.99 }}
+          transition={{ duration: recipe.duration, ease: [0.22, 1, 0.36, 1] }}
+          role="status"
+          aria-live="polite"
+          data-testid="personal-record-moment"
+        >
+          <BrandBackdrop variant="achievement" />
+          <div className="relative z-10 flex items-end justify-between gap-4">
+            <div>
+              <p className="font-display text-sm font-semibold uppercase tracking-[0.16em] text-gold">New personal record</p>
+              <p className="mt-1 text-sm text-foreground/75">{achievement.metricName} · now {achievement.value}{achievement.unit ? ` ${achievement.unit}` : ''}</p>
+            </div>
+            <div className="text-right">
+              <p className="font-display text-4xl font-bold leading-none tabular-nums text-gold sm:text-5xl" data-testid="progress-delta-hero-number">
+                {sign}{achievement.improvementAmount}{achievement.unit ? ` ${achievement.unit}` : ''}
+              </p>
+              <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/65">better than your best</p>
+            </div>
+          </div>
+        </m.section>
+      ) : null}
+    </AnimatePresence>
+  );
+}
 
 export default function ClientProgress() {
   const [metrics, setMetrics] = useState(null);
@@ -37,6 +86,12 @@ export default function ClientProgress() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!achievement) return undefined;
+    const timeout = window.setTimeout(() => setAchievement(null), 6500);
+    return () => window.clearTimeout(timeout);
+  }, [achievement]);
 
   const openNewEntry = (metric) => {
     setEntryFor(metric);
@@ -84,6 +139,7 @@ export default function ClientProgress() {
           value: Number(savedEntry.value),
           improvementAmount: savedEntry.improvement_amount,
           unit: savedMetric.unit,
+          direction: savedMetric.improvement_direction,
         });
       }
     } catch (err) {
@@ -109,7 +165,12 @@ export default function ClientProgress() {
           const delta = latest && first ? (Number(latest.value) - Number(first.value)).toFixed(1) : null;
           const isAchievementMetric = achievement?.metricId === m.id;
           return (
-            <Card key={m.id} data-testid="client-metric-card" data-achievement={isAchievementMetric ? 'true' : undefined}>
+            <Card
+              key={m.id}
+              className={cn(isAchievementMetric && 'border-gold/35')}
+              data-testid="client-metric-card"
+              data-achievement={isAchievementMetric ? 'true' : undefined}
+            >
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -140,9 +201,10 @@ export default function ClientProgress() {
                 </div>
               </CardHeader>
               <CardContent>
+                <AchievementMoment achievement={isAchievementMetric ? achievement : null} />
                 {m.entries.length > 0 ? (
                   <>
-                    <MetricChart entries={m.entries} unit={m.unit} />
+                    <MetricChart entries={m.entries} unit={m.unit} highlightLatest={isAchievementMetric} />
                     <div className="mt-3 space-y-2">
                       {m.entries.slice().reverse().slice(0, 4).map((entry) => (
                         <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2" data-testid="client-progress-entry-row">
@@ -168,7 +230,10 @@ export default function ClientProgress() {
 
       <Dialog open={Boolean(entryFor)} onOpenChange={(open) => !open && closeEntry()}>
         <DialogContent className="max-w-sm" data-testid="client-progress-entry-dialog">
-          <DialogHeader><DialogTitle>{editingEntry ? 'Edit' : 'Log'} {entryFor?.name}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editingEntry ? 'Edit' : 'Log'} {entryFor?.name}</DialogTitle>
+            <DialogDescription>Record the value and date your coach should use for this metric.</DialogDescription>
+          </DialogHeader>
           <form onSubmit={saveEntry} className="space-y-3.5">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

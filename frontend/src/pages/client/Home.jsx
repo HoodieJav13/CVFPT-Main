@@ -17,6 +17,7 @@ import {
 import { fmtDay, fmtTime, fmtDateTime, fmtDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { DashboardHero } from '@/components/BrandBackdrop';
+import { DashboardChoreography } from '@/components/Choreography';
 
 export default function ClientHome() {
   const { user } = useAuth();
@@ -61,6 +62,7 @@ export default function ClientHome() {
 
   return (
     <div>
+      <DashboardChoreography pageKey={`client-dashboard-${user.id || user.profile?.id || user.role}`}>
       <DashboardHero
         title={`Today, ${firstName}`}
         subtitle="Check in and make today count."
@@ -219,9 +221,11 @@ export default function ClientHome() {
             <p className="text-xs text-muted-foreground">Current balance</p>
           </div>
         </div>
-        <span className="font-display text-3xl font-semibold tabular-nums text-gold" data-testid="credits-hero-number">{data.credits}</span>
+        <span className="font-display text-4xl font-bold leading-none tabular-nums text-gold" data-testid="credits-hero-number">{data.credits}</span>
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </Link>
+
+      </DashboardChoreography>
 
       <Dialog open={checkInOpen} onOpenChange={setCheckInOpen}>
         <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">

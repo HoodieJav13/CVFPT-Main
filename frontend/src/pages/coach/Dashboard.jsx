@@ -4,6 +4,7 @@ import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { StatTile, DashboardSkeleton, LoadErrorState, StatusBadge, SectionLabel, CheckInStats } from '@/components/common';
 import { DashboardHero } from '@/components/BrandBackdrop';
+import { DashboardChoreography } from '@/components/Choreography';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, Users, Inbox, MessageSquare, Check, Plus, ChevronRight, ClipboardCheck } from 'lucide-react';
@@ -50,7 +51,7 @@ export default function CoachDashboard() {
   const firstName = (user.profile?.name || '').split(' ')[0];
 
   return (
-    <div>
+    <DashboardChoreography pageKey={`coach-dashboard-${user.id || user.profile?.id || user.role}`}>
       <DashboardHero
         title={`Hey, ${firstName}`}
         subtitle={user.role === 'admin' ? 'Admin view - all coaches' : 'Your day at CVF'}
@@ -182,6 +183,6 @@ export default function CoachDashboard() {
           ))}
         </CardContent>
       </Card>
-    </div>
+    </DashboardChoreography>
   );
 }

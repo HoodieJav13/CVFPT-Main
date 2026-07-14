@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { domAnimation, LazyMotion } from 'framer-motion';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { Toaster } from '@/components/ui/sonner';
 import { LoadingScreen } from '@/components/common';
@@ -44,12 +45,13 @@ function Protected({ roles, children }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<RoleRedirect />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+    <LazyMotion features={domAnimation} strict>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<RoleRedirect />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
 
           <Route
             path="/coach"
@@ -98,11 +100,12 @@ export default function App() {
             <Route index element={<AdminPage />} />
           </Route>
 
-          <Route path="*" element={<RoleRedirect />} />
-        </Routes>
-        <PreviewToolbar />
-      </BrowserRouter>
-      <Toaster position="top-center" richColors />
-    </AuthProvider>
+            <Route path="*" element={<RoleRedirect />} />
+          </Routes>
+          <PreviewToolbar />
+        </BrowserRouter>
+        <Toaster position="top-center" richColors />
+      </AuthProvider>
+    </LazyMotion>
   );
 }

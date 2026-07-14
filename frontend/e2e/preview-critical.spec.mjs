@@ -145,6 +145,39 @@ test('client preview covers dashboard and every client navigation destination', 
   await expect(page).toHaveURL(/\/client$/);
 });
 
+test('brand backdrop variants, one-time dashboard motion, and genuine PR moment stay wired', async ({ page }) => {
+  await usePreviewRole(page, 'client');
+  await page.goto('/client');
+
+  const dashboardBackdrop = page.getByTestId('brand-backdrop-dashboard');
+  await expect(dashboardBackdrop).toHaveAttribute('data-photo-state', 'fallback');
+  await expect(dashboardBackdrop.locator('.brand-backdrop__photo')).toHaveCount(0);
+  await expect(page.locator('[data-entry-motion]')).toHaveAttribute('data-entry-motion', 'enabled');
+
+  const intensity = page.getByTestId('preview-intensity-select');
+  for (const value of ['restrained', 'cinematic', 'spectacle']) {
+    await intensity.selectOption(value);
+    await expect(dashboardBackdrop).toHaveAttribute('data-intensity', value);
+  }
+  await intensity.selectOption('cinematic');
+
+  await page.getByTestId('sidebar-nav-programs').click();
+  await page.getByTestId('sidebar-nav-home').click();
+  await expect(page.locator('[data-entry-motion]')).toHaveAttribute('data-entry-motion', 'skipped');
+
+  await page.getByTestId('sidebar-nav-progress').click();
+  const bodyWeight = page.getByTestId('client-metric-card').filter({ hasText: 'Body Weight' });
+  await bodyWeight.getByTestId('client-log-entry-button').click();
+  await page.getByTestId('client-entry-value-input').fill('161');
+  await page.getByTestId('client-entry-save-button').click();
+
+  const recordMoment = page.getByTestId('personal-record-moment');
+  await expect(recordMoment).toBeVisible();
+  await expect(recordMoment.getByTestId('brand-backdrop-achievement')).toHaveCount(1);
+  await expect(page.getByTestId('progress-delta-hero-number')).toContainText('1 lbs');
+  await expect(bodyWeight).toHaveAttribute('data-achievement', 'true');
+});
+
 test('admin preview exposes admin-only management surfaces', async ({ page }) => {
   await usePreviewRole(page, 'admin');
   await page.goto('/admin');

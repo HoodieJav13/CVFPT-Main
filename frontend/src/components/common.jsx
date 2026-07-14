@@ -1,3 +1,5 @@
+import { useId } from 'react';
+import { m, useReducedMotion } from 'framer-motion';
 import { AlertCircle, Loader2, RotateCcw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +11,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
+import { useVisualIntensity } from '@/lib/visualIntensity';
 
 export function LoadingScreen() {
   return (
@@ -86,7 +89,7 @@ export function StatTile({ label, value, icon: Icon, accent = false, testId }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
           {Icon ? <Icon className="h-4 w-4 text-primary" /> : null}
         </div>
-        <p className="mt-2 font-display text-3xl lg:text-4xl font-semibold tabular-nums">{value}</p>
+        <p className="mt-2 font-display text-4xl font-bold leading-none tabular-nums lg:text-5xl">{value}</p>
       </CardContent>
     </Card>
   );
@@ -237,7 +240,16 @@ export function ChartSkeleton() {
 
 /* ---------- Metric chart ---------- */
 
-export function MetricChart({ entries = [], unit }) {
+const CHART_DURATIONS = {
+  restrained: 650,
+  cinematic: 820,
+  spectacle: 1000,
+};
+
+export function MetricChart({ entries = [], unit, highlightLatest = false }) {
+  const gradientId = `metric-fill-${useId().replace(/:/g, '')}`;
+  const reducedMotion = useReducedMotion();
+  const intensity = useVisualIntensity();
   const data = entries.map((e) => ({
     date: (() => { try { return format(parseISO(e.recorded_on), 'MMM d'); } catch { return e.recorded_on; } })(),
     value: Number(e.value),
@@ -249,7 +261,7 @@ export function MetricChart({ entries = [], unit }) {
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={data} margin={{ top: 8, right: 8, left: -14, bottom: 0 }}>
           <defs>
-            <linearGradient id="metricFill" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.22} />
               <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
             </linearGradient>
@@ -262,24 +274,44 @@ export function MetricChart({ entries = [], unit }) {
             formatter={(v) => [`${v}${unit ? ` ${unit}` : ''}`, 'Value']}
           />
           <Area
+            key={entries.map((entry) => `${entry.id}:${entry.value}:${entry.recorded_on}`).join('|')}
             type="monotone"
             dataKey="value"
             stroke="hsl(var(--chart-1))"
             strokeWidth={2}
-            fill="url(#metricFill)"
+            fill={`url(#${gradientId})`}
+            isAnimationActive={!reducedMotion}
+            animationDuration={CHART_DURATIONS[intensity]}
+            animationEasing="ease-out"
             dot={(props) => {
               const { key, index, cx, cy } = props;
               const latest = index === lastIndex;
+              if (latest && highlightLatest && !reducedMotion) {
+                return (
+                  <g key={key}>
+                    <m.circle
+                      cx={cx}
+                      cy={cy}
+                      fill="hsl(var(--gold))"
+                      initial={{ r: 5, opacity: 0.65 }}
+                      animate={{ r: 18, opacity: 0 }}
+                      transition={{ delay: CHART_DURATIONS[intensity] / 1000, duration: 0.7, ease: 'easeOut' }}
+                    />
+                    <m.circle
+                      cx={cx}
+                      cy={cy}
+                      fill="hsl(var(--gold))"
+                      stroke="hsl(var(--card))"
+                      strokeWidth={2}
+                      initial={{ r: 2 }}
+                      animate={{ r: 5.5 }}
+                      transition={{ delay: CHART_DURATIONS[intensity] / 1000, duration: 0.32, ease: 'backOut' }}
+                    />
+                  </g>
+                );
+              }
               return (
-                <circle
-                  key={key}
-                  cx={cx}
-                  cy={cy}
-                  r={latest ? 5.5 : 4}
-                  fill={latest ? 'hsl(var(--gold))' : 'hsl(var(--chart-1))'}
-                  stroke="hsl(var(--card))"
-                  strokeWidth={2}
-                />
+                <circle key={key} cx={cx} cy={cy} r={latest ? 5.5 : 4} fill={latest ? 'hsl(var(--gold))' : 'hsl(var(--chart-1))'} stroke="hsl(var(--card))" strokeWidth={2} />
               );
             }}
             activeDot={{ r: 6, stroke: 'hsl(var(--card))', strokeWidth: 2 }}
