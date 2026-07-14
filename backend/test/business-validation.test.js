@@ -1,7 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  validateCashPayment, validateCourtesyGrant, validatePackagePayload, validateSchedulePayload,
+  validateCashPayment, validateCourtesyGrant, validatePackagePayload,
+  validatePaymentReviewResolution, validateSchedulePayload,
 } = require('../src/validation/business');
 
 test('package validation rejects negative, fractional, oversized, and empty values', () => {
@@ -21,6 +22,14 @@ test('payment validation separates cash revenue from courtesy credits', () => {
   assert.equal(validateCourtesyGrant({ client_id: 'client', credits: 1, reason: 'family' }).ok, true);
   assert.equal(validateCourtesyGrant({ client_id: 'client', credits: 1, reason: 'other' }).ok, false);
   assert.equal(validateCourtesyGrant({ client_id: 'client', credits: 11, reason: 'photography_barter', note: 'Photo trade' }).ok, true);
+});
+
+test('payment review resolution requires an explicit bounded credit adjustment', () => {
+  assert.equal(validatePaymentReviewResolution({ resolution: 'resolved', note: 'Reverse half', credit_adjustment: 4 }).ok, true);
+  assert.equal(validatePaymentReviewResolution({ resolution: 'resolved', note: 'No change', credit_adjustment: 0 }).ok, true);
+  assert.equal(validatePaymentReviewResolution({ resolution: 'resolved', note: 'Bad', credit_adjustment: -1 }).ok, false);
+  assert.equal(validatePaymentReviewResolution({ resolution: 'resolved', note: 'Bad', credit_adjustment: 1.5 }).ok, false);
+  assert.equal(validatePaymentReviewResolution({ resolution: 'dismissed', note: 'No refund', credit_adjustment: 1 }).ok, false);
 });
 
 test('schedule validation rejects invalid dates and out-of-range durations', () => {

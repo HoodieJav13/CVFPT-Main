@@ -72,6 +72,7 @@ function PaymentReviewsTab() {
   const [saving, setSaving] = useState(null);
   const [resolving, setResolving] = useState(null);
   const [resolution, setResolution] = useState('resolved');
+  const [creditAdjustment, setCreditAdjustment] = useState('0');
   const [note, setNote] = useState('');
 
   const load = useCallback(async () => {
@@ -110,11 +111,16 @@ function PaymentReviewsTab() {
     if (!resolving) return;
     setSaving(resolving.id);
     try {
-      await api.post(`/payments/reviews/${resolving.id}/resolve`, { resolution, note });
+      await api.post(`/payments/reviews/${resolving.id}/resolve`, {
+        resolution,
+        credit_adjustment: Number(creditAdjustment),
+        note,
+      });
       toast.success(resolution === 'resolved' ? 'Payment review resolved' : 'Payment review dismissed');
       setResolving(null);
       setNote('');
       setResolution('resolved');
+      setCreditAdjustment('0');
       load();
     } catch (error) {
       toast.error(errMsg(error));
@@ -126,6 +132,14 @@ function PaymentReviewsTab() {
   if ((!courtesy || !reviews) && loadError) return <LoadErrorState message={loadError} scope="admin-payment-reviews" onRetry={() => { setLoadError(null); load(); }} />;
   if (!courtesy || !reviews) return <LoadingScreen />;
   const openReviews = reviews.filter((review) => review.status === 'open');
+  const maxCreditAdjustment = resolving
+    ? Math.max(0, resolving.credits_requested - resolving.credits_reversed - resolving.credits_consumed)
+    : 0;
+  const adjustmentValue = Number(creditAdjustment);
+  const adjustmentValid = Number.isInteger(adjustmentValue)
+    && adjustmentValue >= 0
+    && adjustmentValue <= maxCreditAdjustment
+    && (resolution !== 'dismissed' || adjustmentValue === 0);
 
   return (
     <div className="space-y-6 mt-1">
@@ -180,7 +194,7 @@ function PaymentReviewsTab() {
                     <p className="text-xs text-muted-foreground mt-0.5 capitalize">{review.review_type} · {review.credits_reversed} reversed · {review.credits_consumed} already used</p>
                     {review.note && <p className="text-xs mt-1">{review.note}</p>}
                   </div>
-                  <Button size="sm" variant="outline" className="rounded-lg" onClick={() => setResolving(review)} data-testid="resolve-payment-review-button">Review case</Button>
+                  <Button size="sm" variant="outline" className="rounded-lg" onClick={() => { setResolving(review); setResolution('resolved'); setCreditAdjustment('0'); setNote(''); }} data-testid="resolve-payment-review-button">Review case</Button>
                 </CardContent>
               </Card>
             ))}
@@ -188,7 +202,7 @@ function PaymentReviewsTab() {
         )}
       </section>
 
-      <Dialog open={Boolean(resolving)} onOpenChange={(open) => { if (!open) { setResolving(null); setNote(''); } }}>
+      <Dialog open={Boolean(resolving)} onOpenChange={(open) => { if (!open) { setResolving(null); setNote(''); setCreditAdjustment('0'); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Resolve payment review</DialogTitle>
@@ -197,7 +211,7 @@ function PaymentReviewsTab() {
           <form onSubmit={resolveReview} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Outcome</Label>
-              <Select value={resolution} onValueChange={setResolution}>
+              <Select value={resolution} onValueChange={(value) => { setResolution(value); if (value === 'dismissed') setCreditAdjustment('0'); }}>
                 <SelectTrigger className="rounded-xl" data-testid="payment-review-resolution-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="resolved">Resolved</SelectItem>
@@ -206,11 +220,26 @@ function PaymentReviewsTab() {
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label>Credits to reverse *</Label>
+              <Input
+                required
+                type="number"
+                min="0"
+                max={maxCreditAdjustment}
+                step="1"
+                disabled={resolution === 'dismissed'}
+                value={creditAdjustment}
+                onChange={(event) => setCreditAdjustment(event.target.value)}
+                data-testid="payment-review-credit-adjustment-input"
+              />
+              <p className="text-xs text-muted-foreground">Up to {maxCreditAdjustment} credits remain reversible. Dismissed cases apply zero.</p>
+            </div>
+            <div className="space-y-1.5">
               <Label>Resolution note *</Label>
               <Textarea required value={note} onChange={(event) => setNote(event.target.value)} rows={4} data-testid="payment-review-note-input" />
             </div>
             <DialogFooter>
-              <Button type="submit" disabled={saving === resolving?.id || !note.trim()} className="rounded-xl w-full sm:w-auto" data-testid="payment-review-submit-button">
+              <Button type="submit" disabled={saving === resolving?.id || !note.trim() || !adjustmentValid} className="rounded-xl w-full sm:w-auto" data-testid="payment-review-submit-button">
                 {saving === resolving?.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save resolution'}
               </Button>
             </DialogFooter>

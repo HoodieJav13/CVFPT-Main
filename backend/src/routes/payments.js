@@ -6,7 +6,9 @@ const {
 } = require('../middleware/auth');
 const { completePurchase, getBalance } = require('../utils/credits');
 const { getStripeClient, stripeConfiguration } = require('../config/stripe');
-const { validateCashPayment, validateCourtesyGrant } = require('../validation/business');
+const {
+  validateCashPayment, validateCourtesyGrant, validatePaymentReviewResolution,
+} = require('../validation/business');
 
 const router = express.Router();
 const NOT_CONFIGURED_MSG = 'Online payments are not yet configured. Please pay your coach directly, or check back soon.';
@@ -636,22 +638,23 @@ router.get('/reviews', requireAdmin, async (_req, res) => {
 
 router.post('/reviews/:id/resolve', requireAdmin, async (req, res) => {
   try {
-    const resolution = String(req.body?.resolution || '');
-    const note = String(req.body?.note || '').trim();
-    if (!['resolved', 'dismissed'].includes(resolution) || !note) {
-      return res.status(400).json({ error: 'Resolution and note are required' });
-    }
+    const validation = validatePaymentReviewResolution(req.body || {});
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
     const { data, error } = await supabaseAdmin.rpc('resolve_payment_review', {
       p_review_id: req.params.id,
-      p_resolution: resolution,
+      p_resolution: validation.value.resolution,
+      p_credit_adjustment: validation.value.credit_adjustment,
       p_admin_coach_id: req.user.coach.id,
-      p_resolution_note: note,
+      p_resolution_note: validation.value.note,
     });
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Open payment review not found' });
     return res.json(data);
   } catch (error) {
     logError('payment review resolution error', error);
+    if (/Credit adjustment|Dismissed reviews/.test(error.message || '')) {
+      return res.status(400).json({ error: error.message });
+    }
     return res.status(500).json({ error: 'Failed to resolve payment review' });
   }
 });

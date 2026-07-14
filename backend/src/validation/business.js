@@ -76,6 +76,22 @@ function validateCourtesyGrant(body = {}) {
   return valid({ client_id: body.client_id, credits, reason, note });
 }
 
+function validatePaymentReviewResolution(body = {}) {
+  const resolution = String(body.resolution || '');
+  const note = String(body.note || '').trim();
+  const creditAdjustment = Number(body.credit_adjustment);
+  if (!['resolved', 'dismissed'].includes(resolution) || !note) {
+    return invalid('Resolution and note are required');
+  }
+  if (!Number.isInteger(creditAdjustment) || creditAdjustment < 0 || creditAdjustment > 10000) {
+    return invalid('Credit adjustment must be a whole number between 0 and 10,000');
+  }
+  if (resolution === 'dismissed' && creditAdjustment !== 0) {
+    return invalid('Dismissed reviews cannot apply a credit adjustment');
+  }
+  return valid({ resolution, note, credit_adjustment: creditAdjustment });
+}
+
 function validateSchedulePayload(body = {}, { requireDate = false } = {}) {
   const value = {};
   if (requireDate && !body.scheduled_at) return invalid('Client and date/time are required');
@@ -99,6 +115,7 @@ function validateSchedulePayload(body = {}, { requireDate = false } = {}) {
 module.exports = {
   validateCashPayment,
   validateCourtesyGrant,
+  validatePaymentReviewResolution,
   validatePackagePayload,
   validateSchedulePayload,
 };

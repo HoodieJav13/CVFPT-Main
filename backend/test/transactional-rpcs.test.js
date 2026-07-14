@@ -24,6 +24,10 @@ const paymentMigration = fs.readFileSync(
   path.join(root, 'supabase', 'migrations', '20260714040224_stripe_subscriptions_offline_payments_and_credit_reviews.sql'),
   'utf8',
 );
+const paymentAdjustmentMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260714220803_audited_payment_review_adjustments.sql'),
+  'utf8',
+);
 const baseline = fs.readFileSync(path.join(root, 'backend', 'migration.sql'), 'utf8');
 
 const functions = [
@@ -40,7 +44,7 @@ const functions = [
   ['record_subscription_invoice', 'uuid, uuid, numeric, text, text, text, text, text'],
   ['record_payment_reversal', 'uuid, text, text, text'],
   ['open_payment_review', 'uuid, text, text, text'],
-  ['resolve_payment_review', 'uuid, text, uuid, text'],
+  ['resolve_payment_review', 'uuid, text, integer, uuid, text'],
 ];
 
 test('transactional RPCs are invoker-security and service-role-only', () => {
@@ -48,7 +52,7 @@ test('transactional RPCs are invoker-security and service-role-only', () => {
     const declaration = new RegExp(
       `create or replace function public\\.${name}[\\s\\S]*?security invoker[\\s\\S]*?set search_path = ''`,
     );
-    const rpcMigrations = `${migration}\n${paymentMigration}`;
+    const rpcMigrations = `${migration}\n${paymentMigration}\n${paymentAdjustmentMigration}`;
     assert.match(rpcMigrations, declaration, `${name} must use invoker security with an empty search path`);
     assert.match(
       rpcMigrations,

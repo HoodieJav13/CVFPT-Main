@@ -1216,7 +1216,12 @@ export function installPreviewApi(api) {
     if (resolveReview && method === 'post') {
       const review = state.paymentReviews.find((item) => item.id === resolveReview[1]);
       if (!review) return fail(config, 404, 'Open payment review not found');
-      Object.assign(review, { status: payload.resolution, resolution_note: payload.note, resolved_at: new Date().toISOString() });
+      const adjustment = Number(payload.credit_adjustment || 0);
+      state.credits[review.client_id] = (state.credits[review.client_id] || 0) - adjustment;
+      if (adjustment > 0) {
+        state.creditTransactions.push({ id: id('credit'), client_id: review.client_id, event_type: 'refund', amount: -adjustment, balance_after: state.credits[review.client_id], source_type: 'payment_review_resolution', source_id: review.id, note: payload.note, archived: false, created_at: new Date().toISOString() });
+      }
+      Object.assign(review, { status: payload.resolution, credits_reversed: review.credits_reversed + adjustment, resolution_note: payload.note, resolved_at: new Date().toISOString() });
       return ok(review, config);
     }
     if (path === '/payments/checkout' && method === 'post') return fail(config, 503, 'Preview mode: checkout is disabled.');

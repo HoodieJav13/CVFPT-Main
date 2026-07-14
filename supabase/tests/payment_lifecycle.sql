@@ -56,6 +56,80 @@ begin
 end;
 $$;
 
+do $$
+declare
+  v_admin_id uuid := gen_random_uuid();
+  v_client_id uuid := gen_random_uuid();
+  v_package_id uuid := gen_random_uuid();
+  v_purchase_id uuid := gen_random_uuid();
+  v_review_id uuid;
+  v_balance integer;
+  v_ledger_amount integer;
+  v_ledger_role text;
+  v_reversed integer;
+  v_status text;
+begin
+  insert into public.coaches (id, name, email, is_admin)
+  values (v_admin_id, 'Refund Test Admin', 'refund-test@example.com', true);
+  insert into public.clients (id, coach_id, name)
+  values (v_client_id, v_admin_id, 'Refund Test Client');
+  insert into public.packages (id, name, price, session_credits)
+  values (v_package_id, 'Refund Test Pack', 100, 8);
+  insert into public.purchases (
+    id, client_id, package_id, amount, credits_granted, method, status,
+    purchase_type, currency, package_name, stripe_payment_intent_id,
+    completed_at
+  ) values (
+    v_purchase_id, v_client_id, v_package_id, 100, 8, 'stripe', 'completed',
+    'one_time', 'usd', 'Refund Test Pack', 'pi_partial_refund', now()
+  );
+  insert into public.client_credits (client_id, balance) values (v_client_id, 8);
+  insert into public.credit_transactions (
+    client_id, event_type, amount, balance_after, source_type, source_id,
+    created_by_role
+  ) values (
+    v_client_id, 'purchase_grant', 8, 8, 'purchase', v_purchase_id, 'system'
+  );
+
+  perform public.open_payment_review(
+    v_purchase_id, 'refund', 'evt_partial_refund', 'Partial refund requires review'
+  );
+  select id into v_review_id from public.payment_review_cases
+  where purchase_id = v_purchase_id and status = 'open';
+
+  begin
+    perform public.resolve_payment_review(
+      v_review_id, 'resolved', 9, v_admin_id, 'Too many credits'
+    );
+    raise exception 'Expected the excessive adjustment to be rejected';
+  exception
+    when others then
+      if sqlerrm not like 'Credit adjustment exceeds%' then raise; end if;
+  end;
+
+  perform public.resolve_payment_review(
+    v_review_id, 'resolved', 3, v_admin_id, 'Reverse three credits'
+  );
+
+  select balance into v_balance from public.client_credits where client_id = v_client_id;
+  select amount, created_by_role into v_ledger_amount, v_ledger_role
+  from public.credit_transactions
+  where source_type = 'payment_review_resolution' and source_id = v_review_id;
+  select credits_reversed, status into v_reversed, v_status
+  from public.payment_review_cases where id = v_review_id;
+
+  if v_balance is distinct from 5
+    or v_ledger_amount is distinct from -3
+    or v_ledger_role is distinct from 'admin'
+    or v_reversed is distinct from 3
+    or v_status is distinct from 'resolved' then
+    raise exception 'Audited review adjustment failed: balance %, ledger %, role %, reversed %, status %',
+      v_balance, v_ledger_amount, v_ledger_role, v_reversed, v_status;
+  end if;
+end;
+$$;
+
 select 'subscription entitlement snapshot scenarios passed' as result;
+select 'audited payment review adjustment scenario passed' as result;
 
 rollback;
