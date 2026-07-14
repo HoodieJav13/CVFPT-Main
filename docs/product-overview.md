@@ -26,7 +26,8 @@ to claim the existing profile; it does not create a second source of client trut
 - Coach-managed PDF resources with public or client-assigned access
 - Coach/client messaging
 - Append-only digital and paper waiver records
-- Test-mode packages, manual purchases, payment history, and optional checkout
+- Test-mode Stripe subscriptions and one-time checkout, cash payment receipts,
+  courtesy/barter credits, rolling session balances, and refund/dispute review
 
 ## Product rules
 
@@ -44,5 +45,6 @@ to claim the existing profile; it does not create a second source of client trut
 - Automated email, push notification, or marketing campaigns
 - Full nutrition or habit-tracking programs
 - Native iOS or Android applications
-- Live Stripe charges, invoicing, subscriptions, or refunds
+- Live-mode Stripe money movement; the complete payment lifecycle remains
+  test-only until an explicit launch decision
 - Social/community features beyond coach-client communication
