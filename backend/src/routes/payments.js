@@ -84,30 +84,49 @@ async function syncSubscription(subscription, fallback = {}) {
   const existingResult = await supabaseAdmin.from('client_subscriptions').select('*')
     .eq('stripe_subscription_id', subscription.id).maybeSingle();
   if (existingResult.error) throw existingResult.error;
-  const existing = existingResult.data;
-  const clientId = subscription.metadata?.client_id || fallback.clientId || existing?.client_id;
-  const metadataPackageId = subscription.metadata?.package_id || fallback.packageId || existing?.package_id;
-  const localId = subscription.metadata?.local_subscription_id || fallback.localId || existing?.id;
+  let existing = existingResult.data;
+  const requestedLocalId = subscription.metadata?.local_subscription_id || fallback.localId || null;
+  if (!existing && requestedLocalId) {
+    const localResult = await supabaseAdmin.from('client_subscriptions').select('*')
+      .eq('id', requestedLocalId).maybeSingle();
+    if (localResult.error) throw localResult.error;
+    existing = localResult.data;
+  }
+  const clientId = existing?.client_id || subscription.metadata?.client_id || fallback.clientId;
+  const metadataPackageId = existing?.package_id || subscription.metadata?.package_id || fallback.packageId;
+  const localId = existing?.id || subscription.metadata?.local_subscription_id || fallback.localId;
   const currentPriceId = subscription.items?.data?.[0]?.price?.id || null;
   if (!clientId || (!metadataPackageId && !currentPriceId)) return null;
 
-  let packageQuery = supabaseAdmin.from('packages').select('*').eq('archived', false);
-  packageQuery = currentPriceId
-    ? packageQuery.eq('stripe_price_id', currentPriceId)
-    : packageQuery.eq('id', metadataPackageId);
-  const { data: pkg, error: packageError } = await packageQuery.maybeSingle();
-  if (packageError) throw packageError;
-  if (!pkg) return null;
+  // Existing rows own their entitlement snapshot. Only an explicit Stripe plan
+  // change to a different linked Price replaces it; package edits and archive
+  // state affect new checkout only.
+  const planChanged = Boolean(existing && currentPriceId && currentPriceId !== existing.stripe_price_id);
+  let pkg = null;
+  if (!existing || planChanged) {
+    let packageQuery = supabaseAdmin.from('packages').select('*').eq('archived', false);
+    packageQuery = currentPriceId
+      ? packageQuery.eq('stripe_price_id', currentPriceId)
+      : packageQuery.eq('id', metadataPackageId);
+    const packageResult = await packageQuery.maybeSingle();
+    if (packageResult.error) throw packageResult.error;
+    pkg = packageResult.data;
+    if (!pkg) return null;
+  }
+
+  const entitlement = pkg || existing;
 
   const period = subscriptionPeriod(subscription);
   const values = {
     client_id: clientId,
-    package_id: pkg.id,
+    package_id: pkg?.id || existing.package_id,
+    package_name: entitlement.package_name || entitlement.name,
+    currency: entitlement.currency,
     stripe_customer_id: stripeObjectId(subscription.customer),
     stripe_subscription_id: subscription.id,
-    stripe_price_id: currentPriceId || pkg.stripe_price_id,
+    stripe_price_id: pkg?.stripe_price_id || existing.stripe_price_id,
     status: subscription.status === 'canceled' ? 'canceled' : subscription.status,
-    credits_per_cycle: pkg.session_credits,
+    credits_per_cycle: entitlement.credits_per_cycle ?? entitlement.session_credits,
     current_period_start: epochIso(period.start),
     current_period_end: epochIso(period.end),
     cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
@@ -403,6 +422,8 @@ router.post('/checkout', requireClient, async (req, res) => {
       const insertResult = await supabaseAdmin.from('client_subscriptions').insert({
         client_id: req.user.client.id,
         package_id: pkg.id,
+        package_name: pkg.name,
+        currency: pkg.currency,
         stripe_price_id: pkg.stripe_price_id,
         status: 'checkout_pending',
         credits_per_cycle: pkg.session_credits,

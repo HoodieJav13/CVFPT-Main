@@ -35,6 +35,13 @@ test('webhook is authoritative for credits and covers renewal and reversal event
   assert.match(payments, /\.rpc\('open_payment_review'/);
 });
 
+test('subscription sync preserves the stored entitlement unless Stripe changes Prices', () => {
+  assert.match(payments, /const planChanged = Boolean\(existing && currentPriceId && currentPriceId !== existing\.stripe_price_id\)/);
+  assert.match(payments, /const entitlement = pkg \|\| existing/);
+  assert.match(payments, /credits_per_cycle: entitlement\.credits_per_cycle \?\? entitlement\.session_credits/);
+  assert.match(payments, /package_name: pkg\.name[\s\S]*?currency: pkg\.currency[\s\S]*?credits_per_cycle: pkg\.session_credits/);
+});
+
 test('cash and courtesy operations remain distinct audited routes', () => {
   assert.match(payments, /router\.post\('\/cash', requireCoach/);
   assert.match(payments, /router\.post\('\/courtesy', requireCoach/);
