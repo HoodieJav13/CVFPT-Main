@@ -164,6 +164,8 @@ test('brand backdrop variants, one-time dashboard motion, and genuine PR moment 
   await page.getByTestId('sidebar-nav-programs').click();
   await page.getByTestId('sidebar-nav-home').click();
   await expect(page.locator('[data-entry-motion]')).toHaveAttribute('data-entry-motion', 'skipped');
+  await page.reload();
+  await expect(page.locator('[data-entry-motion]')).toHaveAttribute('data-entry-motion', 'skipped');
 
   await page.getByTestId('sidebar-nav-progress').click();
   const bodyWeight = page.getByTestId('client-metric-card').filter({ hasText: 'Body Weight' });
