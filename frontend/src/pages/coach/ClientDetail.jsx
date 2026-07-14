@@ -582,13 +582,22 @@ function ProgressTab({ clientId }) {
 
   if (!metrics && loadError) return <LoadErrorState message={loadError} scope="client-detail-progress" onRetry={() => { setLoadError(null); load(); }} />;
   if (!metrics) return <LoadingScreen />;
+  const neutralMetricCount = metrics.filter((metric) => !['higher', 'lower'].includes(metric.improvement_direction)).length;
 
   return (
     <div className="space-y-4 mt-1">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {neutralMetricCount > 0 && (
+          <p className="flex min-w-0 flex-1 basis-64 items-start gap-2 text-xs text-muted-foreground" data-testid="neutral-metrics-nudge">
+            <TrendingUp className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+            <span>
+              {neutralMetricCount} {neutralMetricCount === 1 ? 'metric is' : 'metrics are'} still track-only. Set an improvement direction to enable PR recognition.
+            </span>
+          </p>
+        )}
         <Dialog open={metricOpen} onOpenChange={(open) => { if (!open) closeMetric(); }}>
           <DialogTrigger asChild>
-            <Button size="sm" className="rounded-xl" onClick={openCreateMetric} data-testid="add-metric-button">
+            <Button size="sm" className="ml-auto rounded-xl" onClick={openCreateMetric} data-testid="add-metric-button">
               <Plus className="h-4 w-4 mr-1.5" /> New metric
             </Button>
           </DialogTrigger>

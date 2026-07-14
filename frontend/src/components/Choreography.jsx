@@ -2,7 +2,30 @@ import { Children, useEffect, useState } from 'react';
 import { m, useReducedMotion } from 'framer-motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 
-const completedPageEntrances = new Set();
+const PAGE_ENTRANCE_STORAGE_KEY = 'cvfpt.completedPageEntrances.v1';
+
+function readCompletedPageEntrances() {
+  try {
+    const stored = JSON.parse(globalThis.sessionStorage?.getItem(PAGE_ENTRANCE_STORAGE_KEY) || '[]');
+    return new Set(Array.isArray(stored) ? stored.filter((value) => typeof value === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function hasCompletedPageEntrance(pageKey) {
+  return readCompletedPageEntrances().has(pageKey);
+}
+
+function markPageEntranceCompleted(pageKey) {
+  try {
+    const completed = readCompletedPageEntrances();
+    completed.add(pageKey);
+    globalThis.sessionStorage?.setItem(PAGE_ENTRANCE_STORAGE_KEY, JSON.stringify([...completed]));
+  } catch {
+    // Storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
 
 const MOTION_RECIPES = {
   restrained: { duration: 0.34, distance: 5, stagger: 0.045, scale: 1 },
@@ -13,12 +36,12 @@ const MOTION_RECIPES = {
 export function DashboardChoreography({ pageKey, children }) {
   const intensity = useVisualIntensity();
   const reducedMotion = useReducedMotion();
-  const [shouldAnimate] = useState(() => !completedPageEntrances.has(pageKey));
+  const [shouldAnimate] = useState(() => !hasCompletedPageEntrance(pageKey));
   const recipe = MOTION_RECIPES[intensity];
   const animate = shouldAnimate && !reducedMotion;
 
   useEffect(() => {
-    completedPageEntrances.add(pageKey);
+    markPageEntranceCompleted(pageKey);
   }, [pageKey]);
 
   return (
