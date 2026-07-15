@@ -12,7 +12,7 @@ import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter,
 } from '@/components/ui/drawer';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -409,6 +409,7 @@ function NotesDialog({ session, onClose }) {
       <DialogContent className="max-w-md" data-testid="session-notes-dialog">
         <DialogHeader>
           <DialogTitle>Session notes</DialogTitle>
+          <DialogDescription>Record private coach notes and client-visible notes for this session.</DialogDescription>
         </DialogHeader>
         {session && (
           <p className="text-xs text-muted-foreground -mt-2">

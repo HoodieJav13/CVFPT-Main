@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -227,7 +227,10 @@ function ExerciseLibraryTab({ library, reload }) {
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editing ? 'Edit exercise' : 'Add exercise'}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Edit exercise' : 'Add exercise'}</DialogTitle>
+            <DialogDescription>Create or update an exercise and its library details.</DialogDescription>
+          </DialogHeader>
           <form onSubmit={save} className="space-y-3.5">
             <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Exercise name" data-testid="exercise-library-name-input" />
             <div className="grid grid-cols-2 gap-3">
@@ -498,7 +501,10 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Edit program' : 'New structured program'}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Edit program' : 'New structured program'}</DialogTitle>
+            <DialogDescription>Create or update a weekly program and choose a workout for each day.</DialogDescription>
+          </DialogHeader>
           <form onSubmit={save} className="space-y-4">
             <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Program name" data-testid="program-name-input" />
             <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Program description" data-testid="program-description-input" />
@@ -713,6 +719,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
       <DialogContent className="max-h-[92dvh] max-w-4xl overflow-y-auto" data-testid="program-import-dialog">
         <DialogHeader>
           <DialogTitle>Import program</DialogTitle>
+          <DialogDescription>Parse a program source, review the draft, and save it to the program vault.</DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
           <div className="grid gap-3 lg:grid-cols-[180px_1fr_auto] lg:items-end">
@@ -1014,7 +1021,10 @@ function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onS
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">
-        <DialogHeader><DialogTitle>{editing ? 'Edit workout day' : 'New workout day'}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{editing ? 'Edit workout day' : 'New workout day'}</DialogTitle>
+          <DialogDescription>Create or update a workout day and its ordered exercises.</DialogDescription>
+        </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Workout day name" data-testid="workout-name-input" />

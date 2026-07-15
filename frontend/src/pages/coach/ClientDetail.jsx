@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -221,7 +221,10 @@ function OverviewTab({ client, credits, waiver, reload, user }) {
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
-              <DialogHeader><DialogTitle>Edit profile</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>Edit profile</DialogTitle>
+                <DialogDescription>Update this client&apos;s contact and coaching details.</DialogDescription>
+              </DialogHeader>
               <form onSubmit={saveEdit} className="space-y-3.5">
                 <div className="space-y-1.5"><Label>Name</Label>
                   <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="edit-name-input" /></div>
@@ -444,7 +447,10 @@ function CheckInsTab({ clientId }) {
 
       <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setEditing(null); }}>
         <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Edit check-in' : 'New check-in'}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Edit check-in' : 'New check-in'}</DialogTitle>
+            <DialogDescription>Create or update this client&apos;s check-in details and coach notes.</DialogDescription>
+          </DialogHeader>
           <CheckInForm initial={editing} saving={saving} onSubmit={save} submitLabel={editing ? 'Save changes' : 'Save check-in'} coachMode />
         </DialogContent>
       </Dialog>
@@ -602,7 +608,10 @@ function ProgressTab({ clientId }) {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-sm">
-            <DialogHeader><DialogTitle>{editingMetric ? 'Edit metric' : 'New metric'}</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>{editingMetric ? 'Edit metric' : 'New metric'}</DialogTitle>
+              <DialogDescription>Create or edit a tracked metric and choose which direction counts as improvement.</DialogDescription>
+            </DialogHeader>
             <form onSubmit={saveMetric} className="space-y-3.5">
               <div className="space-y-1.5"><Label>Name *</Label>
                 <Input required value={metricForm.name} onChange={(e) => setMetricForm({ ...metricForm, name: e.target.value })} placeholder='e.g. "Back Squat 1RM", "Waist"' data-testid="metric-name-input" /></div>
@@ -686,7 +695,10 @@ function ProgressTab({ clientId }) {
 
       <Dialog open={Boolean(entryFor)} onOpenChange={(o) => { if (!o) { setEntryFor(null); setEditingEntry(null); } }}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>{editingEntry ? 'Edit' : 'Log'} {entryFor?.name}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editingEntry ? 'Edit' : 'Log'} {entryFor?.name}</DialogTitle>
+            <DialogDescription>Record the value and date for this tracked metric.</DialogDescription>
+          </DialogHeader>
           <form onSubmit={saveEntry} className="space-y-3.5">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Value{entryFor?.unit ? ` (${entryFor.unit})` : ''} *</Label>
@@ -866,7 +878,10 @@ function ProgramsTab({ clientId }) {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle>Assign training</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Assign training</DialogTitle>
+              <DialogDescription>Choose a program and start date to assign to this client.</DialogDescription>
+            </DialogHeader>
             <form onSubmit={assign} className="space-y-4">
               <Select value={assignmentType} onValueChange={setAssignmentType}>
                 <SelectTrigger className="rounded-xl" data-testid="client-assignment-type-select"><SelectValue /></SelectTrigger>
@@ -1079,7 +1094,10 @@ function PaymentsTab({ clientId, reloadParent }) {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-sm" data-testid="manual-purchase-dialog">
-            <DialogHeader><DialogTitle>Record manual purchase</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Record manual purchase</DialogTitle>
+              <DialogDescription>Record an offline payment and grant the package credits to this client.</DialogDescription>
+            </DialogHeader>
             <p className="text-xs text-muted-foreground -mt-2">For cash / in-person payments. Credits are added immediately.</p>
             <form onSubmit={record} className="space-y-4">
               <Select value={selected} onValueChange={setSelected}>

@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
 import { Plus, Search, Users, ChevronRight, Loader2 } from 'lucide-react';
 import { initials } from '@/lib/format';
@@ -80,7 +80,10 @@ export default function Clients() {
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
-              <DialogHeader><DialogTitle>New client</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>New client</DialogTitle>
+                <DialogDescription>Create an invited client record and assign its coach.</DialogDescription>
+              </DialogHeader>
               <form onSubmit={createClient} className="space-y-3.5">
                 <div className="space-y-1.5">
                   <Label>Full name *</Label>

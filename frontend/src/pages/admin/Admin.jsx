@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Users, CalendarDays, Inbox, ShieldCheck, Plus, Loader2, FileText, Archive, ArchiveRestore, Pencil } from 'lucide-react';
@@ -112,7 +112,10 @@ function CoachesTab() {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-sm" data-testid="admin-coach-create-dialog">
-            <DialogHeader><DialogTitle>New coach account</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>New coach account</DialogTitle>
+              <DialogDescription>Create an invited coach account and assign its access role.</DialogDescription>
+            </DialogHeader>
             <form onSubmit={create} className="space-y-3.5" data-testid="admin-coach-create-form">
               <div className="space-y-1.5"><Label>Name *</Label>
                 <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="coach-name-input" /></div>
@@ -202,7 +205,10 @@ function WaiversTab() {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-lg" data-testid="admin-waiver-create-dialog">
-            <DialogHeader><DialogTitle>Publish new waiver version</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Publish new waiver version</DialogTitle>
+              <DialogDescription>Publish append-only waiver text as the next available version.</DialogDescription>
+            </DialogHeader>
             <form onSubmit={create} className="space-y-4">
               <Textarea required rows={12} value={text} onChange={(e) => setText(e.target.value)} placeholder="Paste the full waiver text..." data-testid="waiver-text-input" />
               <DialogFooter>
@@ -230,7 +236,10 @@ function WaiversTab() {
 
       <Dialog open={Boolean(viewing)} onOpenChange={(o) => !o && setViewing(null)}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Waiver version {viewing?.version_number}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Waiver version {viewing?.version_number}</DialogTitle>
+            <DialogDescription>Review the full text of this published waiver version.</DialogDescription>
+          </DialogHeader>
           <ScrollArea className="h-80 rounded-lg border border-border bg-background/40 p-4">
             <pre className="whitespace-pre-wrap text-sm leading-6">{viewing?.full_text}</pre>
           </ScrollArea>
@@ -340,7 +349,10 @@ function PackagesTab() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>{editing ? 'Edit package' : 'New package'}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Edit package' : 'New package'}</DialogTitle>
+            <DialogDescription>Create or update a session package and its credit value.</DialogDescription>
+          </DialogHeader>
           <form onSubmit={save} className="space-y-3.5">
             <div className="space-y-1.5"><Label>Name *</Label>
               <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="package-name-input" /></div>

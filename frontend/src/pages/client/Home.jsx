@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
   CalendarDays, CreditCard, Dumbbell, ChevronRight, MapPin,
@@ -229,7 +229,10 @@ export default function ClientHome() {
 
       <Dialog open={checkInOpen} onOpenChange={setCheckInOpen}>
         <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
-          <DialogHeader><DialogTitle>{todayCheckIn ? "Edit today's check-in" : "Today's check-in"}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{todayCheckIn ? "Edit today's check-in" : "Today's check-in"}</DialogTitle>
+            <DialogDescription>Record how you are feeling today and update your check-in if needed.</DialogDescription>
+          </DialogHeader>
           <CheckInForm initial={todayCheckIn} saving={saving} onSubmit={saveCheckIn} submitLabel={todayCheckIn ? 'Update check-in' : 'Save check-in'} />
           {todayCheckIn?.coach_notes && (
             <div className="rounded-xl border border-primary/20 bg-primary/10 px-3 py-2">
