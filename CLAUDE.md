@@ -59,7 +59,16 @@ Frontend and backend deploy as **two separate Vercel projects**, each rooted at 
 
 ## Preview mode
 
-`previewMode.js` is a DEV-only mock layer, double-gated, pending a keep/kill decision. Do not extend it without being asked.
+`previewMode.js` is a DEV-only mock layer, double-gated, with removal deferred to the Phase 9 boundary described below. Do not extend it without being asked.
+
+## Deferred decisions (dated)
+
+- `previewMode.js`: confirmed decision (2026-07) — **KILL, not keep**, but
+  deliberately deferred until immediately before Phase 9 (My PT Hub data
+  migration / real client data entering the system). Do not remove before
+  then; do not let new feature work continue adding preview-mode mocks
+  indefinitely either — when Phase 9 planning starts, removing
+  `previewMode.js` should be one of the first steps, before real data lands.
 
 ## Conventions
 
