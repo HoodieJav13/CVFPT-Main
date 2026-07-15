@@ -105,14 +105,12 @@ be configured only when its final backend/frontend domain pair is approved.
 ## Database migrations
 
 `supabase/migrations/` is the canonical schema history. It currently contains
-**twelve versioned migrations**. The first eight, including metric direction and
-the base payment/subscription schema, are applied and verified on the hosted
+**twelve versioned migrations**, all applied and verified on the hosted
 PostgreSQL 17 development project. Migrations nine through twelve snapshot
 subscription entitlements, make payment-review credit adjustments atomic,
 archive resources with an explicit assigned-access decision, and honor reviewed
-exercise-library choices during program import. Apply all four before deploying
-the corresponding branch code. Every future schema change must be a new numbered
-migration; never edit an applied migration.
+exercise-library choices during program import. Every future schema change must
+be a new numbered migration; never edit an applied migration.
 
 `backend/migration.sql` is frozen historical evidence from before versioning. Do
 not edit it or run it against a database where the versioned migrations have been
