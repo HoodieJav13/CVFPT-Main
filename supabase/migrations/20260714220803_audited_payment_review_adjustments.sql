@@ -117,7 +117,6 @@ set search_path = ''
 as $$
 declare
   v_review public.payment_review_cases%rowtype;
-  v_purchase public.purchases%rowtype;
   v_balance integer;
   v_remaining_reversible integer;
 begin
@@ -139,7 +138,7 @@ begin
   for update;
   if not found then return null; end if;
 
-  select * into v_purchase from public.purchases
+  perform 1 from public.purchases
   where id = v_review.purchase_id and archived = false
   for update;
   if not found then return null; end if;
