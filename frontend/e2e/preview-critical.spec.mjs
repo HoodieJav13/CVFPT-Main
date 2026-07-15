@@ -74,9 +74,27 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
   await expect(page.getByText('Program imported to vault')).toBeVisible();
   await expect(page.getByTestId('program-card').filter({ hasText: 'CVF TEST Preview Paste Program' })).toBeVisible();
 
+  await page.getByTestId('program-import-open-button').click();
+  await page.getByTestId('program-import-source-select').click();
+  await page.getByRole('option', { name: 'Paste program' }).click();
+  await page.getByTestId('program-import-paste-textarea').fill('Bench Press (DB) 3x8');
+  await page.getByTestId('program-import-paste-parse-button').click();
+  await page.getByTestId('program-import-name-input').fill('Near duplicate review');
+  await expect(page.getByTestId('program-import-similar-exercise')).toContainText('DB Bench Press');
+  await expect(page.getByTestId('program-import-save-button')).toBeDisabled();
+  await page.getByTestId('program-import-use-existing-exercise').click();
+  await expect(page.getByTestId('program-import-similar-exercise')).toHaveCount(0);
+  await expect(page.getByTestId('program-import-save-button')).toBeEnabled();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+
   await page.getByTestId('sidebar-nav-resources').click();
   await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
-  await expect(page.getByTestId('coach-resource-card').filter({ hasText: 'Knee Recovery Basics' })).toBeVisible();
+  const assignedFixture = page.getByTestId('coach-resource-card').filter({ hasText: 'Knee Recovery Basics' });
+  await expect(assignedFixture).toBeVisible();
+  await assignedFixture.getByTestId('coach-resource-archive').click();
+  await expect(page.getByTestId('resource-archive-assignment-warning')).toContainText('assigned to 1 client');
+  await page.getByTestId('resource-archive-keep-access').click();
+  await expect(assignedFixture).toHaveCount(0);
   await page.getByTestId('resource-upload-open').click();
   await page.getByTestId('resource-new-category-input').fill('Mobility Handouts');
   await page.getByTestId('resource-new-category-save').click();
@@ -104,6 +122,10 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
   await page.getByTestId('resource-edit-public-switch').click();
   await page.getByTestId('resource-edit-save').click();
   await expect(uploadedResource.getByText('Public — visible to all clients')).toBeVisible();
+  await uploadedResource.getByTestId('coach-resource-archive').click();
+  await expect(page.getByTestId('resource-archive-assignment-warning')).toContainText('assigned to 1 client');
+  await page.getByTestId('resource-archive-revoke-access').click();
+  await expect(uploadedResource).toHaveCount(0);
 
   await page.getByTestId('sidebar-nav-messages').click();
   await expect(page.getByTestId('message-thread-row').first()).toBeVisible();

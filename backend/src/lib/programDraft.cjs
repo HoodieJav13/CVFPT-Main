@@ -31,6 +31,62 @@ function normalizeName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+const EXERCISE_TOKEN_ALIASES = { bb: 'barbell', db: 'dumbbell', kb: 'kettlebell' };
+
+function exerciseNameTokens(value) {
+  return normalizeName(value)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((token) => EXERCISE_TOKEN_ALIASES[token] || token)
+    .sort();
+}
+
+function editDistance(left, right) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+}
+
+function exerciseNameSimilarity(left, right) {
+  const normalizedLeft = normalizeName(left);
+  const normalizedRight = normalizeName(right);
+  if (!normalizedLeft || !normalizedRight || normalizedLeft === normalizedRight) return 0;
+  const leftTokens = exerciseNameTokens(left);
+  const rightTokens = exerciseNameTokens(right);
+  if (leftTokens.length < 2 || rightTokens.length < 2) return 0;
+  const leftSet = new Set(leftTokens);
+  const rightSet = new Set(rightTokens);
+  const shared = [...leftSet].filter((token) => rightSet.has(token)).length;
+  const union = new Set([...leftSet, ...rightSet]).size;
+  const tokenScore = shared / union;
+  if (leftSet.size === rightSet.size && shared === leftSet.size) return 1;
+  const leftSorted = leftTokens.join(' ');
+  const rightSorted = rightTokens.join(' ');
+  const editScore = 1 - (editDistance(leftSorted, rightSorted) / Math.max(leftSorted.length, rightSorted.length));
+  if (tokenScore >= 0.8 && shared >= 2) return tokenScore;
+  return editScore >= 0.88 ? editScore : 0;
+}
+
+function findSimilarExercise(name, exercises = []) {
+  return exercises
+    .map((exercise) => ({ exercise, score: exerciseNameSimilarity(name, exercise.name) }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score
+      || left.exercise.name.localeCompare(right.exercise.name)
+      || String(left.exercise.id).localeCompare(String(right.exercise.id)))[0]?.exercise || null;
+}
+
 function cleanString(value) {
   return String(value || '').trim();
 }
@@ -392,6 +448,8 @@ function normalizeDraft(input = {}) {
       notes: nullableString(day.notes),
       exercises: Array.isArray(day.exercises) ? day.exercises.map((exercise) => ({
         name: cleanString(exercise.name || exercise.custom_name || exercise.library_exercise?.name),
+        exercise_library_id: nullableString(exercise.exercise_library_id),
+        similarity_decision: exercise.similarity_decision === 'create_new' ? 'create_new' : '',
         sets: nullableString(exercise.sets),
         reps: nullableString(exercise.reps),
         rest: nullableString(exercise.rest),
@@ -488,6 +546,8 @@ module.exports = {
   REQUIRED_CSV_COLUMNS,
   KNOWN_CSV_COLUMNS,
   normalizeName,
+  exerciseNameSimilarity,
+  findSimilarExercise,
   parseCsv,
   parseCsvDraft,
   parsePasteDraft,

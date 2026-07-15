@@ -2,6 +2,7 @@ import draftTools from '@/lib/programDraft.js';
 
 const {
   csvTemplate,
+  findSimilarExercise,
   normalizeDraft,
   normalizeName,
   parseCsvDraft,
@@ -230,8 +231,8 @@ function previewResource(resource, includeAssignments = false) {
 }
 
 function previewClientCanAccessResource(resource, clientId) {
-  return Boolean(resource && !resource.archived && (
-    resource.is_public
+  return Boolean(resource && (
+    (!resource.archived && resource.is_public)
     || state.resourceAssignments.some((assignment) => (
       assignment.resource_id === resource.id
       && assignment.client_id === clientId
@@ -353,7 +354,9 @@ function commitPreviewProgramDraft(inputDraft) {
     : draft.import_meta.source_type === 'paste' ? 'manual' : 'import_csv';
   const createdExercises = [];
   const reusedExercises = [];
-  const byName = new Map(state.exerciseLibrary.filter((e) => !e.archived).map((e) => [normalizeName(e.name), e]));
+  const activeLibrary = state.exerciseLibrary.filter((exercise) => !exercise.archived);
+  const byName = new Map(activeLibrary.map((exercise) => [normalizeName(exercise.name), exercise]));
+  const byId = new Map(activeLibrary.map((exercise) => [exercise.id, exercise]));
   const workoutIds = [];
 
   draft.days.forEach((day) => {
@@ -371,10 +374,20 @@ function commitPreviewProgramDraft(inputDraft) {
     workoutIds.push({ day, workout });
     const rows = day.exercises.map((exercise) => {
       const key = normalizeName(exercise.name);
-      let libraryExercise = byName.get(key);
+      let libraryExercise = exercise.exercise_library_id
+        ? byId.get(exercise.exercise_library_id)
+        : byName.get(key);
       if (libraryExercise) {
         reusedExercises.push({ id: libraryExercise.id, name: libraryExercise.name });
       } else {
+        const similar = exercise.similarity_decision === 'create_new'
+          ? null
+          : findSimilarExercise(exercise.name, activeLibrary);
+        if (similar) {
+          const error = new Error(`Choose whether to use existing exercise "${similar.name}" or create a new one`);
+          error.validationErrors = [{ path: 'exercise.name', message: error.message }];
+          throw error;
+        }
         libraryExercise = {
           id: id('lib'),
           name: exercise.name,
@@ -660,8 +673,9 @@ export function installPreviewApi(api) {
     if (path === '/resources' && method === 'get') {
       const categoryId = search.get('category_id');
       const query = String(search.get('q') || '').toLowerCase();
-      let rows = state.resources.filter((resource) => !resource.archived);
+      let rows = state.resources;
       if (role === 'client') rows = rows.filter((resource) => previewClientCanAccessResource(resource, client.id));
+      else rows = rows.filter((resource) => !resource.archived);
       if (categoryId) rows = rows.filter((resource) => resource.category_id === categoryId);
       if (query) rows = rows.filter((resource) => resource.title.toLowerCase().includes(query));
       return ok(rows.map((resource) => previewResource(resource, role !== 'client')), config);
@@ -692,8 +706,8 @@ export function installPreviewApi(api) {
     }
     const resourceDownload = path.match(/^\/resources\/([^/]+)\/download-link$/);
     if (resourceDownload && method === 'get') {
-      const resource = state.resources.find((row) => row.id === resourceDownload[1] && !row.archived);
-      if (!resource || (role === 'client' && !previewClientCanAccessResource(resource, client.id))) {
+      const resource = state.resources.find((row) => row.id === resourceDownload[1]);
+      if (!resource || (role === 'client' ? !previewClientCanAccessResource(resource, client.id) : resource.archived)) {
         return fail(config, 404, 'Resource not found');
       }
       return ok({ signed_url: `https://example.invalid/cvf-preview-resource.pdf?token=${resource.id}`, expires_in: 60, file_name: resource.file_name }, config);
@@ -703,12 +717,32 @@ export function installPreviewApi(api) {
       if (role === 'client') return fail(config, 403, 'Coach access required');
       const resource = state.resources.find((row) => row.id === resourceEdit[1]);
       if (!resource) return fail(config, 404, 'Resource not found');
+      if (Object.hasOwn(payload, 'archived')) return fail(config, 400, 'Use the resource archive action to choose assigned client access');
       Object.assign(resource, payload);
       return ok(previewResource(resource, true), config);
+    }
+    const resourceArchive = path.match(/^\/resources\/([^/]+)\/archive$/);
+    if (resourceArchive && method === 'post') {
+      if (role === 'client') return fail(config, 403, 'Coach access required');
+      const resource = state.resources.find((row) => row.id === resourceArchive[1] && !row.archived);
+      if (!resource) return fail(config, 404, 'Resource not found');
+      if (!['keep', 'revoke'].includes(payload.assignment_access)) {
+        return fail(config, 400, 'Choose whether to keep or revoke assigned client access');
+      }
+      const activeAssignments = state.resourceAssignments.filter((assignment) => assignment.resource_id === resource.id && assignment.active);
+      if (payload.assignment_access === 'revoke') activeAssignments.forEach((assignment) => { assignment.active = false; });
+      resource.archived = true;
+      return ok({
+        resource: previewResource(resource, true),
+        active_assignments: activeAssignments.length,
+        revoked_assignments: payload.assignment_access === 'revoke' ? activeAssignments.length : 0,
+      }, config);
     }
     const resourceAssign = path.match(/^\/resources\/([^/]+)\/assign$/);
     if (resourceAssign && method === 'post') {
       if (role === 'client') return fail(config, 403, 'Coach access required');
+      const resource = state.resources.find((row) => row.id === resourceAssign[1] && !row.archived);
+      if (!resource) return fail(config, 404, 'Resource not found');
       let assignment = state.resourceAssignments.find((row) => row.resource_id === resourceAssign[1] && row.client_id === payload.client_id);
       if (assignment) Object.assign(assignment, { active: true, assigned_at: new Date().toISOString() });
       else {

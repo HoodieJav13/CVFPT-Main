@@ -28,6 +28,14 @@ const paymentAdjustmentMigration = fs.readFileSync(
   path.join(root, 'supabase', 'migrations', '20260714220803_audited_payment_review_adjustments.sql'),
   'utf8',
 );
+const resourceArchiveMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260715005452_archive_resource_with_assignment_choice.sql'),
+  'utf8',
+);
+const importChoiceMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260715005846_honor_import_exercise_choices.sql'),
+  'utf8',
+);
 const baseline = fs.readFileSync(path.join(root, 'backend', 'migration.sql'), 'utf8');
 
 const functions = [
@@ -45,6 +53,7 @@ const functions = [
   ['record_payment_reversal', 'uuid, text, text, text'],
   ['open_payment_review', 'uuid, text, text, text'],
   ['resolve_payment_review', 'uuid, text, integer, uuid, text'],
+  ['archive_resource', 'uuid, boolean'],
 ];
 
 test('transactional RPCs are invoker-security and service-role-only', () => {
@@ -52,38 +61,39 @@ test('transactional RPCs are invoker-security and service-role-only', () => {
     const declaration = new RegExp(
       `create or replace function public\\.${name}[\\s\\S]*?security invoker[\\s\\S]*?set search_path = ''`,
     );
-    const rpcMigrations = `${migration}\n${paymentMigration}\n${paymentAdjustmentMigration}`;
+    const rpcMigrations = `${migration}\n${paymentMigration}\n${paymentAdjustmentMigration}\n${resourceArchiveMigration}\n${importChoiceMigration}`;
     assert.match(rpcMigrations, declaration, `${name} must use invoker security with an empty search path`);
     assert.match(
       rpcMigrations,
-      new RegExp(`revoke execute on function public\\.${name}\\(${signature}\\) from public, anon, authenticated;`),
+      new RegExp(`revoke execute on function public\\.${name}\\(${signature}\\)\\s+from public, anon, authenticated;`),
     );
     assert.match(
       rpcMigrations,
-      new RegExp(`grant execute on function public\\.${name}\\(${signature}\\) to service_role;`),
+      new RegExp(`grant execute on function public\\.${name}\\(${signature}\\)\\s+to service_role;`),
     );
   }
 });
 
 test('priority import RPC is invoker-security and unavailable to public API roles', () => {
+  const currentImportRpc = `${versionedBaseline}\n${importChoiceMigration}`;
   assert.match(
-    versionedBaseline,
+    currentImportRpc,
     /create or replace function (?:public\.)?commit_program_import[\s\S]*?security invoker[\s\S]*?set search_path = ''/,
   );
   assert.doesNotMatch(
-    versionedBaseline.match(/create or replace function (?:public\.)?commit_program_import[\s\S]*?\$\$;/)?.[0] || '',
+    importChoiceMigration.match(/create or replace function (?:public\.)?commit_program_import[\s\S]*?\$\$;/)?.[0] || '',
     /security definer/i,
   );
   assert.match(
-    versionedBaseline,
+    currentImportRpc,
     /revoke execute on function public\.commit_program_import\(uuid, text, jsonb\) from public;/,
   );
   assert.match(
-    versionedBaseline,
+    currentImportRpc,
     /revoke execute on function public\.commit_program_import\(uuid, text, jsonb\) from anon, authenticated;/,
   );
   assert.match(
-    versionedBaseline,
+    currentImportRpc,
     /grant execute on function public\.commit_program_import\(uuid, text, jsonb\) to service_role;/,
   );
 });

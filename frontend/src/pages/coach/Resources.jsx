@@ -12,6 +12,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
@@ -27,6 +31,8 @@ export default function CoachResources() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [editResource, setEditResource] = useState(null);
   const [assignResource, setAssignResource] = useState(null);
+  const [archiveResource, setArchiveResource] = useState(null);
+  const [archiving, setArchiving] = useState(false);
   const [downloadingId, setDownloadingId] = useState('');
 
   const load = useCallback(async () => {
@@ -68,14 +74,30 @@ export default function CoachResources() {
     }
   };
 
-  const archive = async (resource) => {
+  const archive = async (resource, assignmentAccess) => {
+    setArchiving(true);
     try {
-      await api.patch(`/resources/${resource.id}`, { archived: true });
-      toast.success('Resource archived');
-      load();
+      const { data } = await api.post(`/resources/${resource.id}/archive`, {
+        assignment_access: assignmentAccess,
+      });
+      const revoked = data.revoked_assignments || 0;
+      toast.success(revoked ? `Resource archived and access removed for ${revoked} client${revoked === 1 ? '' : 's'}` : 'Resource archived');
+      setArchiveResource(null);
+      await load();
     } catch (error) {
       toast.error(errMsg(error, 'Could not archive resource'));
+    } finally {
+      setArchiving(false);
     }
+  };
+
+  const requestArchive = (resource) => {
+    const activeAssignments = (resource.assignments || []).filter((assignment) => assignment.active);
+    if (activeAssignments.length === 0) {
+      archive(resource, 'keep');
+      return;
+    }
+    setArchiveResource({ resource, count: activeAssignments.length });
   };
 
   if (!resources && loadError) return <LoadErrorState message={loadError} scope="coach-resources" onRetry={() => { setLoadError(null); load(); }} />;
@@ -138,7 +160,7 @@ export default function CoachResources() {
                       <Button type="button" size="sm" variant="outline" className="rounded-xl" disabled={downloadingId === resource.id} onClick={() => download(resource)} data-testid="coach-resource-download"><Download className="mr-1.5 h-4 w-4" /> PDF</Button>
                       {!resource.is_public && <Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={() => setAssignResource(resource)} data-testid="coach-resource-assign"><Users className="mr-1.5 h-4 w-4" /> Assign</Button>}
                       <Button type="button" size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => setEditResource(resource)} aria-label={`Edit ${resource.title}`} data-testid="coach-resource-edit"><Pencil className="h-4 w-4" /></Button>
-                      <Button type="button" size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-muted-foreground" onClick={() => archive(resource)} aria-label={`Archive ${resource.title}`} data-testid="coach-resource-archive"><Archive className="h-4 w-4" /></Button>
+                      <Button type="button" size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-muted-foreground" onClick={() => requestArchive(resource)} aria-label={`Archive ${resource.title}`} data-testid="coach-resource-archive"><Archive className="h-4 w-4" /></Button>
                     </div>
                   </div>
                 </CardContent>
@@ -150,6 +172,25 @@ export default function CoachResources() {
 
       {editResource && <EditDialog resource={editResource} categories={categories} onClose={() => setEditResource(null)} onSaved={() => { setEditResource(null); load(); }} />}
       {assignResource && <AssignDialog resource={assignResource} clients={clients} onClose={() => setAssignResource(null)} onSaved={() => { setAssignResource(null); load(); }} />}
+      <AlertDialog open={Boolean(archiveResource)} onOpenChange={(next) => { if (!next && !archiving) setArchiveResource(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive {archiveResource?.resource.title}?</AlertDialogTitle>
+            <AlertDialogDescription data-testid="resource-archive-assignment-warning">
+              This resource is assigned to {archiveResource?.count || 0} client{archiveResource?.count === 1 ? '' : 's'}. Also remove their access now?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:space-x-0">
+            <AlertDialogCancel disabled={archiving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={archiving} className="bg-secondary text-secondary-foreground hover:bg-secondary/80" onClick={() => archive(archiveResource.resource, 'keep')} data-testid="resource-archive-keep-access">
+              Keep existing access
+            </AlertDialogAction>
+            <AlertDialogAction disabled={archiving} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => archive(archiveResource.resource, 'revoke')} data-testid="resource-archive-revoke-access">
+              Revoke access now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

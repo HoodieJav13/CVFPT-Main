@@ -12,6 +12,10 @@ const migrationSource = fs.readFileSync(
   path.join(__dirname, '..', '..', 'supabase', 'migrations', '20260712060335_coach_managed_pdf_resource_library.sql'),
   'utf8',
 );
+const archiveMigrationSource = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'supabase', 'migrations', '20260715005452_archive_resource_with_assignment_choice.sql'),
+  'utf8',
+);
 
 function namedFunction(source, name) {
   const start = source.indexOf(`function ${name}(`);
@@ -44,6 +48,7 @@ test('resource routes use existing auth, coach guards, upload rate limiting, and
   assert.match(routeSource, /router\.use\(requireAuth\)/);
   assert.match(routeSource, /router\.post\('\/', requireCoach, resourceUploadLimiter, resourceUpload/);
   assert.match(routeSource, /router\.patch\('\/:id', requireCoach/);
+  assert.match(routeSource, /router\.post\('\/:id\/archive', requireCoach/);
   assert.match(routeSource, /router\.post\('\/:id\/assign', requireCoach/);
   assert.match(routeSource, /router\.patch\('\/:id\/assignments\/:clientId', requireCoach/);
   assert.match(routeSource, /canAccessClient\(user, data\)/);
@@ -54,6 +59,19 @@ test('resource routes use existing auth, coach guards, upload rate limiting, and
   assert.match(rateLimitSource, /identifier: 'resource-upload-pdf'[\s\S]*?limit: 10/);
   assert.match(appSource, /app\.use\('\/api\/resources', require\('\.\/routes\/resources'\)\)/);
   assert.match(appSource, /app\.use\('\/api\/resource-categories', require\('\.\/routes\/resourceCategories'\)\)/);
+});
+
+test('resource archival requires an explicit access choice and preserves assigned archived downloads', () => {
+  assert.match(routeSource, /\['keep', 'revoke'\]\.includes\(assignmentAccess\)/);
+  assert.match(routeSource, /\.rpc\('archive_resource',[\s\S]*?p_revoke_assigned_access: assignmentAccess === 'revoke'/);
+  assert.match(routeSource, /and\(archived\.eq\.false,is_public\.eq\.true\),id\.in/);
+  assert.match(routeSource, /includeArchived: req\.user\.role === 'client'/);
+  assert.match(routeSource, /Use the resource archive action to choose assigned client access/);
+  assert.match(archiveMigrationSource, /create or replace function public\.archive_resource/);
+  assert.match(archiveMigrationSource, /security invoker[\s\S]*?set search_path = ''/);
+  assert.match(archiveMigrationSource, /update public\.resource_assignments[\s\S]*?set active = false/);
+  assert.match(archiveMigrationSource, /revoke execute on function public\.archive_resource\(uuid, boolean\)[\s\S]*?from public, anon, authenticated/);
+  assert.match(archiveMigrationSource, /grant execute on function public\.archive_resource\(uuid, boolean\) to service_role/);
 });
 
 test('PDF validation requires the MIME type and PDF signature', () => {

@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -24,6 +24,7 @@ import draftTools from '@/lib/programDraft.js';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const {
+  findSimilarExercise,
   normalizeDraft,
   normalizeName,
   parseCsv,
@@ -542,7 +543,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
   const [saving, setSaving] = useState(false);
 
   const validation = draft ? validateDraft(draft) : { valid: false, errors: [] };
-  const exercisePlan = draft ? summarizeExercisePlan(draft, library) : { reused: [], created: [] };
+  const exercisePlan = draft ? summarizeExercisePlan(draft, library) : { reused: [], created: [], suggestions: [] };
   const requiredReviewDays = draft ? reviewAttentionDayValues(draft, [...errors, ...validation.errors], exercisePlan.created) : [];
   const availableReviewDays = draft ? draft.days.map((_, index) => `day-${index}`) : [];
   const reviewOpenValues = [...new Set([
@@ -686,11 +687,31 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
     } : day),
   });
 
+  const resolveSimilarExercise = (exerciseName, suggestion, decision) => updateDraft({
+    ...draft,
+    days: draft.days.map((day) => ({
+      ...day,
+      exercises: day.exercises.map((exercise) => (
+        normalizeName(exercise.name) === normalizeName(exerciseName)
+          ? {
+            ...exercise,
+            exercise_library_id: decision === 'use_existing' ? suggestion.id : '',
+            similarity_decision: decision === 'create_new' ? 'create_new' : '',
+          }
+          : exercise
+      )),
+    })),
+  });
+
   const commit = async () => {
     const checked = validateDraft(draft);
     if (!checked.valid) {
       setErrors(checked.errors);
       toast.error('Fix draft errors before saving');
+      return;
+    }
+    if (exercisePlan.suggestions.length) {
+      toast.error('Choose whether to reuse or create each similar exercise');
       return;
     }
     setSaving(true);
@@ -713,6 +734,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
       <DialogContent className="max-h-[92dvh] max-w-4xl overflow-y-auto" data-testid="program-import-dialog">
         <DialogHeader>
           <DialogTitle>Import program</DialogTitle>
+          <DialogDescription>Parse a program, review every exercise, and choose how possible library matches should be handled before saving.</DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
           <div className="grid gap-3 lg:grid-cols-[180px_1fr_auto] lg:items-end">
@@ -842,38 +864,54 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
                           <Input value={day.goal} onChange={(e) => setDay(dayIndex, { goal: e.target.value })} placeholder="Goal/focus" data-testid="program-import-day-goal-input" />
                         </div>
                         <Input value={day.notes} onChange={(e) => setDay(dayIndex, { notes: e.target.value })} placeholder="Day notes" data-testid="program-import-day-notes-input" />
-                        {day.exercises.map((exercise, exerciseIndex) => (
-                          <div key={`${day.day_number}-${exerciseIndex}`} className="space-y-2 rounded-xl border border-border bg-card/50 p-3" data-testid="program-import-exercise-card">
-                            <div className="flex gap-2">
-                              <Input value={exercise.name} onChange={(e) => setExercise(dayIndex, exerciseIndex, { name: e.target.value })} placeholder={`Exercise ${exerciseIndex + 1}`} data-testid="program-import-exercise-name-input" />
-                              <IconButton
-                                label={`Remove ${exercise.name || `exercise ${exerciseIndex + 1}`}`}
-                                variant="ghost"
-                                size="touchIcon"
-                                className="shrink-0 rounded-xl text-muted-foreground"
-                                onClick={() => removeExercise(dayIndex, exerciseIndex)}
-                                data-testid="program-import-exercise-remove-button"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </IconButton>
+                        {day.exercises.map((exercise, exerciseIndex) => {
+                          const similarSuggestion = exercisePlan.suggestions.find((suggestion) => normalizeName(suggestion.name) === normalizeName(exercise.name));
+                          return (
+                            <div key={`${day.day_number}-${exerciseIndex}`} className="space-y-2 rounded-xl border border-border bg-card/50 p-3" data-testid="program-import-exercise-card">
+                              <div className="flex gap-2">
+                                <Input value={exercise.name} onChange={(e) => setExercise(dayIndex, exerciseIndex, { name: e.target.value, exercise_library_id: '', similarity_decision: '' })} placeholder={`Exercise ${exerciseIndex + 1}`} data-testid="program-import-exercise-name-input" />
+                                <IconButton
+                                  label={`Remove ${exercise.name || `exercise ${exerciseIndex + 1}`}`}
+                                  variant="ghost"
+                                  size="touchIcon"
+                                  className="shrink-0 rounded-xl text-muted-foreground"
+                                  onClick={() => removeExercise(dayIndex, exerciseIndex)}
+                                  data-testid="program-import-exercise-remove-button"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </IconButton>
+                              </div>
+                              {similarSuggestion && (
+                                <Alert className="border-primary/30 bg-primary/10" data-testid="program-import-similar-exercise">
+                                  <CircleAlert className="h-4 w-4 text-primary" aria-hidden />
+                                  <AlertTitle>Possible existing exercise</AlertTitle>
+                                  <AlertDescription className="space-y-3">
+                                    <p>This looks similar to “{similarSuggestion.exercise.name}” — use existing, or create new?</p>
+                                    <div className="flex flex-wrap gap-2">
+                                      <Button type="button" size="sm" className="rounded-lg" onClick={() => resolveSimilarExercise(exercise.name, similarSuggestion.exercise, 'use_existing')} data-testid="program-import-use-existing-exercise">Use existing</Button>
+                                      <Button type="button" size="sm" variant="outline" className="rounded-lg" onClick={() => resolveSimilarExercise(exercise.name, similarSuggestion.exercise, 'create_new')} data-testid="program-import-create-new-exercise">Create new</Button>
+                                    </div>
+                                  </AlertDescription>
+                                </Alert>
+                              )}
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                <Input value={exercise.sets} onChange={(e) => setExercise(dayIndex, exerciseIndex, { sets: e.target.value })} placeholder="Sets" data-testid="program-import-exercise-sets-input" />
+                                <Input value={exercise.reps} onChange={(e) => setExercise(dayIndex, exerciseIndex, { reps: e.target.value })} placeholder="Reps" data-testid="program-import-exercise-reps-input" />
+                                <Input value={exercise.rest} onChange={(e) => setExercise(dayIndex, exerciseIndex, { rest: e.target.value })} placeholder="Rest" data-testid="program-import-exercise-rest-input" />
+                                <Input value={exercise.tempo} onChange={(e) => setExercise(dayIndex, exerciseIndex, { tempo: e.target.value })} placeholder="Tempo" data-testid="program-import-exercise-tempo-input" />
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <Input value={exercise.client_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { client_notes: e.target.value })} placeholder="Client notes" data-testid="program-import-exercise-client-notes-input" />
+                                <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" data-testid="program-import-exercise-coach-notes-input" />
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-4">
+                                <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value })} placeholder="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
+                                <Input value={exercise.equipment} onChange={(e) => setExercise(dayIndex, exerciseIndex, { equipment: e.target.value })} placeholder="Equipment" data-testid="program-import-exercise-equipment-input" />
+                                <Input value={exercise.primary_muscle} onChange={(e) => setExercise(dayIndex, exerciseIndex, { primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="program-import-exercise-primary-muscle-input" />
+                              </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                              <Input value={exercise.sets} onChange={(e) => setExercise(dayIndex, exerciseIndex, { sets: e.target.value })} placeholder="Sets" data-testid="program-import-exercise-sets-input" />
-                              <Input value={exercise.reps} onChange={(e) => setExercise(dayIndex, exerciseIndex, { reps: e.target.value })} placeholder="Reps" data-testid="program-import-exercise-reps-input" />
-                              <Input value={exercise.rest} onChange={(e) => setExercise(dayIndex, exerciseIndex, { rest: e.target.value })} placeholder="Rest" data-testid="program-import-exercise-rest-input" />
-                              <Input value={exercise.tempo} onChange={(e) => setExercise(dayIndex, exerciseIndex, { tempo: e.target.value })} placeholder="Tempo" data-testid="program-import-exercise-tempo-input" />
-                            </div>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <Input value={exercise.client_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { client_notes: e.target.value })} placeholder="Client notes" data-testid="program-import-exercise-client-notes-input" />
-                              <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" data-testid="program-import-exercise-coach-notes-input" />
-                            </div>
-                            <div className="grid gap-2 sm:grid-cols-4">
-                              <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value })} placeholder="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
-                              <Input value={exercise.equipment} onChange={(e) => setExercise(dayIndex, exerciseIndex, { equipment: e.target.value })} placeholder="Equipment" data-testid="program-import-exercise-equipment-input" />
-                              <Input value={exercise.primary_muscle} onChange={(e) => setExercise(dayIndex, exerciseIndex, { primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="program-import-exercise-primary-muscle-input" />
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                         <Button type="button" variant="outline" className="rounded-xl" onClick={() => addExercise(dayIndex)} data-testid="program-import-exercise-add-button">
                           <Plus className="h-4 w-4 mr-1.5" /> Add exercise
                         </Button>
@@ -885,7 +923,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
 
               <DialogFooter>
                 <Button variant="outline" className="rounded-xl" onClick={() => close(false)}>Cancel</Button>
-                <Button className="rounded-xl" disabled={saving || !validation.valid} onClick={commit} data-testid="program-import-save-button">
+                <Button className="rounded-xl" disabled={saving || !validation.valid || exercisePlan.suggestions.length > 0} onClick={commit} data-testid="program-import-save-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save to vault'}
                 </Button>
               </DialogFooter>
@@ -1075,19 +1113,29 @@ function exerciseName(exercise) {
 
 function summarizeExercisePlan(draft, library) {
   const existing = new Map((library || []).map((exercise) => [normalizeName(exercise.name), exercise]));
+  const existingById = new Map((library || []).map((exercise) => [exercise.id, exercise]));
   const seen = new Set();
   const reused = [];
   const created = [];
-  (draft.days || []).forEach((day) => {
-    (day.exercises || []).forEach((exercise) => {
+  const suggestions = [];
+  (draft.days || []).forEach((day, dayIndex) => {
+    (day.exercises || []).forEach((exercise, exerciseIndex) => {
       const key = normalizeName(exercise.name);
       if (!key || seen.has(key)) return;
       seen.add(key);
-      if (existing.has(key)) reused.push({ name: exercise.name, id: existing.get(key).id });
-      else created.push({ name: exercise.name });
+      const selected = exercise.exercise_library_id ? existingById.get(exercise.exercise_library_id) : null;
+      if (selected) reused.push({ name: exercise.name, id: selected.id });
+      else if (existing.has(key)) reused.push({ name: exercise.name, id: existing.get(key).id });
+      else {
+        created.push({ name: exercise.name });
+        if (exercise.similarity_decision !== 'create_new') {
+          const similar = findSimilarExercise(exercise.name, library || []);
+          if (similar) suggestions.push({ name: exercise.name, exercise: similar, dayIndex, exerciseIndex });
+        }
+      }
     });
   });
-  return { reused, created };
+  return { reused, created, suggestions };
 }
 
 function reviewAttentionDayValues(draft, errors, createdExercises) {

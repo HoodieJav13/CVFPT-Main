@@ -24,6 +24,7 @@ const {
   PARSER_VERSION,
   csvTemplate,
   draftFromProgram,
+  findSimilarExercise,
   normalizeDraft,
   normalizeName,
   parseCsvDraft,
@@ -292,6 +293,41 @@ async function programDaysAreAccessible(user, days) {
   return programDaysUseAccessibleWorkouts(user, days, data || []);
 }
 
+async function validateImportExerciseChoices(draft) {
+  const { data: library, error } = await supabaseAdmin
+    .from('exercise_library')
+    .select('id,name')
+    .eq('archived', false)
+    .order('name');
+  if (error) throw error;
+  const activeExercises = library || [];
+  const byId = new Map(activeExercises.map((exercise) => [exercise.id, exercise]));
+  const byName = new Map(activeExercises.map((exercise) => [normalizeName(exercise.name), exercise]));
+  const errors = [];
+  (draft.days || []).forEach((day, dayIndex) => {
+    (day.exercises || []).forEach((exercise, exerciseIndex) => {
+      const path = `days.${dayIndex}.exercises.${exerciseIndex}.name`;
+      if (exercise.exercise_library_id) {
+        if (!byId.has(exercise.exercise_library_id)) {
+          errors.push({ path, message: 'The selected existing exercise is no longer available' });
+        }
+        return;
+      }
+      if (byName.has(normalizeName(exercise.name)) || exercise.similarity_decision === 'create_new') return;
+      const similar = findSimilarExercise(exercise.name, activeExercises);
+      if (similar) {
+        errors.push({
+          path,
+          message: `Choose whether to use existing exercise "${similar.name}" or create a new one`,
+          suggested_exercise_id: similar.id,
+          suggested_exercise_name: similar.name,
+        });
+      }
+    });
+  });
+  return errors;
+}
+
 // ----- Exercise library -----
 router.get('/exercise-library', requireCoach, async (req, res) => {
   try {
@@ -527,6 +563,14 @@ router.post('/import/commit', requireCoach, programCommitLimiter, async (req, re
   try {
     const validation = validateDraft(req.body?.draft || req.body);
     if (!validation.valid) return res.status(422).json({ error: 'Fix import draft errors before saving.', errors: validation.errors, draft: validation.draft });
+    const choiceErrors = await validateImportExerciseChoices(validation.draft);
+    if (choiceErrors.length) {
+      return res.status(422).json({
+        error: 'Review similar exercise names before saving.',
+        errors: choiceErrors,
+        draft: validation.draft,
+      });
+    }
     const source = sourceForImport(validation.draft.import_meta.source_type);
     const { data, error } = await supabaseAdmin.rpc('commit_program_import', {
       p_coach_id: req.user.coach.id,

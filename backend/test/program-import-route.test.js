@@ -47,6 +47,23 @@ test('paste parsing is coach-protected, import-limited, and commit sources remai
   const rpcCalls = [];
 
   const supabaseAdmin = {
+    from(table) {
+      assert.equal(table, 'exercise_library');
+      return {
+        select() { return this; },
+        eq() { return this; },
+        async order() {
+          return {
+            data: [
+              { id: 'lib-goblet', name: 'Goblet Squat' },
+              { id: 'lib-db-bench', name: 'Bench Press (DB)' },
+              { id: 'lib-cable-row', name: 'Cable Row' },
+            ],
+            error: null,
+          };
+        },
+      };
+    },
     async rpc(name, args) {
       rpcCalls.push({ name, args });
       return { data: {}, error: null };
@@ -169,4 +186,38 @@ test('paste parsing is coach-protected, import-limited, and commit sources remai
     rpcCalls.map(({ name, args }) => [name, args.p_source]),
     expectedSources.map(([, source]) => ['commit_program_import', source]),
   );
+
+  const nearDuplicateDraft = {
+    ...draft,
+    days: [{ ...draft.days[0], exercises: [{ name: 'DB Bench Press', sets: '3', reps: '8' }] }],
+  };
+  const unresolved = await post('/import/commit', { draft: nearDuplicateDraft }, 'coach');
+  assert.equal(unresolved.status, 422);
+  const unresolvedBody = await unresolved.json();
+  assert.equal(unresolvedBody.error, 'Review similar exercise names before saving.');
+  assert.equal(unresolvedBody.errors[0].suggested_exercise_id, 'lib-db-bench');
+
+  const useExisting = await post('/import/commit', {
+    draft: {
+      ...nearDuplicateDraft,
+      days: [{
+        ...nearDuplicateDraft.days[0],
+        exercises: [{ ...nearDuplicateDraft.days[0].exercises[0], exercise_library_id: 'lib-db-bench' }],
+      }],
+    },
+  }, 'coach');
+  assert.equal(useExisting.status, 201);
+  assert.equal(rpcCalls.at(-1).args.p_draft.days[0].exercises[0].exercise_library_id, 'lib-db-bench');
+
+  const createNew = await post('/import/commit', {
+    draft: {
+      ...nearDuplicateDraft,
+      days: [{
+        ...nearDuplicateDraft.days[0],
+        exercises: [{ ...nearDuplicateDraft.days[0].exercises[0], similarity_decision: 'create_new' }],
+      }],
+    },
+  }, 'coach');
+  assert.equal(createNew.status, 201);
+  assert.equal(rpcCalls.at(-1).args.p_draft.days[0].exercises[0].similarity_decision, 'create_new');
 });
