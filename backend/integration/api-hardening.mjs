@@ -246,11 +246,11 @@ async function main() {
         method: 'PUT', token: admin.access_token,
         json: { description: 'Updated automated development verification', price: 100 },
       }));
-      await check('coach records fake manual purchase', () => request('/payments/manual', {
+      await check('coach records fake cash payment', () => request('/payments/cash', {
         method: 'POST', token: coachA.access_token, expected: 201,
         json: { client_id: created.id, package_id: packageRow.id, amount: 100 },
       }));
-      await check('manual purchase grants two credits', async () => {
+      await check('cash payment grants two credits', async () => {
         const { payload } = await request(`/payments/credits/${created.id}`, { token: coachA.access_token });
         if (payload.balance !== 2) throw new Error(`expected 2 credits, received ${payload.balance}`);
       });

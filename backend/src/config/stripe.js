@@ -25,11 +25,17 @@ function stripeConfiguration(env = process.env) {
 function createStripeClient(env, StripeClient) {
   const configuration = stripeConfiguration(env);
   if (!configuration.configured) return null;
-  return new StripeClient(configuration.secretKey);
+  return new StripeClient(configuration.secretKey, { apiVersion: '2026-02-25.clover' });
+}
+
+function getStripeClient(env = process.env) {
+  const Stripe = require('stripe');
+  return createStripeClient(env, Stripe);
 }
 
 module.exports = {
   createStripeClient,
+  getStripeClient,
   isStripeTestPublishable,
   isStripeTestSecret,
   stripeConfiguration,

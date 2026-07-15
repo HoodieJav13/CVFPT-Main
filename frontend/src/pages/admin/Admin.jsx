@@ -10,10 +10,11 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Users, CalendarDays, Inbox, ShieldCheck, Plus, Loader2, FileText, Archive, ArchiveRestore, Pencil } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Users, CalendarDays, Inbox, ShieldCheck, Plus, Loader2, FileText, Archive, ArchiveRestore, Pencil, Gift, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { fmtDateTime, fmtMoney } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -53,11 +54,198 @@ export default function AdminPage() {
           <TabsTrigger value="coaches" data-testid="admin-tab-coaches">Coaches</TabsTrigger>
           <TabsTrigger value="waivers" data-testid="admin-tab-waivers">Waivers</TabsTrigger>
           <TabsTrigger value="packages" data-testid="admin-tab-packages">Packages</TabsTrigger>
+          <TabsTrigger value="payment-reviews" data-testid="admin-tab-payment-reviews">Payment reviews</TabsTrigger>
         </TabsList>
         <TabsContent value="coaches"><CoachesTab /></TabsContent>
         <TabsContent value="waivers"><WaiversTab /></TabsContent>
         <TabsContent value="packages"><PackagesTab /></TabsContent>
+        <TabsContent value="payment-reviews"><PaymentReviewsTab /></TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function PaymentReviewsTab() {
+  const [courtesy, setCourtesy] = useState(null);
+  const [reviews, setReviews] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [saving, setSaving] = useState(null);
+  const [resolving, setResolving] = useState(null);
+  const [resolution, setResolution] = useState('resolved');
+  const [creditAdjustment, setCreditAdjustment] = useState('0');
+  const [note, setNote] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const [courtesyResponse, reviewResponse] = await Promise.all([
+        api.get('/payments/courtesy/pending'),
+        api.get('/payments/reviews'),
+      ]);
+      setCourtesy(courtesyResponse.data);
+      setReviews(reviewResponse.data);
+      setLoadError(null);
+    } catch (error) {
+      const message = errMsg(error, 'Failed to load payment reviews');
+      setLoadError(message);
+      toast.error(message);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const reviewCourtesy = async (request, approve) => {
+    setSaving(request.id);
+    try {
+      await api.post(`/payments/courtesy/${request.id}/review`, { approve });
+      toast.success(approve ? 'Courtesy credits approved' : 'Courtesy request rejected');
+      load();
+    } catch (error) {
+      toast.error(errMsg(error));
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const resolveReview = async (event) => {
+    event.preventDefault();
+    if (!resolving) return;
+    setSaving(resolving.id);
+    try {
+      await api.post(`/payments/reviews/${resolving.id}/resolve`, {
+        resolution,
+        credit_adjustment: Number(creditAdjustment),
+        note,
+      });
+      toast.success(resolution === 'resolved' ? 'Payment review resolved' : 'Payment review dismissed');
+      setResolving(null);
+      setNote('');
+      setResolution('resolved');
+      setCreditAdjustment('0');
+      load();
+    } catch (error) {
+      toast.error(errMsg(error));
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  if ((!courtesy || !reviews) && loadError) return <LoadErrorState message={loadError} scope="admin-payment-reviews" onRetry={() => { setLoadError(null); load(); }} />;
+  if (!courtesy || !reviews) return <LoadingScreen />;
+  const openReviews = reviews.filter((review) => review.status === 'open');
+  const maxCreditAdjustment = resolving
+    ? Math.max(0, resolving.credits_requested - resolving.credits_reversed - resolving.credits_consumed)
+    : 0;
+  const adjustmentValue = Number(creditAdjustment);
+  const adjustmentValid = Number.isInteger(adjustmentValue)
+    && adjustmentValue >= 0
+    && adjustmentValue <= maxCreditAdjustment
+    && (resolution !== 'dismissed' || adjustmentValue === 0);
+
+  return (
+    <div className="space-y-6 mt-1">
+      <section>
+        <div className="mb-2 flex items-center gap-2">
+          <Gift className="h-4 w-4 text-gold" />
+          <h3 className="font-display font-semibold">Courtesy approvals</h3>
+          <Badge variant="outline">{courtesy.length}</Badge>
+        </div>
+        {courtesy.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No courtesy grants need approval.</p>
+        ) : (
+          <div className="space-y-2">
+            {courtesy.map((request) => (
+              <Card key={request.id} data-testid="courtesy-review-row">
+                <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium text-sm">{request.client?.name} · {request.credits} credits</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{request.reason.replaceAll('_', ' ')} · requested by {request.requested_by?.name}</p>
+                    {request.note && <p className="text-xs mt-1">{request.note}</p>}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="rounded-lg" disabled={saving === request.id} onClick={() => reviewCourtesy(request, false)} data-testid="courtesy-reject-button">
+                      <XCircle className="h-4 w-4 mr-1.5" /> Reject
+                    </Button>
+                    <Button size="sm" className="rounded-lg" disabled={saving === request.id} onClick={() => reviewCourtesy(request, true)} data-testid="courtesy-approve-button">
+                      {saving === request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle2 className="h-4 w-4 mr-1.5" /> Approve</>}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <h3 className="font-display font-semibold">Refund & dispute review</h3>
+          <Badge variant="outline">{openReviews.length}</Badge>
+        </div>
+        {openReviews.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No refunds or disputes require manual review.</p>
+        ) : (
+          <div className="space-y-2">
+            {openReviews.map((review) => (
+              <Card key={review.id} className="border-destructive/30" data-testid="payment-review-row">
+                <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium text-sm">{review.client?.name} · {review.purchase?.package_name || 'Payment'}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 capitalize">{review.review_type} · {review.credits_reversed} reversed · {review.credits_consumed} already used</p>
+                    {review.note && <p className="text-xs mt-1">{review.note}</p>}
+                  </div>
+                  <Button size="sm" variant="outline" className="rounded-lg" onClick={() => { setResolving(review); setResolution('resolved'); setCreditAdjustment('0'); setNote(''); }} data-testid="resolve-payment-review-button">Review case</Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <Dialog open={Boolean(resolving)} onOpenChange={(open) => { if (!open) { setResolving(null); setNote(''); setCreditAdjustment('0'); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Resolve payment review</DialogTitle>
+            <DialogDescription>Document how the consumed-credit refund or dispute was handled.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={resolveReview} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Outcome</Label>
+              <Select value={resolution} onValueChange={(value) => { setResolution(value); if (value === 'dismissed') setCreditAdjustment('0'); }}>
+                <SelectTrigger className="rounded-xl" data-testid="payment-review-resolution-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                  <SelectItem value="dismissed">Dismissed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Credits to reverse *</Label>
+              <Input
+                required
+                type="number"
+                min="0"
+                max={maxCreditAdjustment}
+                step="1"
+                disabled={resolution === 'dismissed'}
+                value={creditAdjustment}
+                onChange={(event) => setCreditAdjustment(event.target.value)}
+                data-testid="payment-review-credit-adjustment-input"
+              />
+              <p className="text-xs text-muted-foreground">Up to {maxCreditAdjustment} credits remain reversible. Dismissed cases apply zero.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Resolution note *</Label>
+              <Textarea required value={note} onChange={(event) => setNote(event.target.value)} rows={4} data-testid="payment-review-note-input" />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={saving === resolving?.id || !note.trim() || !adjustmentValid} className="rounded-xl w-full sm:w-auto" data-testid="payment-review-submit-button">
+                {saving === resolving?.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save resolution'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -245,7 +433,7 @@ function PackagesTab() {
   const [loadError, setLoadError] = useState(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: '', description: '', price: '', session_credits: '', is_recurring: false });
+  const [form, setForm] = useState({ name: '', description: '', price: '', session_credits: '', is_recurring: false, stripe_price_id: '' });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -264,13 +452,13 @@ function PackagesTab() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: '', description: '', price: '', session_credits: '', is_recurring: false });
+    setForm({ name: '', description: '', price: '', session_credits: '', is_recurring: false, stripe_price_id: '' });
     setOpen(true);
   };
 
   const openEdit = (p) => {
     setEditing(p);
-    setForm({ name: p.name, description: p.description || '', price: String(p.price), session_credits: String(p.session_credits), is_recurring: p.is_recurring });
+    setForm({ name: p.name, description: p.description || '', price: String(p.price), session_credits: String(p.session_credits), is_recurring: p.is_recurring, stripe_price_id: p.stripe_price_id || '' });
     setOpen(true);
   };
 
@@ -322,6 +510,7 @@ function PackagesTab() {
               <p className="font-medium text-sm">
                 {p.name}
                 {p.is_recurring && <Badge variant="outline" className="ml-2 bg-primary/10 text-primary border-primary/25">Recurring</Badge>}
+                {p.stripe_price_id && <Badge variant="outline" className="ml-2">Stripe linked</Badge>}
                 {p.archived && <Badge variant="outline" className="ml-2 text-muted-foreground">Archived</Badge>}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">{fmtMoney(p.price)} - {p.session_credits} credits</p>
@@ -344,13 +533,17 @@ function PackagesTab() {
           <form onSubmit={save} className="space-y-3.5">
             <div className="space-y-1.5"><Label>Name *</Label>
               <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="package-name-input" /></div>
-            <div className="space-y-1.5"><Label>Description</Label>
-              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} data-testid="package-description-input" /></div>
+              <div className="space-y-1.5"><Label>Description</Label>
+                <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} data-testid="package-description-input" /></div>
+            <div className="space-y-1.5"><Label>Stripe Price ID</Label>
+              <Input value={form.stripe_price_id} onChange={(e) => setForm({ ...form, stripe_price_id: e.target.value })} placeholder="price_..." data-testid="package-stripe-price-input" />
+              <p className="text-xs text-muted-foreground">When linked, Stripe supplies the price and recurring interval. Leave blank for cash-only packages.</p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Price (USD) *</Label>
                 <Input required type="number" step="0.01" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} data-testid="package-price-input" /></div>
               <div className="space-y-1.5"><Label>Session credits *</Label>
-                <Input required type="number" min="0" value={form.session_credits} onChange={(e) => setForm({ ...form, session_credits: e.target.value })} data-testid="package-credits-input" /></div>
+                <Input required type="number" min={form.is_recurring ? 1 : 0} value={form.session_credits} onChange={(e) => setForm({ ...form, session_credits: e.target.value })} data-testid="package-credits-input" /></div>
             </div>
             <label className="flex items-center gap-2 text-sm">
               <Switch checked={form.is_recurring} onCheckedChange={(v) => setForm({ ...form, is_recurring: v })} data-testid="package-recurring-switch" />

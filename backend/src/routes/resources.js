@@ -104,8 +104,8 @@ async function coachResource(resourceId, { includeArchived = false } = {}) {
 }
 
 async function clientCanAccessResource(resource, clientId) {
-  if (!resource || resource.archived) return false;
-  if (resource.is_public) return true;
+  if (!resource) return false;
+  if (!resource.archived && resource.is_public) return true;
   const { data, error } = await supabaseAdmin
     .from('resource_assignments')
     .select('id')
@@ -147,10 +147,12 @@ router.get('/', async (req, res) => {
       let query = supabaseAdmin
         .from('resource_library')
         .select(CLIENT_RESOURCE_SELECT)
-        .eq('archived', false)
         .order('created_at', { ascending: false });
-      if (assignedIds.length) query = query.or(`is_public.eq.true,id.in.(${assignedIds.join(',')})`);
-      else query = query.eq('is_public', true);
+      if (assignedIds.length) {
+        query = query.or(`and(archived.eq.false,is_public.eq.true),id.in.(${assignedIds.join(',')})`);
+      } else {
+        query = query.eq('archived', false).eq('is_public', true);
+      }
       if (categoryId) query = query.eq('category_id', categoryId);
       const { data, error } = await query;
       if (error) throw error;
@@ -237,7 +239,10 @@ router.post('/', requireCoach, resourceUploadLimiter, resourceUpload, async (req
 
 router.get('/:id/download-link', async (req, res) => {
   try {
-    const resource = await resourceRow(req.params.id, { includeStoragePath: true });
+    const resource = await resourceRow(req.params.id, {
+      includeArchived: req.user.role === 'client',
+      includeStoragePath: true,
+    });
     if (!resource) return res.status(404).json({ error: 'Resource not found' });
     if (req.user.role === 'client' && !await clientCanAccessResource(resource, req.user.client.id)) {
       return res.status(404).json({ error: 'Resource not found' });
@@ -277,7 +282,9 @@ router.patch('/:id', requireCoach, async (req, res) => {
       updates.category_id = categoryId;
     }
     if ('is_public' in body) updates.is_public = booleanValue(body.is_public);
-    if ('archived' in body) updates.archived = booleanValue(body.archived);
+    if ('archived' in body) {
+      return res.status(400).json({ error: 'Use the resource archive action to choose assigned client access' });
+    }
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'No resource changes provided' });
     const { error } = await supabaseAdmin
       .from('resource_library')
@@ -288,6 +295,31 @@ router.patch('/:id', requireCoach, async (req, res) => {
   } catch (error) {
     logError('update resource error', error);
     return res.status(500).json({ error: 'Failed to update resource' });
+  }
+});
+
+router.post('/:id/archive', requireCoach, async (req, res) => {
+  try {
+    const resource = await resourceRow(req.params.id);
+    if (!resource) return res.status(404).json({ error: 'Resource not found' });
+    const assignmentAccess = String(req.body?.assignment_access || '');
+    if (!['keep', 'revoke'].includes(assignmentAccess)) {
+      return res.status(400).json({ error: 'Choose whether to keep or revoke assigned client access' });
+    }
+    const { data, error } = await supabaseAdmin.rpc('archive_resource', {
+      p_resource_id: resource.id,
+      p_revoke_assigned_access: assignmentAccess === 'revoke',
+    });
+    if (error) throw error;
+    const outcome = Array.isArray(data) ? data[0] : data;
+    return res.json({
+      resource: await coachResource(resource.id, { includeArchived: true }),
+      active_assignments: outcome?.active_assignments || 0,
+      revoked_assignments: outcome?.revoked_assignments || 0,
+    });
+  } catch (error) {
+    logError('archive resource error', error);
+    return res.status(500).json({ error: 'Failed to archive resource' });
   }
 });
 

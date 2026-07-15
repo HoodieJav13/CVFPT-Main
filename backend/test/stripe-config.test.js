@@ -36,8 +36,8 @@ test('Stripe accepts only test-mode configuration and constructs the client once
   const publishable = key('pk', 'test', 'sample');
   const constructed = [];
   class FakeStripe {
-    constructor(value) {
-      constructed.push(value);
+    constructor(value, options) {
+      constructed.push({ value, options });
     }
   }
 
@@ -48,7 +48,7 @@ test('Stripe accepts only test-mode configuration and constructs the client once
   assert.equal(configuration.configured, true);
   assert.equal(configuration.publishableKey, publishable);
   assert.ok(createStripeClient({ STRIPE_SECRET_KEY: secret }, FakeStripe));
-  assert.deepEqual(constructed, [secret]);
+  assert.deepEqual(constructed, [{ value: secret, options: { apiVersion: '2026-02-25.clover' } }]);
 });
 
 test('Stripe client is never constructed for live-mode configuration', () => {

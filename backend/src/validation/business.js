@@ -6,6 +6,14 @@ function valid(value) {
   return { ok: true, value };
 }
 
+function validateRecurringPackage(value = {}) {
+  if (value.is_recurring
+    && (!Number.isInteger(value.session_credits) || value.session_credits <= 0)) {
+    return invalid('Recurring packages require at least 1 session credit');
+  }
+  return valid(value);
+}
+
 function validatePackagePayload(body = {}, { partial = false } = {}) {
   const value = {};
   if (!partial && (!Object.hasOwn(body, 'name') || !Object.hasOwn(body, 'price'))) {
@@ -36,8 +44,64 @@ function validatePackagePayload(body = {}, { partial = false } = {}) {
     value.session_credits = 0;
   }
   if (Object.hasOwn(body, 'is_recurring')) value.is_recurring = Boolean(body.is_recurring);
+  if (Object.hasOwn(body, 'stripe_price_id')) {
+    const stripePriceId = String(body.stripe_price_id || '').trim();
+    if (stripePriceId && !/^price_[A-Za-z0-9]+$/.test(stripePriceId)) {
+      return invalid('Enter a valid Stripe Price ID');
+    }
+    value.stripe_price_id = stripePriceId || null;
+  }
   if (partial && !Object.keys(value).length) return invalid('Provide at least one package field to update');
+  if (!partial || Object.hasOwn(value, 'session_credits')) {
+    const recurringValidation = validateRecurringPackage(value);
+    if (!recurringValidation.ok) return recurringValidation;
+  }
   return valid(value);
+}
+
+function validateCashPayment(body = {}) {
+  const amount = Number(body.amount);
+  const note = body.note ? String(body.note).trim() : null;
+  if (!body.client_id || !body.package_id) return invalid('Client and package are required');
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
+    return invalid('Cash amount must be greater than zero');
+  }
+  if (note && note.length > 1000) return invalid('Note must be 1,000 characters or fewer');
+  return valid({ client_id: body.client_id, package_id: body.package_id, amount, note });
+}
+
+const COURTESY_REASONS = new Set([
+  'family', 'photography_barter', 'promotion', 'service_recovery', 'correction', 'other',
+]);
+
+function validateCourtesyGrant(body = {}) {
+  const credits = Number(body.credits);
+  const reason = String(body.reason || '').trim();
+  const note = body.note ? String(body.note).trim() : null;
+  if (!body.client_id) return invalid('Client is required');
+  if (!Number.isInteger(credits) || credits < 1 || credits > 10000) {
+    return invalid('Credits must be a whole number between 1 and 10,000');
+  }
+  if (!COURTESY_REASONS.has(reason)) return invalid('Choose a valid courtesy reason');
+  if (reason === 'other' && !note) return invalid('Add a note for an Other courtesy grant');
+  if (note && note.length > 1000) return invalid('Note must be 1,000 characters or fewer');
+  return valid({ client_id: body.client_id, credits, reason, note });
+}
+
+function validatePaymentReviewResolution(body = {}) {
+  const resolution = String(body.resolution || '');
+  const note = String(body.note || '').trim();
+  const creditAdjustment = Number(body.credit_adjustment);
+  if (!['resolved', 'dismissed'].includes(resolution) || !note) {
+    return invalid('Resolution and note are required');
+  }
+  if (!Number.isInteger(creditAdjustment) || creditAdjustment < 0 || creditAdjustment > 10000) {
+    return invalid('Credit adjustment must be a whole number between 0 and 10,000');
+  }
+  if (resolution === 'dismissed' && creditAdjustment !== 0) {
+    return invalid('Dismissed reviews cannot apply a credit adjustment');
+  }
+  return valid({ resolution, note, credit_adjustment: creditAdjustment });
 }
 
 function validateSchedulePayload(body = {}, { requireDate = false } = {}) {
@@ -60,4 +124,11 @@ function validateSchedulePayload(body = {}, { requireDate = false } = {}) {
   return valid(value);
 }
 
-module.exports = { validatePackagePayload, validateSchedulePayload };
+module.exports = {
+  validateCashPayment,
+  validateCourtesyGrant,
+  validatePaymentReviewResolution,
+  validatePackagePayload,
+  validateRecurringPackage,
+  validateSchedulePayload,
+};

@@ -20,6 +20,22 @@ const programFrequencyMigration = fs.readFileSync(
   path.join(root, 'supabase', 'migrations', '20260711234414_allow_one_to_five_day_programs.sql'),
   'utf8',
 );
+const paymentMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260714040224_stripe_subscriptions_offline_payments_and_credit_reviews.sql'),
+  'utf8',
+);
+const paymentAdjustmentMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260714220803_audited_payment_review_adjustments.sql'),
+  'utf8',
+);
+const resourceArchiveMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260715005452_archive_resource_with_assignment_choice.sql'),
+  'utf8',
+);
+const importChoiceMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260715005846_honor_import_exercise_choices.sql'),
+  'utf8',
+);
 const baseline = fs.readFileSync(path.join(root, 'backend', 'migration.sql'), 'utf8');
 
 const functions = [
@@ -30,6 +46,14 @@ const functions = [
   ['save_workout', 'uuid, uuid, text, text, text, jsonb'],
   ['save_program', 'uuid, uuid, boolean, text, text, integer, jsonb'],
   ['create_waiver_version', 'text'],
+  ['record_cash_payment', 'uuid, uuid, numeric, uuid, text'],
+  ['request_courtesy_grant', 'uuid, integer, text, text, uuid, text'],
+  ['review_courtesy_grant', 'uuid, boolean, uuid, text'],
+  ['record_subscription_invoice', 'uuid, uuid, numeric, text, text, text, text, text'],
+  ['record_payment_reversal', 'uuid, text, text, text'],
+  ['open_payment_review', 'uuid, text, text, text'],
+  ['resolve_payment_review', 'uuid, text, integer, uuid, text'],
+  ['archive_resource', 'uuid, boolean'],
 ];
 
 test('transactional RPCs are invoker-security and service-role-only', () => {
@@ -37,37 +61,39 @@ test('transactional RPCs are invoker-security and service-role-only', () => {
     const declaration = new RegExp(
       `create or replace function public\\.${name}[\\s\\S]*?security invoker[\\s\\S]*?set search_path = ''`,
     );
-    assert.match(migration, declaration, `${name} must use invoker security with an empty search path`);
+    const rpcMigrations = `${migration}\n${paymentMigration}\n${paymentAdjustmentMigration}\n${resourceArchiveMigration}\n${importChoiceMigration}`;
+    assert.match(rpcMigrations, declaration, `${name} must use invoker security with an empty search path`);
     assert.match(
-      migration,
-      new RegExp(`revoke execute on function public\\.${name}\\(${signature}\\) from public, anon, authenticated;`),
+      rpcMigrations,
+      new RegExp(`revoke execute on function public\\.${name}\\(${signature}\\)\\s+from public, anon, authenticated;`),
     );
     assert.match(
-      migration,
-      new RegExp(`grant execute on function public\\.${name}\\(${signature}\\) to service_role;`),
+      rpcMigrations,
+      new RegExp(`grant execute on function public\\.${name}\\(${signature}\\)\\s+to service_role;`),
     );
   }
 });
 
 test('priority import RPC is invoker-security and unavailable to public API roles', () => {
+  const currentImportRpc = `${versionedBaseline}\n${importChoiceMigration}`;
   assert.match(
-    versionedBaseline,
+    currentImportRpc,
     /create or replace function (?:public\.)?commit_program_import[\s\S]*?security invoker[\s\S]*?set search_path = ''/,
   );
   assert.doesNotMatch(
-    versionedBaseline.match(/create or replace function (?:public\.)?commit_program_import[\s\S]*?\$\$;/)?.[0] || '',
+    importChoiceMigration.match(/create or replace function (?:public\.)?commit_program_import[\s\S]*?\$\$;/)?.[0] || '',
     /security definer/i,
   );
   assert.match(
-    versionedBaseline,
+    currentImportRpc,
     /revoke execute on function public\.commit_program_import\(uuid, text, jsonb\) from public;/,
   );
   assert.match(
-    versionedBaseline,
+    currentImportRpc,
     /revoke execute on function public\.commit_program_import\(uuid, text, jsonb\) from anon, authenticated;/,
   );
   assert.match(
-    versionedBaseline,
+    currentImportRpc,
     /grant execute on function public\.commit_program_import\(uuid, text, jsonb\) to service_role;/,
   );
 });
@@ -118,6 +144,12 @@ test('Data API table grants are service-role-only and prohibit hard deletes', ()
     assert.match(sql, /grant usage, select on all sequences in schema public to service_role;/);
     assert.doesNotMatch(statements, /grant[^;]*delete[^;]*service_role;/i);
   }
+  for (const table of ['client_subscriptions', 'courtesy_grant_requests', 'payment_review_cases', 'processed_stripe_events']) {
+    assert.match(paymentMigration, new RegExp(`alter table public\\.${table} enable row level security;`));
+    assert.match(paymentMigration, new RegExp(`revoke all privileges on public\\.${table} from public, anon, authenticated, service_role;`));
+    assert.match(paymentMigration, new RegExp(`grant select, insert, update on public\\.${table} to service_role;`));
+  }
+  assert.doesNotMatch(paymentMigration.replace(/^--.*$/gm, ''), /grant[^;]*delete[^;]*service_role;/i);
 });
 
 test('state transitions use row locks, conditional state, and ledger idempotency', () => {
@@ -126,6 +158,9 @@ test('state transitions use row locks, conditional state, and ledger idempotency
   assert.match(migration, /from public\.purchases[\s\S]*?for update;[\s\S]*?v_purchase\.status = 'completed'/);
   assert.match(migration, /idx_credit_transactions_source_event/);
   assert.match(migration, /idx_waiver_signatures_client_version/);
+  assert.match(paymentMigration, /idx_purchases_stripe_invoice_unique/);
+  assert.match(paymentMigration, /idx_payment_reviews_one_open_per_purchase/);
+  assert.match(paymentMigration, /from public\.purchases[\s\S]*?for update;[\s\S]*?credits_consumed/);
 });
 
 test('HTTP handlers delegate multi-record mutations to transactional RPCs', () => {
@@ -138,7 +173,13 @@ test('HTTP handlers delegate multi-record mutations to transactional RPCs', () =
 
   assert.match(bookings, /\.rpc\('approve_booking'/);
   assert.match(sessions, /\.rpc\('complete_session'/);
-  assert.match(payments, /\.rpc\('record_manual_purchase'/);
+  for (const rpc of [
+    'record_cash_payment', 'request_courtesy_grant', 'review_courtesy_grant',
+    'record_subscription_invoice', 'record_payment_reversal', 'open_payment_review',
+    'resolve_payment_review',
+  ]) {
+    assert.match(payments, new RegExp(`\\.rpc\\('${rpc}'`));
+  }
   assert.match(credits, /\.rpc\('complete_purchase'/);
   assert.match(programs, /\.rpc\('save_workout'/);
   assert.match(programs, /\.rpc\('save_program'/);

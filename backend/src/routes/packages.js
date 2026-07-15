@@ -2,7 +2,8 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { validatePackagePayload } = require('../validation/business');
+const { validatePackagePayload, validateRecurringPackage } = require('../validation/business');
+const { resolveStripePrice } = require('../services/stripeCatalog');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -30,11 +31,18 @@ router.post('/', requireAdmin, async (req, res) => {
   try {
     const validation = validatePackagePayload(req.body || {});
     if (!validation.ok) return res.status(400).json({ error: validation.error });
-    const { data, error } = await supabaseAdmin.from('packages').insert(validation.value).select().single();
+    const value = { ...validation.value };
+    if (value.stripe_price_id) Object.assign(value, await resolveStripePrice(value.stripe_price_id));
+    const recurringValidation = validateRecurringPackage(value);
+    if (!recurringValidation.ok) return res.status(400).json({ error: recurringValidation.error });
+    const { data, error } = await supabaseAdmin.from('packages').insert(value).select().single();
     if (error) throw error;
     return res.status(201).json(data);
   } catch (e) {
     logError('create package error', e);
+    if (/Stripe Price|Stripe Product|Stripe test mode|valid Stripe/.test(e.message || '')) {
+      return res.status(400).json({ error: e.message });
+    }
     return res.status(500).json({ error: 'Failed to create package' });
   }
 });
@@ -44,13 +52,27 @@ router.put('/:id', requireAdmin, async (req, res) => {
   try {
     const validation = validatePackagePayload(req.body || {}, { partial: true });
     if (!validation.ok) return res.status(400).json({ error: validation.error });
-    const { data, error } = await supabaseAdmin.from('packages').update(validation.value)
+    const existingResult = await supabaseAdmin.from('packages').select('*')
+      .eq('id', req.params.id).eq('archived', false).maybeSingle();
+    if (existingResult.error) throw existingResult.error;
+    if (!existingResult.data) return res.status(404).json({ error: 'Package not found' });
+    const value = { ...validation.value };
+    if (Object.hasOwn(value, 'stripe_price_id')) {
+      if (value.stripe_price_id) Object.assign(value, await resolveStripePrice(value.stripe_price_id));
+      else Object.assign(value, { stripe_product_id: null, billing_interval: null });
+    }
+    const recurringValidation = validateRecurringPackage({ ...existingResult.data, ...value });
+    if (!recurringValidation.ok) return res.status(400).json({ error: recurringValidation.error });
+    const { data, error } = await supabaseAdmin.from('packages').update(value)
       .eq('id', req.params.id).eq('archived', false).select().maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Package not found' });
     return res.json(data);
   } catch (e) {
     logError('update package error', e);
+    if (/Stripe Price|Stripe Product|Stripe test mode|valid Stripe/.test(e.message || '')) {
+      return res.status(400).json({ error: e.message });
+    }
     return res.status(500).json({ error: 'Failed to update package' });
   }
 });

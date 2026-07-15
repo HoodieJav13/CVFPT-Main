@@ -66,10 +66,28 @@ Vercel project root: `backend/`.
   `STRIPE_WEBHOOK_SECRET` are optional test-mode settings. Without them, the app
   exposes its supported “payments not configured” state. Live Stripe keys are
   rejected by application configuration.
+- `STRIPE_PORTAL_CONFIGURATION_ID` is optional. When set, it must reference the
+  test-mode Customer Portal configuration that allows cancellation and
+  next-cycle plan changes without proration.
 
-If test-mode webhooks are enabled, send `checkout.session.completed` to
+If test-mode webhooks are enabled, send the following events to
 `https://<backend-domain>/api/payments/webhook` and configure the corresponding
-test webhook secret manually.
+test webhook secret manually:
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.expired`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `charge.refunded`
+- `charge.dispute.created`
+
+Stripe Products and Prices are created manually in the Stripe test dashboard.
+The admin Packages tab links a package to its `price_...` identifier and verifies
+the active Price through the backend; Stripe then supplies the monetary amount
+and recurring interval. Cash-only packages may omit a Stripe Price.
 
 ## Frontend project
 
@@ -87,9 +105,12 @@ be configured only when its final backend/frontend domain pair is approved.
 ## Database migrations
 
 `supabase/migrations/` is the canonical schema history. It currently contains
-**six applied versioned migrations**, matching the hosted PostgreSQL 17
-development project. Every future schema change must be a new numbered migration;
-never edit an applied migration.
+**twelve versioned migrations**, all applied and verified on the hosted
+PostgreSQL 17 development project. Migrations nine through twelve snapshot
+subscription entitlements, make payment-review credit adjustments atomic,
+archive resources with an explicit assigned-access decision, and honor reviewed
+exercise-library choices during program import. Every future schema change must
+be a new numbered migration; never edit an applied migration.
 
 `backend/migration.sql` is frozen historical evidence from before versioning. Do
 not edit it or run it against a database where the versioned migrations have been
