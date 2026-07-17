@@ -109,13 +109,13 @@ export default function CoachDashboard() {
           )}
           {data.pending_bookings.map((b) => (
             <div key={b.id} className="rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="booking-request-row">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="font-medium truncate" data-testid="booking-client-name">{b.client?.name}</p>
                   <p className="text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
                   {b.note && <p className="text-xs text-muted-foreground mt-1 italic truncate" data-testid="booking-request-note">"{b.note}"</p>}
                 </div>
-                <div className="flex gap-2 shrink-0">
+                <div className="flex shrink-0 gap-2">
                   <Button size="sm" className="rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button">
                     <Check className="h-3.5 w-3.5 mr-1" /> Approve
                   </Button>

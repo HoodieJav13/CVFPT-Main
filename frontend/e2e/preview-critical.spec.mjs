@@ -18,6 +18,27 @@ async function usePreviewRole(page, role, clientId = 'client_sarah') {
   }, { selectedRole: role, selectedClient: clientId });
 }
 
+test('coach booking request preserves content and actions at mobile width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach');
+
+  const row = page.getByTestId('booking-request-row').first();
+  const name = row.getByTestId('booking-client-name');
+  const note = row.getByTestId('booking-request-note');
+  const approve = row.getByTestId('booking-approve-button');
+
+  await expect(name).toHaveText('Sarah Martinez');
+  await expect(note).toHaveText('"Late morning works best."');
+  await expect(approve).toBeVisible();
+  await expect(row.getByTestId('booking-decline-button')).toBeVisible();
+  expect(await name.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBeTruthy();
+  expect(await note.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBeTruthy();
+
+  const [noteBox, approveBox] = await Promise.all([note.boundingBox(), approve.boundingBox()]);
+  expect(approveBox.y).toBeGreaterThan(noteBox.y + noteBox.height);
+});
+
 test('coach preview covers dashboard, clients, sessions, builder, resources, and messages', async ({ page }) => {
   await usePreviewRole(page, 'coach');
   await page.goto('/coach');
