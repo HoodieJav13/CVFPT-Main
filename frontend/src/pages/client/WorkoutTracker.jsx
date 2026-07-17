@@ -376,7 +376,12 @@ export default function WorkoutTracker() {
                         },
                       });
                     }}>
-                      <SelectTrigger className="h-10 w-[68px] px-2" aria-label="Weight unit"><SelectValue /></SelectTrigger>
+                      <SelectTrigger
+                        className="h-10 w-[68px] px-2"
+                        aria-label={`${exercise.exercise_name} set ${set.set_number} weight unit`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
                     </Select>
                   </div>

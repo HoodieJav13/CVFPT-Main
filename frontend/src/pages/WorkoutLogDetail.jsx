@@ -77,7 +77,7 @@ export default function WorkoutLogDetail() {
         </CardContent></Card>
       )}
       {!isClient && log.client && (
-        <Button asChild className="mt-5 w-full sm:w-auto">
+        <Button asChild className="mb-16 mt-5 w-full sm:mb-0 sm:w-auto">
           <Link to={`/coach/messages/${log.client.id}`}><MessageSquare className="mr-2 h-4 w-4" /> Message client</Link>
         </Button>
       )}

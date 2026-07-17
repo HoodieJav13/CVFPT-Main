@@ -310,7 +310,7 @@ test('client workout completion creates a coach notification with immutable resu
   await expect(page.getByTestId('workout-tracker')).toBeVisible();
 
   const squat = page.getByTestId('tracker-exercise-card').first();
-  const weight = squat.getByLabel('Goblet Squat set 1 weight');
+  const weight = squat.getByRole('spinbutton', { name: 'Goblet Squat set 1 weight', exact: true });
   await expect(weight).toHaveValue('35');
   await expect(squat.getByText('RPE 7')).toBeVisible();
   await expect(squat.getByText('Rest 90s')).toBeVisible();
