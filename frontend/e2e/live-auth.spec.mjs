@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 const backendUrl = process.env.CVF_E2E_BACKEND_URL;
 const directDataUrl = process.env.SUPABASE_URL;
@@ -833,21 +833,25 @@ test('real admin auth covers management, safe waiver gate, reassignment, and rol
   }
 });
 
-test('hosted workout completion snapshots assigned load, preserves credits, and notifies only the owning coach', async ({ page, request }) => {
+test('hosted workout completion is idempotent and notifies the assigned coach and active admin', async ({ page, request }) => {
   const marker = `CVF LIVE WORKOUT ${Date.now()}`;
   const feedback = `${marker} felt strong`;
   const note = `${marker} exercise note`;
-  const [coachLogin, coachBLogin, clientLogin] = await Promise.all([
+  const [adminLogin, coachLogin, coachBLogin, clientLogin] = await Promise.all([
+    request.post(`${backendUrl}/api/auth/login`, { data: accounts.admin }),
     request.post(`${backendUrl}/api/auth/login`, { data: accounts.coach }),
     request.post(`${backendUrl}/api/auth/login`, { data: accounts.coachB }),
     request.post(`${backendUrl}/api/auth/login`, { data: accounts.client }),
   ]);
+  expect(adminLogin.ok()).toBeTruthy();
   expect(coachLogin.ok()).toBeTruthy();
   expect(coachBLogin.ok()).toBeTruthy();
   expect(clientLogin.ok()).toBeTruthy();
+  const admin = await adminLogin.json();
   const coach = await coachLogin.json();
   const coachB = await coachBLogin.json();
   const client = await clientLogin.json();
+  const adminHeaders = { authorization: `Bearer ${admin.access_token}` };
   const coachHeaders = { authorization: `Bearer ${coach.access_token}` };
   const coachBHeaders = { authorization: `Bearer ${coachB.access_token}` };
   const clientHeaders = { authorization: `Bearer ${client.access_token}` };
@@ -919,6 +923,17 @@ test('hosted workout completion snapshots assigned load, preserves credits, and 
     expect(workoutLog.exercises[0].sets).toHaveLength(2);
     expect(Number(workoutLog.exercises[0].sets[0].actual_load_value)).toBe(42.5);
 
+    const extraSetOperationId = randomUUID();
+    const extraSetUrl = `${backendUrl}/api/workout-logs/${workoutLog.id}/exercises/${workoutLog.exercises[0].id}/sets`;
+    const [extraSetFirst, extraSetRetry] = await Promise.all([
+      request.post(extraSetUrl, { headers: clientHeaders, data: { client_operation_id: extraSetOperationId } }),
+      request.post(extraSetUrl, { headers: clientHeaders, data: { client_operation_id: extraSetOperationId } }),
+    ]);
+    expect(extraSetFirst.ok()).toBeTruthy();
+    expect(extraSetRetry.ok()).toBeTruthy();
+    const [extraSetFirstBody, extraSetRetryBody] = await Promise.all([extraSetFirst.json(), extraSetRetry.json()]);
+    expect(extraSetRetryBody.id).toBe(extraSetFirstBody.id);
+
     const set = workoutLog.exercises[0].sets[0];
     const setUpdate = await request.patch(`${backendUrl}/api/workout-logs/${workoutLog.id}/sets/${set.id}`, {
       headers: clientHeaders,
@@ -931,12 +946,19 @@ test('hosted workout completion snapshots assigned load, preserves credits, and 
     });
     expect(noteUpdate.ok()).toBeTruthy();
 
-    const completion = await request.post(`${backendUrl}/api/workout-logs/${workoutLog.id}/complete`, {
-      headers: clientHeaders,
-      data: { feedback },
-    });
-    expect(completion.ok()).toBeTruthy();
-    const completed = await completion.json();
+    const completionUrl = `${backendUrl}/api/workout-logs/${workoutLog.id}/complete`;
+    const [completionFirst, completionConcurrent] = await Promise.all([
+      request.post(completionUrl, { headers: clientHeaders, data: { feedback } }),
+      request.post(completionUrl, { headers: clientHeaders, data: { feedback } }),
+    ]);
+    expect(completionFirst.ok()).toBeTruthy();
+    expect(completionConcurrent.ok()).toBeTruthy();
+    const [completed, completedConcurrent] = await Promise.all([completionFirst.json(), completionConcurrent.json()]);
+    expect(completedConcurrent.id).toBe(completed.id);
+    expect(completedConcurrent.status).toBe('completed');
+    const completionRetry = await request.post(completionUrl, { headers: clientHeaders, data: { feedback } });
+    expect(completionRetry.ok()).toBeTruthy();
+    expect((await completionRetry.json()).id).toBe(completed.id);
     expect(completed.status).toBe('completed');
     expect(Number(completed.exercises[0].sets[0].actual_load_value)).toBe(45);
     expect(completed.exercises[0].sets[1].status).toBe('skipped');
@@ -974,15 +996,21 @@ test('hosted workout completion snapshots assigned load, preserves credits, and 
       expect(await rejectedDirectMutation.text()).toContain('Completed workout logs are immutable');
     }
 
-    const [coachNotificationsResponse, coachBNotificationsResponse] = await Promise.all([
+    const [adminNotificationsResponse, coachNotificationsResponse, coachBNotificationsResponse] = await Promise.all([
+      request.get(`${backendUrl}/api/notifications`, { headers: adminHeaders }),
       request.get(`${backendUrl}/api/notifications`, { headers: coachHeaders }),
       request.get(`${backendUrl}/api/notifications`, { headers: coachBHeaders }),
     ]);
+    expect(adminNotificationsResponse.ok()).toBeTruthy();
     expect(coachNotificationsResponse.ok()).toBeTruthy();
     expect(coachBNotificationsResponse.ok()).toBeTruthy();
-    const coachNotification = (await coachNotificationsResponse.json()).find((row) => row.workout_log_id === workoutLog.id);
-    expect(coachNotification).toBeTruthy();
-    expect((await coachBNotificationsResponse.json()).some((row) => row.workout_log_id === workoutLog.id)).toBeFalsy();
+    const adminNotifications = (await adminNotificationsResponse.json()).filter((row) => row.workout_log_id === workoutLog.id);
+    const coachNotifications = (await coachNotificationsResponse.json()).filter((row) => row.workout_log_id === workoutLog.id);
+    const unrelatedNotifications = (await coachBNotificationsResponse.json()).filter((row) => row.workout_log_id === workoutLog.id);
+    expect(adminNotifications).toHaveLength(1);
+    expect(coachNotifications).toHaveLength(1);
+    expect(unrelatedNotifications).toHaveLength(0);
+    const [coachNotification] = coachNotifications;
 
     const creditsAfterResponse = await request.get(`${backendUrl}/api/payments/credits`, { headers: clientHeaders });
     expect(creditsAfterResponse.ok()).toBeTruthy();
@@ -992,6 +1020,26 @@ test('hosted workout completion snapshots assigned load, preserves credits, and 
     await page.goto('/coach/notifications');
     const notificationRow = page.getByTestId('notification-row').filter({ hasText: marker });
     await expect(notificationRow).toBeVisible();
+
+    await page.route('**/api/notifications/read-all', async (route) => {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'CVF test read-all failure' }) });
+    });
+    await page.getByTestId('notifications-read-all').click();
+    await expect(page).toHaveURL(/\/coach\/notifications$/);
+    await expect(notificationRow.getByLabel('Unread')).toBeVisible();
+    await expect(page.getByText('CVF test read-all failure')).toBeVisible();
+    await page.unroute('**/api/notifications/read-all');
+
+    const individualReadPattern = `**/api/notifications/${coachNotification.id}/read`;
+    await page.route(individualReadPattern, async (route) => {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'CVF test individual read failure' }) });
+    });
+    await notificationRow.click();
+    await expect(page).toHaveURL(/\/coach\/notifications$/);
+    await expect(notificationRow.getByLabel('Unread')).toBeVisible();
+    await expect(page.getByText('CVF test individual read failure')).toBeVisible();
+    await page.unroute(individualReadPattern);
+
     await notificationRow.click();
     await expect(page).toHaveURL(new RegExp(`/coach/workouts/${workoutLog.id}$`));
     await expect(page.getByText(feedback)).toBeVisible();

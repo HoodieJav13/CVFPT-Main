@@ -70,3 +70,14 @@ test('HTTP surfaces require role checks and mask inaccessible workout data', () 
   assert.match(programRoutes, /rpc\('save_program_assignment_with_loads'/);
   assert.match(programRoutes, /rpc\('save_workout_assignment_with_loads'/);
 });
+
+test('extra-set idempotency is scoped and recovers a concurrent duplicate insert', () => {
+  assert.match(
+    workoutRoutes,
+    /select\('\*'\)[\s\S]*?eq\('workout_log_exercise_id', exercise\.id\)[\s\S]*?eq\('client_operation_id', operationId\)[\s\S]*?maybeSingle\(\)/,
+  );
+  assert.match(
+    workoutRoutes,
+    /error\?\.code === '23505'[\s\S]*?eq\('workout_log_exercise_id', exercise\.id\)[\s\S]*?eq\('client_operation_id', operationId\)[\s\S]*?if \(duplicate\) return res\.json\(duplicate\)/,
+  );
+});

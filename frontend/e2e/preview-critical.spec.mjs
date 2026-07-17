@@ -312,29 +312,46 @@ test('client workout completion creates a coach notification with immutable resu
   const squat = page.getByTestId('tracker-exercise-card').first();
   const weight = squat.getByRole('spinbutton', { name: 'Goblet Squat set 1 weight', exact: true });
   await expect(weight).toHaveValue('35');
+  await expect(squat.getByRole('combobox', { name: 'Goblet Squat set 1 weight unit', exact: true })).toBeVisible();
+  await expect(squat.getByRole('combobox', { name: 'Goblet Squat set 2 weight unit', exact: true })).toBeVisible();
   await expect(squat.getByText('RPE 7')).toBeVisible();
   await expect(squat.getByText('Rest 90s')).toBeVisible();
+
   await context.setOffline(true);
   await weight.fill('37.5');
   await weight.blur();
+  await squat.getByRole('combobox', { name: 'Goblet Squat set 1 weight unit', exact: true }).click();
+  await page.getByRole('option', { name: 'kg', exact: true }).click();
+  await squat.getByRole('button', { name: 'Complete set 1' }).click();
+  await squat.getByRole('textbox', { name: 'Exercise notes' }).fill('Offline sequence preserved.');
+  await squat.getByRole('textbox', { name: 'Exercise notes' }).blur();
+  await squat.getByRole('button', { name: 'Add set' }).click();
+  const extraWeight = squat.getByRole('spinbutton', { name: 'Goblet Squat set 4 weight', exact: true });
+  await expect(extraWeight).toBeVisible();
+  await expect(squat.getByRole('combobox', { name: 'Goblet Squat set 4 weight unit', exact: true })).toBeVisible();
+  await extraWeight.fill('42.5');
+  await extraWeight.blur();
+  await squat.getByRole('button', { name: 'Complete set 4' }).click();
+  await squat.getByRole('button', { name: 'Remove extra set' }).click();
+  await expect(squat.getByRole('button', { name: 'Remove extra set' })).toHaveCount(0);
   await expect(page.getByTestId('workout-save-state')).toContainText('Not saved yet');
+  await expect(page.getByRole('button', { name: 'Complete all remaining' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Finish workout' })).toBeDisabled();
+
   await context.setOffline(false);
   await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
-
-  await squat.getByRole('button', { name: 'Complete set 1' }).click();
   await expect(page.getByLabel(/Rest timer/)).toBeVisible();
-  await squat.getByRole('button', { name: 'Add set' }).click();
-  await expect(squat.getByText('Remove extra set')).toBeVisible();
-  await squat.getByText('Remove extra set').click();
-  await expect(squat.getByText('Remove extra set')).toHaveCount(0);
-  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
 
   await page.getByRole('button', { name: 'Finish workout' }).click();
   await page.getByLabel('Feedback for your coach').fill('Strong session from the preview flow.');
   await page.getByRole('button', { name: 'Confirm completion' }).click();
   await expect(page).toHaveURL(/\/client\/workouts\/[^/]+$/);
   await expect(page.getByText('Strong session from the preview flow.')).toBeVisible();
-  await expect(page.getByText(/\d+ skipped/)).toBeVisible();
+  await expect(page.getByText('Offline sequence preserved.')).toBeVisible();
+  await expect(page.getByText('37.5 kg')).toBeVisible();
+  await expect(page.getByText('1 completed')).toBeVisible();
+  await expect(page.getByText('8 skipped')).toBeVisible();
+  await expect(page.getByText('42.5 kg')).toHaveCount(0);
 
   await page.getByTestId('preview-toolbar-toggle').click();
   await page.getByTestId('preview-role-select').selectOption('coach');
@@ -344,5 +361,18 @@ test('client workout completion creates a coach notification with immutable resu
   await page.getByTestId('notification-row').filter({ hasText: 'Lower Strength A' }).click();
   await expect(page).toHaveURL(/\/coach\/workouts\/[^/]+$/);
   await expect(page.getByText('Strong session from the preview flow.')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Message client' })).toBeVisible();
+  const messageClient = page.getByRole('link', { name: 'Message client' });
+  const quickAdd = page.getByTestId('coach-quick-add-button');
+  await expect(messageClient).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const [messageRect, quickAddRect] = await Promise.all([messageClient.boundingBox(), quickAdd.boundingBox()]);
+  expect(messageRect.height).toBeGreaterThanOrEqual(44);
+  expect(
+    messageRect.right <= quickAddRect.x
+      || quickAddRect.x + quickAddRect.width <= messageRect.x
+      || messageRect.y + messageRect.height <= quickAddRect.y
+      || quickAddRect.y + quickAddRect.height <= messageRect.y,
+  ).toBeTruthy();
+  await messageClient.click();
+  await expect(page).toHaveURL(/\/coach\/messages\/client_sarah$/);
 });
