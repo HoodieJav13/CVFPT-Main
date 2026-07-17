@@ -251,6 +251,43 @@ async function workoutWithDetails(workoutId) {
   return { ...workout, exercises: exercises || [], exercise_count: (exercises || []).length };
 }
 
+function cleanExerciseLoads(loads, { program = false } = {}) {
+  if (!Array.isArray(loads)) return [];
+  return loads.filter((load) => load && load.load_value !== '' && load.load_value !== null && load.load_value !== undefined).map((load) => {
+    const value = Number(load.load_value);
+    if (!Number.isFinite(value) || value < 0 || !['lb', 'kg'].includes(load.load_unit)) {
+      const error = new Error('Each assigned load needs a non-negative value and lb or kg unit');
+      error.status = 400;
+      throw error;
+    }
+    if (!load.workout_exercise_id || (program && !load.program_day_id)) {
+      const error = new Error('Each assigned load must reference an assigned exercise');
+      error.status = 400;
+      throw error;
+    }
+    return {
+      ...(program ? { program_day_id: load.program_day_id } : {}),
+      workout_exercise_id: load.workout_exercise_id,
+      load_value: value,
+      load_unit: load.load_unit,
+    };
+  });
+}
+
+async function programAssignmentLoads(assignmentId) {
+  const { data, error } = await supabaseAdmin.from('program_assignment_exercise_loads').select('*')
+    .eq('program_assignment_id', assignmentId).eq('archived', false).order('created_at');
+  if (error) throw error;
+  return data || [];
+}
+
+async function workoutAssignmentLoads(assignmentId) {
+  const { data, error } = await supabaseAdmin.from('workout_assignment_exercise_loads').select('*')
+    .eq('workout_assignment_id', assignmentId).eq('archived', false).order('created_at');
+  if (error) throw error;
+  return data || [];
+}
+
 async function programWithDetails(programId) {
   const { data: program } = await supabaseAdmin.from('programs').select('*')
     .eq('id', programId).eq('archived', false).maybeSingle();
@@ -271,7 +308,11 @@ async function programWithDetails(programId) {
     .select('*, client:clients(id, name)')
     .eq('program_id', programId)
     .eq('archived', false);
-  return { ...program, days: detailedDays, assignments: assignments || [] };
+  const detailedAssignments = [];
+  for (const assignment of assignments || []) {
+    detailedAssignments.push({ ...assignment, exercise_loads: await programAssignmentLoads(assignment.id) });
+  }
+  return { ...program, days: detailedDays, assignments: detailedAssignments };
 }
 
 async function listWorkouts(user) {
@@ -563,7 +604,7 @@ router.get('/', requireCoach, async (req, res) => {
         days: detailed.days,
         day_count: detailed.days.length,
         exercise_count: detailed.days.reduce((sum, day) => sum + (day.workout?.exercise_count || 0), 0),
-        active_assignments: (program.assignments || []).filter((a) => !a.archived),
+        active_assignments: (detailed.assignments || []).filter((a) => !a.archived),
       });
     }
     return res.json(result);
@@ -686,14 +727,44 @@ router.post('/:id/assign', requireCoach, async (req, res) => {
     const { data: existing } = await supabaseAdmin.from('program_assignments').select('id')
       .eq('program_id', program.id).eq('client_id', clientRow.id).eq('archived', false).maybeSingle();
     if (existing) return res.status(409).json({ error: 'Program is already assigned to this client' });
-    const { data, error } = await supabaseAdmin.from('program_assignments').insert({
-      program_id: program.id, client_id: clientRow.id, notes: req.body.notes || null,
-    }).select('*, client:clients(id, name)').single();
+    const loads = cleanExerciseLoads(req.body.exercise_loads, { program: true });
+    const { data: assignmentId, error } = await supabaseAdmin.rpc('save_program_assignment_with_loads', {
+      p_assignment_id: null,
+      p_program_id: program.id,
+      p_client_id: clientRow.id,
+      p_notes: req.body.notes || null,
+      p_loads: loads,
+    });
     if (error) throw error;
-    return res.status(201).json(data);
+    const { data } = await supabaseAdmin.from('program_assignments').select('*, client:clients(id, name)')
+      .eq('id', assignmentId).single();
+    return res.status(201).json({ ...data, exercise_loads: await programAssignmentLoads(assignmentId) });
   } catch (e) {
     logError('assign program error', e);
-    return res.status(500).json({ error: 'Failed to assign program' });
+    return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to assign program' });
+  }
+});
+
+router.put('/assignments/:assignmentId/loads', requireCoach, async (req, res) => {
+  try {
+    const { data: assignment } = await supabaseAdmin.from('program_assignments')
+      .select('*, program:programs(*)').eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
+    if (!assignment || assignment.program?.archived || !canAccessProgram(req.user, assignment.program)) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+    const loads = cleanExerciseLoads(req.body?.exercise_loads, { program: true });
+    const { error } = await supabaseAdmin.rpc('save_program_assignment_with_loads', {
+      p_assignment_id: assignment.id,
+      p_program_id: assignment.program_id,
+      p_client_id: assignment.client_id,
+      p_notes: 'notes' in (req.body || {}) ? req.body.notes : assignment.notes,
+      p_loads: loads,
+    });
+    if (error) throw error;
+    return res.json({ ...assignment, exercise_loads: await programAssignmentLoads(assignment.id) });
+  } catch (e) {
+    logError('update program assignment loads error', e);
+    return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to update assigned loads' });
   }
 });
 
@@ -725,7 +796,7 @@ router.get('/workout-assignments/client/:clientId', requireCoach, async (req, re
     const result = [];
     for (const a of data || []) {
       const workout = await workoutWithDetails(a.workout_id);
-      if (workout) result.push({ ...a, workout });
+      if (workout) result.push({ ...a, workout, exercise_loads: await workoutAssignmentLoads(a.id) });
     }
     return res.json(result);
   } catch (e) {
@@ -744,14 +815,48 @@ router.post('/workout-assignments', requireCoach, async (req, res) => {
     if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
     const mode = assignment_mode === 'dated' ? 'dated' : 'active';
     if (mode === 'dated' && !assigned_for) return res.status(400).json({ error: 'Choose a date for dated workouts' });
-    const { data, error } = await supabaseAdmin.from('workout_assignments').insert({
-      client_id: clientRow.id, workout_id: workout.id, assignment_mode: mode, assigned_for: mode === 'dated' ? assigned_for : null, notes: notes || null,
-    }).select().single();
+    const loads = cleanExerciseLoads(req.body?.exercise_loads);
+    const { data: assignmentId, error } = await supabaseAdmin.rpc('save_workout_assignment_with_loads', {
+      p_assignment_id: null,
+      p_client_id: clientRow.id,
+      p_workout_id: workout.id,
+      p_assignment_mode: mode,
+      p_assigned_for: mode === 'dated' ? assigned_for : null,
+      p_notes: notes || null,
+      p_loads: loads,
+    });
     if (error) throw error;
-    return res.status(201).json({ ...data, workout });
+    const { data } = await supabaseAdmin.from('workout_assignments').select('*').eq('id', assignmentId).single();
+    return res.status(201).json({ ...data, workout, exercise_loads: await workoutAssignmentLoads(assignmentId) });
   } catch (e) {
     logError('assign workout error', e);
-    return res.status(500).json({ error: 'Failed to assign workout' });
+    return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to assign workout' });
+  }
+});
+
+router.put('/workout-assignments/:assignmentId/loads', requireCoach, async (req, res) => {
+  try {
+    const { data: assignment } = await supabaseAdmin.from('workout_assignments')
+      .select('*, client:clients(*), workout:workouts(*)')
+      .eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
+    if (!assignment || assignment.workout?.archived || assignment.client?.archived || !canAccessWorkoutAssignment(req.user, assignment)) {
+      return res.status(404).json({ error: 'Workout assignment not found' });
+    }
+    const loads = cleanExerciseLoads(req.body?.exercise_loads);
+    const { error } = await supabaseAdmin.rpc('save_workout_assignment_with_loads', {
+      p_assignment_id: assignment.id,
+      p_client_id: assignment.client_id,
+      p_workout_id: assignment.workout_id,
+      p_assignment_mode: assignment.assignment_mode,
+      p_assigned_for: assignment.assigned_for,
+      p_notes: 'notes' in (req.body || {}) ? req.body.notes : assignment.notes,
+      p_loads: loads,
+    });
+    if (error) throw error;
+    return res.json({ ...assignment, exercise_loads: await workoutAssignmentLoads(assignment.id) });
+  } catch (e) {
+    logError('update workout assignment loads error', e);
+    return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to update assigned loads' });
   }
 });
 
@@ -787,7 +892,11 @@ router.get('/client/assigned', requireClient, async (req, res) => {
     if (error) throw error;
     const programs = [];
     for (const assignment of programAssignments || []) {
-      if (assignment.program && !assignment.program.archived) programs.push({ ...assignment, program: await programWithDetails(assignment.program_id) });
+      if (assignment.program && !assignment.program.archived) programs.push({
+        ...assignment,
+        exercise_loads: await programAssignmentLoads(assignment.id),
+        program: await programWithDetails(assignment.program_id),
+      });
     }
     const { data: workoutAssignments, error: waErr } = await supabaseAdmin.from('workout_assignments').select('*')
       .eq('client_id', req.user.client.id).eq('archived', false).order('assigned_for', { ascending: true, nullsFirst: false });
@@ -795,7 +904,7 @@ router.get('/client/assigned', requireClient, async (req, res) => {
     const workouts = [];
     for (const assignment of workoutAssignments || []) {
       const workout = await workoutWithDetails(assignment.workout_id);
-      if (workout) workouts.push({ ...assignment, workout });
+      if (workout) workouts.push({ ...assignment, workout, exercise_loads: await workoutAssignmentLoads(assignment.id) });
     }
     return res.json({ programs, workouts });
   } catch (e) {

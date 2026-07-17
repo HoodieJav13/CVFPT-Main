@@ -30,6 +30,7 @@ const accounts = {
   coachB: { email: required('CVF_TEST_COACH_B_EMAIL'), password: required('CVF_TEST_COACH_B_PASSWORD') },
   client: { email: required('CVF_TEST_CLIENT_EMAIL'), password: required('CVF_TEST_CLIENT_PASSWORD') },
 };
+const protectionBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
 
 const runId = `${Date.now()}-${randomBytes(4).toString('hex')}`;
 const cleanup = [];
@@ -47,6 +48,7 @@ async function request(path, { method = 'GET', token, json, body, expected = 200
     headers: {
       ...(json === undefined ? {} : { 'content-type': 'application/json' }),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(protectionBypass ? { 'x-vercel-protection-bypass': protectionBypass } : {}),
     },
     body: json === undefined ? body : JSON.stringify(json),
     signal: AbortSignal.timeout(20_000),

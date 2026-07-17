@@ -10,7 +10,8 @@
     "test": "node --test",
     "test:integration": "node integration/api-hardening.mjs",
     "test:cleanup": "node integration/soft-archive-test-data.mjs",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "seed:test-workout-accounts": "node scripts/seed-workout-test-accounts.js"
   },
   "engines": {
     "node": ">=18"
