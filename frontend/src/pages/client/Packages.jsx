@@ -80,7 +80,7 @@ export default function ClientPackages() {
 
   return (
     <div>
-      <PageHeader title="Packages & credits" subtitle="Buy session credits and view payment history" />
+      <PageHeader title="Packages & credits" subtitle="View session packages, credits, and payment history" />
 
       <Card className="border-gold/35">
         <CardContent className="p-5 flex items-center justify-between">
@@ -98,8 +98,8 @@ export default function ClientPackages() {
         <div className="mt-4 flex items-start gap-3 rounded-2xl border border-dashed border-border bg-card/40 p-4" data-testid="payments-not-configured-card">
           <AlertCircle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-medium">Online payments not yet configured</p>
-            <p className="text-xs text-muted-foreground mt-1">{config.message}</p>
+            <p className="text-sm font-medium">Ask your coach about payment options</p>
+            <p className="text-xs text-muted-foreground mt-1">In-app payments are not currently offered.</p>
           </div>
         </div>
       )}
@@ -127,7 +127,7 @@ export default function ClientPackages() {
                 onClick={() => buy(pkg)}
                 data-testid="stripe-checkout-button"
               >
-                {buying === pkg.id ? <Loader2 className="h-4 w-4 animate-spin" /> : config.configured ? 'Buy now' : 'Payments unavailable'}
+                {buying === pkg.id ? <Loader2 className="h-4 w-4 animate-spin" /> : config.configured ? 'Buy now' : 'Ask your coach'}
               </Button>
             </CardContent>
           </Card>
