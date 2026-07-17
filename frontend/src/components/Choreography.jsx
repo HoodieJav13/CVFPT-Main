@@ -1,5 +1,6 @@
 import { Children, useEffect, useState } from 'react';
 import { m, useReducedMotion } from 'framer-motion';
+import { MOTION_EASINGS, PAGE_ENTRANCE_MOTION, msToSeconds } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 
 const PAGE_ENTRANCE_STORAGE_KEY = 'cvfpt.completedPageEntrances.v1';
@@ -27,17 +28,11 @@ function markPageEntranceCompleted(pageKey) {
   }
 }
 
-const MOTION_RECIPES = {
-  restrained: { duration: 0.34, distance: 5, stagger: 0.045, scale: 1 },
-  cinematic: { duration: 0.52, distance: 11, stagger: 0.075, scale: 0.995 },
-  spectacle: { duration: 0.68, distance: 18, stagger: 0.11, scale: 0.985 },
-};
-
 export function DashboardChoreography({ pageKey, children }) {
   const intensity = useVisualIntensity();
   const reducedMotion = useReducedMotion();
   const [shouldAnimate] = useState(() => !hasCompletedPageEntrance(pageKey));
-  const recipe = MOTION_RECIPES[intensity];
+  const recipe = PAGE_ENTRANCE_MOTION[intensity];
   const animate = shouldAnimate && !reducedMotion;
 
   useEffect(() => {
@@ -54,9 +49,11 @@ export function DashboardChoreography({ pageKey, children }) {
             initial={animate ? { opacity: 0, y: recipe.distance, scale: recipe.scale } : false}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{
-              duration: recipe.duration,
-              delay: animate ? Math.min(index * recipe.stagger, 0.55) : 0,
-              ease: [0.22, 1, 0.36, 1],
+              duration: msToSeconds(recipe.durationMs),
+              delay: animate
+                ? Math.min(index * msToSeconds(recipe.staggerMs), msToSeconds(PAGE_ENTRANCE_MOTION.maxStaggerDelayMs))
+                : 0,
+              ease: MOTION_EASINGS.expressiveOut,
             }}
           >
             {child}
@@ -70,14 +67,17 @@ export function DashboardChoreography({ pageKey, children }) {
 export function AuthEntrance({ children }) {
   const intensity = useVisualIntensity();
   const reducedMotion = useReducedMotion();
-  const recipe = MOTION_RECIPES[intensity];
+  const recipe = PAGE_ENTRANCE_MOTION[intensity];
 
   return (
     <m.div
       className="relative w-full max-w-sm"
       initial={reducedMotion ? false : { opacity: 0, y: recipe.distance, scale: recipe.scale }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: recipe.duration + 0.12, ease: [0.22, 1, 0.36, 1] }}
+      transition={{
+        duration: msToSeconds(recipe.durationMs + PAGE_ENTRANCE_MOTION.authDurationOffsetMs),
+        ease: MOTION_EASINGS.expressiveOut,
+      }}
     >
       {children}
     </m.div>

@@ -64,6 +64,11 @@ task surfaces remain calm. Avoid decorative loops, heavy parallax, and animation
 that delays a coach's task. Every sequence must respect reduced-motion
 preferences and provide the same information without animation.
 
+JavaScript motion recipes are owned by `frontend/src/lib/motion.js`; CSS
+interaction durations and easing are owned by `frontend/src/index.css`. Chart
+drawing intentionally uses a longer explanatory timing family than page and
+achievement entrances, while shared controls use the shorter interaction tokens.
+
 ## Signature backdrop and intensity
 
 `BrandBackdrop` is the single visual grammar for the Sandia ridge, atmospheric

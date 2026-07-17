@@ -14,15 +14,10 @@ import { fmtDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { BrandBackdrop } from '@/components/BrandBackdrop';
 import { useVisualIntensity } from '@/lib/visualIntensity';
+import { ACHIEVEMENT_MOTION, MOTION_EASINGS, msToSeconds } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
 const blankEntry = () => ({ value: '', recorded_on: new Date().toISOString().slice(0, 10), notes: '' });
-
-const ACHIEVEMENT_MOTION = {
-  restrained: { distance: 5, duration: 0.35 },
-  cinematic: { distance: 12, duration: 0.52 },
-  spectacle: { distance: 22, duration: 0.7 },
-};
 
 function AchievementMoment({ achievement }) {
   const reducedMotion = useReducedMotion();
@@ -39,7 +34,7 @@ function AchievementMoment({ achievement }) {
           initial={reducedMotion ? false : { opacity: 0, y: recipe.distance, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -recipe.distance / 2, scale: 0.99 }}
-          transition={{ duration: recipe.duration, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: msToSeconds(recipe.durationMs), ease: MOTION_EASINGS.expressiveOut }}
           role="status"
           aria-live="polite"
           data-testid="personal-record-moment"

@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { useVisualIntensity } from '@/lib/visualIntensity';
+import { CHART_MOTION, MOTION_EASINGS, msToSeconds } from '@/lib/motion';
 
 export function LoadingScreen() {
   return (
@@ -240,12 +241,6 @@ export function ChartSkeleton() {
 
 /* ---------- Metric chart ---------- */
 
-const CHART_DURATIONS = {
-  restrained: 650,
-  cinematic: 820,
-  spectacle: 1000,
-};
-
 export function MetricChart({ entries = [], unit, highlightLatest = false }) {
   const gradientId = `metric-fill-${useId().replace(/:/g, '')}`;
   const reducedMotion = useReducedMotion();
@@ -281,8 +276,8 @@ export function MetricChart({ entries = [], unit, highlightLatest = false }) {
             strokeWidth={2}
             fill={`url(#${gradientId})`}
             isAnimationActive={!reducedMotion}
-            animationDuration={CHART_DURATIONS[intensity]}
-            animationEasing="ease-out"
+            animationDuration={CHART_MOTION.drawDurationMs[intensity]}
+            animationEasing={MOTION_EASINGS.chartOut}
             dot={(props) => {
               const { key, index, cx, cy } = props;
               const latest = index === lastIndex;
@@ -295,7 +290,11 @@ export function MetricChart({ entries = [], unit, highlightLatest = false }) {
                       fill="hsl(var(--gold))"
                       initial={{ r: 5, opacity: 0.65 }}
                       animate={{ r: 18, opacity: 0 }}
-                      transition={{ delay: CHART_DURATIONS[intensity] / 1000, duration: 0.7, ease: 'easeOut' }}
+                      transition={{
+                        delay: msToSeconds(CHART_MOTION.drawDurationMs[intensity]),
+                        duration: msToSeconds(CHART_MOTION.pulseDurationMs),
+                        ease: MOTION_EASINGS.highlightOut,
+                      }}
                     />
                     <m.circle
                       cx={cx}
@@ -305,7 +304,11 @@ export function MetricChart({ entries = [], unit, highlightLatest = false }) {
                       strokeWidth={2}
                       initial={{ r: 2 }}
                       animate={{ r: 5.5 }}
-                      transition={{ delay: CHART_DURATIONS[intensity] / 1000, duration: 0.32, ease: 'backOut' }}
+                      transition={{
+                        delay: msToSeconds(CHART_MOTION.drawDurationMs[intensity]),
+                        duration: msToSeconds(CHART_MOTION.dotDurationMs),
+                        ease: MOTION_EASINGS.highlightPop,
+                      }}
                     />
                   </g>
                 );

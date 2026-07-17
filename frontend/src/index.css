@@ -51,6 +51,9 @@
     --app-elev-soft: 0 8px 18px rgba(0, 0, 0, 0.25);
     --brand-glow: 0 12px 38px hsl(var(--gold) / 0.18);
     --focus-ring: 0 0 0 3px rgba(91, 194, 212, 0.35);
+    --motion-duration-press: 160ms;
+    --motion-duration-state: 200ms;
+    --motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   }
 
   * {
