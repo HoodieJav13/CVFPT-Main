@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 
 const backendUrl = process.env.CVF_E2E_BACKEND_URL;
+const directDataUrl = process.env.SUPABASE_URL;
+const directDataKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const accounts = {
   admin: { email: process.env.CVF_E2E_ADMIN_EMAIL, password: process.env.CVF_E2E_ADMIN_PASSWORD },
   coach: { email: process.env.CVF_E2E_COACH_EMAIL, password: process.env.CVF_E2E_COACH_PASSWORD },
@@ -955,6 +957,22 @@ test('hosted workout completion snapshots assigned load, preserves credits, and 
       data: { client_notes: 'must not change' },
     });
     expect(rejectedSnapshotMutation.status()).toBe(409);
+
+    if (directDataUrl && directDataKey) {
+      const rejectedDirectMutation = await request.patch(
+        `${directDataUrl}/rest/v1/workout_log_sets?id=eq.${set.id}`,
+        {
+          headers: {
+            apikey: directDataKey,
+            authorization: `Bearer ${directDataKey}`,
+            prefer: 'return=representation',
+          },
+          data: { status: 'pending', actual_load_value: 55 },
+        },
+      );
+      expect(rejectedDirectMutation.status()).toBe(400);
+      expect(await rejectedDirectMutation.text()).toContain('Completed workout logs are immutable');
+    }
 
     const [coachNotificationsResponse, coachBNotificationsResponse] = await Promise.all([
       request.get(`${backendUrl}/api/notifications`, { headers: coachHeaders }),
