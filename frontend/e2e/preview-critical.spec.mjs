@@ -227,3 +227,52 @@ test('client preview hides another client assigned resource', async ({ page }) =
   await expect(page.getByText('Welcome to CVF PT')).toBeVisible();
   await expect(page.getByText('Knee Recovery Basics')).toHaveCount(0);
 });
+
+test('client workout completion creates a coach notification with immutable results', async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+
+  const firstDay = page.getByTestId('client-program-card').first();
+  await expect(firstDay.getByText(/Load: 35 lb/)).toBeVisible();
+  await firstDay.getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  await expect(page.getByTestId('workout-tracker')).toBeVisible();
+
+  const squat = page.getByTestId('tracker-exercise-card').first();
+  const weight = squat.getByLabel('Goblet Squat set 1 weight');
+  await expect(weight).toHaveValue('35');
+  await expect(squat.getByText('RPE 7')).toBeVisible();
+  await expect(squat.getByText('Rest 90s')).toBeVisible();
+  await context.setOffline(true);
+  await weight.fill('37.5');
+  await weight.blur();
+  await expect(page.getByTestId('workout-save-state')).toContainText('Not saved yet');
+  await context.setOffline(false);
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+
+  await squat.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(page.getByLabel(/Rest timer/)).toBeVisible();
+  await squat.getByRole('button', { name: 'Add set' }).click();
+  await expect(squat.getByText('Remove extra set')).toBeVisible();
+  await squat.getByText('Remove extra set').click();
+  await expect(squat.getByText('Remove extra set')).toHaveCount(0);
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  await page.getByLabel('Feedback for your coach').fill('Strong session from the preview flow.');
+  await page.getByRole('button', { name: 'Confirm completion' }).click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+$/);
+  await expect(page.getByText('Strong session from the preview flow.')).toBeVisible();
+  await expect(page.getByText(/\d+ skipped/)).toBeVisible();
+
+  await page.getByTestId('preview-toolbar-toggle').click();
+  await page.getByTestId('preview-role-select').selectOption('coach');
+  await expect(page).toHaveURL(/\/coach$/);
+  await page.getByTestId('mobile-notifications-link').click();
+  await expect(page.getByTestId('notification-row').filter({ hasText: 'Lower Strength A' })).toBeVisible();
+  await page.getByTestId('notification-row').filter({ hasText: 'Lower Strength A' }).click();
+  await expect(page).toHaveURL(/\/coach\/workouts\/[^/]+$/);
+  await expect(page.getByText('Strong session from the preview flow.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Message client' })).toBeVisible();
+});

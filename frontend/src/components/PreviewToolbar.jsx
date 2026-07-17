@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, Settings2 } from 'lucide-react';
 import {
   getPreviewClientId,
   getPreviewClients,
@@ -61,6 +61,7 @@ export default function PreviewToolbar() {
 
   const changeRole = (nextRole) => {
     setPreviewRole(nextRole);
+    setExpanded(false);
     navigate(nextRole === 'client' ? '/client' : nextRole === 'admin' ? '/admin' : '/coach');
   };
 
@@ -80,21 +81,21 @@ export default function PreviewToolbar() {
   return (
     <div
       className={cn(
-        'fixed bottom-[76px] right-3 z-40 rounded-xl border border-border bg-muted/95 p-2 shadow-xl backdrop-blur lg:bottom-4 lg:left-auto lg:right-4 lg:w-[520px]',
-        expanded && 'left-3'
+        'fixed z-50 rounded-xl border border-border bg-muted/95 p-1 shadow-xl backdrop-blur lg:bottom-4 lg:left-auto lg:right-4 lg:top-auto lg:w-[520px] lg:translate-x-0 lg:p-2',
+        expanded ? 'left-3 right-3 top-[68px]' : 'left-1/2 right-auto top-2 -translate-x-1/2'
       )}
       data-testid="preview-toolbar"
     >
       <button
         type="button"
-        className="flex h-11 items-center gap-2 rounded-lg px-3 text-xs font-bold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
+        className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
         aria-expanded={expanded}
         aria-controls="preview-toolbar-controls"
+        aria-label={expanded ? 'Close preview controls' : 'Open preview controls'}
         onClick={() => setExpanded((current) => !current)}
         data-testid="preview-toolbar-toggle"
       >
-        Preview Mode
-        {expanded ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronUp className="h-4 w-4" aria-hidden />}
+        {expanded ? <ChevronDown className="h-5 w-5" aria-hidden /> : <Settings2 className="h-5 w-5" aria-hidden />}
       </button>
       <div id="preview-toolbar-controls" className={cn(expanded ? 'block' : 'hidden', 'lg:block')}>
         <div className="flex flex-wrap items-center gap-2">
@@ -104,6 +105,7 @@ export default function PreviewToolbar() {
           <select
             value={role}
             onChange={(e) => changeRole(e.target.value)}
+            aria-label="Preview role"
             className="h-11 rounded-lg border border-border bg-card px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:h-8"
             data-testid="preview-role-select"
           >
@@ -114,6 +116,7 @@ export default function PreviewToolbar() {
           <select
             value={clientId}
             onChange={(e) => changeClient(e.target.value)}
+            aria-label="Preview client"
             className="h-11 min-w-[150px] rounded-lg border border-border bg-card px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:h-8"
             data-testid="preview-client-select"
           >

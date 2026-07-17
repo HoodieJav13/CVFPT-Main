@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { domAnimation, LazyMotion } from 'framer-motion';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { NotificationsProvider } from '@/context/NotificationsContext';
 import { Toaster } from '@/components/ui/sonner';
 import { LoadingScreen } from '@/components/common';
 import AppShell from '@/components/layout/AppShell';
@@ -15,6 +16,7 @@ import Programs from '@/pages/coach/Programs';
 import CoachResources from '@/pages/coach/Resources';
 import CoachMessages from '@/pages/coach/Messages';
 import CoachConversation from '@/pages/coach/Conversation';
+import CoachNotifications from '@/pages/coach/Notifications';
 import ClientHome from '@/pages/client/Home';
 import ClientSessions from '@/pages/client/Sessions';
 import ClientProgress from '@/pages/client/Progress';
@@ -23,6 +25,8 @@ import ClientResources from '@/pages/client/Resources';
 import ClientMessages from '@/pages/client/Messages';
 import ClientWaiver from '@/pages/client/Waiver';
 import ClientPackages from '@/pages/client/Packages';
+import WorkoutLogDetail from '@/pages/WorkoutLogDetail';
+import WorkoutTracker from '@/pages/client/WorkoutTracker';
 import AdminPage from '@/pages/admin/Admin';
 import '@/App.css';
 
@@ -47,6 +51,7 @@ export default function App() {
   return (
     <LazyMotion features={domAnimation} strict>
       <AuthProvider>
+        <NotificationsProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<RoleRedirect />} />
@@ -69,6 +74,8 @@ export default function App() {
             <Route path="resources" element={<CoachResources />} />
             <Route path="messages" element={<CoachMessages />} />
             <Route path="messages/:clientId" element={<CoachConversation />} />
+            <Route path="notifications" element={<CoachNotifications />} />
+            <Route path="workouts/:id" element={<WorkoutLogDetail />} />
           </Route>
 
           <Route
@@ -87,6 +94,8 @@ export default function App() {
             <Route path="messages" element={<ClientMessages />} />
             <Route path="waiver" element={<ClientWaiver />} />
             <Route path="packages" element={<ClientPackages />} />
+            <Route path="workouts/:id" element={<WorkoutLogDetail />} />
+            <Route path="workouts/:id/track" element={<WorkoutTracker />} />
           </Route>
 
           <Route
@@ -104,6 +113,7 @@ export default function App() {
           </Routes>
           <PreviewToolbar />
         </BrowserRouter>
+        </NotificationsProvider>
         <Toaster position="top-center" richColors />
       </AuthProvider>
     </LazyMotion>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingScreen, LoadErrorState, StatusBadge, MetricChart, EmptyState, SectionLabel, CheckInStats, IconButton } from '@/components/common';
@@ -23,6 +23,7 @@ import {
   ArrowLeft, Pencil, Archive, ArchiveRestore, Loader2, Plus, FileSignature,
   CreditCard, TrendingUp, Dumbbell, CalendarDays, MessageSquare, Trash2,
   ClipboardCheck, Play, StickyNote,
+  SlidersHorizontal, ChevronRight,
 } from 'lucide-react';
 import { initials, fmtDate, fmtDateTime, fmtMoney, fmtTime, fmtDay } from '@/lib/format';
 import { toast } from 'sonner';
@@ -767,6 +768,7 @@ function ProgramsTab({ clientId }) {
   const [programs, setPrograms] = useState(null);
   const [workouts, setWorkouts] = useState(null);
   const [workoutAssignments, setWorkoutAssignments] = useState(null);
+  const [workoutHistory, setWorkoutHistory] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignmentType, setAssignmentType] = useState('program');
@@ -776,17 +778,20 @@ function ProgramsTab({ clientId }) {
   const [assignedFor, setAssignedFor] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [exerciseLoads, setExerciseLoads] = useState({});
 
   const load = useCallback(async () => {
     try {
-      const [programRes, workoutRes, assignmentRes] = await Promise.all([
+      const [programRes, workoutRes, assignmentRes, historyRes] = await Promise.all([
         api.get('/programs'),
         api.get('/programs/workouts'),
         api.get(`/programs/workout-assignments/client/${clientId}`),
+        api.get(`/workout-logs/client/${clientId}`),
       ]);
       setPrograms(programRes.data);
       setWorkouts(workoutRes.data);
       setWorkoutAssignments(assignmentRes.data);
+      setWorkoutHistory(historyRes.data);
       setLoadError(null);
     } catch (e) {
       const message = errMsg(e);
@@ -797,7 +802,7 @@ function ProgramsTab({ clientId }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const awaitingInitialData = !programs || !workouts || !workoutAssignments;
+  const awaitingInitialData = !programs || !workouts || !workoutAssignments || !workoutHistory;
   if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="client-detail-programs" onRetry={() => { setLoadError(null); load(); }} />;
   if (awaitingInitialData) return <LoadingScreen />;
 
@@ -808,13 +813,27 @@ function ProgramsTab({ clientId }) {
     .filter((a) => a.assignment_mode === 'dated')
     .sort((a, b) => String(a.assigned_for || '').localeCompare(String(b.assigned_for || '')));
 
+  const selectedTraining = assignmentType === 'program'
+    ? available.find((program) => program.id === selectedProgram)
+    : workouts.find((workout) => workout.id === selectedWorkout);
+
+  const assignmentLoadPayload = () => loadRowsForSelection(assignmentType, selectedTraining)
+    .map((row) => ({ ...row, ...(exerciseLoads[row.key] || {}) }))
+    .filter((row) => row.load_value !== '' && row.load_value !== null && row.load_value !== undefined)
+    .map((row) => ({
+      ...(row.program_day_id ? { program_day_id: row.program_day_id } : {}),
+      workout_exercise_id: row.workout_exercise_id,
+      load_value: Number(row.load_value),
+      load_unit: row.load_unit || 'lb',
+    }));
+
   const assign = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
       if (assignmentType === 'program') {
         if (!selectedProgram) return;
-        await api.post(`/programs/${selectedProgram}/assign`, { client_id: clientId, notes });
+        await api.post(`/programs/${selectedProgram}/assign`, { client_id: clientId, notes, exercise_loads: assignmentLoadPayload() });
         toast.success('Program assigned');
       } else {
         if (!selectedWorkout) return;
@@ -828,6 +847,7 @@ function ProgramsTab({ clientId }) {
           assignment_mode: assignmentMode,
           assigned_for: assignmentMode === 'dated' ? assignedFor : null,
           notes,
+          exercise_loads: assignmentLoadPayload(),
         });
         toast.success('Workout assigned');
       }
@@ -836,6 +856,7 @@ function ProgramsTab({ clientId }) {
       setSelectedWorkout('');
       setNotes('');
       setAssignedFor('');
+      setExerciseLoads({});
       load();
     } catch (err) {
       toast.error(errMsg(err));
@@ -883,7 +904,7 @@ function ProgramsTab({ clientId }) {
               <DialogDescription>Choose a program and start date to assign to this client.</DialogDescription>
             </DialogHeader>
             <form onSubmit={assign} className="space-y-4">
-              <Select value={assignmentType} onValueChange={setAssignmentType}>
+              <Select value={assignmentType} onValueChange={(value) => { setAssignmentType(value); setExerciseLoads({}); }}>
                 <SelectTrigger className="rounded-xl" data-testid="client-assignment-type-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="program">Long-term program</SelectItem>
@@ -892,7 +913,7 @@ function ProgramsTab({ clientId }) {
               </Select>
               {assignmentType === 'program' ? (
                 <>
-                  <Select value={selectedProgram} onValueChange={setSelectedProgram}>
+                  <Select value={selectedProgram} onValueChange={(value) => { setSelectedProgram(value); setExerciseLoads({}); }}>
                     <SelectTrigger className="rounded-xl" data-testid="assign-program-select">
                       <SelectValue placeholder="Choose program..." />
                     </SelectTrigger>
@@ -906,7 +927,7 @@ function ProgramsTab({ clientId }) {
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="space-y-1.5 sm:col-span-3">
                     <Label>Workout</Label>
-                    <Select value={selectedWorkout} onValueChange={setSelectedWorkout}>
+                    <Select value={selectedWorkout} onValueChange={(value) => { setSelectedWorkout(value); setExerciseLoads({}); }}>
                       <SelectTrigger className="rounded-xl" data-testid="client-assignment-workout-select"><SelectValue placeholder="Choose workout..." /></SelectTrigger>
                       <SelectContent>{workouts.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
                     </Select>
@@ -927,6 +948,14 @@ function ProgramsTab({ clientId }) {
                   </div>
                 </div>
               )}
+              {selectedTraining && (
+                <AssignmentLoadFields
+                  type={assignmentType}
+                  selection={selectedTraining}
+                  values={exerciseLoads}
+                  onChange={setExerciseLoads}
+                />
+              )}
               <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" data-testid="client-assignment-notes-input" />
               <DialogFooter>
                 <Button type="submit" disabled={saving || (assignmentType === 'program' ? !selectedProgram : !selectedWorkout)} className="rounded-xl w-full sm:w-auto" data-testid="assign-confirm-button">
@@ -946,9 +975,10 @@ function ProgramsTab({ clientId }) {
                 <p className="font-display font-semibold">{p.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} {p.frequency_days === 1 ? 'day' : 'days'}/week - {p.exercise_count} exercises</p>
               </div>
-              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">
-                Unassign
-              </Button>
+              <div className="flex gap-1">
+                <ExistingLoadEditor type="program" assignment={(p.active_assignments || []).find((row) => row.client?.id === clientId)} selection={p} onSaved={load} />
+                <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
+              </div>
             </div>
             <div className="divide-y divide-border">
               {(p.days || []).map((day) => (
@@ -967,16 +997,132 @@ function ProgramsTab({ clientId }) {
         </Card>
       ))}
       {activeWorkouts.map((assignment) => (
-        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} />
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} />
       ))}
       {datedWorkouts.map((assignment) => (
-        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} />
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} />
       ))}
+      <section className="space-y-3 pt-3" data-testid="coach-client-workout-history">
+        <div><h3 className="font-display text-lg font-semibold">Workout history</h3><p className="text-sm text-muted-foreground">Completed self-guided workouts.</p></div>
+        {workoutHistory.length === 0 ? <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">No completed workouts yet.</p> : workoutHistory.slice(0, 12).map((log) => (
+          <Link key={log.id} to={`/coach/workouts/${log.id}`} className="flex min-h-14 items-center justify-between rounded-md border border-border bg-card/60 px-4 py-3 hover:bg-card">
+            <span><span className="block font-medium">{log.workout_name}</span><span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)}</span></span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
+        ))}
+      </section>
     </div>
   );
 }
 
-function CoachWorkoutAssignment({ assignment, onArchive }) {
+function loadRowsForSelection(type, selection) {
+  if (!selection) return [];
+  if (type === 'program') {
+    return (selection.days || []).flatMap((day) => (day.workout?.exercises || []).map((exercise) => ({
+      key: `${day.id}:${exercise.id}`,
+      program_day_id: day.id,
+      workout_exercise_id: exercise.id,
+      label: `Day ${day.day_number} - ${exercise.library_exercise?.name || exercise.custom_name || 'Exercise'}`,
+      default_load_value: exercise.default_load_value,
+      default_load_unit: exercise.default_load_unit,
+    })));
+  }
+  return (selection.exercises || []).map((exercise) => ({
+    key: exercise.id,
+    workout_exercise_id: exercise.id,
+    label: exercise.library_exercise?.name || exercise.custom_name || 'Exercise',
+    default_load_value: exercise.default_load_value,
+    default_load_unit: exercise.default_load_unit,
+  }));
+}
+
+function AssignmentLoadFields({ type, selection, values, onChange }) {
+  const rows = loadRowsForSelection(type, selection);
+  if (!rows.length) return null;
+  return (
+    <div className="space-y-2">
+      <Label>Client loads</Label>
+      <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border border-border p-3">
+        {rows.map((row) => {
+          const value = values[row.key] || { load_value: '', load_unit: row.default_load_unit || 'lb' };
+          return (
+            <div key={row.key} className="grid grid-cols-[minmax(0,1fr)_5.5rem_4.5rem] items-center gap-2">
+              <span className="truncate text-xs" title={row.label}>{row.label}</span>
+              <Input
+                type="number" min="0" step="0.5" inputMode="decimal" className="h-9"
+                value={value.load_value}
+                placeholder={row.default_load_value === null || row.default_load_value === undefined ? '-' : String(row.default_load_value)}
+                onChange={(event) => onChange((current) => ({ ...current, [row.key]: { ...value, load_value: event.target.value } }))}
+                aria-label={`${row.label} assigned load`}
+              />
+              <Select value={value.load_unit} onValueChange={(unit) => onChange((current) => ({ ...current, [row.key]: { ...value, load_unit: unit } }))}>
+                <SelectTrigger className="h-9 px-2" aria-label={`${row.label} load unit`}><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
+              </Select>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">Blank values use the workout default.</p>
+    </div>
+  );
+}
+
+function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [values, setValues] = useState({});
+  const [saving, setSaving] = useState(false);
+  const rows = loadRowsForSelection(type, selection);
+
+  const openEditor = () => {
+    const next = {};
+    (assignment?.exercise_loads || []).forEach((load) => {
+      const key = type === 'program' ? `${load.program_day_id}:${load.workout_exercise_id}` : load.workout_exercise_id;
+      next[key] = { load_value: String(load.load_value), load_unit: load.load_unit };
+    });
+    setValues(next);
+    setOpen(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const exerciseLoads = rows.map((row) => ({ ...row, ...(values[row.key] || {}) }))
+        .filter((row) => row.load_value !== '' && row.load_value !== null && row.load_value !== undefined)
+        .map((row) => ({
+          ...(row.program_day_id ? { program_day_id: row.program_day_id } : {}),
+          workout_exercise_id: row.workout_exercise_id,
+          load_value: Number(row.load_value),
+          load_unit: row.load_unit || 'lb',
+        }));
+      const url = type === 'program'
+        ? `/programs/assignments/${assignment.id}/loads`
+        : `/programs/workout-assignments/${assignment.id}/loads`;
+      await api.put(url, { exercise_loads: exerciseLoads });
+      toast.success('Assigned loads updated');
+      setOpen(false);
+      onSaved();
+    } catch (error) {
+      toast.error(errMsg(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!assignment) return null;
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button type="button" size="sm" variant="outline" onClick={openEditor} data-testid="edit-assigned-loads"><SlidersHorizontal className="mr-1 h-3.5 w-3.5" /> Loads</Button>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Client loads</DialogTitle><DialogDescription>Set the starting load for each exercise in this assignment.</DialogDescription></DialogHeader>
+        <AssignmentLoadFields type={type} selection={selection} values={values} onChange={setValues} />
+        <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save loads'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CoachWorkoutAssignment({ assignment, onArchive, onReload }) {
   const workout = assignment.workout || {};
   const label = assignment.assignment_mode === 'dated'
     ? `Dated: ${assignment.assigned_for ? fmtDate(assignment.assigned_for) : 'No date'}`
@@ -990,9 +1136,10 @@ function CoachWorkoutAssignment({ assignment, onArchive }) {
             <p className="font-display font-semibold">{workout.name}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{label} - {(workout.exercises || []).length} exercises</p>
           </div>
-          <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">
-            Unassign
-          </Button>
+          <div className="flex gap-1">
+            <ExistingLoadEditor type="workout" assignment={assignment} selection={workout} onSaved={onReload} />
+            <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">Unassign</Button>
+          </div>
         </div>
         {assignment.notes && (
           <div className="flex gap-2 rounded-lg bg-primary/10 border border-primary/20 px-3 py-2">

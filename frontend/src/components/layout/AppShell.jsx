@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Outlet, NavLink, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
-  TrendingUp, FileSignature, CreditCard, ShieldCheck, LogOut, Plus, Home, Library,
+  TrendingUp, FileSignature, CreditCard, ShieldCheck, LogOut, Plus, Home, Library, Bell,
 } from 'lucide-react';
+import { useNotifications } from '@/context/NotificationsContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -62,11 +63,17 @@ function BrandLogo({ size = 'desktop' }) {
 export default function AppShell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { unread, refresh: refreshNotifications } = useNotifications();
   const isCoach = user.role === 'coach' || user.role === 'admin';
   const nav = isCoach ? COACH_NAV : CLIENT_NAV;
   const sidebarNav = isCoach
     ? [...COACH_NAV, ...(user.role === 'admin' ? [{ to: '/admin', label: 'Admin', icon: ShieldCheck }] : [])]
     : [...CLIENT_NAV, ...CLIENT_EXTRA];
+
+  useEffect(() => {
+    if (isCoach) refreshNotifications();
+  }, [isCoach, location.pathname, refreshNotifications]);
 
   return (
     <div className="min-h-dvh app-noise">
@@ -98,6 +105,20 @@ export default function AppShell() {
               </NavLink>
             ))}
           </nav>
+          {isCoach && (
+            <Link
+              to="/coach/notifications"
+              className="mb-2 flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              data-testid="desktop-notifications-link"
+            >
+              <span className="relative">
+                <Bell className="h-[18px] w-[18px]" />
+                {unread > 0 && <span className="absolute -right-2 -top-2 h-2.5 w-2.5 rounded-full border-2 border-background bg-primary" />}
+              </span>
+              <span className="flex-1">Notifications</span>
+              {unread > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">{Math.min(unread, 99)}</span>}
+            </Link>
+          )}
           <UserMenu user={user} logout={logout} />
           <p className="mt-3 px-2 text-[11px] text-muted-foreground/70">Core Value Fitness - Albuquerque, NM</p>
         </aside>
@@ -110,6 +131,12 @@ export default function AppShell() {
               <span className="font-display font-semibold">CVF PT</span>
             </Link>
             <div className="flex items-center gap-2" data-testid="mobile-header-actions">
+              {isCoach && (
+                <Button variant="ghost" size="icon" className="relative" onClick={() => navigate('/coach/notifications')} data-testid="mobile-notifications-link" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
+                  <Bell className="h-5 w-5" />
+                  {unread > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">{Math.min(unread, 99)}</span>}
+                </Button>
+              )}
               {user.role === 'admin' && (
                 <Button variant="ghost" size="icon" onClick={() => navigate('/admin')} data-testid="mobile-admin-link">
                   <ShieldCheck className="h-5 w-5 text-primary" />

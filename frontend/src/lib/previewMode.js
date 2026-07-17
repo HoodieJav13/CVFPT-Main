@@ -87,13 +87,13 @@ const state = {
     { id: 'workout_mobility_run', coach_id: 'coach_marcus', name: 'Run Prep Mobility', description: 'Hips, ankles, and trunk prep for running days.', goal: 'Mobility', archived: false, created_at: iso(-40), updated_at: iso(-40) },
   ],
   workoutExercises: [
-    { id: 'wex_1', workout_id: 'workout_lower_a', exercise_library_id: 'lib_goblet_squat', custom_name: null, sets: '3', reps: '8-10', rest: '90s', tempo: '3-1-1', notes: 'Slow lower, tall chest.', video_url: null, position: 0, archived: false, created_at: iso(-45) },
-    { id: 'wex_2', workout_id: 'workout_lower_a', exercise_library_id: 'lib_rdl', custom_name: null, sets: '3', reps: '8', rest: '90s', tempo: '3-0-1', notes: 'Stop when hamstrings limit range.', video_url: null, position: 1, archived: false, created_at: iso(-45) },
-    { id: 'wex_3', workout_id: 'workout_lower_a', exercise_library_id: null, custom_name: 'Half-kneeling Pallof Press', sets: '3', reps: '10/side', rest: '45s', tempo: '', notes: 'No torso rotation.', video_url: 'https://www.youtube.com/watch?v=ma2OjgP5XDc', position: 2, archived: false, created_at: iso(-45) },
-    { id: 'wex_4', workout_id: 'workout_upper_a', exercise_library_id: 'lib_db_bench', custom_name: null, sets: '3', reps: '8', rest: '90s', tempo: '2-1-1', notes: 'Pause at bottom.', video_url: null, position: 0, archived: false, created_at: iso(-44) },
-    { id: 'wex_5', workout_id: 'workout_upper_a', exercise_library_id: 'lib_cable_row', custom_name: null, sets: '3', reps: '10-12', rest: '75s', tempo: '', notes: 'Squeeze shoulder blades.', video_url: null, position: 1, archived: false, created_at: iso(-44) },
-    { id: 'wex_6', workout_id: 'workout_mobility_run', exercise_library_id: 'lib_world_stretch', custom_name: null, sets: '2', reps: '5/side', rest: '', tempo: '', notes: 'Move slowly.', video_url: null, position: 0, archived: false, created_at: iso(-40) },
-    { id: 'wex_7', workout_id: 'workout_mobility_run', exercise_library_id: null, custom_name: 'Ankle Rocker', sets: '2', reps: '8/side', rest: '', tempo: '', notes: 'Keep heel heavy.', video_url: '', position: 1, archived: false, created_at: iso(-40) },
+    { id: 'wex_1', workout_id: 'workout_lower_a', exercise_library_id: 'lib_goblet_squat', custom_name: null, sets: '3', reps: '8-10', target_rpe: '7', rest: '90s', tempo: '3-1-1', default_load_value: 30, default_load_unit: 'lb', notes: 'Slow lower, tall chest.', video_url: null, position: 0, archived: false, created_at: iso(-45) },
+    { id: 'wex_2', workout_id: 'workout_lower_a', exercise_library_id: 'lib_rdl', custom_name: null, sets: '3', reps: '8', target_rpe: '7-8', rest: '90s', tempo: '3-0-1', default_load_value: 40, default_load_unit: 'lb', notes: 'Stop when hamstrings limit range.', video_url: null, position: 1, archived: false, created_at: iso(-45) },
+    { id: 'wex_3', workout_id: 'workout_lower_a', exercise_library_id: null, custom_name: 'Half-kneeling Pallof Press', sets: '3', reps: '10/side', target_rpe: '7', rest: '45s', tempo: '', default_load_value: 15, default_load_unit: 'lb', notes: 'No torso rotation.', video_url: 'https://www.youtube.com/watch?v=ma2OjgP5XDc', position: 2, archived: false, created_at: iso(-45) },
+    { id: 'wex_4', workout_id: 'workout_upper_a', exercise_library_id: 'lib_db_bench', custom_name: null, sets: '3', reps: '8', target_rpe: '8', rest: '90s', tempo: '2-1-1', default_load_value: 20, default_load_unit: 'lb', notes: 'Pause at bottom.', video_url: null, position: 0, archived: false, created_at: iso(-44) },
+    { id: 'wex_5', workout_id: 'workout_upper_a', exercise_library_id: 'lib_cable_row', custom_name: null, sets: '3', reps: '10-12', target_rpe: '8', rest: '75s', tempo: '', default_load_value: 35, default_load_unit: 'lb', notes: 'Squeeze shoulder blades.', video_url: null, position: 1, archived: false, created_at: iso(-44) },
+    { id: 'wex_6', workout_id: 'workout_mobility_run', exercise_library_id: 'lib_world_stretch', custom_name: null, sets: '2', reps: '5/side', target_rpe: null, rest: '', tempo: '', default_load_value: null, default_load_unit: null, notes: 'Move slowly.', video_url: null, position: 0, archived: false, created_at: iso(-40) },
+    { id: 'wex_7', workout_id: 'workout_mobility_run', exercise_library_id: null, custom_name: 'Ankle Rocker', sets: '2', reps: '8/side', target_rpe: null, rest: '', tempo: '', default_load_value: null, default_load_unit: null, notes: 'Keep heel heavy.', video_url: '', position: 1, archived: false, created_at: iso(-40) },
   ],
   programs: [
     { id: 'program_foundation', coach_id: 'coach_marcus', name: 'Foundation Strength - Phase 1', description: 'Three days per week focused on clean mechanics and steady volume.', frequency_days: 3, archived: false, created_at: iso(-35), updated_at: iso(-35) },
@@ -114,6 +114,28 @@ const state = {
   workoutAssignments: [
     { id: 'work_assign_sarah_active', client_id: 'client_sarah', workout_id: 'workout_mobility_run', assignment_mode: 'active', assigned_for: null, notes: 'Use this on recovery days.', archived: false, created_at: iso(-8) },
     { id: 'work_assign_sarah_dated', client_id: 'client_sarah', workout_id: 'workout_upper_a', assignment_mode: 'dated', assigned_for: dateOnly(2), notes: 'Optional if shoulder feels good.', archived: false, created_at: iso(-2) },
+  ],
+  programAssignmentExerciseLoads: [
+    { id: 'paload_squat', program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_1', workout_exercise_id: 'wex_1', load_value: 35, load_unit: 'lb', archived: false, created_at: iso(-18), updated_at: iso(-18) },
+    { id: 'paload_rdl', program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_1', workout_exercise_id: 'wex_2', load_value: 50, load_unit: 'lb', archived: false, created_at: iso(-18), updated_at: iso(-18) },
+  ],
+  workoutAssignmentExerciseLoads: [
+    { id: 'waload_bench', workout_assignment_id: 'work_assign_sarah_dated', workout_exercise_id: 'wex_4', load_value: 25, load_unit: 'lb', archived: false, created_at: iso(-2), updated_at: iso(-2) },
+  ],
+  workoutLogs: [
+    { id: 'log_preview_complete', client_id: 'client_sarah', program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_2', workout_assignment_id: null, dated_workout_assignment_id: null, workout_name: 'Upper Strength A', status: 'completed', notes: 'Shoulder felt strong today.', feedback: 'Good session. The last rows were challenging.', started_at: iso(-2, 17), completed_at: iso(-2, 18), archived: false, created_at: iso(-2, 17), updated_at: iso(-2, 18) },
+  ],
+  workoutLogExercises: [
+    { id: 'logex_preview_bench', workout_log_id: 'log_preview_complete', source_workout_exercise_id: 'wex_4', exercise_name: 'DB Bench Press', prescribed_sets: '3', prescribed_reps: '8', prescribed_rpe: '8', prescribed_rest: '90s', prescribed_tempo: '2-1-1', prescribed_notes: 'Pause at bottom.', client_notes: 'Kept the pause consistent.', prescribed_load_value: 20, prescribed_load_unit: 'lb', position: 0, archived: false },
+    { id: 'logex_preview_row', workout_log_id: 'log_preview_complete', source_workout_exercise_id: 'wex_5', exercise_name: 'Cable Row', prescribed_sets: '3', prescribed_reps: '10-12', prescribed_rpe: '8', prescribed_rest: '75s', prescribed_tempo: null, prescribed_notes: 'Squeeze shoulder blades.', client_notes: null, prescribed_load_value: 35, prescribed_load_unit: 'lb', position: 1, archived: false },
+  ],
+  workoutLogSets: [
+    ...[1, 2, 3].map((setNumber) => ({ id: `logset_preview_bench_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_bench', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: setNumber === 3 ? 22.5 : 20, actual_load_unit: 'lb', client_operation_id: null, archived: false })),
+    ...[1, 2].map((setNumber) => ({ id: `logset_preview_row_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_row', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: 35, actual_load_unit: 'lb', client_operation_id: null, archived: false })),
+    { id: 'logset_preview_row_3', workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_row', set_number: 3, set_origin: 'prescribed', status: 'skipped', actual_load_value: 35, actual_load_unit: 'lb', client_operation_id: null, archived: false },
+  ],
+  notifications: [
+    { id: 'notification_preview_complete', recipient_coach_id: 'coach_marcus', event_type: 'workout_completed', workout_log_id: 'log_preview_complete', read_at: null, created_at: iso(-2, 18), updated_at: iso(-2, 18) },
   ],
   messages: [
     { id: 'msg_1', client_id: 'client_sarah', coach_id: 'coach_marcus', sender_role: 'coach', content: 'Nice work this week. Check in before tomorrow if anything feels off.', read_by_recipient: false, archived: false, created_at: iso(-1, 12) },
@@ -296,28 +318,46 @@ function workoutDetails(workoutId) {
 }
 
 function replaceWorkoutExercises(workoutId, exercises = []) {
-  state.workoutExercises.filter((e) => e.workout_id === workoutId).forEach((e) => { e.archived = true; });
+  const existing = state.workoutExercises.filter((e) => e.workout_id === workoutId);
+  const retained = new Set();
   exercises
     .filter((exercise) => exercise.exercise_library_id || String(exercise.custom_name || '').trim())
     .forEach((exercise, index) => {
-      state.workoutExercises.push({
-        id: id('wex'),
+      const row = existing.find((candidate) => candidate.id === exercise.id
+        && candidate.exercise_library_id === (exercise.exercise_library_id || null)
+        && candidate.custom_name === (exercise.exercise_library_id ? null : (exercise.custom_name || null)));
+      const values = {
         workout_id: workoutId,
         exercise_library_id: exercise.exercise_library_id || null,
         custom_name: exercise.exercise_library_id ? null : (exercise.custom_name || null),
         sets: exercise.sets || null,
         reps: exercise.reps || null,
+        target_rpe: exercise.target_rpe || null,
         rest: exercise.rest || null,
         tempo: exercise.tempo || null,
+        default_load_value: exercise.default_load_value === '' || exercise.default_load_value == null ? null : Number(exercise.default_load_value),
+        default_load_unit: exercise.default_load_value === '' || exercise.default_load_value == null ? null : (exercise.default_load_unit || 'lb'),
         notes: exercise.client_notes || exercise.notes || null,
         client_notes: exercise.client_notes || exercise.notes || null,
         coach_notes: exercise.coach_notes || null,
         video_url: exercise.video_url || null,
         position: index,
         archived: false,
-        created_at: new Date().toISOString(),
-      });
+      };
+      if (row) {
+        Object.assign(row, values);
+        retained.add(row.id);
+      } else {
+        const created = { id: id('wex'), created_at: new Date().toISOString(), ...values };
+        state.workoutExercises.push(created);
+        retained.add(created.id);
+      }
     });
+  existing.filter((row) => !retained.has(row.id)).forEach((row) => {
+    row.archived = true;
+    state.programAssignmentExerciseLoads.filter((load) => load.workout_exercise_id === row.id).forEach((load) => { load.archived = true; });
+    state.workoutAssignmentExerciseLoads.filter((load) => load.workout_exercise_id === row.id).forEach((load) => { load.archived = true; });
+  });
 }
 
 function replaceProgramDays(programId, days = []) {
@@ -422,7 +462,11 @@ function programSummary(program) {
   const exerciseCount = days.reduce((count, day) => count + (day.workout?.exercise_count || 0), 0);
   const assignments = state.programAssignments
     .filter((a) => a.program_id === program.id)
-    .map((a) => ({ ...a, client: { id: a.client_id, name: clientById(a.client_id)?.name } }));
+    .map((a) => ({
+      ...a,
+      client: { id: a.client_id, name: clientById(a.client_id)?.name },
+      exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === a.id && !load.archived),
+    }));
   return {
     ...program,
     days,
@@ -440,7 +484,137 @@ function programDetails(programId) {
 }
 
 function workoutAssignmentDetails(assignment) {
-  return { ...assignment, workout: workoutDetails(assignment.workout_id), client: { id: assignment.client_id, name: clientById(assignment.client_id)?.name } };
+  return {
+    ...assignment,
+    workout: workoutDetails(assignment.workout_id),
+    client: { id: assignment.client_id, name: clientById(assignment.client_id)?.name },
+    exercise_loads: state.workoutAssignmentExerciseLoads.filter((load) => load.workout_assignment_id === assignment.id && !load.archived),
+  };
+}
+
+function exerciseName(exercise) {
+  return exercise.custom_name || libraryById(exercise.exercise_library_id)?.name || 'Exercise';
+}
+
+function prescribedSetCount(value) {
+  const match = String(value || '').match(/\d+/);
+  return Math.max(1, match ? Number(match[0]) : 1);
+}
+
+function workoutLogDetails(logId) {
+  const log = state.workoutLogs.find((row) => row.id === logId && !row.archived);
+  if (!log) return null;
+  const exercises = state.workoutLogExercises
+    .filter((row) => row.workout_log_id === log.id && !row.archived)
+    .sort((a, b) => a.position - b.position)
+    .map((exercise) => ({
+      ...exercise,
+      sets: state.workoutLogSets
+        .filter((set) => set.workout_log_exercise_id === exercise.id && !set.archived)
+        .sort((a, b) => a.set_number - b.set_number),
+    }));
+  return { ...log, client: clientById(log.client_id), exercises };
+}
+
+function previewLoadForExercise({ exercise, programAssignmentId, programDayId, workoutAssignmentId }) {
+  const programLoad = state.programAssignmentExerciseLoads.find((load) => !load.archived
+    && load.program_assignment_id === programAssignmentId
+    && load.program_day_id === programDayId
+    && load.workout_exercise_id === exercise.id);
+  const workoutLoad = state.workoutAssignmentExerciseLoads.find((load) => !load.archived
+    && load.workout_assignment_id === workoutAssignmentId
+    && load.workout_exercise_id === exercise.id);
+  return programLoad || workoutLoad || {
+    load_value: exercise.default_load_value,
+    load_unit: exercise.default_load_unit,
+  };
+}
+
+function replacePreviewLoads(collection, ownerKey, ownerId, loads = []) {
+  collection.filter((row) => row[ownerKey] === ownerId).forEach((row) => { row.archived = true; });
+  loads.forEach((load) => {
+    const row = {
+      id: id('load'),
+      [ownerKey]: ownerId,
+      workout_exercise_id: load.workout_exercise_id,
+      load_value: Number(load.load_value),
+      load_unit: load.load_unit || 'lb',
+      archived: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (load.program_day_id) row.program_day_id = load.program_day_id;
+    collection.push(row);
+  });
+}
+
+function startPreviewWorkout(clientId, payload) {
+  const active = state.workoutLogs.find((row) => row.client_id === clientId && row.status === 'active' && !row.archived);
+  const sameSource = active && (
+    (payload.program_assignment_id && active.program_assignment_id === payload.program_assignment_id && active.program_day_id === payload.program_day_id)
+    || (payload.workout_assignment_id && active.workout_assignment_id === payload.workout_assignment_id)
+  );
+  if (active) return { outcome: sameSource ? 'resumed' : 'conflict', workout_log: workoutLogDetails(active.id) };
+
+  let workout = null;
+  let programAssignment = null;
+  let programDay = null;
+  let workoutAssignment = null;
+  if (payload.program_assignment_id) {
+    programAssignment = state.programAssignments.find((row) => row.id === payload.program_assignment_id && row.client_id === clientId && !row.archived);
+    programDay = state.programDays.find((row) => row.id === payload.program_day_id && row.program_id === programAssignment?.program_id && !row.archived);
+    workout = programDay ? state.workouts.find((row) => row.id === programDay.workout_id && !row.archived) : null;
+  } else {
+    workoutAssignment = state.workoutAssignments.find((row) => row.id === payload.workout_assignment_id && row.client_id === clientId && !row.archived);
+    workout = workoutAssignment ? state.workouts.find((row) => row.id === workoutAssignment.workout_id && !row.archived) : null;
+    if (workoutAssignment?.assignment_mode === 'dated') {
+      const completed = state.workoutLogs.find((row) => row.dated_workout_assignment_id === workoutAssignment.id
+        && ['active', 'completed'].includes(row.status) && !row.archived);
+      if (completed) return { outcome: 'already_completed', workout_log: workoutLogDetails(completed.id) };
+    }
+  }
+  if (!workout) return null;
+
+  const createdAt = new Date().toISOString();
+  const log = {
+    id: id('workout_log'),
+    client_id: clientId,
+    program_assignment_id: programAssignment?.id || null,
+    program_day_id: programDay?.id || null,
+    workout_assignment_id: workoutAssignment?.id || null,
+    dated_workout_assignment_id: workoutAssignment?.assignment_mode === 'dated' ? workoutAssignment.id : null,
+    workout_name: workout.name,
+    status: 'active', notes: null, feedback: null, started_at: createdAt, completed_at: null,
+    archived: false, created_at: createdAt, updated_at: createdAt,
+  };
+  state.workoutLogs.push(log);
+  state.workoutExercises.filter((row) => row.workout_id === workout.id && !row.archived).sort((a, b) => a.position - b.position).forEach((exercise) => {
+    const resolved = previewLoadForExercise({
+      exercise,
+      programAssignmentId: programAssignment?.id,
+      programDayId: programDay?.id,
+      workoutAssignmentId: workoutAssignment?.id,
+    });
+    const logExercise = {
+      id: id('workout_log_exercise'), workout_log_id: log.id, source_workout_exercise_id: exercise.id,
+      exercise_name: exerciseName(exercise), prescribed_sets: exercise.sets, prescribed_reps: exercise.reps,
+      prescribed_rpe: exercise.target_rpe, prescribed_rest: exercise.rest, prescribed_tempo: exercise.tempo,
+      prescribed_notes: exercise.notes, client_notes: null,
+      prescribed_load_value: resolved?.load_value ?? null,
+      prescribed_load_unit: resolved?.load_value == null ? null : (resolved.load_unit || 'lb'),
+      position: exercise.position, archived: false, created_at: createdAt, updated_at: createdAt,
+    };
+    state.workoutLogExercises.push(logExercise);
+    for (let setNumber = 1; setNumber <= prescribedSetCount(exercise.sets); setNumber += 1) {
+      state.workoutLogSets.push({
+        id: id('workout_log_set'), workout_log_id: log.id, workout_log_exercise_id: logExercise.id,
+        set_number: setNumber, set_origin: 'prescribed', status: 'pending',
+        actual_load_value: logExercise.prescribed_load_value, actual_load_unit: logExercise.prescribed_load_unit,
+        client_operation_id: null, completed_at: null, archived: false, created_at: createdAt, updated_at: createdAt,
+      });
+    }
+  });
+  return { outcome: 'started', workout_log: workoutLogDetails(log.id) };
 }
 
 function waiverStatus(clientId) {
@@ -594,6 +768,143 @@ export function installPreviewApi(api) {
 
     if (path === '/dashboard/client') return ok(dashboardClient(), config);
     if (path === '/dashboard/coach') return ok(dashboardCoach(), config);
+
+    if (path === '/workout-logs/start' && method === 'post') {
+      if (role !== 'client') return fail(config, 403, 'Client access required');
+      const result = startPreviewWorkout(client.id, payload);
+      if (!result) return fail(config, 404, 'Assigned workout not found');
+      if (result.outcome === 'conflict') return Promise.reject({ response: { data: { error: 'Finish or abandon your active workout first', active_workout: result.workout_log }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
+      if (result.outcome === 'already_completed') return Promise.reject({ response: { data: { error: 'This dated workout has already been completed', workout_log: result.workout_log }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
+      emitChange();
+      return ok(result, config, result.outcome === 'started' ? 201 : 200);
+    }
+    if (path === '/workout-logs/active' && method === 'get') {
+      const active = state.workoutLogs.find((row) => row.client_id === client.id && row.status === 'active' && !row.archived);
+      return ok(active ? workoutLogDetails(active.id) : null, config);
+    }
+    if (path === '/workout-logs/mine' && method === 'get') {
+      return ok(state.workoutLogs.filter((row) => row.client_id === client.id && row.status === 'completed' && !row.archived)
+        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map((row) => workoutLogDetails(row.id)), config);
+    }
+    const clientWorkoutHistory = path.match(/^\/workout-logs\/client\/([^/]+)$/);
+    if (clientWorkoutHistory && method === 'get') {
+      if (role === 'client') return fail(config, 404, 'Client not found');
+      const target = clientById(clientWorkoutHistory[1]);
+      if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
+      return ok(state.workoutLogs.filter((row) => row.client_id === target.id && row.status === 'completed' && !row.archived)
+        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map((row) => workoutLogDetails(row.id)), config);
+    }
+    const workoutSetArchive = path.match(/^\/workout-logs\/([^/]+)\/sets\/([^/]+)\/archive$/);
+    if (workoutSetArchive && method === 'patch') {
+      const log = state.workoutLogs.find((row) => row.id === workoutSetArchive[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
+      const set = state.workoutLogSets.find((row) => row.id === workoutSetArchive[2] && row.workout_log_id === log?.id && row.set_origin === 'extra' && !row.archived);
+      if (!set) return fail(config, 404, 'Extra set not found');
+      set.archived = true;
+      set.updated_at = new Date().toISOString();
+      return ok(set, config);
+    }
+    const workoutSetUpdate = path.match(/^\/workout-logs\/([^/]+)\/sets\/([^/]+)$/);
+    if (workoutSetUpdate && method === 'patch') {
+      const log = state.workoutLogs.find((row) => row.id === workoutSetUpdate[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
+      const set = state.workoutLogSets.find((row) => row.id === workoutSetUpdate[2] && row.workout_log_id === log?.id && !row.archived);
+      if (!set) return fail(config, 404, 'Workout set not found');
+      Object.assign(set, {
+        status: payload.status === 'completed' ? 'completed' : 'pending',
+        actual_load_value: payload.actual_load_value === '' || payload.actual_load_value == null ? null : Number(payload.actual_load_value),
+        actual_load_unit: payload.actual_load_value === '' || payload.actual_load_value == null ? null : (payload.actual_load_unit || 'lb'),
+        completed_at: payload.status === 'completed' ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      });
+      return ok(set, config);
+    }
+    const workoutExtraSet = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/sets$/);
+    if (workoutExtraSet && method === 'post') {
+      const log = state.workoutLogs.find((row) => row.id === workoutExtraSet[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
+      const exercise = state.workoutLogExercises.find((row) => row.id === workoutExtraSet[2] && row.workout_log_id === log?.id && !row.archived);
+      if (!exercise) return fail(config, 404, 'Workout exercise not found');
+      const existing = state.workoutLogSets.find((row) => row.client_operation_id === payload.client_operation_id);
+      if (existing) return ok(existing, config);
+      const exerciseSets = state.workoutLogSets.filter((row) => row.workout_log_exercise_id === exercise.id && !row.archived);
+      const row = {
+        id: id('workout_log_set'), workout_log_id: log.id, workout_log_exercise_id: exercise.id,
+        set_number: Math.max(0, ...exerciseSets.map((set) => set.set_number)) + 1,
+        set_origin: 'extra', status: 'pending', actual_load_value: exercise.prescribed_load_value,
+        actual_load_unit: exercise.prescribed_load_unit, client_operation_id: payload.client_operation_id,
+        completed_at: null, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      };
+      state.workoutLogSets.push(row);
+      return ok(row, config, 201);
+    }
+    const workoutExerciseNotes = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/notes$/);
+    if (workoutExerciseNotes && method === 'patch') {
+      const log = state.workoutLogs.find((row) => row.id === workoutExerciseNotes[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
+      const exercise = state.workoutLogExercises.find((row) => row.id === workoutExerciseNotes[2] && row.workout_log_id === log?.id && !row.archived);
+      if (!exercise) return fail(config, 404, 'Workout exercise not found');
+      exercise.client_notes = String(payload.client_notes || '').slice(0, 2000) || null;
+      exercise.updated_at = new Date().toISOString();
+      return ok(exercise, config);
+    }
+    const completeAllWorkout = path.match(/^\/workout-logs\/([^/]+)\/complete-all$/);
+    if (completeAllWorkout && method === 'post') {
+      const log = state.workoutLogs.find((row) => row.id === completeAllWorkout[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
+      if (!log) return fail(config, 404, 'Workout log not found');
+      state.workoutLogSets.filter((set) => set.workout_log_id === log.id && set.status === 'pending' && !set.archived).forEach((set) => {
+        set.status = 'completed'; set.completed_at = new Date().toISOString(); set.updated_at = set.completed_at;
+      });
+      return ok(workoutLogDetails(log.id), config);
+    }
+    const abandonWorkout = path.match(/^\/workout-logs\/([^/]+)\/abandon$/);
+    if (abandonWorkout && method === 'post') {
+      const log = state.workoutLogs.find((row) => row.id === abandonWorkout[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
+      if (!log) return fail(config, 404, 'Workout log not found');
+      log.status = 'abandoned'; log.updated_at = new Date().toISOString();
+      return ok(log, config);
+    }
+    const completeWorkout = path.match(/^\/workout-logs\/([^/]+)\/complete$/);
+    if (completeWorkout && method === 'post') {
+      const log = state.workoutLogs.find((row) => row.id === completeWorkout[1] && row.client_id === client.id && !row.archived);
+      if (!log) return fail(config, 404, 'Workout log not found');
+      if (log.status === 'completed') return ok(workoutLogDetails(log.id), config);
+      const sets = state.workoutLogSets.filter((set) => set.workout_log_id === log.id && !set.archived);
+      if (!sets.some((set) => set.status === 'completed')) return fail(config, 400, 'Complete at least one set');
+      sets.filter((set) => set.status === 'pending').forEach((set) => { set.status = 'skipped'; set.updated_at = new Date().toISOString(); });
+      Object.assign(log, { status: 'completed', notes: String(payload.notes || '') || null, feedback: String(payload.feedback || '') || null, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      const recipients = new Set([clientById(log.client_id)?.coach_id, ...state.coaches.filter((coach) => coach.is_admin && !coach.archived).map((coach) => coach.id)]);
+      recipients.forEach((recipientCoachId) => {
+        if (!recipientCoachId || state.notifications.some((row) => row.recipient_coach_id === recipientCoachId && row.workout_log_id === log.id && row.event_type === 'workout_completed')) return;
+        const createdAt = new Date().toISOString();
+        state.notifications.unshift({ id: id('notification'), recipient_coach_id: recipientCoachId, event_type: 'workout_completed', workout_log_id: log.id, read_at: null, archived: false, created_at: createdAt, updated_at: createdAt });
+      });
+      emitChange();
+      return ok(workoutLogDetails(log.id), config);
+    }
+    const workoutLog = path.match(/^\/workout-logs\/([^/]+)$/);
+    if (workoutLog && method === 'get') {
+      const detail = workoutLogDetails(workoutLog[1]);
+      const canRead = detail && (role === 'client' ? detail.client_id === client.id : (role === 'admin' || detail.client.coach_id === currentCoach().id));
+      return canRead ? ok(detail, config) : fail(config, 404, 'Workout log not found');
+    }
+
+    const visibleNotifications = () => state.notifications
+      .filter((row) => row.recipient_coach_id === currentCoach().id && !row.archived)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .map((row) => ({ ...row, workout_log: workoutLogDetails(row.workout_log_id) }));
+    if (path === '/notifications/unread-count' && method === 'get') return ok({ unread: visibleNotifications().filter((row) => !row.read_at).length }, config);
+    if (path === '/notifications' && method === 'get') return ok(visibleNotifications(), config);
+    if (path === '/notifications/read-all' && method === 'patch') {
+      let updated = 0;
+      state.notifications.filter((row) => row.recipient_coach_id === currentCoach().id && !row.archived && !row.read_at).forEach((row) => { row.read_at = new Date().toISOString(); updated += 1; });
+      emitChange();
+      return ok({ updated }, config);
+    }
+    const readNotification = path.match(/^\/notifications\/([^/]+)\/read$/);
+    if (readNotification && method === 'patch') {
+      const notification = state.notifications.find((row) => row.id === readNotification[1] && row.recipient_coach_id === currentCoach().id && !row.archived);
+      if (!notification) return fail(config, 404, 'Notification not found');
+      notification.read_at ||= new Date().toISOString();
+      emitChange();
+      return ok(notification, config);
+    }
 
     if (path === '/clients' && method === 'get') {
       const includeArchived = search.get('include_archived') === 'true';
@@ -942,7 +1253,15 @@ export function installPreviewApi(api) {
     if (path === '/programs/workout-assignments' && method === 'post') {
       const row = { id: id('work_assign'), client_id: payload.client_id, workout_id: payload.workout_id, assignment_mode: payload.assignment_mode || 'active', assigned_for: payload.assignment_mode === 'dated' ? payload.assigned_for : null, notes: payload.notes || null, archived: false, created_at: new Date().toISOString() };
       state.workoutAssignments.push(row);
+      replacePreviewLoads(state.workoutAssignmentExerciseLoads, 'workout_assignment_id', row.id, payload.exercise_loads || []);
       return ok(workoutAssignmentDetails(row), config, 201);
+    }
+    const workoutAssignmentLoads = path.match(/^\/programs\/workout-assignments\/([^/]+)\/loads$/);
+    if (workoutAssignmentLoads && method === 'put') {
+      const row = state.workoutAssignments.find((assignment) => assignment.id === workoutAssignmentLoads[1] && !assignment.archived);
+      if (!row) return fail(config, 404, 'Assignment not found');
+      replacePreviewLoads(state.workoutAssignmentExerciseLoads, 'workout_assignment_id', row.id, payload.exercise_loads || []);
+      return ok(workoutAssignmentDetails(row), config);
     }
     const workoutUnassign = path.match(/^\/programs\/workout-assignments\/([^/]+)\/archive$/);
     if (workoutUnassign && method === 'patch') {
@@ -1007,7 +1326,11 @@ export function installPreviewApi(api) {
     }
     if (path === '/programs/client/assigned') {
       return ok({
-        programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => ({ ...a, program: programDetails(a.program_id) })),
+        programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => ({
+          ...a,
+          exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === a.id && !load.archived),
+          program: programDetails(a.program_id),
+        })),
         workouts: state.workoutAssignments.filter((a) => a.client_id === client.id && !a.archived).map(workoutAssignmentDetails),
       }, config);
     }
@@ -1045,7 +1368,15 @@ export function installPreviewApi(api) {
     if (programAssign && method === 'post') {
       const row = { id: id('assign'), program_id: programAssign[1], client_id: payload.client_id, notes: payload.notes || null, archived: false, created_at: new Date().toISOString(), client: { id: payload.client_id, name: clientById(payload.client_id).name } };
       state.programAssignments.push(row);
-      return ok(row, config, 201);
+      replacePreviewLoads(state.programAssignmentExerciseLoads, 'program_assignment_id', row.id, payload.exercise_loads || []);
+      return ok({ ...row, exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === row.id && !load.archived) }, config, 201);
+    }
+    const programAssignmentLoads = path.match(/^\/programs\/assignments\/([^/]+)\/loads$/);
+    if (programAssignmentLoads && method === 'put') {
+      const row = state.programAssignments.find((assignment) => assignment.id === programAssignmentLoads[1] && !assignment.archived);
+      if (!row) return fail(config, 404, 'Assignment not found');
+      replacePreviewLoads(state.programAssignmentExerciseLoads, 'program_assignment_id', row.id, payload.exercise_loads || []);
+      return ok({ ...row, exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === row.id && !load.archived) }, config);
     }
     const unassign = path.match(/^\/programs\/assignments\/([^/]+)\/archive$/);
     if (unassign && method === 'patch') {

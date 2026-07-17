@@ -5,6 +5,7 @@ const backendUrl = process.env.CVF_E2E_BACKEND_URL;
 const accounts = {
   admin: { email: process.env.CVF_E2E_ADMIN_EMAIL, password: process.env.CVF_E2E_ADMIN_PASSWORD },
   coach: { email: process.env.CVF_E2E_COACH_EMAIL, password: process.env.CVF_E2E_COACH_PASSWORD },
+  coachB: { email: process.env.CVF_E2E_COACH_B_EMAIL, password: process.env.CVF_E2E_COACH_B_PASSWORD },
   client: { email: process.env.CVF_E2E_CLIENT_EMAIL, password: process.env.CVF_E2E_CLIENT_PASSWORD },
 };
 const configured = Boolean(
@@ -826,6 +827,174 @@ test('real admin auth covers management, safe waiver gate, reassignment, and rol
         data: { coach_id: originalCoach.id },
       });
       expect(restored.ok()).toBeTruthy();
+    }
+  }
+});
+
+test('hosted workout completion snapshots assigned load, preserves credits, and notifies only the owning coach', async ({ page, request }) => {
+  const marker = `CVF LIVE WORKOUT ${Date.now()}`;
+  const feedback = `${marker} felt strong`;
+  const note = `${marker} exercise note`;
+  const [coachLogin, coachBLogin, clientLogin] = await Promise.all([
+    request.post(`${backendUrl}/api/auth/login`, { data: accounts.coach }),
+    request.post(`${backendUrl}/api/auth/login`, { data: accounts.coachB }),
+    request.post(`${backendUrl}/api/auth/login`, { data: accounts.client }),
+  ]);
+  expect(coachLogin.ok()).toBeTruthy();
+  expect(coachBLogin.ok()).toBeTruthy();
+  expect(clientLogin.ok()).toBeTruthy();
+  const coach = await coachLogin.json();
+  const coachB = await coachBLogin.json();
+  const client = await clientLogin.json();
+  const coachHeaders = { authorization: `Bearer ${coach.access_token}` };
+  const coachBHeaders = { authorization: `Bearer ${coachB.access_token}` };
+  const clientHeaders = { authorization: `Bearer ${client.access_token}` };
+  let workout;
+  let assignment;
+  let workoutLog;
+
+  const activeResponse = await request.get(`${backendUrl}/api/workout-logs/active`, { headers: clientHeaders });
+  expect(activeResponse.ok()).toBeTruthy();
+  const active = await activeResponse.json();
+  if (active?.id) {
+    const abandoned = await request.post(`${backendUrl}/api/workout-logs/${active.id}/abandon`, { headers: clientHeaders });
+    expect(abandoned.ok()).toBeTruthy();
+  }
+
+  const creditsBeforeResponse = await request.get(`${backendUrl}/api/payments/credits`, { headers: clientHeaders });
+  expect(creditsBeforeResponse.ok()).toBeTruthy();
+  const creditsBefore = (await creditsBeforeResponse.json()).balance;
+
+  try {
+    const workoutResponse = await request.post(`${backendUrl}/api/programs/workouts`, {
+      headers: coachHeaders,
+      data: {
+        name: marker,
+        description: 'Focused hosted workout verification',
+        goal: 'Verify immutable completion',
+        exercises: [{
+          custom_name: `${marker} Row`,
+          sets: '2',
+          reps: '8',
+          target_rpe: '7',
+          rest: '45s',
+          tempo: '3-0-1-0',
+          default_load_value: 30,
+          default_load_unit: 'lb',
+        }],
+      },
+    });
+    expect(workoutResponse.status()).toBe(201);
+    workout = await workoutResponse.json();
+    expect(workout.exercises).toHaveLength(1);
+
+    const assignmentResponse = await request.post(`${backendUrl}/api/programs/workout-assignments`, {
+      headers: coachHeaders,
+      data: {
+        client_id: client.profile.id,
+        workout_id: workout.id,
+        assignment_mode: 'active',
+        notes: marker,
+        exercise_loads: [{
+          workout_exercise_id: workout.exercises[0].id,
+          load_value: 42.5,
+          load_unit: 'lb',
+        }],
+      },
+    });
+    expect(assignmentResponse.status()).toBe(201);
+    assignment = await assignmentResponse.json();
+    expect(Number(assignment.exercise_loads[0].load_value)).toBe(42.5);
+
+    const startResponse = await request.post(`${backendUrl}/api/workout-logs/start`, {
+      headers: clientHeaders,
+      data: { workout_assignment_id: assignment.id },
+    });
+    expect(startResponse.status()).toBe(201);
+    workoutLog = (await startResponse.json()).workout_log;
+    expect(workoutLog.exercises).toHaveLength(1);
+    expect(Number(workoutLog.exercises[0].prescribed_load_value)).toBe(42.5);
+    expect(workoutLog.exercises[0].sets).toHaveLength(2);
+    expect(Number(workoutLog.exercises[0].sets[0].actual_load_value)).toBe(42.5);
+
+    const set = workoutLog.exercises[0].sets[0];
+    const setUpdate = await request.patch(`${backendUrl}/api/workout-logs/${workoutLog.id}/sets/${set.id}`, {
+      headers: clientHeaders,
+      data: { status: 'completed', actual_load_value: 45, actual_load_unit: 'lb' },
+    });
+    expect(setUpdate.ok()).toBeTruthy();
+    const noteUpdate = await request.patch(`${backendUrl}/api/workout-logs/${workoutLog.id}/exercises/${workoutLog.exercises[0].id}/notes`, {
+      headers: clientHeaders,
+      data: { client_notes: note },
+    });
+    expect(noteUpdate.ok()).toBeTruthy();
+
+    const completion = await request.post(`${backendUrl}/api/workout-logs/${workoutLog.id}/complete`, {
+      headers: clientHeaders,
+      data: { feedback },
+    });
+    expect(completion.ok()).toBeTruthy();
+    const completed = await completion.json();
+    expect(completed.status).toBe('completed');
+    expect(Number(completed.exercises[0].sets[0].actual_load_value)).toBe(45);
+    expect(completed.exercises[0].sets[1].status).toBe('skipped');
+    expect(completed.exercises[0].client_notes).toBe(note);
+    expect(completed.feedback).toBe(feedback);
+
+    const completedDetail = await request.get(`${backendUrl}/api/workout-logs/${workoutLog.id}`, { headers: clientHeaders });
+    expect(completedDetail.ok()).toBeTruthy();
+    expect((await completedDetail.json()).status).toBe('completed');
+
+    const rejectedSetMutation = await request.patch(`${backendUrl}/api/workout-logs/${workoutLog.id}/sets/${set.id}`, {
+      headers: clientHeaders,
+      data: { status: 'pending', actual_load_value: 50, actual_load_unit: 'lb' },
+    });
+    expect(rejectedSetMutation.status()).toBe(409);
+    const rejectedSnapshotMutation = await request.patch(`${backendUrl}/api/workout-logs/${workoutLog.id}/exercises/${workoutLog.exercises[0].id}/notes`, {
+      headers: clientHeaders,
+      data: { client_notes: 'must not change' },
+    });
+    expect(rejectedSnapshotMutation.status()).toBe(409);
+
+    const [coachNotificationsResponse, coachBNotificationsResponse] = await Promise.all([
+      request.get(`${backendUrl}/api/notifications`, { headers: coachHeaders }),
+      request.get(`${backendUrl}/api/notifications`, { headers: coachBHeaders }),
+    ]);
+    expect(coachNotificationsResponse.ok()).toBeTruthy();
+    expect(coachBNotificationsResponse.ok()).toBeTruthy();
+    const coachNotification = (await coachNotificationsResponse.json()).find((row) => row.workout_log_id === workoutLog.id);
+    expect(coachNotification).toBeTruthy();
+    expect((await coachBNotificationsResponse.json()).some((row) => row.workout_log_id === workoutLog.id)).toBeFalsy();
+
+    const creditsAfterResponse = await request.get(`${backendUrl}/api/payments/credits`, { headers: clientHeaders });
+    expect(creditsAfterResponse.ok()).toBeTruthy();
+    expect((await creditsAfterResponse.json()).balance).toBe(creditsBefore);
+
+    await login(page, accounts.coach, '/coach');
+    await page.goto('/coach/notifications');
+    const notificationRow = page.getByTestId('notification-row').filter({ hasText: marker });
+    await expect(notificationRow).toBeVisible();
+    await notificationRow.click();
+    await expect(page).toHaveURL(new RegExp(`/coach/workouts/${workoutLog.id}$`));
+    await expect(page.getByText(feedback)).toBeVisible();
+    await expect(page.getByText(note)).toBeVisible();
+    await expect(page.getByText('45 lb')).toBeVisible();
+    const messageClient = page.getByRole('link', { name: 'Message client' });
+    await expect(messageClient).toBeVisible();
+    await expect(messageClient).toHaveAttribute('href', `/coach/messages/${client.profile.id}`);
+    await logout(page);
+  } finally {
+    if (workoutLog) {
+      const activeAgain = await request.get(`${backendUrl}/api/workout-logs/active`, { headers: clientHeaders });
+      if (activeAgain.ok() && (await activeAgain.json())?.id === workoutLog.id) {
+        await request.post(`${backendUrl}/api/workout-logs/${workoutLog.id}/abandon`, { headers: clientHeaders });
+      }
+    }
+    if (assignment) {
+      await request.patch(`${backendUrl}/api/programs/workout-assignments/${assignment.id}/archive`, { headers: coachHeaders });
+    }
+    if (workout) {
+      await request.patch(`${backendUrl}/api/programs/workouts/${workout.id}/archive`, { headers: coachHeaders });
     }
   }
 });

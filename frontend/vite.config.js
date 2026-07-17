@@ -4,6 +4,8 @@ import path from 'path';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, ['REACT_APP_', 'VITE_']);
+  const hostedTestBackend = process.env.CVF_E2E_BACKEND_URL;
+  const protectionBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   return {
     plugins: [react()],
     envPrefix: ['REACT_APP_', 'VITE_'],
@@ -20,6 +22,13 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       allowedHosts: true,
       hmr: { clientPort: 443 },
+      proxy: hostedTestBackend && protectionBypass ? {
+        '/api': {
+          target: hostedTestBackend,
+          changeOrigin: true,
+          headers: { 'x-vercel-protection-bypass': protectionBypass },
+        },
+      } : undefined,
     },
     esbuild: {
       loader: 'jsx',

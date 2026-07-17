@@ -31,7 +31,7 @@ const {
 } = draftTools;
 
 const EMPTY_LIBRARY = { name: '', category: '', equipment: '', primary_muscle: '', secondary_muscles: '', video_url: '', notes: '' };
-const EMPTY_EXERCISE = { exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', client_notes: '', coach_notes: '', video_url: '' };
+const EMPTY_EXERCISE = { id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '' };
 const EMPTY_WORKOUT = { name: '', description: '', goal: '', exercises: [{ ...EMPTY_EXERCISE }] };
 const EMPTY_DRAFT_EXERCISE = {
   name: '',
@@ -268,12 +268,16 @@ function WorkoutsTab({ workouts, library, reload }) {
       description: workout.description || '',
       goal: workout.goal || '',
       exercises: workout.exercises.length ? workout.exercises.map((ex) => ({
+        id: ex.id || '',
         exercise_library_id: ex.exercise_library_id || '',
         custom_name: ex.custom_name || ex.library_exercise?.name || '',
         sets: ex.sets || '',
         reps: ex.reps || '',
         rest: ex.rest || '',
         tempo: ex.tempo || '',
+        target_rpe: ex.target_rpe || '',
+        default_load_value: ex.default_load_value ?? '',
+        default_load_unit: ex.default_load_unit || 'lb',
         client_notes: ex.client_notes || ex.notes || '',
         coach_notes: ex.coach_notes || '',
         video_url: ex.video_url || ex.library_exercise?.video_url || '',
@@ -1058,6 +1062,14 @@ function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onS
                     <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />
                     <Input value={exercise.rest} onChange={(e) => setExercise(index, { rest: e.target.value })} placeholder="Rest" data-testid="workout-exercise-rest-input" />
                     <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" />
+                  </div>
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] gap-2">
+                    <Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" />
+                    <Input type="number" min="0" step="0.5" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" />
+                    <Select value={exercise.default_load_unit || 'lb'} onValueChange={(value) => setExercise(index, { default_load_unit: value })}>
+                      <SelectTrigger aria-label="Default load unit"><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
+                    </Select>
                   </div>
                   <div className="relative">
                     <Video className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
