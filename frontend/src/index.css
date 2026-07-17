@@ -131,6 +131,30 @@
     .skeleton::after { animation: none; }
   }
 
+  @keyframes motion-reduced-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes motion-reduced-fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .motion-reduce-fade-only[data-state='open'] {
+      animation-name: motion-reduced-fade-in !important;
+      animation-duration: var(--motion-duration-state) !important;
+      animation-timing-function: var(--motion-ease-out) !important;
+    }
+
+    .motion-reduce-fade-only[data-state='closed'] {
+      animation-name: motion-reduced-fade-out !important;
+      animation-duration: var(--motion-duration-state) !important;
+      animation-timing-function: var(--motion-ease-out) !important;
+    }
+  }
+
   .brand-backdrop {
     --brand-photo-opacity: 0.08;
     --brand-ridge-opacity: 0.1;

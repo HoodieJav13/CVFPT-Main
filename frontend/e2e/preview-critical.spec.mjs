@@ -241,6 +241,55 @@ test('client mobile navigation reaches critical pages', async ({ page }) => {
   await expect(page.getByTestId('bottom-tab-resources')).toBeVisible();
 });
 
+test('shared dialogs, selects, and dropdowns use fade-only reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('start-program-workout').first().click();
+  await expect(page.getByTestId('workout-tracker')).toBeVisible();
+
+  const reducedFade = async (locator) => locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      animationName: style.animationName,
+      animationDuration: style.animationDuration,
+      transform: style.transform,
+    };
+  });
+
+  await page.getByLabel('Weight unit').first().click();
+  const listbox = page.getByRole('listbox');
+  await expect(listbox).toBeVisible();
+  await expect.poll(async () => reducedFade(listbox)).toMatchObject({
+    animationName: 'motion-reduced-fade-in',
+    animationDuration: '0.2s',
+  });
+  await page.keyboard.press('Escape');
+
+  const firstExercise = page.getByTestId('tracker-exercise-card').first();
+  await firstExercise.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  const dialogMotion = await reducedFade(dialog);
+  expect(dialogMotion).toMatchObject({
+    animationName: 'motion-reduced-fade-in',
+    animationDuration: '0.2s',
+  });
+  expect(dialogMotion.transform).not.toBe('none');
+  await page.keyboard.press('Escape');
+
+  await page.getByTestId('mobile-header-actions').getByTestId('user-menu-trigger').click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await expect.poll(async () => reducedFade(menu)).toMatchObject({
+    animationName: 'motion-reduced-fade-in',
+    animationDuration: '0.2s',
+  });
+});
+
 test('client preview hides another client assigned resource', async ({ page }) => {
   await usePreviewRole(page, 'client', 'client_david');
   await page.goto('/client/resources');
