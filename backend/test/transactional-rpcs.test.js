@@ -20,6 +20,10 @@ const programFrequencyMigration = fs.readFileSync(
   path.join(root, 'supabase', 'migrations', '20260711234414_allow_one_to_five_day_programs.sql'),
   'utf8',
 );
+const creditRetirementMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260718191925_retire_session_credit_deduction.sql'),
+  'utf8',
+);
 const baseline = fs.readFileSync(path.join(root, 'backend', 'migration.sql'), 'utf8');
 
 const functions = [
@@ -126,6 +130,32 @@ test('state transitions use row locks, conditional state, and ledger idempotency
   assert.match(migration, /from public\.purchases[\s\S]*?for update;[\s\S]*?v_purchase\.status = 'completed'/);
   assert.match(migration, /idx_credit_transactions_source_event/);
   assert.match(migration, /idx_waiver_signatures_client_version/);
+});
+
+test('session completion is credit-independent while preserving its response contract', () => {
+  assert.match(
+    creditRetirementMigration,
+    /create or replace function public\.complete_session\(p_session_id uuid\)[\s\S]*?security invoker[\s\S]*?set search_path = ''/,
+  );
+  assert.match(
+    creditRetirementMigration,
+    /from public\.sessions[\s\S]*?for update;[\s\S]*?v_session\.status <> 'scheduled'/,
+  );
+  assert.match(
+    creditRetirementMigration,
+    /set status = 'completed', credit_deducted = false, updated_at = now\(\)/,
+  );
+  assert.match(creditRetirementMigration, /'credit_deducted', false/);
+  assert.match(creditRetirementMigration, /'credits_remaining', null/);
+  assert.doesNotMatch(creditRetirementMigration, /client_credits|credit_transactions/);
+  assert.match(
+    creditRetirementMigration,
+    /revoke execute on function public\.complete_session\(uuid\) from public, anon, authenticated;/,
+  );
+  assert.match(
+    creditRetirementMigration,
+    /grant execute on function public\.complete_session\(uuid\) to service_role;/,
+  );
 });
 
 test('HTTP handlers delegate multi-record mutations to transactional RPCs', () => {
