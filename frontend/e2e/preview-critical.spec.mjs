@@ -159,8 +159,10 @@ test('client preview covers dashboard and every client navigation destination', 
   await expect(page.getByTestId('waiver-signed-card')).toBeVisible();
 
   await page.goto('/client/packages');
-  await expect(page.getByTestId('credits-balance-text')).toHaveText('8 credits');
-  await expect(page.getByTestId('payments-not-configured-card')).toBeVisible();
+  await expect(page).toHaveURL(/\/client$/);
+  await expect(page.getByTestId('credits-summary-link')).toHaveCount(0);
+  await expect(page.getByTestId('sidebar-nav-packages-credits')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Today, Sarah' })).toBeVisible();
 
   await page.goto('/coach');
   await expect(page).toHaveURL(/\/client$/);
@@ -229,7 +231,7 @@ test('admin preview exposes admin-only management surfaces', async ({ page }) =>
   await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible();
   await expect(page.getByTestId('admin-tab-coaches')).toBeVisible();
   await expect(page.getByTestId('admin-tab-waivers')).toBeVisible();
-  await expect(page.getByTestId('admin-tab-packages')).toBeVisible();
+  await expect(page.getByTestId('admin-tab-packages')).toHaveCount(0);
 });
 
 test('client mobile navigation reaches critical pages', async ({ page }) => {

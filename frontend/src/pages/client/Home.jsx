@@ -11,7 +11,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  CalendarDays, CreditCard, Dumbbell, ChevronRight, MapPin,
+  CalendarDays, Dumbbell, ChevronRight, MapPin,
   MessageSquare, AlertTriangle, ClipboardCheck, Activity,
 } from 'lucide-react';
 import { fmtDay, fmtTime, fmtDateTime, fmtDate } from '@/lib/format';
@@ -212,18 +212,6 @@ export default function ClientHome() {
           ))}
         </CardContent>
       </Card>
-
-      <Link to="/client/packages" className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3.5 hover:bg-card transition-colors" data-testid="credits-summary-link">
-        <div className="flex items-center gap-3">
-          <CreditCard className="h-5 w-5 text-gold" />
-          <div>
-            <p className="text-sm font-medium">Session credits</p>
-            <p className="text-xs text-muted-foreground">Current balance</p>
-          </div>
-        </div>
-        <span className="font-display text-4xl font-bold leading-none tabular-nums text-gold" data-testid="credits-hero-number">{data.credits}</span>
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-      </Link>
 
       </DashboardChoreography>
 

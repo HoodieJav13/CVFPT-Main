@@ -102,12 +102,8 @@ export default function CoachSessions() {
 
   const complete = async (s) => {
     try {
-      const { data } = await api.patch(`/sessions/${s.id}/complete`);
-      if (data.credit_deducted) {
-        toast.success(`Session completed - 1 credit used (${data.credits_remaining} left)`);
-      } else {
-        toast.success('Session completed - client had no credits to deduct', { description: 'You can record a package purchase from their profile.' });
-      }
+      await api.patch(`/sessions/${s.id}/complete`);
+      toast.success('Session completed');
       load();
     } catch (e) {
       toast.error(errMsg(e));

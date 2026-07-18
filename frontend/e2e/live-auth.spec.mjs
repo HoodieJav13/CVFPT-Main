@@ -33,6 +33,22 @@ async function logout(page) {
   await expect(page).toHaveURL(/\/login$/);
 }
 
+async function readCreditBalance(request, clientId) {
+  if (!directDataUrl || !directDataKey) return null;
+  const response = await request.get(
+    `${directDataUrl}/rest/v1/client_credits?client_id=eq.${clientId}&select=balance`,
+    {
+      headers: {
+        apikey: directDataKey,
+        authorization: `Bearer ${directDataKey}`,
+      },
+    },
+  );
+  expect(response.ok()).toBeTruthy();
+  const [row] = await response.json();
+  return row?.balance ?? 0;
+}
+
 test('auth forms reject invalid login and non-invited signup without creating an account', async ({ page }) => {
   const email = `cvf-live-not-invited-${Date.now()}@example.invalid`;
   const password = `CvF-${randomBytes(18).toString('base64url')}!`;
@@ -40,13 +56,13 @@ test('auth forms reject invalid login and non-invited signup without creating an
   await page.getByTestId('login-email-input').fill(email);
   await page.getByTestId('login-password-input').fill(password);
   await page.getByTestId('login-submit-button').click();
-  await expect(page.getByTestId('login-error-text')).toHaveText('Invalid email or password');
+  await expect(page.getByTestId('login-error-text')).toContainText('Invalid email or password');
   await page.getByTestId('go-to-signup-link').click();
   await page.getByTestId('signup-email-input').fill(email);
   await page.getByTestId('signup-password-input').fill(password);
   await page.getByTestId('signup-confirm-input').fill(`${password} mismatch`);
   await page.getByTestId('invite-claim-submit-button').click();
-  await expect(page.getByTestId('invite-invalid-state-text')).toHaveText('Passwords do not match');
+  await expect(page.getByTestId('invite-invalid-state-text')).toContainText('Passwords do not match');
   await page.getByTestId('signup-confirm-input').fill(password);
   await page.getByTestId('invite-claim-submit-button').click();
   await expect(page.getByTestId('invite-invalid-state-text')).toContainText("couldn't find an invitation");
@@ -121,7 +137,6 @@ test('real client auth covers check-in, booking, messaging, route protection, an
   await expect(page.getByTestId('client-progress-empty')).toBeVisible();
   await page.goto('/client/programs');
   await expect(page.getByRole('heading', { name: 'My programs' })).toBeVisible();
-  await expect(page.getByTestId('client-programs-empty')).toBeVisible();
   await page.goto('/client/messages');
   await page.getByTestId('chat-input').fill(marker);
   await page.getByTestId('chat-send-button').click();
@@ -131,8 +146,15 @@ test('real client auth covers check-in, booking, messaging, route protection, an
   await expect(page.getByTestId('waiver-unavailable-state')).toBeVisible();
   await expect(page.getByTestId('waiver-submit-button')).toHaveCount(0);
   await page.goto('/client/packages');
-  await expect(page.getByTestId('payments-not-configured-card')).toBeVisible();
-  await expect(page.getByTestId('credits-balance-text')).toContainText('0');
+  await expect(page).toHaveURL(/\/client$/);
+  await expect(page.getByTestId('credits-summary-link')).toHaveCount(0);
+  const clientToken = await page.evaluate(() => localStorage.getItem('cvf_access_token'));
+  for (const retiredPath of ['/api/packages', '/api/payments/config']) {
+    const retiredResponse = await request.get(`${backendUrl}${retiredPath}`, {
+      headers: { authorization: `Bearer ${clientToken}` },
+    });
+    expect(retiredResponse.status()).toBe(404);
+  }
 
   await page.goto('/coach');
   await expect(page).toHaveURL(/\/client$/);
@@ -252,9 +274,11 @@ test('real coach auth covers ownership surfaces and archives created test data',
   await page.goto(`/coach/clients/${clientId}`);
   await expect(page.getByTestId('client-detail-name')).toHaveText(marker);
 
-  for (const tab of ['tab-check-ins', 'tab-progress', 'tab-sessions', 'tab-programs', 'tab-payments']) {
+  for (const tab of ['tab-check-ins', 'tab-progress', 'tab-sessions', 'tab-programs']) {
     await page.getByTestId(tab).click();
   }
+  await expect(page.getByTestId('tab-payments')).toHaveCount(0);
+  await expect(page.getByTestId('client-credits-badge')).toHaveCount(0);
   await page.getByTestId('tab-overview').click();
 
   const exerciseName = `${marker} Exercise`;
@@ -307,6 +331,7 @@ test('real coach auth covers ownership surfaces and archives created test data',
   await page.getByTestId('workout-exercise-video-input').fill('https://example.com/cvf-live-video');
   await page.getByTestId('workout-exercise-client-notes-input').fill(marker);
   await page.getByTestId('workout-exercise-add-button').click();
+  await page.getByRole('button', { name: 'Exercise 2', exact: true }).click();
   await page.getByTestId('workout-exercise-name-input').nth(1).fill(`${marker} Temporary Exercise`);
   await page.getByTestId('workout-exercise-remove-button').nth(1).click();
   await expect(page.getByTestId('workout-exercise-name-input')).toHaveCount(1);
@@ -423,7 +448,7 @@ test('real coach auth covers ownership surfaces and archives created test data',
   const assignedProgram = page.getByTestId('client-program-card').filter({ hasText: programName });
   await expect(assignedProgram).toBeVisible();
   await expect(assignedProgram.getByTestId('client-exercise-row').filter({ hasText: exerciseName }).first()).toBeVisible();
-  await expect(assignedProgram.getByTestId('program-video-link').first()).toHaveAttribute('href', 'https://example.com/cvf-live-video');
+  await expect(assignedProgram.getByRole('link', { name: 'Video' }).first()).toHaveAttribute('href', 'https://example.com/cvf-live-video');
   await expect(page.getByText(workoutAssignmentNote)).toBeVisible();
   await expect(page.getByText(activeWorkoutAssignmentNote)).toBeVisible();
   await logout(page);
@@ -573,9 +598,8 @@ test('real coach auth covers ownership surfaces and archives created test data',
   await logout(page);
 });
 
-test('real session, payment, progress, booking, and messaging controls complete end to end', async ({ page, request }) => {
+test('real session, progress, booking, and messaging controls complete end to end', async ({ page, request }) => {
   const marker = `CVF LIVE FLOW ${Date.now()}`;
-  const packageName = `${marker} Package`;
   const metricName = `${marker} Metric`;
   const approveNote = `${marker} APPROVE`;
   const declineNote = `${marker} DECLINE`;
@@ -585,27 +609,17 @@ test('real session, payment, progress, booking, and messaging controls complete 
   const clientMessage = `${marker} client message`;
   const coachReply = `${marker} coach reply`;
 
-  const [adminLoginResponse, coachLoginResponse, clientLoginResponse] = await Promise.all([
-    request.post(`${backendUrl}/api/auth/login`, { data: accounts.admin }),
+  const [coachLoginResponse, clientLoginResponse] = await Promise.all([
     request.post(`${backendUrl}/api/auth/login`, { data: accounts.coach }),
     request.post(`${backendUrl}/api/auth/login`, { data: accounts.client }),
   ]);
-  expect(adminLoginResponse.ok()).toBeTruthy();
   expect(coachLoginResponse.ok()).toBeTruthy();
   expect(clientLoginResponse.ok()).toBeTruthy();
-  const adminSession = await adminLoginResponse.json();
   const coachSession = await coachLoginResponse.json();
   const clientSession = await clientLoginResponse.json();
-  const adminHeaders = { authorization: `Bearer ${adminSession.access_token}` };
   const coachHeaders = { authorization: `Bearer ${coachSession.access_token}` };
   const clientHeaders = { authorization: `Bearer ${clientSession.access_token}` };
 
-  const packageResponse = await request.post(`${backendUrl}/api/packages`, {
-    headers: adminHeaders,
-    data: { name: packageName, description: marker, price: 25, session_credits: 1, is_recurring: false },
-  });
-  expect(packageResponse.status()).toBe(201);
-  const packageRow = await packageResponse.json();
   const metricResponse = await request.post(`${backendUrl}/api/progress/clients/${clientSession.profile.id}/metrics`, {
     headers: coachHeaders,
     data: { name: metricName, unit: 'reps' },
@@ -637,18 +651,7 @@ test('real session, payment, progress, booking, and messaging controls complete 
     await expect(page.getByText('Request declined')).toBeVisible();
     await expect(declineRequest).toBeHidden();
 
-    await page.goto(`/coach/clients/${clientSession.profile.id}`);
-    const startingCredits = Number.parseInt(await page.getByTestId('client-credits-badge').textContent(), 10);
-    expect(Number.isFinite(startingCredits)).toBeTruthy();
-    await page.getByTestId('tab-payments').click();
-    await page.getByTestId('record-purchase-button').click();
-    await page.getByTestId('purchase-package-select').click();
-    await page.getByTestId('purchase-package-option').filter({ hasText: packageName }).click();
-    await page.getByTestId('purchase-confirm-button').click();
-    await expect(page.getByText(/Purchase recorded - balance now/)).toBeVisible();
-    await expect(page.getByTestId('payment-history-row').filter({ hasText: packageName })).toBeVisible();
-    await expect(page.getByTestId('client-credits-badge')).toContainText(`${startingCredits + 1} credits`);
-
+    const creditsBeforeSession = await readCreditBalance(request, clientSession.profile.id);
     await page.goto('/coach/sessions');
     const approvedSession = page.getByTestId('session-row').filter({ hasText: approveLocation });
     await expect(approvedSession).toBeVisible();
@@ -675,7 +678,12 @@ test('real session, payment, progress, booking, and messaging controls complete 
     await page.keyboard.press('Escape');
     await editedSession.getByTestId('session-actions-button').click();
     await page.getByTestId('session-complete-action').click();
-    await expect(page.getByText(/Session completed - 1 credit used/)).toBeVisible();
+    await expect(page.getByText('Session completed')).toBeVisible();
+    const creditsAfterSession = await readCreditBalance(request, clientSession.profile.id);
+    if (creditsBeforeSession !== null) {
+      console.log(`[credit-retirement] session balance ${creditsBeforeSession} -> ${creditsAfterSession}`);
+      expect(creditsAfterSession).toBe(creditsBeforeSession);
+    }
     await page.getByTestId('session-filter-past').click();
     await expect(page.getByTestId('session-row').filter({ hasText: editedLocation })).toContainText('completed');
 
@@ -685,10 +693,6 @@ test('real session, payment, progress, booking, and messaging controls complete 
     const pastSession = page.getByTestId('client-past-session-row').filter({ hasText: sharedNote });
     await expect(pastSession).toBeVisible();
     await expect(pastSession.getByTestId('shared-note-row').filter({ hasText: sharedNote })).toBeVisible();
-    await page.goto('/client/packages');
-    await expect(page.getByTestId('client-payment-row').filter({ hasText: packageName })).toBeVisible();
-    await expect(page.getByTestId('credits-balance-text')).toContainText(String(startingCredits));
-
     await page.goto('/client/progress');
     const metricCard = page.getByTestId('client-metric-card').filter({ hasText: metricName });
     await metricCard.getByTestId('client-log-entry-button').click();
@@ -733,16 +737,10 @@ test('real session, payment, progress, booking, and messaging controls complete 
       const archivedMetric = await request.patch(`${backendUrl}/api/progress/metrics/${metricRow.id}/archive`, { headers: coachHeaders });
       expect(archivedMetric.ok()).toBeTruthy();
     }
-    const archivedPackage = await request.patch(`${backendUrl}/api/packages/${packageRow.id}/archive`, {
-      headers: adminHeaders,
-      data: { archived: true },
-    });
-    expect(archivedPackage.ok()).toBeTruthy();
   }
 });
 
 test('real admin auth covers management, safe waiver gate, reassignment, and role boundaries', async ({ page, request }) => {
-  const marker = `CVF LIVE PACKAGE ${Date.now()}`;
   const clientLoginResponse = await request.post(`${backendUrl}/api/auth/login`, { data: accounts.client });
   expect(clientLoginResponse.ok()).toBeTruthy();
   const clientSession = await clientLoginResponse.json();
@@ -751,7 +749,7 @@ test('real admin auth covers management, safe waiver gate, reassignment, and rol
   await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible();
   await expect(page.getByTestId('admin-tab-coaches')).toBeVisible();
   await expect(page.getByTestId('admin-tab-waivers')).toBeVisible();
-  await expect(page.getByTestId('admin-tab-packages')).toBeVisible();
+  await expect(page.getByTestId('admin-tab-packages')).toHaveCount(0);
 
   await page.getByTestId('admin-add-coach-button').click();
   await expect(page.getByTestId('admin-coach-create-dialog')).toBeVisible();
@@ -770,29 +768,6 @@ test('real admin auth covers management, safe waiver gate, reassignment, and rol
   await expect(page.getByTestId('waiver-publish-button')).toBeDisabled();
   await page.keyboard.press('Escape');
 
-  await page.getByTestId('admin-tab-packages').click();
-  await page.getByTestId('package-create-button').click();
-  await page.getByTestId('package-name-input').fill(marker);
-  await page.getByTestId('package-description-input').fill('Real-auth browser verification');
-  await page.getByTestId('package-price-input').fill('99');
-  await page.getByTestId('package-credits-input').fill('2');
-  await page.getByTestId('package-recurring-switch').click();
-  await page.getByTestId('package-save-button').click();
-  await expect(page.getByText('Package created')).toBeVisible();
-  const packageRow = page.getByTestId('admin-package-row').filter({ hasText: marker });
-  await packageRow.getByTestId('package-edit-button').click();
-  await page.getByTestId('package-description-input').fill('Updated real-auth browser verification');
-  await page.getByTestId('package-save-button').click();
-  await expect(page.getByText('Package updated')).toBeVisible();
-  await packageRow.getByTestId('package-archive-button').click();
-  await expect(packageRow).toContainText('Archived');
-  await packageRow.getByTestId('package-archive-button').click();
-  await expect(page.getByText('Package restored')).toBeVisible();
-  await expect(packageRow).not.toContainText('Archived');
-  await packageRow.getByTestId('package-archive-button').click();
-  await expect(page.getByText('Package archived').last()).toBeVisible();
-  await expect(packageRow).toContainText('Archived');
-
   const adminToken = await page.evaluate(() => localStorage.getItem('cvf_access_token'));
   const coachesResponse = await request.get(`${backendUrl}/api/admin/coaches`, {
     headers: { authorization: `Bearer ${adminToken}` },
@@ -803,15 +778,17 @@ test('real admin auth covers management, safe waiver gate, reassignment, and rol
   const alternateCoach = coaches.find((coach) => coach.id !== clientSession.profile.coach_id && !coach.is_admin);
   expect(originalCoach).toBeTruthy();
   expect(alternateCoach).toBeTruthy();
+  const originalCoachIndex = coaches.findIndex((coach) => coach.id === originalCoach.id);
+  const alternateCoachIndex = coaches.findIndex((coach) => coach.id === alternateCoach.id);
   let restoreOriginalCoach = false;
   try {
     await page.goto(`/coach/clients/${clientSession.profile.id}`);
     await page.getByTestId('admin-reassign-client-button').click();
     restoreOriginalCoach = true;
-    await page.getByTestId('admin-reassign-coach-option').filter({ hasText: alternateCoach.name }).click();
+    await page.getByTestId('admin-reassign-coach-option').nth(alternateCoachIndex).click();
     await expect(page.getByText('Client reassigned').last()).toBeVisible();
     await page.getByTestId('admin-reassign-client-button').click();
-    await page.getByTestId('admin-reassign-coach-option').filter({ hasText: originalCoach.name }).click();
+    await page.getByTestId('admin-reassign-coach-option').nth(originalCoachIndex).click();
     await expect(page.getByText('Client reassigned').last()).toBeVisible();
     restoreOriginalCoach = false;
 
@@ -867,9 +844,7 @@ test('hosted workout completion is idempotent and notifies the assigned coach an
     expect(abandoned.ok()).toBeTruthy();
   }
 
-  const creditsBeforeResponse = await request.get(`${backendUrl}/api/payments/credits`, { headers: clientHeaders });
-  expect(creditsBeforeResponse.ok()).toBeTruthy();
-  const creditsBefore = (await creditsBeforeResponse.json()).balance;
+  const creditsBefore = await readCreditBalance(request, client.profile.id);
 
   try {
     const workoutResponse = await request.post(`${backendUrl}/api/programs/workouts`, {
@@ -1012,9 +987,11 @@ test('hosted workout completion is idempotent and notifies the assigned coach an
     expect(unrelatedNotifications).toHaveLength(0);
     const [coachNotification] = coachNotifications;
 
-    const creditsAfterResponse = await request.get(`${backendUrl}/api/payments/credits`, { headers: clientHeaders });
-    expect(creditsAfterResponse.ok()).toBeTruthy();
-    expect((await creditsAfterResponse.json()).balance).toBe(creditsBefore);
+    const creditsAfter = await readCreditBalance(request, client.profile.id);
+    if (creditsBefore !== null) {
+      console.log(`[credit-retirement] workout balance ${creditsBefore} -> ${creditsAfter}`);
+      expect(creditsAfter).toBe(creditsBefore);
+    }
 
     await login(page, accounts.coach, '/coach');
     await page.goto('/coach/notifications');

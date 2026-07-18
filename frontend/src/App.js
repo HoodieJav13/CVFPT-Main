@@ -24,7 +24,6 @@ import ClientPrograms from '@/pages/client/Programs';
 import ClientResources from '@/pages/client/Resources';
 import ClientMessages from '@/pages/client/Messages';
 import ClientWaiver from '@/pages/client/Waiver';
-import ClientPackages from '@/pages/client/Packages';
 import WorkoutLogDetail from '@/pages/WorkoutLogDetail';
 import WorkoutTracker from '@/pages/client/WorkoutTracker';
 import AdminPage from '@/pages/admin/Admin';
@@ -93,7 +92,7 @@ export default function App() {
             <Route path="resources" element={<ClientResources />} />
             <Route path="messages" element={<ClientMessages />} />
             <Route path="waiver" element={<ClientWaiver />} />
-            <Route path="packages" element={<ClientPackages />} />
+            <Route path="packages" element={<Navigate to="/client" replace />} />
             <Route path="workouts/:id" element={<WorkoutLogDetail />} />
             <Route path="workouts/:id/track" element={<WorkoutTracker />} />
           </Route>

@@ -3,7 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate, Link } from 'react-router-do
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
-  TrendingUp, FileSignature, CreditCard, ShieldCheck, LogOut, Plus, Home, Library, Bell,
+  TrendingUp, FileSignature, ShieldCheck, LogOut, Plus, Home, Library, Bell,
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
 import { Button } from '@/components/ui/button';
@@ -35,7 +35,6 @@ const CLIENT_NAV = [
 
 const CLIENT_EXTRA = [
   { to: '/client/waiver', label: 'Waiver', icon: FileSignature },
-  { to: '/client/packages', label: 'Packages & Credits', icon: CreditCard },
 ];
 
 function BrandLogo({ size = 'desktop' }) {
@@ -224,9 +223,6 @@ function UserMenu({ user, logout, compact }) {
           <>
             <DropdownMenuItem onClick={() => navigate('/client/waiver')} data-testid="menu-waiver-link">
               <FileSignature className="h-4 w-4 mr-2" /> Waiver
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate('/client/packages')} data-testid="menu-packages-link">
-              <CreditCard className="h-4 w-4 mr-2" /> Packages & Credits
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>

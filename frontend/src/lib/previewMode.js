@@ -48,7 +48,6 @@ const state = {
   resourceAssignments: [
     { id: 'resource_assignment_sarah', resource_id: 'resource_sarah_recovery', client_id: 'client_sarah', active: true, assigned_at: iso(-12) },
   ],
-  credits: { client_sarah: 8, client_david: 2, client_emily: 5 },
   sessions: [
     { id: 'session_today', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(0, 15), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-20), updated_at: iso(-1) },
     { id: 'session_next', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(3, 10), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-18), updated_at: iso(-1) },
@@ -150,13 +149,6 @@ const state = {
   ],
   waiverSignatures: [
     { id: 'sig_sarah', client_id: 'client_sarah', waiver_version_id: 'waiver_v1', signed_at: iso(-80), signed_name: 'Sarah Martinez', ip_address: '127.0.0.1', entered_by: 'client', entered_by_coach_id: null, version: { id: 'waiver_v1', version_number: 1 } },
-  ],
-  packages: [
-    { id: 'pkg_4', name: '4 Session Pack', description: 'Starter pack for weekly training.', price: 320, session_credits: 4, is_recurring: false, archived: false, created_at: iso(-70) },
-    { id: 'pkg_8', name: '8 Session Pack', description: 'Best for steady progress.', price: 600, session_credits: 8, is_recurring: false, archived: false, created_at: iso(-70) },
-  ],
-  purchases: [
-    { id: 'purchase_1', client_id: 'client_sarah', package_id: 'pkg_8', amount: 600, credits_granted: 8, method: 'manual', status: 'completed', stripe_session_id: null, recorded_by_coach_id: 'coach_marcus', archived: false, created_at: iso(-22) },
   ],
 };
 
@@ -630,17 +622,6 @@ function waiverStatus(clientId) {
   };
 }
 
-function paymentHistory(clientId) {
-  return state.purchases
-    .filter((p) => p.client_id === clientId && !p.archived)
-    .map((p) => ({
-      ...p,
-      package: state.packages.find((pkg) => pkg.id === p.package_id),
-      recorded_by: coachById(p.recorded_by_coach_id),
-    }))
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-}
-
 function dashboardClient() {
   const client = currentClient();
   const clientSessions = state.sessions.filter((s) => s.client_id === client.id && !s.archived);
@@ -663,7 +644,6 @@ function dashboardClient() {
     today_check_in: todayCheckIn,
     latest_check_in: latestCheckIn,
     recent_progress: recentProgress,
-    credits: state.credits[client.id] || 0,
     waiver: { has_version: Boolean(state.waiverVersions.length), signed_latest: waiverStatus(client.id).signed_latest },
     program_count: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).length
       + state.workoutAssignments.filter((a) => a.client_id === client.id && !a.archived).length,
@@ -1065,11 +1045,8 @@ export function installPreviewApi(api) {
     if (completeMatch && method === 'patch') {
       const row = state.sessions.find((s) => s.id === completeMatch[1]);
       row.status = 'completed';
-      if ((state.credits[row.client_id] || 0) > 0) {
-        state.credits[row.client_id] -= 1;
-        row.credit_deducted = true;
-      }
-      return ok({ session: row, credit_deducted: row.credit_deducted, credits_remaining: state.credits[row.client_id] || 0 }, config);
+      row.credit_deducted = false;
+      return ok({ session: row, credit_deducted: false, credits_remaining: null }, config);
     }
     const cancelMatch = path.match(/^\/sessions\/([^/]+)\/cancel$/);
     if (cancelMatch && method === 'patch') {
@@ -1436,44 +1413,6 @@ export function installPreviewApi(api) {
       state.waiverSignatures.push(row);
       return ok(row, config, 201);
     }
-
-    if (path === '/packages' && method === 'get') {
-      const includeArchived = search.get('include_archived') === 'true';
-      return ok(state.packages.filter((p) => includeArchived || !p.archived), config);
-    }
-    if (path === '/packages' && method === 'post') {
-      const row = { id: id('pkg'), name: payload.name, description: payload.description || null, price: Number(payload.price), session_credits: Number(payload.session_credits) || 0, is_recurring: Boolean(payload.is_recurring), archived: false, created_at: new Date().toISOString() };
-      state.packages.push(row);
-      return ok(row, config, 201);
-    }
-    const pkgId = path.match(/^\/packages\/([^/]+)$/);
-    if (pkgId && method === 'put') {
-      const row = state.packages.find((p) => p.id === pkgId[1]);
-      Object.assign(row, payload);
-      return ok(row, config);
-    }
-    const pkgArchive = path.match(/^\/packages\/([^/]+)\/archive$/);
-    if (pkgArchive && method === 'patch') {
-      const row = state.packages.find((p) => p.id === pkgArchive[1]);
-      row.archived = payload.archived !== false;
-      return ok(row, config);
-    }
-
-    if (path === '/payments/config') return ok({ configured: false, publishable_key: null, message: 'Preview mode: online payments are disabled.' }, config);
-    if (path === '/payments/credits') return ok({ balance: state.credits[client.id] || 0 }, config);
-    const payCredits = path.match(/^\/payments\/credits\/([^/]+)$/);
-    if (payCredits) return ok({ balance: state.credits[payCredits[1]] || 0 }, config);
-    if (path === '/payments/history') return ok(paymentHistory(client.id), config);
-    const payHistory = path.match(/^\/payments\/history\/([^/]+)$/);
-    if (payHistory) return ok(paymentHistory(payHistory[1]), config);
-    if (path === '/payments/manual' && method === 'post') {
-      const pkg = state.packages.find((p) => p.id === payload.package_id);
-      const row = { id: id('purchase'), client_id: payload.client_id, package_id: pkg.id, amount: payload.amount || pkg.price, credits_granted: pkg.session_credits, method: 'manual', status: 'completed', stripe_session_id: null, recorded_by_coach_id: currentCoach().id, archived: false, created_at: new Date().toISOString(), package: pkg };
-      state.purchases.push(row);
-      state.credits[payload.client_id] = (state.credits[payload.client_id] || 0) + pkg.session_credits;
-      return ok({ purchase: row, credits: state.credits[payload.client_id] }, config, 201);
-    }
-    if (path === '/payments/checkout' && method === 'post') return fail(config, 503, 'Preview mode: checkout is disabled.');
 
     return fail(config, 404, `Preview route not mocked: ${method.toUpperCase()} ${path}`);
   };

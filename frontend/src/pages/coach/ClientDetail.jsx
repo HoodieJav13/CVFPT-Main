@@ -21,11 +21,11 @@ import {
 } from '@/components/ui/select';
 import {
   ArrowLeft, Pencil, Archive, ArchiveRestore, Loader2, Plus, FileSignature,
-  CreditCard, TrendingUp, Dumbbell, CalendarDays, MessageSquare, Trash2,
+  TrendingUp, Dumbbell, CalendarDays, MessageSquare, Trash2,
   ClipboardCheck, Play, StickyNote,
   SlidersHorizontal, ChevronRight,
 } from 'lucide-react';
-import { initials, fmtDate, fmtDateTime, fmtMoney, fmtTime, fmtDay } from '@/lib/format';
+import { initials, fmtDate, fmtDateTime, fmtTime, fmtDay } from '@/lib/format';
 import { toast } from 'sonner';
 
 export default function ClientDetail() {
@@ -33,7 +33,6 @@ export default function ClientDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [client, setClient] = useState(null);
-  const [credits, setCredits] = useState(0);
   const [waiver, setWaiver] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadedId, setLoadedId] = useState(null);
@@ -47,18 +46,13 @@ export default function ClientDetail() {
       if (sequence !== loadSequence.current) return;
       setClient(c.data);
       if (c.data.archived) {
-        setCredits(0);
         setWaiver(null);
         setLoadedId(id);
         setLoadError(null);
         return;
       }
-      const [cr, w] = await Promise.all([
-        api.get(`/payments/credits/${id}`),
-        api.get(`/waivers/client/${id}/status`),
-      ]);
+      const w = await api.get(`/waivers/client/${id}/status`);
       if (sequence !== loadSequence.current) return;
-      setCredits(cr.data.balance);
       setWaiver(w.data);
       setLoadedId(id);
       setLoadError(null);
@@ -99,7 +93,6 @@ export default function ClientDetail() {
             ) : (
               <Badge variant="outline" className="text-muted-foreground">Not invited</Badge>
             )}
-            <Badge variant="outline" className="bg-gold/10 text-gold border-gold/25" data-testid="client-credits-badge">{credits} credits</Badge>
           </div>
         </div>
         <IconButton label={`Message ${client.name}`} variant="secondary" size="touchIcon" className="rounded-xl shrink-0" onClick={() => navigate(`/coach/messages/${client.id}`)} data-testid="client-message-button">
@@ -114,11 +107,10 @@ export default function ClientDetail() {
           <TabsTrigger value="progress" data-testid="tab-progress">Progress</TabsTrigger>
           <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
           <TabsTrigger value="programs" data-testid="tab-programs">Programs</TabsTrigger>
-          <TabsTrigger value="payments" data-testid="tab-payments">Payments</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
-          <OverviewTab client={client} credits={credits} waiver={waiver} reload={load} user={user} />
+          <OverviewTab client={client} waiver={waiver} reload={load} user={user} />
         </TabsContent>
         <TabsContent value="check-ins">
           <CheckInsTab clientId={client.id} />
@@ -132,15 +124,12 @@ export default function ClientDetail() {
         <TabsContent value="programs">
           <ProgramsTab clientId={client.id} />
         </TabsContent>
-        <TabsContent value="payments">
-          <PaymentsTab clientId={client.id} reloadParent={load} />
-        </TabsContent>
       </Tabs>
     </div>
   );
 }
 
-function OverviewTab({ client, credits, waiver, reload, user }) {
+function OverviewTab({ client, waiver, reload, user }) {
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({
     name: client.name, email: client.email || '', phone: client.phone || '',
@@ -1182,103 +1171,4 @@ function CoachExerciseRows({ exercises }) {
 
 function coachExerciseName(exercise) {
   return exercise.library_exercise?.name || exercise.custom_name || exercise.name || 'Exercise';
-}
-
-function PaymentsTab({ clientId, reloadParent }) {
-  const [history, setHistory] = useState(null);
-  const [packages, setPackages] = useState([]);
-  const [loadError, setLoadError] = useState(null);
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const [h, p] = await Promise.all([
-        api.get(`/payments/history/${clientId}`),
-        api.get('/packages'),
-      ]);
-      setHistory(h.data);
-      setPackages(p.data);
-      setLoadError(null);
-    } catch (e) {
-      const message = errMsg(e);
-      setLoadError(message);
-      toast.error(message);
-    }
-  }, [clientId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const record = async (e) => {
-    e.preventDefault();
-    if (!selected) return;
-    setSaving(true);
-    try {
-      const { data } = await api.post('/payments/manual', { client_id: clientId, package_id: selected });
-      toast.success(`Purchase recorded - balance now ${data.credits} credits`);
-      setOpen(false);
-      setSelected('');
-      load();
-      reloadParent();
-    } catch (err) {
-      toast.error(errMsg(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (!history && loadError) return <LoadErrorState message={loadError} scope="client-detail-payments" onRetry={() => { setLoadError(null); load(); }} />;
-  if (!history) return <LoadingScreen />;
-
-  return (
-    <div className="space-y-3 mt-1">
-      <div className="flex justify-end">
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="rounded-xl" data-testid="record-purchase-button">
-              <Plus className="h-4 w-4 mr-1.5" /> Record purchase
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-sm" data-testid="manual-purchase-dialog">
-            <DialogHeader>
-              <DialogTitle>Record manual purchase</DialogTitle>
-              <DialogDescription>Record an offline payment and grant the package credits to this client.</DialogDescription>
-            </DialogHeader>
-            <p className="text-xs text-muted-foreground -mt-2">For cash / in-person payments. Credits are added immediately.</p>
-            <form onSubmit={record} className="space-y-4">
-              <Select value={selected} onValueChange={setSelected}>
-                <SelectTrigger className="rounded-xl" data-testid="purchase-package-select">
-                  <SelectValue placeholder="Choose package..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {packages.map((p) => (
-                    <SelectItem key={p.id} value={p.id} data-testid="purchase-package-option">{p.name} - {fmtMoney(p.price)} ({p.session_credits} credits)</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <DialogFooter>
-                <Button type="submit" disabled={saving || !selected} className="rounded-xl w-full sm:w-auto" data-testid="purchase-confirm-button">
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Record purchase'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-      {history.length === 0 && <EmptyState icon={CreditCard} title="No payments yet" subtitle="Record a manual purchase or have the client buy a package." />}
-      {history.map((p) => (
-        <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="payment-history-row">
-          <div>
-            <p className="font-medium text-sm">{p.package?.name || 'Package'}</p>
-            <p className="text-xs text-muted-foreground">{fmtDateTime(p.created_at)} - {p.method === 'manual' ? 'Cash/manual' : 'Card (Stripe)'}</p>
-          </div>
-          <div className="text-right">
-            <p className="font-semibold tabular-nums">{fmtMoney(p.amount)}</p>
-            <p className="text-xs text-muted-foreground">{p.credits_granted} credits - {p.status}</p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 }

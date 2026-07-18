@@ -19,7 +19,6 @@ const LINKS = {
     ['Programs', '/client/programs'],
     ['Messages', '/client/messages'],
     ['Waiver', '/client/waiver'],
-    ['Packages', '/client/packages'],
   ],
   coach: [
     ['Home', '/coach'],
