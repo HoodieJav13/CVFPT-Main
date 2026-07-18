@@ -34,8 +34,6 @@ app.use('/api/resource-categories', require('./routes/resourceCategories'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/waivers', require('./routes/waivers'));
-app.use('/api/packages', require('./routes/packages'));
-app.use('/api/payments', require('./routes/payments'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/workout-logs', require('./routes/workoutLogs'));

@@ -2,7 +2,6 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
-const { getBalance } = require('../utils/credits');
 const { todayRangeInTz, todayDateInTz } = require('../utils/time');
 
 const router = express.Router();
@@ -80,7 +79,7 @@ router.get('/client', requireClient, async (req, res) => {
     const nowIso = new Date().toISOString();
     const today = todayDateInTz();
 
-    const [{ data: nextSessions }, { data: recentMessages }, { count: unreadMessages }, balance, { data: coach }] = await Promise.all([
+    const [{ data: nextSessions }, { data: recentMessages }, { count: unreadMessages }, { data: coach }] = await Promise.all([
       supabaseAdmin.from('sessions').select('*, coach:coaches(id, name)')
         .eq('client_id', clientId).eq('archived', false).eq('status', 'scheduled')
         .gte('scheduled_at', nowIso).order('scheduled_at').limit(3),
@@ -88,7 +87,6 @@ router.get('/client', requireClient, async (req, res) => {
         .eq('client_id', clientId).eq('archived', false).order('created_at', { ascending: false }).limit(5),
       supabaseAdmin.from('messages').select('id', { count: 'exact', head: true })
         .eq('client_id', clientId).eq('sender_role', 'coach').eq('read_by_recipient', false).eq('archived', false),
-      getBalance(clientId),
       supabaseAdmin.from('coaches').select('name')
         .eq('id', req.user.client.coach_id).eq('archived', false).maybeSingle(),
     ]);
@@ -137,7 +135,6 @@ router.get('/client', requireClient, async (req, res) => {
       today_check_in: todayCheckIn || null,
       latest_check_in: latestCheckIns?.[0] || null,
       recent_progress: recentProgress,
-      credits: balance,
       waiver: { has_version: Boolean(latest), signed_latest: signedLatest },
       program_count: programCount || 0,
       coach_name: coach?.name || null,

@@ -102,7 +102,7 @@ router.patch('/:id/cancel', requireCoach, async (req, res) => {
   }
 });
 
-// PATCH /api/sessions/:id/complete  -> decrements one credit if available
+// PATCH /api/sessions/:id/complete
 router.patch('/:id/complete', requireCoach, async (req, res) => {
   try {
     const session = await loadSessionForCoach(req, res);
