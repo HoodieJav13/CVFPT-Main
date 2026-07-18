@@ -172,15 +172,17 @@ test('brand backdrop variants, one-time dashboard motion, and genuine PR moment 
 
   const dashboardBackdrop = page.getByTestId('brand-backdrop-dashboard');
   await expect(dashboardBackdrop).toHaveAttribute('data-photo-state', 'fallback');
+  await expect(dashboardBackdrop).toHaveAttribute('data-intensity', 'spectacle');
   await expect(dashboardBackdrop.locator('.brand-backdrop__photo')).toHaveCount(0);
   await expect(page.locator('[data-entry-motion]')).toHaveAttribute('data-entry-motion', 'enabled');
+  await expect(page.locator('[data-motion-intensity]')).toHaveAttribute('data-motion-intensity', 'spectacle');
+  await expect(page.getByTestId('preview-intensity-select')).toHaveCount(0);
 
-  const intensity = page.getByTestId('preview-intensity-select');
-  for (const value of ['restrained', 'cinematic', 'spectacle']) {
-    await intensity.selectOption(value);
-    await expect(dashboardBackdrop).toHaveAttribute('data-intensity', value);
-  }
-  await intensity.selectOption('cinematic');
+  await page.evaluate(() => localStorage.setItem('cvfpt_visual_intensity', 'restrained'));
+  await page.reload();
+  await expect(page.getByTestId('brand-backdrop-dashboard')).toHaveAttribute('data-intensity', 'spectacle');
+  await expect(page.locator('[data-motion-intensity]')).toHaveAttribute('data-motion-intensity', 'spectacle');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('cvfpt_visual_intensity'))).toBe('restrained');
 
   await page.getByTestId('sidebar-nav-programs').click();
   await page.getByTestId('sidebar-nav-home').click();
@@ -196,7 +198,7 @@ test('brand backdrop variants, one-time dashboard motion, and genuine PR moment 
 
   const recordMoment = page.getByTestId('personal-record-moment');
   await expect(recordMoment).toBeVisible();
-  await expect(recordMoment.getByTestId('brand-backdrop-achievement')).toHaveCount(1);
+  await expect(recordMoment.getByTestId('brand-backdrop-achievement')).toHaveAttribute('data-intensity', 'spectacle');
   await expect(page.getByTestId('progress-delta-hero-number')).toContainText('1 lbs');
   await expect(bodyWeight).toHaveAttribute('data-achievement', 'true');
 });
