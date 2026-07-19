@@ -35,7 +35,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-dvh app-noise flex items-center justify-center overflow-hidden px-4 relative">
+    <div className="signature-surface min-h-dvh app-noise flex items-center justify-center overflow-hidden px-4 relative">
       <BrandBackdrop variant="auth" photoSlot="auth" />
       <AuthEntrance>
         <div className="flex flex-col items-center mb-8">
@@ -52,7 +52,7 @@ export default function Login() {
             />
           )}
           <h1 className="mt-4 font-display text-4xl font-semibold tracking-tight">CVF PT</h1>
-          <p className="text-sm text-muted-foreground mt-1">Fitness Done Right</p>
+          <p className="mt-1 text-sm text-[hsl(var(--signature-foreground)/0.72)]">Fitness Done Right</p>
         </div>
         <Card className="border-border/80 shadow-[var(--app-elev)]">
           <CardContent className="p-6">
@@ -80,7 +80,7 @@ export default function Login() {
             </form>
             <p className="mt-5 text-center text-sm text-muted-foreground">
               Invited by your coach?{' '}
-              <Link to="/signup" className="text-primary font-medium hover:underline" data-testid="go-to-signup-link">
+              <Link to="/signup" className="signature-primary-text font-medium hover:underline" data-testid="go-to-signup-link">
                 Claim your account
               </Link>
             </p>

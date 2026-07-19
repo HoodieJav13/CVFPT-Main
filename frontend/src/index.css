@@ -35,6 +35,9 @@
     --gold-foreground: 215 28% 8%;
     --success: 160 84% 39%;
     --success-foreground: 152 76% 80%;
+    --signature-primary: 188 72% 74%;
+    --signature-gold: 58 100% 72%;
+    --signature-foreground: 210 30% 100%;
     --border: 214 22% 18%;
     --input: 214 22% 18%;
     --ring: 188 58% 60%;
@@ -108,6 +111,37 @@
 
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+
+  .signature-surface {
+    color: hsl(var(--signature-foreground));
+  }
+
+  .signature-primary-text {
+    color: hsl(var(--signature-primary));
+  }
+
+  .signature-primary-fill {
+    background-color: hsl(var(--signature-primary));
+  }
+
+  .signature-gold-text {
+    color: hsl(var(--signature-gold));
+  }
+
+  .signature-glass {
+    background: hsl(var(--card) / 0.6);
+    border: 1.5px solid hsl(var(--foreground) / 0.08);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--foreground) / 0.16),
+      0 8px 20px 8px hsl(var(--background) / 0.4);
+  }
+
+  .signature-glass.signature-glass-success {
+    background: hsl(var(--success));
+    color: hsl(var(--success-foreground));
   }
 
   /* Skeleton shimmer — pure CSS loading placeholder */
@@ -187,8 +221,8 @@
 
   .brand-backdrop[data-intensity='spectacle'] {
     --brand-photo-opacity: 0.2;
-    --brand-ridge-opacity: 0.28;
-    --brand-glow-opacity: 0.26;
+    --brand-ridge-opacity: 0.78;
+    --brand-glow-opacity: 0.52;
   }
 
   .brand-backdrop__photo,
@@ -225,6 +259,17 @@
     mix-blend-mode: screen;
   }
 
+  .brand-backdrop[data-intensity='spectacle'] .brand-backdrop__glow {
+    background:
+      radial-gradient(88% 110% at 12% 12%, hsl(var(--primary) / 0.62), transparent 64%),
+      radial-gradient(42% 74% at 82% 22%, hsl(var(--gold) / 0.42), transparent 68%);
+  }
+
+  .brand-backdrop[data-intensity='spectacle'] .brand-backdrop__ridge {
+    height: 100%;
+    filter: saturate(1.28) contrast(1.28) drop-shadow(0 -8px 26px hsl(var(--primary) / 0.24));
+  }
+
   .brand-backdrop__veil {
     background: linear-gradient(90deg, hsl(var(--background) / 0.8) 0%, hsl(var(--background) / 0.44) 54%, hsl(var(--background) / 0.72) 100%);
   }
@@ -233,9 +278,18 @@
     background: linear-gradient(90deg, hsl(var(--background) / 0.42) 0%, hsl(var(--background) / 0.08) 58%, hsl(var(--background) / 0.28) 100%);
   }
 
+  .brand-backdrop[data-intensity='spectacle'][data-photo-state='fallback'] .brand-backdrop__veil {
+    background: linear-gradient(90deg, hsl(var(--background) / 0.14) 0%, transparent 54%, hsl(var(--background) / 0.08) 100%);
+  }
+
   .brand-backdrop[data-variant='auth'] .brand-backdrop__ridge {
     height: 44%;
     background-size: 1200px 100%;
+  }
+
+  .brand-backdrop[data-variant='auth'][data-intensity='spectacle'] .brand-backdrop__ridge {
+    height: 72%;
+    background-size: 1100px 100%;
   }
 
   .brand-backdrop[data-variant='auth'] .brand-backdrop__veil {
@@ -246,9 +300,18 @@
     background: linear-gradient(180deg, hsl(var(--background) / 0.22) 0%, hsl(var(--background) / 0.68) 58%, hsl(var(--background)) 100%);
   }
 
+  .brand-backdrop[data-variant='auth'][data-intensity='spectacle'][data-photo-state='fallback'] .brand-backdrop__veil {
+    background: linear-gradient(180deg, hsl(var(--background) / 0.04) 0%, hsl(var(--background) / 0.24) 58%, hsl(var(--background) / 0.78) 100%);
+  }
+
   .brand-backdrop[data-variant='achievement'] {
     --brand-ridge-opacity: 0.32;
     --brand-glow-opacity: 0.28;
+  }
+
+  .brand-backdrop[data-variant='achievement'][data-intensity='spectacle'] {
+    --brand-ridge-opacity: 0.86;
+    --brand-glow-opacity: 0.6;
   }
 
   .brand-backdrop[data-variant='achievement'] .brand-backdrop__glow {
@@ -257,5 +320,13 @@
 
   .brand-backdrop[data-variant='achievement'] .brand-backdrop__veil {
     background: linear-gradient(180deg, hsl(var(--card) / 0.18), hsl(var(--card) / 0.88));
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .signature-glass {
+      background: hsl(var(--card) / 0.96);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
   }
 }

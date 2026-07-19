@@ -434,7 +434,10 @@ export default function WorkoutTracker() {
         ))}
       </div>
 
-      <div className="sticky bottom-16 z-30 -mx-4 mt-5 flex gap-2 border-t border-border bg-background/95 px-4 py-3 backdrop-blur lg:bottom-0 lg:mx-0 lg:px-0">
+      <div
+        className="signature-glass sticky bottom-20 z-30 mt-5 flex gap-2 rounded-2xl p-2.5 lg:bottom-4"
+        data-testid="workout-control-dock"
+      >
         <Button variant="outline" className="min-h-11 flex-1" disabled={!remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
           Complete all remaining
         </Button>
@@ -448,7 +451,7 @@ export default function WorkoutTracker() {
           <Button
             type="button"
             onClick={() => setRestEndsAt(null)}
-            className={`fixed bottom-36 right-4 z-40 h-16 min-w-16 rounded-full px-3 font-display text-lg font-semibold shadow-lg lg:bottom-6 ${restComplete ? 'motion-attention-pop-once bg-success text-success-foreground hover:bg-success/90' : ''}`}
+            className={`signature-glass fixed bottom-40 right-4 z-40 h-14 min-w-28 rounded-full px-4 font-display text-base font-semibold lg:bottom-24 ${restComplete ? 'signature-glass-success motion-attention-pop-once hover:bg-success/90' : 'text-foreground hover:bg-card/80'}`}
             style={restComplete ? { '--motion-attention-scale': attentionRecipe.scale } : undefined}
             aria-label={restComplete ? 'Rest complete, tap to dismiss' : `Rest timer ${formatTimer(restSeconds)}, tap to stop`}
             data-testid="rest-timer"
@@ -463,7 +466,7 @@ export default function WorkoutTracker() {
       )}
 
       <Dialog open={finishOpen} onOpenChange={setFinishOpen}>
-        <DialogContent>
+        <DialogContent className="signature-glass bg-card/80 sm:rounded-2xl" data-testid="workout-completion-dialog">
           <DialogHeader>
             <DialogTitle>Finish workout?</DialogTitle>
             <DialogDescription>{completedCount} completed and {remainingCount} remaining sets. Remaining sets will be recorded as skipped.</DialogDescription>

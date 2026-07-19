@@ -40,7 +40,11 @@ export function DashboardChoreography({ pageKey, children }) {
   }, [pageKey]);
 
   return (
-    <div data-motion-intensity={intensity} data-entry-motion={animate ? 'enabled' : 'skipped'}>
+    <div
+      data-motion-intensity={intensity}
+      data-entry-motion={animate ? 'enabled' : 'skipped'}
+      data-entry-direction={intensity === 'spectacle' ? 'surge' : 'legacy'}
+    >
       {Children.map(children, (child, index) => {
         if (!child) return child;
         return (
@@ -72,6 +76,8 @@ export function AuthEntrance({ children }) {
   return (
     <m.div
       className="relative w-full max-w-sm"
+      data-motion-intensity={intensity}
+      data-entry-direction={intensity === 'spectacle' ? 'surge' : 'legacy'}
       initial={reducedMotion ? false : { opacity: 0, y: recipe.distance, scale: recipe.scale }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{

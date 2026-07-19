@@ -40,7 +40,7 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-dvh app-noise flex items-center justify-center overflow-hidden px-4 relative">
+    <div className="signature-surface min-h-dvh app-noise flex items-center justify-center overflow-hidden px-4 relative">
       <BrandBackdrop variant="auth" photoSlot="auth" />
       <AuthEntrance>
         <div className="flex flex-col items-center mb-8">
@@ -57,7 +57,7 @@ export default function Signup() {
             />
           )}
           <h1 className="mt-4 font-display text-2xl font-semibold tracking-tight">Claim your account</h1>
-          <p className="text-sm text-muted-foreground mt-1 text-center max-w-xs">
+          <p className="mt-1 max-w-xs text-center text-sm text-[hsl(var(--signature-foreground)/0.72)]">
             Use the same email your coach has on file. You must be invited by your coach to sign up.
           </p>
         </div>
@@ -92,7 +92,7 @@ export default function Signup() {
             </form>
             <p className="mt-5 text-center text-sm text-muted-foreground">
               Already have an account?{' '}
-              <Link to="/login" className="text-primary font-medium hover:underline" data-testid="go-to-login-link">
+              <Link to="/login" className="signature-primary-text font-medium hover:underline" data-testid="go-to-login-link">
                 Log in
               </Link>
             </p>

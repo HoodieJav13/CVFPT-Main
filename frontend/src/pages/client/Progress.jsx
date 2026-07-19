@@ -14,7 +14,7 @@ import { fmtDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { BrandBackdrop } from '@/components/BrandBackdrop';
 import { useVisualIntensity } from '@/lib/visualIntensity';
-import { ACHIEVEMENT_MOTION, MOTION_EASINGS, msToSeconds } from '@/lib/motion';
+import { PERSONAL_RECORD_MOTION, MOTION_EASINGS, msToSeconds } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
 const blankEntry = () => ({ value: '', recorded_on: new Date().toISOString().slice(0, 10), notes: '' });
@@ -22,7 +22,7 @@ const blankEntry = () => ({ value: '', recorded_on: new Date().toISOString().sli
 function AchievementMoment({ achievement }) {
   const reducedMotion = useReducedMotion();
   const intensity = useVisualIntensity();
-  const recipe = ACHIEVEMENT_MOTION[intensity];
+  const recipe = PERSONAL_RECORD_MOTION[intensity];
   const sign = achievement?.direction === 'lower' ? '−' : '+';
 
   return (
@@ -30,23 +30,26 @@ function AchievementMoment({ achievement }) {
       {achievement ? (
         <m.section
           key={`${achievement.metricId}-${achievement.value}`}
-          className="relative isolate mb-4 overflow-hidden rounded-2xl border border-gold/35 bg-card/70 px-4 py-4 shadow-[var(--brand-glow)] sm:px-5"
-          initial={reducedMotion ? false : { opacity: 0, y: recipe.distance, scale: 0.98 }}
+          className="signature-glass signature-surface relative isolate mb-4 min-h-40 overflow-hidden rounded-2xl border-gold/85 px-4 py-4 shadow-[0_18px_58px_hsl(var(--gold)/0.28)] sm:px-7 sm:py-7"
+          initial={reducedMotion ? false : { opacity: 0, y: recipe.distance, scale: recipe.initialScale }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -recipe.distance / 2, scale: 0.99 }}
           transition={{ duration: msToSeconds(recipe.durationMs), ease: MOTION_EASINGS.expressiveOut }}
           role="status"
           aria-live="polite"
           data-testid="personal-record-moment"
+          data-pr-presentation="medal"
+          data-motion-duration-ms={recipe.durationMs}
+          data-motion-initial-scale={recipe.initialScale}
         >
           <BrandBackdrop variant="achievement" />
-          <div className="relative z-10 flex items-end justify-between gap-4">
+          <div className="relative z-10 flex min-h-32 items-end justify-between gap-4">
             <div>
-              <p className="font-display text-sm font-semibold uppercase tracking-[0.16em] text-gold">New personal record</p>
-              <p className="mt-1 text-sm text-foreground/75">{achievement.metricName} · now {achievement.value}{achievement.unit ? ` ${achievement.unit}` : ''}</p>
+              <p className="signature-gold-text font-display text-sm font-semibold uppercase tracking-[0.16em]">New personal record</p>
+              <p className="mt-1 text-sm text-[hsl(var(--signature-foreground)/0.78)]">{achievement.metricName} · now {achievement.value}{achievement.unit ? ` ${achievement.unit}` : ''}</p>
             </div>
             <div className="text-right">
-              <p className="font-display text-4xl font-bold leading-none tabular-nums text-gold sm:text-5xl" data-testid="progress-delta-hero-number">
+              <p className="signature-gold-text font-display text-6xl font-bold leading-none tabular-nums sm:text-7xl lg:text-[5rem]" data-testid="progress-delta-hero-number">
                 {sign}{achievement.improvementAmount}{achievement.unit ? ` ${achievement.unit}` : ''}
               </p>
               <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/65">better than your best</p>
