@@ -78,12 +78,14 @@ achievement entrances, while shared controls use the shorter interaction tokens.
 
 `BrandBackdrop` is the single visual grammar for the Sandia ridge, atmospheric
 glow, and future owner-supplied photography. Use it only on Login/Signup,
-coach/client dashboard greetings, and a live personal-record moment on Progress.
-Do not place the ridge as generic page decoration.
+coach/client dashboard greetings, and a live personal-record moment on
+Progress. Do not place the ridge as generic page decoration.
 
 The system has three calibrated intensity variants: `restrained`, `cinematic`,
-and `spectacle`. Cinematic is the product default; the preview toolbar exposes
-all three for review. These are strength settings within one brand system, not
+and `spectacle`. **Spectacle is the fixed runtime intensity as of 2026-07.**
+The preview toolbar's intensity picker has been retired; all three recipes
+remain in code for reversibility, but only spectacle renders in any live
+environment. These are strength settings within one brand system, not
 separate themes.
 
 The current target is the no-photo fallback. Approved photography may later be
@@ -91,3 +93,119 @@ added at `frontend/src/assets/photos/login-bg.jpg` and
 `frontend/src/assets/photos/dashboard-header.jpg`. Missing files intentionally
 produce no network request or console error. Final image crop, overlay, and
 duotone tuning waits until the real consented assets exist.
+
+Any element introduced as a deliberate identity or signature marker is subject
+to the visual quality review below, not to restraint language alone. "Don't
+clutter" and "sparingly" describe density, not permission to be invisible.
+
+## Visual quality review
+
+Correctness and distinctiveness are different questions. A visual deliverable
+is reviewed against three outcomes, not two:
+
+- **FAIL** — violates a correctness, accessibility, product, or design
+  contract requirement in this document.
+- **UNDERPOWERED** — passes every contract check, but the intended visual
+  effect is not cold-readable, distinctive, or strong enough to satisfy the
+  stated visual objective. This is not a defect. It is a stop-ship result for
+  the objective under review, and it must never silently resolve to PASS.
+- **PASS** — both contract-correct and sufficiently distinctive against the
+  approved reference bar (below).
+
+Defect severity (blocking bug vs. minor polish) is tracked separately from
+this outcome. A finding can be simultaneously "zero defects" and
+"UNDERPOWERED."
+
+### Directional variants
+
+Whether a given change qualifies as a "genuine visual-direction decision"
+under this section is not a judgment the executing agent makes silently. It
+must be stated explicitly, every time, with reasoning — and resolved toward
+triggering this process whenever genuinely uncertain. An agent quietly
+deciding something doesn't qualify is the same failure this document exists
+to prevent, one level earlier.
+
+Any genuine visual-direction decision — not a bug fix, not an accessibility
+correction, not backend/integrity work — requires two materially different
+alternatives before production implementation:
+
+- **Baseline / compliant** — the disciplined interpretation that safely
+  satisfies this document as written.
+- **Bold probe** — a deliberately stronger exploration that pushes a relevant
+  value (size, weight, contrast, opacity, crop, spatial footprint, motion
+  amplitude) past the executor's default comfort level, while still meeting
+  accessibility and clarity requirements.
+
+Both variants must state exact deltas, not adjectives — e.g. "ridge opacity
+0.28 → 0.42," not "make the ridge more visible."
+
+Produce at least one genuinely distinct bold probe before a direction is
+considered settled. If the baseline and bold probe are not visibly different
+at the same viewport and state, revise the bold probe once. Further rounds
+are owner-directed rather than automatic. If materially different probes
+still fail to land, reconsider the direction itself instead of continuing to
+tune execution.
+
+Do not maintain both as permanent production code — a temporary mockup,
+branch-local variant, or screenshot-only comparison is sufficient. The owner
+picks the direction before either becomes the shipped implementation.
+
+### Cold-visibility floor
+
+Any element meant to read as a deliberate identity or signature marker must be
+recognizable in an ordinary screenshot, at normal size, with no prior
+knowledge of where to look. The executing agent cannot certify this itself —
+it already knows where the element is, which makes it structurally unable to
+judge cold-visibility. Certification requires the owner (or a reviewer with
+no foreknowledge of the target), shown only the screenshot, product name,
+viewport, and user task, asked what establishes the product's identity and
+what decorative/identity elements they notice unprompted.
+
+If the intended element is not noticed or described in semantically
+equivalent terms — for example, "mountain landscape" counts as recognizing
+the Sandia ridge — or if it does not materially change the screen's
+character, the result is UNDERPOWERED. Accessibility and content clarity
+remain mandatory throughout — visibility is not permission to obscure
+information.
+
+### Reference bar
+
+Comparisons use named products, each for one specific axis — never as a
+template to copy layout, color, typography, or brand assets from:
+
+- **Future Pro** — visible human-coach presence; personalized programming and
+  accountability; the connection between assigned work, coach communication,
+  and visible progress.
+- **WHOOP** — performance-data hierarchy; translating raw metrics into clear
+  guidance; making progress and readiness feel consequential, not
+  administrative.
+- **Nike Training Club** — focused workout execution; athletic editorial
+  confidence; exercise guidance and milestone/achievement presentation.
+
+Pull current screenshots of the relevant reference at review time — these
+apps' own UIs change, and a comparison against a stale memory of one isn't a
+real comparison. For each review, record: what the reference makes
+immediately legible, what gives it recognizable character, what CVF PT
+should match in clarity or presence, and what CVF PT must keep uniquely its
+own. Never optimize toward looking like the reference — optimize toward
+matching the specific quality it's cited for.
+
+### Effort vs. impact accounting
+
+Applies to styling, choreography, and identity proposals only — not to
+schema, authorization, data-integrity, migration, or security work, which is
+judged on correctness alone. Every such proposal states:
+
+- Exact current → proposed visual delta (values, not adjectives).
+- Expected user-visible effect.
+- Files and components touched; any new dependency or asset.
+- Responsive and accessibility regression surface.
+- Implementation effort: S / M / L / XL.
+- Expected visual impact: 1–5.
+- Confidence and verification method.
+
+Any proposal scored L or XL effort with expected impact of 1–2 is flagged for
+an explicit owner decision — it is never presented as already-completed work.
+The effort and impact scores themselves are reviewed by the owner at the same
+decision point as the baseline/bold-probe choice, not self-certified by the
+executing agent and checked later.

@@ -12,6 +12,12 @@ scope, and the [design principles](docs/design-principles.md) for durable design
 guidance. Implementation values remain in the code-level sources linked from
 those documents.
 
+Any genuine visual-direction decision (not a bug fix or accessibility
+correction) must follow the visual quality review, directional-variant, and
+cold-visibility rules in `docs/design-principles.md` before production
+implementation — a passing build is not sufficient evidence of "done" for
+identity/signature work.
+
 ## Locked invariants — do not violate
 
 - **Auth User ≠ Client.** `clients.auth_user_id` is nullable; clients are created by coaches and later claim their record via an invite flow.
@@ -70,7 +76,14 @@ Frontend and backend deploy as **two separate Vercel projects**, each rooted at 
 ## Status (updated as of this session)
 
 - Toolchain/scaffolding cleanup, brand token foundation, and visual elevation pass: **done**.
-- High Desert visual system: **done for the no-photo target** — shared BrandBackdrop with retained restrained/cinematic/spectacle recipes, spectacle fixed as the active runtime intensity, one-time reduced-motion-safe dashboard/auth choreography, data-keyed Progress chart drawing, and genuine direction-aware PR celebration. Optional consented photography remains intentionally absent and is documented in `frontend/src/assets/photos/README.md`.
+- High Desert visual system: **implemented for the no-photo target;
+  distinctiveness revalidation pending against the visual-quality gate**
+  (see `docs/design-principles.md`) — shared BrandBackdrop with retained
+  restrained/cinematic/spectacle recipes, spectacle fixed as the active
+  runtime intensity, one-time reduced-motion-safe dashboard/auth
+  choreography, data-keyed Progress chart drawing, and genuine
+  direction-aware PR celebration. Optional consented photography remains
+  intentionally absent and is documented in `frontend/src/assets/photos/README.md`.
 - Session "past"-bucketing bug (client + coach Sessions pages): **fixed**.
 - Training Builder import/export (deterministic pasted text, CSV/PDF import, `commit_program_import` transactional RPC, branded PDF export): **done for the approved deterministic scope**. Paste import uses the same Program Draft review/edit and atomic commit path, supports one to five days, reuses normalized exercise matches, and tags new exercises `source='manual'` with `review_status='needs_review'`. CSV/PDF draft behavior remains three to five days. AI-assisted PDF parsing is explicitly deferred and remains safely disabled without OpenAI preview configuration.
 - Resource Library: **done** — coaches/admins globally manage private-bucket PDF handouts, categories, public visibility, and soft-state client assignments; clients can list/download only public or actively assigned resources through 60-second signed URLs. Storage paths remain backend-only, uploads require PDF MIME plus signature and are capped/rate-limited at 10 MB/10 per 15 minutes, and preview mode contains deterministic public/assigned fixtures.
