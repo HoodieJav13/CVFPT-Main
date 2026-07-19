@@ -76,9 +76,12 @@ Frontend and backend deploy as **two separate Vercel projects**, each rooted at 
 ## Status (updated as of this session)
 
 - Toolchain/scaffolding cleanup, brand token foundation, and visual elevation pass: **done**.
-- High Desert visual system: **implemented for the no-photo target;
-  distinctiveness revalidation pending against the visual-quality gate**
-  (see `docs/design-principles.md`) — shared BrandBackdrop with retained
+- High Desert visual system: **implemented and passed the visual-quality gate
+  for the no-photo target** (see `docs/design-principles.md` and
+  `design-qa.md`). The owner's first cold-baseline review classified all six
+  signature surfaces UNDERPOWERED; the selected Poster, Medal, and Surge
+  corrections then passed paired desktop/mobile comparison and preview
+  regression. The implementation retains the shared BrandBackdrop and its
   restrained/cinematic/spectacle recipes, spectacle fixed as the active
   runtime intensity, one-time reduced-motion-safe dashboard/auth
   choreography, data-keyed Progress chart drawing, and genuine

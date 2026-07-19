@@ -2,12 +2,26 @@
 
 Audit date: 2026-07-19
 
+## Run 1 — cold-baseline verdict
+
+Before any bold-probe work, the owner reviewed the unlabeled desktop and
+390×844 baseline captures for Login, Signup, coach dashboard greeting, client
+dashboard greeting, the live Progress personal-record moment, and the shared
+auth/dashboard entrance choreography. The owner classified the complete set as
+**UNDERPOWERED — all around**: the implementation was contract-correct, but the
+intended identity and signature motion were not cold-readable or distinctive
+enough to ship as the completed visual objective.
+
+That verdict is the required first link in this evidence chain. It triggered the
+three-round bold-probe process and was not superseded or rewritten as a defect;
+Run 2 below records the selected correction and its verification.
+
 ## Selected direction and source visuals
 
-The owner selected the Poster backdrop, Medal personal-record moment, and Surge
-entrance choreography from the approved bold-probe round. The active-workout
-dock and selective glass recipe use the later owner-supplied pattern references
-without copying their product layout or palette.
+For Run 2, the owner selected the Poster backdrop, Medal personal-record moment,
+and Surge entrance choreography from the approved bold-probe round. The active-
+workout dock and selective glass recipe use the later owner-supplied pattern
+references without copying their product layout or palette.
 
 Selected visual targets:
 
