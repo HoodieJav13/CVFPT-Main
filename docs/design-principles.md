@@ -59,10 +59,15 @@ as interface icons.
 ## Motion intent
 
 Motion should be purposeful and choreographed. A small number of page-load and
-achievement sequences may be expressive, while forms, builders, and repetitive
-task surfaces remain calm. Avoid decorative loops, heavy parallax, and animation
-that delays a coach's task. Every sequence must respect reduced-motion
-preferences and provide the same information without animation.
+achievement sequences may be expressive; personal records and a just-completed
+workout are the approved rare achievement-family entrances. Forms, builders,
+and repetitive task surfaces remain calm. Avoid decorative loops, heavy
+parallax, and animation that delays a coach's task. Every sequence must respect
+reduced-motion preferences and provide the same information without animation.
+
+Rest-timer expiry and a visible unread-count increase use the same concise,
+one-shot attention feedback. Equal notification polls, timer ticks, repetitive
+tracker edits, and bulk notification reads do not animate.
 
 JavaScript motion recipes are owned by `frontend/src/lib/motion.js`; CSS
 interaction durations and easing are owned by `frontend/src/index.css`. Chart

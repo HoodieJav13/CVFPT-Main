@@ -12,6 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
+import { useVisualIntensity } from '@/lib/visualIntensity';
 
 function makeId() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -190,6 +192,7 @@ export default function WorkoutTracker() {
   const [finishing, setFinishing] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
   const [timerNow, setTimerNow] = useState(Date.now());
+  const intensity = useVisualIntensity();
   const outbox = useWorkoutOutbox(id, setLog);
   const hydratePending = outbox.hydrate;
 
@@ -210,7 +213,14 @@ export default function WorkoutTracker() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     if (!restEndsAt) return undefined;
-    const timer = window.setInterval(() => setTimerNow(Date.now()), 250);
+    let timer;
+    const tick = () => {
+      const now = Date.now();
+      setTimerNow(now);
+      if (now >= restEndsAt) window.clearInterval(timer);
+    };
+    timer = window.setInterval(tick, 250);
+    tick();
     return () => window.clearInterval(timer);
   }, [restEndsAt]);
 
@@ -221,6 +231,8 @@ export default function WorkoutTracker() {
   const completedCount = allSets.filter((set) => set.status === 'completed').length;
   const remainingCount = allSets.filter((set) => set.status === 'pending').length;
   const restSeconds = restEndsAt ? Math.max(0, Math.ceil((restEndsAt - timerNow) / 1000)) : 0;
+  const restComplete = Boolean(restEndsAt && timerNow >= restEndsAt);
+  const attentionRecipe = ATTENTION_FEEDBACK_MOTION[intensity];
 
   const setLocalWeight = (exerciseId, setId, key, value) => {
     setLog((current) => updateExercise(current, exerciseId, (exercise) => ({
@@ -303,7 +315,10 @@ export default function WorkoutTracker() {
         return;
       }
       await api.post(`/workout-logs/${id}/complete`, { notes: workoutNotes, feedback });
-      navigate(`/client/workouts/${id}`, { replace: true });
+      navigate(`/client/workouts/${id}`, {
+        replace: true,
+        state: { completedWorkoutId: id },
+      });
     } catch (error) {
       toast.error(errMsg(error));
     } finally {
@@ -331,7 +346,7 @@ export default function WorkoutTracker() {
       />
       <div className="mb-4 flex items-center gap-2 text-xs" aria-live="polite" data-testid="workout-save-state">
         {outbox.saveState === 'saved' && <><Save className="h-3.5 w-3.5 text-success" /> Saved</>}
-        {outbox.saveState === 'saving' && <><Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Saving</>}
+        {outbox.saveState === 'saving' && <><Loader2 className="h-3.5 w-3.5 animate-spin text-primary motion-reduce:animate-none" /> Saving</>}
         {outbox.saveState === 'not_saved' && <><CircleAlert className="h-3.5 w-3.5 text-gold" /> Not saved yet</>}
         {!outbox.online && <Badge variant="outline"><WifiOff className="mr-1 h-3.5 w-3.5" /> Offline</Badge>}
       </div>
@@ -428,10 +443,23 @@ export default function WorkoutTracker() {
         </Button>
       </div>
 
-      {restEndsAt && restSeconds > 0 && (
-        <button type="button" onClick={() => setRestEndsAt(null)} className="fixed bottom-36 right-4 z-40 flex h-16 min-w-16 items-center justify-center gap-1 rounded-full bg-primary px-3 font-display text-lg font-semibold text-primary-foreground shadow-lg lg:bottom-6" aria-label={`Rest timer ${formatTimer(restSeconds)}, tap to stop`}>
-          <Clock3 className="h-5 w-5" /> {formatTimer(restSeconds)}
-        </button>
+      {restEndsAt && (
+        <>
+          <Button
+            type="button"
+            onClick={() => setRestEndsAt(null)}
+            className={`fixed bottom-36 right-4 z-40 h-16 min-w-16 rounded-full px-3 font-display text-lg font-semibold shadow-lg lg:bottom-6 ${restComplete ? 'motion-attention-pop-once bg-success text-success-foreground hover:bg-success/90' : ''}`}
+            style={restComplete ? { '--motion-attention-scale': attentionRecipe.scale } : undefined}
+            aria-label={restComplete ? 'Rest complete, tap to dismiss' : `Rest timer ${formatTimer(restSeconds)}, tap to stop`}
+            data-testid="rest-timer"
+            data-rest-state={restComplete ? 'complete' : 'running'}
+          >
+            <Clock3 className="h-5 w-5" /> {restComplete ? 'Rest complete' : formatTimer(restSeconds)}
+          </Button>
+          <div className="sr-only" role="status" aria-live="assertive" aria-atomic="true" data-testid="rest-complete-announcement">
+            {restComplete ? 'Rest complete' : ''}
+          </div>
+        </>
       )}
 
       <Dialog open={finishOpen} onOpenChange={setFinishOpen}>

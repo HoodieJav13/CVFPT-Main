@@ -810,6 +810,56 @@ test('real admin auth covers management, safe waiver gate, reassignment, and rol
   }
 });
 
+test('notification badge treats zero as a hydrated baseline and animates only later visible increases', async ({ page }) => {
+  let unread = 0;
+  await page.route('**/api/notifications/unread-count', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ unread }),
+    });
+  });
+  await page.addInitScript(() => {
+    window.__cvfNotificationBadgeAnimationStarts = 0;
+    window.addEventListener('animationstart', (event) => {
+      if (event.animationName === 'motion-attention-pop-once'
+        && event.target?.dataset?.testid?.endsWith('notification-count')) {
+        window.__cvfNotificationBadgeAnimationStarts += 1;
+      }
+    });
+  });
+
+  await login(page, accounts.coach, '/coach');
+  await expect(page.getByTestId('desktop-notification-count')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__cvfNotificationBadgeAnimationStarts)).toBe(0);
+
+  unread = 1;
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  const badge = page.getByTestId('desktop-notification-count');
+  await expect(badge).toHaveText('1');
+  await expect(badge).toHaveAttribute('data-arrival-revision', '1');
+  await expect.poll(() => page.evaluate(() => window.__cvfNotificationBadgeAnimationStarts)).toBe(1);
+
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(badge).toHaveAttribute('data-arrival-revision', '1');
+  expect(await page.evaluate(() => window.__cvfNotificationBadgeAnimationStarts)).toBe(1);
+
+  unread = 0;
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(badge).toHaveCount(0);
+  expect(await page.evaluate(() => window.__cvfNotificationBadgeAnimationStarts)).toBe(1);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  unread = 1;
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(badge).toHaveText('1');
+  await expect(badge).toHaveAttribute('data-arrival-revision', '2');
+  expect(await badge.evaluate((element) => getComputedStyle(element).animationName)).toBe('none');
+  await expect(page.getByTestId('mobile-notifications-link')).toHaveAttribute('aria-label', 'Notifications, 1 unread');
+  expect(await page.evaluate(() => window.__cvfNotificationBadgeAnimationStarts)).toBe(1);
+  await logout(page);
+});
+
 test('hosted workout completion is idempotent and notifies the assigned coach and active admin', async ({ page, request }) => {
   const marker = `CVF LIVE WORKOUT ${Date.now()}`;
   const feedback = `${marker} felt strong`;
@@ -921,6 +971,26 @@ test('hosted workout completion is idempotent and notifies the assigned coach an
     });
     expect(noteUpdate.ok()).toBeTruthy();
 
+    const unreadBeforeResponse = await request.get(`${backendUrl}/api/notifications/unread-count`, { headers: coachHeaders });
+    expect(unreadBeforeResponse.ok()).toBeTruthy();
+    const unreadBeforeCompletion = (await unreadBeforeResponse.json()).unread || 0;
+    await login(page, accounts.coach, '/coach');
+    const initialVisibleUnread = Math.min(unreadBeforeCompletion, 99);
+    if (initialVisibleUnread > 0) {
+      await expect(page.getByTestId('desktop-notification-count')).toHaveText(String(initialVisibleUnread));
+    } else {
+      await expect(page.getByTestId('desktop-notification-count')).toHaveCount(0);
+    }
+    await page.evaluate(() => {
+      window.__cvfHostedBadgeAnimationStarts = 0;
+      window.addEventListener('animationstart', (event) => {
+        if (event.animationName === 'motion-attention-pop-once'
+          && event.target?.dataset?.testid === 'desktop-notification-count') {
+          window.__cvfHostedBadgeAnimationStarts += 1;
+        }
+      });
+    });
+
     const completionUrl = `${backendUrl}/api/workout-logs/${workoutLog.id}/complete`;
     const [completionFirst, completionConcurrent] = await Promise.all([
       request.post(completionUrl, { headers: clientHeaders, data: { feedback } }),
@@ -939,6 +1009,16 @@ test('hosted workout completion is idempotent and notifies the assigned coach an
     expect(completed.exercises[0].sets[1].status).toBe('skipped');
     expect(completed.exercises[0].client_notes).toBe(note);
     expect(completed.feedback).toBe(feedback);
+
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    const visibleUnreadAfterCompletion = Math.min(unreadBeforeCompletion + 1, 99);
+    await expect(page.getByTestId('desktop-notification-count')).toHaveText(String(visibleUnreadAfterCompletion));
+    const expectedAnimationStarts = visibleUnreadAfterCompletion > initialVisibleUnread ? 1 : 0;
+    await expect.poll(() => page.evaluate(() => window.__cvfHostedBadgeAnimationStarts)).toBe(expectedAnimationStarts);
+    const arrivalRevision = await page.getByTestId('desktop-notification-count').getAttribute('data-arrival-revision');
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.getByTestId('desktop-notification-count')).toHaveAttribute('data-arrival-revision', arrivalRevision);
+    expect(await page.evaluate(() => window.__cvfHostedBadgeAnimationStarts)).toBe(expectedAnimationStarts);
 
     const completedDetail = await request.get(`${backendUrl}/api/workout-logs/${workoutLog.id}`, { headers: clientHeaders });
     expect(completedDetail.ok()).toBeTruthy();
@@ -993,7 +1073,6 @@ test('hosted workout completion is idempotent and notifies the assigned coach an
       expect(creditsAfter).toBe(creditsBefore);
     }
 
-    await login(page, accounts.coach, '/coach');
     await page.goto('/coach/notifications');
     const notificationRow = page.getByTestId('notification-row').filter({ hasText: marker });
     await expect(notificationRow).toBeVisible();

@@ -141,7 +141,20 @@
     to { opacity: 0; }
   }
 
+  @keyframes motion-attention-pop-once {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(var(--motion-attention-scale)); }
+  }
+
+  .motion-attention-pop-once {
+    animation: motion-attention-pop-once var(--motion-duration-state) var(--motion-ease-out) 1;
+  }
+
   @media (prefers-reduced-motion: reduce) {
+    .motion-attention-pop-once {
+      animation: none;
+    }
+
     .motion-reduce-fade-only[data-state='open'] {
       animation-name: motion-reduced-fade-in !important;
       animation-duration: var(--motion-duration-state) !important;

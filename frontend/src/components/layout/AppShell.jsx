@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
+import { useVisualIntensity } from '@/lib/visualIntensity';
 
 const COACH_NAV = [
   { to: '/coach', label: 'Home', icon: LayoutDashboard, end: true },
@@ -59,12 +61,34 @@ function BrandLogo({ size = 'desktop' }) {
   );
 }
 
+function NotificationCountBadge({ count, arrivalRevision, className, testId }) {
+  const intensity = useVisualIntensity();
+  const recipe = ATTENTION_FEEDBACK_MOTION[intensity];
+
+  return (
+    <span
+      key={arrivalRevision}
+      className={cn(className, arrivalRevision > 0 && 'motion-attention-pop-once')}
+      style={{ '--motion-attention-scale': recipe.scale }}
+      data-testid={testId}
+      data-arrival-revision={arrivalRevision}
+    >
+      {count}
+    </span>
+  );
+}
+
 export default function AppShell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { unread, refresh: refreshNotifications } = useNotifications();
+  const { unread, unreadInitialized, refresh: refreshNotifications } = useNotifications();
   const isCoach = user.role === 'coach' || user.role === 'admin';
+  const notificationIdentity = `${user.role}:${user.profile?.id || user.email}`;
+  const displayedUnread = Math.min(unread, 99);
+  const previousDisplayedUnread = useRef(null);
+  const previousNotificationIdentity = useRef(notificationIdentity);
+  const [arrivalRevision, setArrivalRevision] = useState(0);
   const nav = isCoach ? COACH_NAV : CLIENT_NAV;
   const sidebarNav = isCoach
     ? [...COACH_NAV, ...(user.role === 'admin' ? [{ to: '/admin', label: 'Admin', icon: ShieldCheck }] : [])]
@@ -73,6 +97,26 @@ export default function AppShell() {
   useEffect(() => {
     if (isCoach) refreshNotifications();
   }, [isCoach, location.pathname, refreshNotifications]);
+
+  useEffect(() => {
+    const identityChanged = previousNotificationIdentity.current !== notificationIdentity;
+    if (identityChanged || !unreadInitialized) {
+      previousNotificationIdentity.current = notificationIdentity;
+      previousDisplayedUnread.current = null;
+      setArrivalRevision(0);
+      return;
+    }
+
+    if (previousDisplayedUnread.current === null) {
+      previousDisplayedUnread.current = displayedUnread;
+      return;
+    }
+
+    if (displayedUnread > previousDisplayedUnread.current) {
+      setArrivalRevision((revision) => revision + 1);
+    }
+    previousDisplayedUnread.current = displayedUnread;
+  }, [displayedUnread, notificationIdentity, unreadInitialized]);
 
   return (
     <div className="min-h-dvh app-noise">
@@ -115,7 +159,14 @@ export default function AppShell() {
                 {unread > 0 && <span className="absolute -right-2 -top-2 h-2.5 w-2.5 rounded-full border-2 border-background bg-primary" />}
               </span>
               <span className="flex-1">Notifications</span>
-              {unread > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">{Math.min(unread, 99)}</span>}
+              {unread > 0 && (
+                <NotificationCountBadge
+                  count={displayedUnread}
+                  arrivalRevision={arrivalRevision}
+                  className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground"
+                  testId="desktop-notification-count"
+                />
+              )}
             </Link>
           )}
           <UserMenu user={user} logout={logout} />
@@ -133,7 +184,14 @@ export default function AppShell() {
               {isCoach && (
                 <Button variant="ghost" size="icon" className="relative" onClick={() => navigate('/coach/notifications')} data-testid="mobile-notifications-link" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
                   <Bell className="h-5 w-5" />
-                  {unread > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">{Math.min(unread, 99)}</span>}
+                  {unread > 0 && (
+                    <NotificationCountBadge
+                      count={displayedUnread}
+                      arrivalRevision={arrivalRevision}
+                      className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground"
+                      testId="mobile-notification-count"
+                    />
+                  )}
                 </Button>
               )}
               {user.role === 'admin' && (

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { m, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, Check, CircleSlash2, Clock3, MessageSquare } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -8,14 +9,24 @@ import { LoadingScreen, LoadErrorState, PageHeader } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { MOTION_EASINGS, WORKOUT_COMPLETION_MOTION, msToSeconds } from '@/lib/motion';
+import { useVisualIntensity } from '@/lib/visualIntensity';
 
 export default function WorkoutLogDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [log, setLog] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const isClient = user.role === 'client';
+  const reducedMotion = useReducedMotion();
+  const intensity = useVisualIntensity();
+  const [completionSignalId, setCompletionSignalId] = useState(() => (
+    isClient && location.state?.completedWorkoutId === id ? id : null
+  ));
+  const celebrateCompletion = isClient && completionSignalId === id;
+  const completionRecipe = WORKOUT_COMPLETION_MOTION[intensity];
 
   const load = useCallback(async () => {
     try {
@@ -28,6 +39,17 @@ export default function WorkoutLogDetail() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    setCompletionSignalId((current) => (current === id ? current : null));
+  }, [id]);
+  useEffect(() => {
+    if (!isClient || !location.state?.completedWorkoutId) return;
+    if (location.state.completedWorkoutId === id) setCompletionSignalId(id);
+    navigate(
+      { pathname: location.pathname, search: location.search, hash: location.hash },
+      { replace: true, state: null },
+    );
+  }, [id, isClient, location.hash, location.pathname, location.search, location.state, navigate]);
   if (!log && loadError) return <LoadErrorState message={loadError} scope="workout-detail" onRetry={load} />;
   if (!log) return <LoadingScreen />;
 
@@ -39,12 +61,27 @@ export default function WorkoutLogDetail() {
       <button type="button" onClick={() => navigate(-1)} className="mb-3 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
-      <PageHeader title={log.workout_name} subtitle={log.completed_at ? `Completed ${fmtDateTime(log.completed_at)}` : `Started ${fmtDateTime(log.started_at)}`} />
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Badge variant="outline" className="bg-success/10 text-success-foreground"><Check className="mr-1 h-3.5 w-3.5" /> {completed} completed</Badge>
-        {skipped > 0 && <Badge variant="outline"><CircleSlash2 className="mr-1 h-3.5 w-3.5" /> {skipped} skipped</Badge>}
-        <Badge variant="outline"><Clock3 className="mr-1 h-3.5 w-3.5" /> {log.status}</Badge>
-      </div>
+      <m.section
+        initial={celebrateCompletion && !reducedMotion
+          ? { opacity: 0, transform: `translateY(${completionRecipe.distance}px) scale(${completionRecipe.initialScale})` }
+          : false}
+        animate={{ opacity: 1, transform: 'translateY(0px) scale(1)' }}
+        transition={{ duration: msToSeconds(completionRecipe.durationMs), ease: MOTION_EASINGS.expressiveOut }}
+        data-testid="workout-completion-summary"
+        data-completion-motion={celebrateCompletion ? 'active' : 'none'}
+        data-motion-duration-ms={celebrateCompletion ? completionRecipe.durationMs : undefined}
+        data-motion-distance={celebrateCompletion ? completionRecipe.distance : undefined}
+        data-motion-initial-scale={celebrateCompletion ? completionRecipe.initialScale : undefined}
+        data-motion-reduced={reducedMotion ? 'true' : 'false'}
+      >
+        {celebrateCompletion && <div className="sr-only" role="status" aria-live="polite">Workout complete</div>}
+        <PageHeader title={log.workout_name} subtitle={log.completed_at ? `Completed ${fmtDateTime(log.completed_at)}` : `Started ${fmtDateTime(log.started_at)}`} />
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Badge variant="outline" className="bg-success/10 text-success-foreground"><Check className="mr-1 h-3.5 w-3.5" /> {completed} completed</Badge>
+          {skipped > 0 && <Badge variant="outline"><CircleSlash2 className="mr-1 h-3.5 w-3.5" /> {skipped} skipped</Badge>}
+          <Badge variant="outline"><Clock3 className="mr-1 h-3.5 w-3.5" /> {log.status}</Badge>
+        </div>
+      </m.section>
       <div className="space-y-3">
         {log.exercises.map((exercise) => (
           <Card key={exercise.id}>

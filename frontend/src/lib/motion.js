@@ -19,6 +19,18 @@ export const ACHIEVEMENT_MOTION = {
   spectacle: { distance: 22, durationMs: 700 },
 };
 
+export const WORKOUT_COMPLETION_MOTION = {
+  restrained: { ...ACHIEVEMENT_MOTION.restrained, initialScale: 1 },
+  cinematic: { ...ACHIEVEMENT_MOTION.cinematic, initialScale: 0.99 },
+  spectacle: { ...ACHIEVEMENT_MOTION.spectacle, initialScale: 0.98 },
+};
+
+export const ATTENTION_FEEDBACK_MOTION = {
+  restrained: { scale: 1 },
+  cinematic: { scale: 1.03 },
+  spectacle: { scale: 1.05 },
+};
+
 export const CHART_MOTION = {
   drawDurationMs: {
     restrained: 650,

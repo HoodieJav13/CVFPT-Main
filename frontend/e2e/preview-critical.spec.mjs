@@ -302,6 +302,84 @@ test('client preview hides another client assigned resource', async ({ page }) =
   await expect(page.getByText('Knee Recovery Basics')).toHaveCount(0);
 });
 
+test('workout rest expiry uses one calm attention cue and stays persistent', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.install();
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('start-program-workout').first().click();
+
+  const firstExercise = page.getByTestId('tracker-exercise-card').first();
+  await firstExercise.getByRole('button', { name: 'Complete set 1' }).click();
+  await page.clock.runFor(1_000);
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+
+  const timer = page.getByTestId('rest-timer');
+  await expect(timer).toHaveAttribute('data-rest-state', 'running');
+  await expect(timer).toContainText(/^\s*1:\d{2}$/);
+  expect(await timer.evaluate((element) => getComputedStyle(element).animationName)).toBe('none');
+
+  await page.clock.fastForward(89_000);
+  await expect(timer).toHaveAttribute('data-rest-state', 'complete');
+  await expect(timer).toContainText('Rest complete');
+  await expect(page.getByTestId('rest-complete-announcement')).toHaveText('Rest complete');
+  await expect(timer).toHaveClass(/bg-success/);
+  await expect.poll(async () => timer.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      animationName: style.animationName,
+      animationDuration: style.animationDuration,
+      animationIterationCount: style.animationIterationCount,
+      attentionScale: style.getPropertyValue('--motion-attention-scale').trim(),
+    };
+  })).toEqual({
+    animationName: 'motion-attention-pop-once',
+    animationDuration: '0.2s',
+    animationIterationCount: '1',
+    attentionScale: '1.05',
+  });
+
+  await timer.click();
+  await expect(timer).toHaveCount(0);
+});
+
+test('reduced motion preserves workout completion and rest-expiry information without movement', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('start-program-workout').first().click();
+
+  const firstExercise = page.getByTestId('tracker-exercise-card').first();
+  await firstExercise.getByRole('button', { name: 'Complete set 1' }).click();
+  await page.clock.runFor(90_000);
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+
+  const timer = page.getByTestId('rest-timer');
+  await expect(timer).toHaveAttribute('data-rest-state', 'complete');
+  await expect(timer).toContainText('Rest complete');
+  await expect(page.getByTestId('rest-complete-announcement')).toHaveText('Rest complete');
+  expect(await timer.evaluate((element) => getComputedStyle(element).animationName)).toBe('none');
+  await timer.click();
+
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  await page.getByRole('button', { name: 'Confirm completion' }).click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+$/);
+  const summary = page.getByTestId('workout-completion-summary');
+  await expect(summary).toHaveAttribute('data-completion-motion', 'active');
+  await expect(summary).toHaveAttribute('data-motion-reduced', 'true');
+  await expect(page.getByRole('status').filter({ hasText: 'Workout complete' })).toBeVisible();
+  const summaryMotion = await summary.evaluate((element) => ({
+    opacity: getComputedStyle(element).opacity,
+    transform: getComputedStyle(element).transform,
+    animations: element.getAnimations().length,
+  }));
+  expect(summaryMotion.opacity).toBe('1');
+  expect(['none', 'matrix(1, 0, 0, 1, 0, 0)']).toContain(summaryMotion.transform);
+  expect(summaryMotion.animations).toBe(0);
+});
+
 test('client workout completion creates a coach notification with immutable results', async ({ page, context }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await usePreviewRole(page, 'client');
@@ -350,12 +428,26 @@ test('client workout completion creates a coach notification with immutable resu
   await page.getByLabel('Feedback for your coach').fill('Strong session from the preview flow.');
   await page.getByRole('button', { name: 'Confirm completion' }).click();
   await expect(page).toHaveURL(/\/client\/workouts\/[^/]+$/);
+  const completionSummary = page.getByTestId('workout-completion-summary');
+  await expect(completionSummary).toHaveAttribute('data-completion-motion', 'active');
+  await expect(completionSummary).toHaveAttribute('data-motion-duration-ms', '700');
+  await expect(completionSummary).toHaveAttribute('data-motion-distance', '22');
+  await expect(completionSummary).toHaveAttribute('data-motion-initial-scale', '0.98');
+  await expect(page.getByRole('status').filter({ hasText: 'Workout complete' })).toBeVisible();
   await expect(page.getByText('Strong session from the preview flow.')).toBeVisible();
   await expect(page.getByText('Offline sequence preserved.')).toBeVisible();
   await expect(page.getByText('37.5 kg')).toBeVisible();
   await expect(page.getByText('1 completed')).toBeVisible();
   await expect(page.getByText('8 skipped')).toBeVisible();
   await expect(page.getByText('42.5 kg')).toHaveCount(0);
+
+  expect(await page.evaluate(() => window.history.state?.usr?.completedWorkoutId ?? null)).toBeNull();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/client\/programs$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+$/);
+  await expect(page.getByTestId('workout-completion-summary')).toHaveAttribute('data-completion-motion', 'none');
+  await expect(page.getByRole('status').filter({ hasText: 'Workout complete' })).toHaveCount(0);
 
   await page.getByTestId('preview-toolbar-toggle').click();
   await page.getByTestId('preview-role-select').selectOption('coach');
@@ -364,6 +456,7 @@ test('client workout completion creates a coach notification with immutable resu
   await expect(page.getByTestId('notification-row').filter({ hasText: 'Lower Strength A' })).toBeVisible();
   await page.getByTestId('notification-row').filter({ hasText: 'Lower Strength A' }).click();
   await expect(page).toHaveURL(/\/coach\/workouts\/[^/]+$/);
+  await expect(page.getByTestId('workout-completion-summary')).toHaveAttribute('data-completion-motion', 'none');
   await expect(page.getByText('Strong session from the preview flow.')).toBeVisible();
   const messageClient = page.getByRole('link', { name: 'Message client' });
   const quickAdd = page.getByTestId('coach-quick-add-button');
