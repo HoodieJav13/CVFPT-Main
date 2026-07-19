@@ -179,8 +179,8 @@ template to copy layout, color, typography, or brand assets from:
 - **WHOOP** — performance-data hierarchy; translating raw metrics into clear
   guidance; making progress and readiness feel consequential, not
   administrative.
-- **Nike Training Club** — focused workout execution; athletic editorial
-  confidence; exercise guidance and milestone/achievement presentation.
+- **Ladder** — focused strength-workout execution; confident coaching hierarchy;
+  making the active workout feel guided, premium, and immediately actionable.
 
 Pull current screenshots of the relevant reference at review time — these
 apps' own UIs change, and a comparison against a stale memory of one isn't a
@@ -189,6 +189,15 @@ immediately legible, what gives it recognizable character, what CVF PT
 should match in clarity or presence, and what CVF PT must keep uniquely its
 own. Never optimize toward looking like the reference — optimize toward
 matching the specific quality it's cited for.
+
+Secondary pattern references can sharpen a component-level decision without
+joining the product reference bar. Current approved patterns are modular mobile
+cards for fast scanning, selective glass for rare elevated controls, a compact
+floating control dock during an active workout, and contrast-aware signature
+colors that remain legible over atmospheric backdrops. These are local patterns,
+not permission to copy another product's navigation, layout, palette, or visual
+theme. Reading surfaces remain matte; glass is reserved for the live personal-
+record moment, active-workout controls, and the workout-completion dialog.
 
 ### Effort vs. impact accounting
 
