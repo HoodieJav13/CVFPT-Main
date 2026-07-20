@@ -31,6 +31,14 @@ identity/signature work.
 
 Vite ONLY. CRA/craco were removed — never reintroduce `react-scripts`.
 
+## Agentic execution contract
+
+Strategist/executor tasks use the version-pinned contract in
+`.agentic/protocol.md`, the executor role in `.agentic/EXECUTOR.md`, and the
+CVF-specific layer in `.agentic/PROJECT_POLICY.md`. Read all three before acting
+on a DIAL prompt. They supplement this file; this file's locked invariants and
+the host instruction hierarchy remain authoritative.
+
 ## Migrations
 
 - `supabase/migrations/` is the single source of truth for the database schema
