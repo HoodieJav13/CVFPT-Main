@@ -209,9 +209,14 @@ function ExerciseList({ exercises, loads = [] }) {
 function HistoryRow({ log }) {
   const sets = log.exercises.flatMap((exercise) => exercise.sets);
   const completed = sets.filter((set) => set.status === 'completed').length;
+  const hasUnreadCoachFeedback = (log.coach_responses || []).some((response) => !response.read_at);
   return (
     <Link to={`/client/workouts/${log.id}`} className="flex min-h-16 items-center justify-between gap-3 rounded-md border border-border bg-card/60 px-4 py-3 transition-colors hover:bg-card" data-testid="workout-history-row">
-      <span className="min-w-0"><span className="block truncate font-medium">{log.workout_name}</span><span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)} - {completed} sets</span></span>
+      <span className="min-w-0">
+        <span className="block truncate font-medium">{log.workout_name}</span>
+        <span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)} - {completed} sets</span>
+        {hasUnreadCoachFeedback && <span className="mt-1 block text-xs font-medium text-primary" data-testid="new-coach-feedback-marker">New coach feedback</span>}
+      </span>
       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
     </Link>
   );

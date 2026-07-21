@@ -168,6 +168,47 @@ test('client preview covers dashboard and every client navigation destination', 
   await expect(page).toHaveURL(/\/client$/);
 });
 
+test('client coach feedback badge, history marker, failure retention, and retry are deterministic', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'client');
+  await page.addInitScript(() => { globalThis.__CVF_PREVIEW_FAIL_FEEDBACK_READ_ONCE__ = true; });
+  await page.goto('/client/programs');
+
+  await expect(page.getByTestId('desktop-programs-feedback-count')).toHaveText('1');
+  const historyRow = page.getByTestId('workout-history-row').filter({ hasText: 'Upper Strength A' });
+  await expect(historyRow.getByTestId('new-coach-feedback-marker')).toHaveText('New coach feedback');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId('mobile-programs-feedback-count')).toHaveText('1');
+  await historyRow.click();
+  await expect(page.getByTestId('coach-response')).toHaveCount(2);
+  await expect(page.getByTestId('coach-response').first()).toContainText('Jordan Banks');
+  await expect(page.getByTestId('coach-response').first().getByTestId('coach-response-edited')).toHaveText('Edited');
+  await expect(page.getByTestId('coach-feedback-read-error')).toContainText("Couldn't mark coach feedback read");
+  await expect(page.getByTestId('mobile-programs-feedback-count')).toHaveText('1');
+
+  await page.goBack();
+  await expect(page.getByTestId('new-coach-feedback-marker')).toHaveText('New coach feedback');
+  await page.getByTestId('workout-history-row').filter({ hasText: 'Upper Strength A' }).click();
+  await expect(page.getByTestId('coach-feedback-read-error')).toHaveCount(0);
+  await expect(page.getByTestId('coach-feedback-announcement')).toHaveText('Coach feedback marked read');
+  await expect(page.getByTestId('mobile-programs-feedback-count')).toHaveCount(0);
+  await page.goBack();
+  await expect(page.getByTestId('new-coach-feedback-marker')).toHaveCount(0);
+});
+
+test('equal coach-feedback polls stay quiet and reduced motion suppresses badge movement', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client');
+  const badge = page.getByTestId('mobile-programs-feedback-count');
+  await expect(badge).toHaveAttribute('data-arrival-revision', '0');
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(badge).toHaveAttribute('data-arrival-revision', '0');
+  expect(await badge.evaluate((element) => getComputedStyle(element).animationName)).toBe('none');
+});
+
 test('brand backdrop variants, one-time dashboard motion, and genuine PR moment stay wired', async ({ page }) => {
   await usePreviewRole(page, 'client');
   await page.goto('/client');
@@ -464,6 +505,19 @@ test('client workout completion creates a coach notification with immutable resu
   await expect(page).toHaveURL(/\/coach\/workouts\/[^/]+$/);
   await expect(page.getByTestId('workout-completion-summary')).toHaveAttribute('data-completion-motion', 'none');
   await expect(page.getByText('Strong session from the preview flow.')).toBeVisible();
+  const responseInput = page.getByTestId('coach-response-input');
+  await responseInput.fill('Strong work. Keep this loading pattern next time.');
+  await page.getByTestId('coach-response-save').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('coach-feedback-announcement')).toHaveText('Coach response added');
+  await expect(page.getByTestId('coach-response').filter({ hasText: 'Marcus Rivera' })).toContainText('Strong work. Keep this loading pattern next time.');
+  await responseInput.fill('Strong work. Add one controlled rep next time.');
+  await page.getByTestId('coach-response-save').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('coach-feedback-announcement')).toHaveText('Coach response updated');
+  const ownResponse = page.getByTestId('coach-response').filter({ hasText: 'Marcus Rivera' });
+  await expect(ownResponse).toContainText('Strong work. Add one controlled rep next time.');
+  await expect(ownResponse.getByTestId('coach-response-edited')).toHaveText('Edited');
   const messageClient = page.getByRole('link', { name: 'Message client' });
   const quickAdd = page.getByTestId('coach-quick-add-button');
   await expect(messageClient).toBeVisible();
