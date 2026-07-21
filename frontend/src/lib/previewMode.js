@@ -123,15 +123,37 @@ const state = {
   ],
   workoutLogs: [
     { id: 'log_preview_complete', client_id: 'client_sarah', program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_2', workout_assignment_id: null, dated_workout_assignment_id: null, workout_name: 'Upper Strength A', status: 'completed', notes: 'Shoulder felt strong today.', feedback: 'Good session. The last rows were challenging.', started_at: iso(-2, 17), completed_at: iso(-2, 18), archived: false, created_at: iso(-2, 17), updated_at: iso(-2, 18) },
+    ...Array.from({ length: 12 }, (_, index) => ({
+      id: `log_history_squat_${index + 1}`, client_id: 'client_sarah', program_assignment_id: 'assign_sarah',
+      program_day_id: 'day_foundation_1', workout_assignment_id: null, dated_workout_assignment_id: null,
+      workout_name: 'Lower Strength A', status: 'completed', notes: null, feedback: null,
+      started_at: iso(-3 - index, 17), completed_at: iso(-3 - index, 18), archived: false,
+      created_at: iso(-3 - index, 17), updated_at: iso(-3 - index, 18),
+    })),
   ],
   workoutLogExercises: [
-    { id: 'logex_preview_bench', workout_log_id: 'log_preview_complete', source_workout_exercise_id: 'wex_4', exercise_name: 'DB Bench Press', prescribed_sets: '3', prescribed_reps: '8', prescribed_rpe: '8', prescribed_rest: '90s', prescribed_tempo: '2-1-1', prescribed_notes: 'Pause at bottom.', client_notes: 'Kept the pause consistent.', prescribed_load_value: 20, prescribed_load_unit: 'lb', position: 0, archived: false },
-    { id: 'logex_preview_row', workout_log_id: 'log_preview_complete', source_workout_exercise_id: 'wex_5', exercise_name: 'Cable Row', prescribed_sets: '3', prescribed_reps: '10-12', prescribed_rpe: '8', prescribed_rest: '75s', prescribed_tempo: null, prescribed_notes: 'Squeeze shoulder blades.', client_notes: null, prescribed_load_value: 35, prescribed_load_unit: 'lb', position: 1, archived: false },
+    { id: 'logex_preview_bench', workout_log_id: 'log_preview_complete', source_workout_exercise_id: 'wex_4', exercise_library_id: 'lib_db_bench', exercise_name: 'DB Bench Press', prescribed_sets: '3', prescribed_reps: '8', prescribed_rpe: '8', prescribed_rest: '90s', prescribed_tempo: '2-1-1', prescribed_notes: 'Pause at bottom.', client_notes: 'Kept the pause consistent.', prescribed_load_value: 20, prescribed_load_unit: 'lb', position: 0, archived: false },
+    { id: 'logex_preview_row', workout_log_id: 'log_preview_complete', source_workout_exercise_id: 'wex_5', exercise_library_id: 'lib_cable_row', exercise_name: 'Cable Row', prescribed_sets: '3', prescribed_reps: '10-12', prescribed_rpe: '8', prescribed_rest: '75s', prescribed_tempo: null, prescribed_notes: 'Squeeze shoulder blades.', client_notes: null, prescribed_load_value: 35, prescribed_load_unit: 'lb', position: 1, archived: false },
+    ...Array.from({ length: 12 }, (_, index) => ({
+      id: `logex_history_squat_${index + 1}`, workout_log_id: `log_history_squat_${index + 1}`,
+      source_workout_exercise_id: index % 2 ? 'wex_legacy_squat' : 'wex_1', exercise_library_id: 'lib_goblet_squat',
+      exercise_name: index === 0 ? 'Goblet Squat — Tempo' : 'Goblet Squat', prescribed_sets: '2',
+      prescribed_reps: '99 prescribed only', prescribed_rpe: '10 prescribed only', prescribed_rest: '90s',
+      prescribed_tempo: null, prescribed_notes: null, client_notes: null, prescribed_load_value: 30,
+      prescribed_load_unit: 'lb', position: 0, archived: false,
+    })),
   ],
   workoutLogSets: [
     ...[1, 2, 3].map((setNumber) => ({ id: `logset_preview_bench_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_bench', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: setNumber === 3 ? 22.5 : 20, actual_load_unit: 'lb', client_operation_id: null, archived: false })),
     ...[1, 2].map((setNumber) => ({ id: `logset_preview_row_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_row', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: 35, actual_load_unit: 'lb', client_operation_id: null, archived: false })),
     { id: 'logset_preview_row_3', workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_row', set_number: 3, set_origin: 'prescribed', status: 'skipped', actual_load_value: 35, actual_load_unit: 'lb', client_operation_id: null, archived: false },
+    ...Array.from({ length: 12 }, (_, index) => ({
+      id: `logset_history_squat_${index + 1}`, workout_log_id: `log_history_squat_${index + 1}`,
+      workout_log_exercise_id: `logex_history_squat_${index + 1}`, set_number: 1, set_origin: 'prescribed',
+      status: 'completed', actual_load_value: index === 0 ? null : 30 + index,
+      actual_load_unit: index === 0 ? null : 'lb', actual_reps: index === 0 ? null : 8 + (index % 3),
+      actual_rpe: index === 0 ? null : 7 + ((index % 4) * 0.5), client_operation_id: null, archived: false,
+    })),
   ],
   notifications: [
     { id: 'notification_preview_complete', recipient_coach_id: 'coach_marcus', event_type: 'workout_completed', workout_log_id: 'log_preview_complete', read_at: null, created_at: iso(-2, 18), updated_at: iso(-2, 18) },
@@ -589,6 +611,7 @@ function startPreviewWorkout(clientId, payload) {
     });
     const logExercise = {
       id: id('workout_log_exercise'), workout_log_id: log.id, source_workout_exercise_id: exercise.id,
+      exercise_library_id: exercise.exercise_library_id,
       exercise_name: exerciseName(exercise), prescribed_sets: exercise.sets, prescribed_reps: exercise.reps,
       prescribed_rpe: exercise.target_rpe, prescribed_rest: exercise.rest, prescribed_tempo: exercise.tempo,
       prescribed_notes: exercise.notes, client_notes: null,
@@ -602,6 +625,7 @@ function startPreviewWorkout(clientId, payload) {
         id: id('workout_log_set'), workout_log_id: log.id, workout_log_exercise_id: logExercise.id,
         set_number: setNumber, set_origin: 'prescribed', status: 'pending',
         actual_load_value: logExercise.prescribed_load_value, actual_load_unit: logExercise.prescribed_load_unit,
+        actual_reps: null, actual_rpe: null,
         client_operation_id: null, completed_at: null, archived: false, created_at: createdAt, updated_at: createdAt,
       });
     }
@@ -774,6 +798,49 @@ export function installPreviewApi(api) {
       return ok(state.workoutLogs.filter((row) => row.client_id === target.id && row.status === 'completed' && !row.archived)
         .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map((row) => workoutLogDetails(row.id)), config);
     }
+    const exerciseHistory = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/history$/);
+    if (exerciseHistory && method === 'get') {
+      const log = state.workoutLogs.find((row) => row.id === exerciseHistory[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
+      const exercise = state.workoutLogExercises.find((row) => row.id === exerciseHistory[2] && row.workout_log_id === log?.id && !row.archived);
+      if (!exercise || role !== 'client') return fail(config, 404, 'Workout exercise not found');
+      if (localStorage.getItem('cvf_preview_history_failure') === 'once') {
+        localStorage.removeItem('cvf_preview_history_failure');
+        return fail(config, 503, 'Exercise history is temporarily unavailable');
+      }
+      let before = null;
+      const cursorValue = config.params?.cursor || search.get('cursor');
+      if (cursorValue) {
+        try {
+          before = JSON.parse(atob(cursorValue));
+          if (!before?.completed_at || !before?.id) throw new Error('invalid');
+        } catch {
+          return fail(config, 400, 'Invalid history cursor');
+        }
+      }
+      const matchingExercises = state.workoutLogExercises.filter((row) => !row.archived && (
+        exercise.exercise_library_id
+          ? row.exercise_library_id === exercise.exercise_library_id
+          : !row.exercise_library_id && row.source_workout_exercise_id === exercise.source_workout_exercise_id
+      ));
+      const matchByLog = new Map(matchingExercises.map((row) => [row.workout_log_id, row]));
+      const matches = state.workoutLogs.filter((row) => row.client_id === client.id && row.status === 'completed' && !row.archived && matchByLog.has(row.id))
+        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at) || b.id.localeCompare(a.id))
+        .filter((row) => !before || row.completed_at < before.completed_at || (row.completed_at === before.completed_at && row.id < before.id));
+      const page = matches.slice(0, 10);
+      const occurrences = page.map((row) => {
+        const matchedExercise = matchByLog.get(row.id);
+        return {
+          workout_log_id: row.id, completed_at: row.completed_at, exercise_name: matchedExercise.exercise_name,
+          sets: state.workoutLogSets.filter((set) => set.workout_log_exercise_id === matchedExercise.id && set.status === 'completed' && !set.archived)
+            .sort((a, b) => a.set_number - b.set_number).map((set) => ({
+              set_number: set.set_number, actual_load_value: set.actual_load_value, actual_load_unit: set.actual_load_unit,
+              actual_reps: set.actual_reps ?? null, actual_rpe: set.actual_rpe ?? null,
+            })),
+        };
+      }).filter((row) => row.sets.length);
+      const last = page[page.length - 1];
+      return ok({ occurrences, next_cursor: matches.length > 10 && last ? btoa(JSON.stringify({ completed_at: last.completed_at, id: last.id })) : null }, config);
+    }
     const workoutSetArchive = path.match(/^\/workout-logs\/([^/]+)\/sets\/([^/]+)\/archive$/);
     if (workoutSetArchive && method === 'patch') {
       const log = state.workoutLogs.find((row) => row.id === workoutSetArchive[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
@@ -788,10 +855,16 @@ export function installPreviewApi(api) {
       const log = state.workoutLogs.find((row) => row.id === workoutSetUpdate[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
       const set = state.workoutLogSets.find((row) => row.id === workoutSetUpdate[2] && row.workout_log_id === log?.id && !row.archived);
       if (!set) return fail(config, 404, 'Workout set not found');
+      const validReps = payload.actual_reps == null || (typeof payload.actual_reps === 'number' && Number.isInteger(payload.actual_reps) && payload.actual_reps >= 0);
+      const validRpe = payload.actual_rpe == null || (typeof payload.actual_rpe === 'number' && payload.actual_rpe >= 1 && payload.actual_rpe <= 10 && Number.isInteger(payload.actual_rpe * 2));
+      if (!validReps) return fail(config, 400, 'Reps must be a nonnegative whole number or null');
+      if (!validRpe) return fail(config, 400, 'RPE must be 1 through 10 in 0.5 increments or null');
       Object.assign(set, {
         status: payload.status === 'completed' ? 'completed' : 'pending',
         actual_load_value: payload.actual_load_value === '' || payload.actual_load_value == null ? null : Number(payload.actual_load_value),
         actual_load_unit: payload.actual_load_value === '' || payload.actual_load_value == null ? null : (payload.actual_load_unit || 'lb'),
+        actual_reps: payload.actual_reps ?? null,
+        actual_rpe: payload.actual_rpe ?? null,
         completed_at: payload.status === 'completed' ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
       });
@@ -810,6 +883,7 @@ export function installPreviewApi(api) {
         set_number: Math.max(0, ...exerciseSets.map((set) => set.set_number)) + 1,
         set_origin: 'extra', status: 'pending', actual_load_value: exercise.prescribed_load_value,
         actual_load_unit: exercise.prescribed_load_unit, client_operation_id: payload.client_operation_id,
+        actual_reps: null, actual_rpe: null,
         completed_at: null, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       };
       state.workoutLogSets.push(row);

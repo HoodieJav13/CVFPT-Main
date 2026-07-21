@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Check, CircleAlert, Clock3, Loader2, Plus, Save, Trash2, WifiOff } from 'lucide-react';
+import { Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Plus, Save, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { LoadingScreen, LoadErrorState, PageHeader } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +54,8 @@ function applyOptimistic(log, operation) {
           status: 'pending',
           actual_load_value: exercise.prescribed_load_value,
           actual_load_unit: exercise.prescribed_load_unit,
+          actual_reps: null,
+          actual_rpe: null,
           archived: false,
         }],
       };
@@ -111,7 +113,20 @@ function useWorkoutOutbox(logId, setLog) {
             } : queued);
           }
           persist(queueRef.current.filter((queued) => queued.id !== operation.id));
-        } catch {
+        } catch (error) {
+          const status = error?.response?.status;
+          if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+            const remaining = queueRef.current.filter((queued) => queued.id !== operation.id);
+            persist(remaining);
+            try {
+              const { data } = await api.get(`/workout-logs/${logId}`);
+              setLog(remaining.reduce((current, queued) => applyOptimistic(current, queued), data));
+            } catch {
+              // The failed write is still removed; a later page reload reconciles server state.
+            }
+            toast.error(error?.response?.data?.error || 'A workout change was rejected. Check the value and try again.');
+            continue;
+          }
           const attempts = (operation.attempts || 0) + 1;
           const updated = queueRef.current.map((queued) => queued.id === operation.id ? { ...queued, attempts } : queued);
           persist(updated);
@@ -126,7 +141,7 @@ function useWorkoutOutbox(logId, setLog) {
     } finally {
       processingRef.current = false;
     }
-  }, [persist, setLog]);
+  }, [logId, persist, setLog]);
 
   const enqueue = useCallback((operation) => {
     const queued = { id: makeId(), attempts: 0, ...operation };
@@ -179,6 +194,78 @@ function parseRest(value) {
 function formatTimer(seconds) {
   const safe = Math.max(0, seconds);
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
+}
+
+function displayPerformed(value, suffix = '') {
+  return value === null || value === undefined ? 'Not recorded' : `${value}${suffix}`;
+}
+
+function ExerciseHistory({ logId, exercise }) {
+  const [open, setOpen] = useState(false);
+  const [occurrences, setOccurrences] = useState([]);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [attempted, setAttempted] = useState(false);
+
+  const loadHistory = async (cursor = null) => {
+    setAttempted(true);
+    if (!navigator.onLine) {
+      setError('You are offline. Reconnect to load exercise history.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get(`/workout-logs/${logId}/exercises/${exercise.id}/history`, {
+        params: cursor ? { cursor } : undefined,
+      });
+      setOccurrences((current) => cursor ? [...current, ...data.occurrences] : data.occurrences);
+      setNextCursor(data.next_cursor);
+    } catch (requestError) {
+      setError(errMsg(requestError, 'Failed to load exercise history'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggle = () => {
+    const nextOpen = !open;
+    setOpen(nextOpen);
+    if (nextOpen && !attempted) loadHistory();
+  };
+
+  return (
+    <div className="border-t border-border/70 pt-3" data-testid="exercise-history">
+      <Button type="button" variant="ghost" size="sm" className="min-h-11 px-2" onClick={toggle} aria-expanded={open}>
+        <History className="mr-1.5 h-4 w-4" /> Exercise history
+        <ChevronDown className={`ml-1.5 h-4 w-4 transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`} />
+      </Button>
+      {open && (
+        <div className="mt-2 space-y-3 rounded-lg bg-secondary/40 p-3" aria-live="polite">
+          {loading && !occurrences.length && <p className="text-sm text-muted-foreground"><Loader2 className="mr-1.5 inline h-4 w-4 animate-spin motion-reduce:animate-none" />Loading history…</p>}
+          {error && <div role="alert" className="space-y-2 text-sm"><p>{error}</p><Button type="button" size="sm" variant="outline" onClick={() => loadHistory(nextCursor && occurrences.length ? nextCursor : null)}>Retry</Button></div>}
+          {!loading && !error && attempted && occurrences.length === 0 && <p className="text-sm text-muted-foreground">No completed history yet.</p>}
+          {occurrences.map((occurrence) => (
+            <section key={occurrence.workout_log_id} className="space-y-2" data-testid="history-occurrence">
+              <div><p className="text-sm font-medium">{occurrence.exercise_name}</p><p className="text-xs text-muted-foreground">{new Date(occurrence.completed_at).toLocaleDateString()}</p></div>
+              <div className="space-y-1">
+                {occurrence.sets.map((set) => (
+                  <div key={set.set_number} className="grid grid-cols-[2rem_repeat(3,minmax(0,1fr))] gap-2 text-xs">
+                    <span>Set {set.set_number}</span>
+                    <span>Weight: {displayPerformed(set.actual_load_value, set.actual_load_unit ? ` ${set.actual_load_unit}` : '')}</span>
+                    <span>Reps: {displayPerformed(set.actual_reps)}</span>
+                    <span>RPE: {displayPerformed(set.actual_rpe)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+          {nextCursor && !error && <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => loadHistory(nextCursor)}>{loading ? 'Loading…' : 'Load more'}</Button>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function WorkoutTracker() {
@@ -234,7 +321,7 @@ export default function WorkoutTracker() {
   const restComplete = Boolean(restEndsAt && timerNow >= restEndsAt);
   const attentionRecipe = ATTENTION_FEEDBACK_MOTION[intensity];
 
-  const setLocalWeight = (exerciseId, setId, key, value) => {
+  const setLocalValue = (exerciseId, setId, key, value) => {
     setLog((current) => updateExercise(current, exerciseId, (exercise) => ({
       ...exercise,
       sets: exercise.sets.map((set) => set.id === setId ? { ...set, [key]: value } : set),
@@ -242,7 +329,7 @@ export default function WorkoutTracker() {
     outbox.markDirty();
   };
 
-  const saveWeight = (exercise, set) => {
+  const saveSet = (exercise, set) => {
     const blank = set.actual_load_value === '' || set.actual_load_value === null;
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
@@ -250,6 +337,8 @@ export default function WorkoutTracker() {
       data: {
         actual_load_value: blank ? null : Number(set.actual_load_value),
         actual_load_unit: blank ? null : (set.actual_load_unit || 'lb'),
+        actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
+        actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
         status: set.status,
       },
     });
@@ -260,7 +349,9 @@ export default function WorkoutTracker() {
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
-      data: { status, actual_load_value: set.actual_load_value, actual_load_unit: set.actual_load_unit },
+      data: { status, actual_load_value: set.actual_load_value, actual_load_unit: set.actual_load_unit,
+        actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
+        actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe) },
     });
     if (status === 'completed') {
       const seconds = parseRest(exercise.prescribed_rest);
@@ -365,28 +456,30 @@ export default function WorkoutTracker() {
               {exercise.prescribed_notes && <p className="text-xs text-muted-foreground">{exercise.prescribed_notes}</p>}
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-[2rem_minmax(6rem,1fr)_4.5rem_2.75rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
-                <span>Set</span><span>Weight</span><span>Reps</span><span className="sr-only">Complete</span>
+              <div className="grid grid-cols-[1.75rem_minmax(5.5rem,1fr)_3.5rem_3.5rem_2.75rem] gap-1 px-1 text-xs font-medium text-muted-foreground">
+                <span>Set</span><span>Weight</span><span>Reps</span><span>RPE</span><span className="sr-only">Complete</span>
               </div>
               {exercise.sets.map((set) => (
-                <div key={set.id} className={`grid min-h-12 grid-cols-[2rem_minmax(6rem,1fr)_4.5rem_2.75rem] items-center gap-2 rounded-md px-1 ${set.status === 'completed' ? 'bg-success/10' : 'bg-secondary/50'}`}>
+                <div key={set.id} className={`grid min-h-12 grid-cols-[1.75rem_minmax(5.5rem,1fr)_3.5rem_3.5rem_2.75rem] items-center gap-1 rounded-md px-1 ${set.status === 'completed' ? 'bg-success/10' : 'bg-secondary/50'}`}>
                   <span className="text-center text-sm tabular-nums">{set.set_number}</span>
                   <div className="flex min-w-0 gap-1">
                     <Input
                       type="number" min="0" step="0.5" inputMode="decimal" className="h-10 min-w-0 tabular-nums"
                       value={set.actual_load_value ?? ''}
-                      onChange={(event) => setLocalWeight(exercise.id, set.id, 'actual_load_value', event.target.value)}
-                      onBlur={() => saveWeight(exercise, set)}
+                      onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
+                      onBlur={() => saveSet(exercise, set)}
                       aria-label={`${exercise.exercise_name} set ${set.set_number} weight`}
                     />
                     <Select value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
-                      setLocalWeight(exercise.id, set.id, 'actual_load_unit', value);
+                      setLocalValue(exercise.id, set.id, 'actual_load_unit', value);
                       outbox.enqueue({
                         kind: 'set', exerciseId: exercise.id, setId: set.id,
                         method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
                         data: {
                           actual_load_value: set.actual_load_value === '' || set.actual_load_value == null ? null : Number(set.actual_load_value),
                           actual_load_unit: set.actual_load_value === '' || set.actual_load_value == null ? null : value,
+                          actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
+                          actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
                           status: set.status,
                         },
                       });
@@ -400,7 +493,12 @@ export default function WorkoutTracker() {
                       <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
                     </Select>
                   </div>
-                  <span className="text-center text-sm tabular-nums">{exercise.prescribed_reps || '-'}</span>
+                  <Input type="number" min="0" step="1" inputMode="numeric" className="h-10 px-2 tabular-nums" value={set.actual_reps ?? ''}
+                    onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)}
+                    aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} />
+                  <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-10 px-2 tabular-nums" value={set.actual_rpe ?? ''}
+                    onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)}
+                    aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
                   <Button
                     type="button" size="icon" variant={set.status === 'completed' ? 'default' : 'outline'}
                     className="h-11 w-11" onClick={() => toggleSet(exercise, set)}
@@ -418,6 +516,7 @@ export default function WorkoutTracker() {
               <Button type="button" variant="outline" size="sm" onClick={() => addSet(exercise)}>
                 <Plus className="mr-1.5 h-4 w-4" /> Add set
               </Button>
+              <ExerciseHistory logId={id} exercise={exercise} />
               <div className="space-y-1.5">
                 <Label htmlFor={`notes-${exercise.id}`}>Exercise notes</Label>
                 <Textarea
