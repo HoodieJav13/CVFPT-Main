@@ -25,12 +25,39 @@ function canReadLog(user, log) {
   return canAccessClient(user, log.client);
 }
 
+function canAuthorCoachResponse(user, log) {
+  return Boolean(
+    (user?.role === 'coach' || user?.role === 'admin')
+    && log?.client
+    && !log.client.archived
+    && canAccessClient(user, log.client),
+  );
+}
+
+function validateCoachResponseContent(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.content !== 'string') {
+    return { ok: false, error: 'Coach response must be text' };
+  }
+  const content = body.content.trim();
+  if (!content) return { ok: false, error: 'Coach response is required' };
+  if (Array.from(content).length > 4000) return { ok: false, error: 'Coach response must be 4,000 characters or fewer' };
+  return { ok: true, content };
+}
+
+function newestCoachResponseFirst(a, b) {
+  const activityDelta = new Date(b.edited_at || b.created_at).getTime() - new Date(a.edited_at || a.created_at).getTime();
+  return activityDelta || String(b.id).localeCompare(String(a.id));
+}
+
 async function workoutLogWithDetails(id) {
   const { data: log, error } = await supabaseAdmin.from('workout_logs')
     .select('*, client:clients(id, name, coach_id, archived)')
     .eq('id', id).eq('archived', false).maybeSingle();
   if (error) throw error;
   if (!log) return null;
+  const { data: coachResponses, error: responseError } = await supabaseAdmin.from('workout_coach_responses')
+    .select('*').eq('workout_log_id', id).eq('archived', false);
+  if (responseError) throw responseError;
   const { data: exercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
     .select('*').eq('workout_log_id', id).eq('archived', false).order('position');
   if (exerciseError) throw exerciseError;
@@ -50,6 +77,7 @@ async function workoutLogWithDetails(id) {
   });
   return {
     ...log,
+    coach_responses: (coachResponses || []).sort(newestCoachResponseFirst),
     exercises: (exercises || []).map((exercise) => ({
       ...exercise,
       sets: setsByExercise.get(exercise.id) || [],
@@ -134,6 +162,41 @@ router.get('/mine', requireClient, async (req, res) => {
   }
 });
 
+router.get('/coach-feedback/unread-count', requireClient, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('workout_coach_responses')
+      .select('id').eq('client_id', req.user.client.id).eq('archived', false).is('read_at', null);
+    if (error) throw error;
+    return res.json({ unread: (data || []).length });
+  } catch (error) {
+    logError('coach feedback unread count error', error);
+    return res.status(500).json({ error: 'Failed to load coach feedback count' });
+  }
+});
+
+router.patch('/:id/coach-feedback/read', requireClient, async (req, res) => {
+  try {
+    const log = await workoutLogWithDetails(req.params.id);
+    if (!log || log.client_id !== req.user.client.id) return res.status(404).json({ error: 'Workout log not found' });
+    const unreadIds = (log.coach_responses || []).filter((response) => !response.read_at).map((response) => response.id);
+    if (!unreadIds.length) return res.json({ updated: 0, read_at: null });
+    const now = new Date().toISOString();
+    const { data, error } = await supabaseAdmin.from('workout_coach_responses')
+      .update({ read_at: now, updated_at: now })
+      .in('id', unreadIds)
+      .eq('workout_log_id', log.id)
+      .eq('client_id', req.user.client.id)
+      .eq('archived', false)
+      .is('read_at', null)
+      .select('id');
+    if (error) throw error;
+    return res.json({ updated: (data || []).length, read_at: now });
+  } catch (error) {
+    logError('mark coach feedback read error', error);
+    return res.status(500).json({ error: 'Failed to mark coach feedback read' });
+  }
+});
+
 router.get('/client/:clientId', requireCoach, async (req, res) => {
   try {
     const { data: client } = await supabaseAdmin.from('clients').select('*')
@@ -149,6 +212,26 @@ router.get('/client/:clientId', requireCoach, async (req, res) => {
   } catch (error) {
     logError('coach workout history error', error);
     return res.status(500).json({ error: 'Failed to load workout history' });
+  }
+});
+
+router.put('/:id/coach-response', requireCoach, async (req, res) => {
+  const validation = validateCoachResponseContent(req.body);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  try {
+    const log = await workoutLogWithDetails(req.params.id);
+    if (!canAuthorCoachResponse(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
+    if (log.status !== 'completed') return res.status(409).json({ error: 'Only completed workouts accept coach responses' });
+    const { data, error } = await supabaseAdmin.rpc('save_workout_coach_response', {
+      p_workout_log_id: log.id,
+      p_author_coach_id: req.user.coach.id,
+      p_content: validation.content,
+    });
+    if (error) throw error;
+    return res.status(data?.outcome === 'created' ? 201 : 200).json(data);
+  } catch (error) {
+    logError('save coach response error', error);
+    return res.status(500).json({ error: 'Failed to save coach response' });
   }
 });
 
@@ -323,3 +406,6 @@ module.exports = router;
 module.exports.workoutLogWithDetails = workoutLogWithDetails;
 module.exports.canReadLog = canReadLog;
 module.exports.workoutRpcStatus = workoutRpcStatus;
+module.exports.canAuthorCoachResponse = canAuthorCoachResponse;
+module.exports.newestCoachResponseFirst = newestCoachResponseFirst;
+module.exports.validateCoachResponseContent = validateCoachResponseContent;
