@@ -130,6 +130,67 @@ async function requireOwnedActiveLog(req, res) {
   return log;
 }
 
+function createExerciseHistoryHandler({
+  findLog = workoutLogWithDetails,
+  runHistory = (args) => supabaseAdmin.rpc('get_workout_exercise_history', args),
+} = {}) {
+  return async function exerciseHistoryHandler(req, res) {
+    let cursor;
+    try {
+      cursor = decodeHistoryCursor(req.query.cursor);
+    } catch {
+      return res.status(400).json({ error: 'Invalid history cursor' });
+    }
+    try {
+      const log = await findLog(req.params.id);
+      if (!log || req.user.role !== 'client' || log.client_id !== req.user.client?.id
+        || log.status !== 'active' || log.archived) {
+        return res.status(404).json({ error: 'Workout log not found' });
+      }
+      const exercise = log.exercises.find((row) => row.id === req.params.exerciseId && !row.archived);
+      if (!exercise) return res.status(404).json({ error: 'Workout exercise not found' });
+
+      const { data, error } = await runHistory({
+        p_client_id: req.user.client.id,
+        p_exercise_library_id: exercise.exercise_library_id || null,
+        p_source_workout_exercise_id: exercise.source_workout_exercise_id || null,
+        p_before_completed_at: cursor?.completed_at || null,
+        p_before_log_id: cursor?.id || null,
+        p_occurrence_limit: 11,
+      });
+      if (error) throw error;
+      const grouped = new Map();
+      for (const row of data || []) {
+        if (!grouped.has(row.workout_log_id)) grouped.set(row.workout_log_id, {
+          workout_log_id: row.workout_log_id,
+          completed_at: row.completed_at,
+          exercise_name: row.exercise_name,
+          sets: [],
+        });
+        grouped.get(row.workout_log_id).sets.push({
+          set_number: row.set_number,
+          actual_load_value: row.actual_load_value,
+          actual_load_unit: row.actual_load_unit,
+          actual_reps: row.actual_reps,
+          actual_rpe: row.actual_rpe,
+        });
+      }
+      const allOccurrences = [...grouped.values()]
+        .map((occurrence) => ({ ...occurrence, sets: occurrence.sets.sort((a, b) => a.set_number - b.set_number) }))
+        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)
+          || b.workout_log_id.localeCompare(a.workout_log_id));
+      const occurrences = allOccurrences.slice(0, 10);
+      return res.json({
+        occurrences,
+        next_cursor: allOccurrences.length > 10 ? encodeHistoryCursor(occurrences[occurrences.length - 1]) : null,
+      });
+    } catch (error) {
+      logError('exercise history error', error);
+      return res.status(500).json({ error: 'Failed to load exercise history' });
+    }
+  };
+}
+
 router.post('/start', requireClient, async (req, res) => {
   try {
     const body = req.body || {};
@@ -205,55 +266,7 @@ router.get('/client/:clientId', requireCoach, async (req, res) => {
   }
 });
 
-router.get('/:id/exercises/:exerciseId/history', requireClient, async (req, res) => {
-  let cursor;
-  try {
-    cursor = decodeHistoryCursor(req.query.cursor);
-  } catch {
-    return res.status(400).json({ error: 'Invalid history cursor' });
-  }
-  try {
-    const log = await requireOwnedActiveLog(req, res);
-    if (!log) return undefined;
-    const exercise = log.exercises.find((row) => row.id === req.params.exerciseId && !row.archived);
-    if (!exercise) return res.status(404).json({ error: 'Workout exercise not found' });
-
-    const { data, error } = await supabaseAdmin.rpc('get_workout_exercise_history', {
-      p_client_id: req.user.client.id,
-      p_exercise_library_id: exercise.exercise_library_id || null,
-      p_source_workout_exercise_id: exercise.source_workout_exercise_id || null,
-      p_before_completed_at: cursor?.completed_at || null,
-      p_before_log_id: cursor?.id || null,
-      p_occurrence_limit: 11,
-    });
-    if (error) throw error;
-    const grouped = new Map();
-    for (const row of data || []) {
-      if (!grouped.has(row.workout_log_id)) grouped.set(row.workout_log_id, {
-        workout_log_id: row.workout_log_id,
-        completed_at: row.completed_at,
-        exercise_name: row.exercise_name,
-        sets: [],
-      });
-      grouped.get(row.workout_log_id).sets.push({
-        set_number: row.set_number,
-        actual_load_value: row.actual_load_value,
-        actual_load_unit: row.actual_load_unit,
-        actual_reps: row.actual_reps,
-        actual_rpe: row.actual_rpe,
-      });
-    }
-    const allOccurrences = [...grouped.values()];
-    const occurrences = allOccurrences.slice(0, 10);
-    return res.json({
-      occurrences,
-      next_cursor: allOccurrences.length > 10 ? encodeHistoryCursor(occurrences[occurrences.length - 1]) : null,
-    });
-  } catch (error) {
-    logError('exercise history error', error);
-    return res.status(500).json({ error: 'Failed to load exercise history' });
-  }
-});
+router.get('/:id/exercises/:exerciseId/history', requireClient, createExerciseHistoryHandler());
 
 router.get('/:id', async (req, res) => {
   try {
@@ -425,3 +438,4 @@ module.exports.validPerformedRpe = validPerformedRpe;
 module.exports.decodeHistoryCursor = decodeHistoryCursor;
 module.exports.workoutSetUpdatePayload = workoutSetUpdatePayload;
 module.exports.updateSetAtHandlerBoundary = updateSetAtHandlerBoundary;
+module.exports.createExerciseHistoryHandler = createExerciseHistoryHandler;

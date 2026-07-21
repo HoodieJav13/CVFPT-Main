@@ -538,3 +538,21 @@ test('exercise history is network-only, paginated, retryable, and independent fr
   await expect(card.getByRole('button', { name: 'Complete set 2' })).toBeEnabled();
   await context.setOffline(false);
 });
+
+test('exercise history disclosure stays keyboard-operable without desktop overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('start-program-workout').first().click();
+
+  const card = page.getByTestId('tracker-exercise-card').first();
+  const disclosure = card.getByRole('button', { name: /Exercise history/ });
+  await disclosure.focus();
+  await page.keyboard.press('Enter');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(card.getByTestId('history-occurrence')).toHaveCount(10);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  expect(await page.getByTestId('tracker-exercise-card').evaluateAll((cards) => (
+    cards.every((element) => element.scrollWidth <= element.clientWidth)
+  ))).toBeTruthy();
+});
