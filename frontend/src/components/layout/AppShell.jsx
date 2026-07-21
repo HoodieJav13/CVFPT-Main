@@ -94,9 +94,7 @@ export default function AppShell() {
     ? [...COACH_NAV, ...(user.role === 'admin' ? [{ to: '/admin', label: 'Admin', icon: ShieldCheck }] : [])]
     : [...CLIENT_NAV, ...CLIENT_EXTRA];
 
-  useEffect(() => {
-    if (isCoach) refreshNotifications();
-  }, [isCoach, location.pathname, refreshNotifications]);
+  useEffect(() => { refreshNotifications(); }, [location.pathname, refreshNotifications]);
 
   useEffect(() => {
     const identityChanged = previousNotificationIdentity.current !== notificationIdentity;
@@ -144,7 +142,15 @@ export default function AppShell() {
                 )}
               >
                 <item.icon className="h-[18px] w-[18px]" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {!isCoach && item.label === 'Programs' && unread > 0 && (
+                  <NotificationCountBadge
+                    count={displayedUnread}
+                    arrivalRevision={arrivalRevision}
+                    className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground"
+                    testId="desktop-programs-feedback-count"
+                  />
+                )}
               </NavLink>
             ))}
           </nav>
@@ -240,6 +246,14 @@ export default function AppShell() {
                   {isActive && <span className="absolute -top-px h-[2px] w-10 rounded-full bg-primary" />}
                   <item.icon className="h-5 w-5" />
                   {item.label}
+                  {!isCoach && item.label === 'Programs' && unread > 0 && (
+                    <NotificationCountBadge
+                      count={displayedUnread}
+                      arrivalRevision={arrivalRevision}
+                      className="absolute right-[calc(50%-1.4rem)] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground"
+                      testId="mobile-programs-feedback-count"
+                    />
+                  )}
                 </>
               )}
             </NavLink>
