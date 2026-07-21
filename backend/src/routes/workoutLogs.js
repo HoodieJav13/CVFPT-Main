@@ -11,6 +11,59 @@ function validLoad(value, unit) {
   return Number.isFinite(Number(value)) && Number(value) >= 0 && ['lb', 'kg'].includes(unit);
 }
 
+function validPerformedReps(value) {
+  return value === null || (typeof value === 'number' && Number.isInteger(value) && value >= 0);
+}
+
+function validPerformedRpe(value) {
+  return value === null || (typeof value === 'number' && Number.isFinite(value)
+    && value >= 1 && value <= 10 && Number.isInteger(value * 2));
+}
+
+function decodeHistoryCursor(value) {
+  if (value === undefined) return null;
+  if (typeof value !== 'string' || !value || value.length > 512) throw new Error('invalid');
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!parsed || Object.keys(parsed).sort().join(',') !== 'completed_at,id'
+      || typeof parsed.completed_at !== 'string' || Number.isNaN(Date.parse(parsed.completed_at))
+      || typeof parsed.id !== 'string' || !uuid.test(parsed.id)) throw new Error('invalid');
+    return parsed;
+  } catch {
+    throw new Error('invalid');
+  }
+}
+
+function encodeHistoryCursor(occurrence) {
+  return Buffer.from(JSON.stringify({ completed_at: occurrence.completed_at, id: occurrence.workout_log_id })).toString('base64url');
+}
+
+function workoutSetUpdatePayload(body, set, now = new Date().toISOString()) {
+  const status = body.status === 'completed' ? 'completed' : body.status === 'pending' ? 'pending' : set.status;
+  const loadValue = Object.hasOwn(body, 'actual_load_value') ? body.actual_load_value : set.actual_load_value;
+  const loadUnit = Object.hasOwn(body, 'actual_load_unit') ? body.actual_load_unit : set.actual_load_unit;
+  if (!validLoad(loadValue, loadUnit)) throw Object.assign(new Error('Enter a valid weight and unit'), { status: 400 });
+  const actualReps = Object.hasOwn(body, 'actual_reps') ? body.actual_reps : set.actual_reps;
+  const actualRpe = Object.hasOwn(body, 'actual_rpe') ? body.actual_rpe : set.actual_rpe;
+  if (!validPerformedReps(actualReps)) throw Object.assign(new Error('Reps must be a nonnegative whole number or null'), { status: 400 });
+  if (!validPerformedRpe(actualRpe)) throw Object.assign(new Error('RPE must be 1 through 10 in 0.5 increments or null'), { status: 400 });
+  return {
+    status,
+    actual_load_value: loadValue === '' || loadValue === null ? null : Number(loadValue),
+    actual_load_unit: loadValue === '' || loadValue === null ? null : loadUnit,
+    actual_reps: actualReps,
+    actual_rpe: actualRpe,
+    completed_at: status === 'completed' ? now : null,
+    updated_at: now,
+  };
+}
+
+async function updateSetAtHandlerBoundary({ body, set, mutate, now }) {
+  const payload = workoutSetUpdatePayload(body, set, now);
+  return mutate(payload);
+}
+
 function workoutRpcStatus(error) {
   const message = error?.message || '';
   if (/not found|Assigned workout/i.test(message)) return 404;
@@ -103,6 +156,67 @@ async function requireOwnedActiveLog(req, res) {
     return null;
   }
   return log;
+}
+
+function createExerciseHistoryHandler({
+  findLog = workoutLogWithDetails,
+  runHistory = (args) => supabaseAdmin.rpc('get_workout_exercise_history', args),
+} = {}) {
+  return async function exerciseHistoryHandler(req, res) {
+    let cursor;
+    try {
+      cursor = decodeHistoryCursor(req.query.cursor);
+    } catch {
+      return res.status(400).json({ error: 'Invalid history cursor' });
+    }
+    try {
+      const log = await findLog(req.params.id);
+      if (!log || req.user.role !== 'client' || log.client_id !== req.user.client?.id
+        || log.status !== 'active' || log.archived) {
+        return res.status(404).json({ error: 'Workout log not found' });
+      }
+      const exercise = log.exercises.find((row) => row.id === req.params.exerciseId && !row.archived);
+      if (!exercise) return res.status(404).json({ error: 'Workout exercise not found' });
+
+      const { data, error } = await runHistory({
+        p_client_id: req.user.client.id,
+        p_exercise_library_id: exercise.exercise_library_id || null,
+        p_source_workout_exercise_id: exercise.source_workout_exercise_id || null,
+        p_before_completed_at: cursor?.completed_at || null,
+        p_before_log_id: cursor?.id || null,
+        p_occurrence_limit: 11,
+      });
+      if (error) throw error;
+      const grouped = new Map();
+      for (const row of data || []) {
+        if (!grouped.has(row.workout_log_id)) grouped.set(row.workout_log_id, {
+          workout_log_id: row.workout_log_id,
+          completed_at: row.completed_at,
+          exercise_name: row.exercise_name,
+          sets: [],
+        });
+        grouped.get(row.workout_log_id).sets.push({
+          set_number: row.set_number,
+          actual_load_value: row.actual_load_value,
+          actual_load_unit: row.actual_load_unit,
+          actual_reps: row.actual_reps,
+          actual_rpe: row.actual_rpe,
+        });
+      }
+      const allOccurrences = [...grouped.values()]
+        .map((occurrence) => ({ ...occurrence, sets: occurrence.sets.sort((a, b) => a.set_number - b.set_number) }))
+        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)
+          || b.workout_log_id.localeCompare(a.workout_log_id));
+      const occurrences = allOccurrences.slice(0, 10);
+      return res.json({
+        occurrences,
+        next_cursor: allOccurrences.length > 10 ? encodeHistoryCursor(occurrences[occurrences.length - 1]) : null,
+      });
+    } catch (error) {
+      logError('exercise history error', error);
+      return res.status(500).json({ error: 'Failed to load exercise history' });
+    }
+  };
 }
 
 router.post('/start', requireClient, async (req, res) => {
@@ -235,6 +349,8 @@ router.put('/:id/coach-response', requireCoach, async (req, res) => {
   }
 });
 
+router.get('/:id/exercises/:exerciseId/history', requireClient, createExerciseHistoryHandler());
+
 router.get('/:id', async (req, res) => {
   try {
     const log = await workoutLogWithDetails(req.params.id);
@@ -253,21 +369,15 @@ router.patch('/:id/sets/:setId', requireClient, async (req, res) => {
     const exerciseIds = new Set(log.exercises.map((exercise) => exercise.id));
     const set = log.exercises.flatMap((exercise) => exercise.sets).find((row) => row.id === req.params.setId);
     if (!set || !exerciseIds.has(set.workout_log_exercise_id)) return res.status(404).json({ error: 'Workout set not found' });
-    const body = req.body || {};
-    const status = body.status === 'completed' ? 'completed' : body.status === 'pending' ? 'pending' : set.status;
-    const loadValue = Object.hasOwn(body, 'actual_load_value') ? body.actual_load_value : set.actual_load_value;
-    const loadUnit = Object.hasOwn(body, 'actual_load_unit') ? body.actual_load_unit : set.actual_load_unit;
-    if (!validLoad(loadValue, loadUnit)) return res.status(400).json({ error: 'Enter a valid weight and unit' });
-    const { data, error } = await supabaseAdmin.from('workout_log_sets').update({
-      status,
-      actual_load_value: loadValue === '' || loadValue === null ? null : Number(loadValue),
-      actual_load_unit: loadValue === '' || loadValue === null ? null : loadUnit,
-      completed_at: status === 'completed' ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    }).eq('id', set.id).eq('archived', false).select().single();
+    const { data, error } = await updateSetAtHandlerBoundary({
+      body: req.body || {}, set,
+      mutate: (payload) => supabaseAdmin.from('workout_log_sets').update(payload)
+        .eq('id', set.id).eq('archived', false).select().single(),
+    });
     if (error) throw error;
     return res.json(data);
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
     logError('update workout set error', error);
     return res.status(500).json({ error: 'Failed to save set' });
   }
@@ -409,3 +519,9 @@ module.exports.workoutRpcStatus = workoutRpcStatus;
 module.exports.canAuthorCoachResponse = canAuthorCoachResponse;
 module.exports.newestCoachResponseFirst = newestCoachResponseFirst;
 module.exports.validateCoachResponseContent = validateCoachResponseContent;
+module.exports.validPerformedReps = validPerformedReps;
+module.exports.validPerformedRpe = validPerformedRpe;
+module.exports.decodeHistoryCursor = decodeHistoryCursor;
+module.exports.workoutSetUpdatePayload = workoutSetUpdatePayload;
+module.exports.updateSetAtHandlerBoundary = updateSetAtHandlerBoundary;
+module.exports.createExerciseHistoryHandler = createExerciseHistoryHandler;
