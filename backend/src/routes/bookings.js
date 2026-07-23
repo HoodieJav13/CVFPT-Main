@@ -2,7 +2,12 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
-const { validateSchedulePayload } = require('../validation/business');
+const {
+  validateBookingListQuery,
+  validateOptionalText,
+  validateSchedulePayload,
+  validateUuid,
+} = require('../validation/business');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -16,6 +21,10 @@ router.post('/', requireClient, async (req, res) => {
       { requireDate: true },
     );
     if (!validation.ok) return res.status(400).json({ error: validation.error });
+    const locationValidation = validateOptionalText(location, 'Location');
+    if (!locationValidation.ok) return res.status(400).json({ error: locationValidation.error });
+    const noteValidation = validateOptionalText(note, 'Note');
+    if (!noteValidation.ok) return res.status(400).json({ error: noteValidation.error });
     if (new Date(validation.value.scheduled_at).getTime() <= Date.now()) {
       return res.status(400).json({ error: 'Requested time must be in the future' });
     }
@@ -24,8 +33,8 @@ router.post('/', requireClient, async (req, res) => {
       coach_id: req.user.client.coach_id,
       requested_time: validation.value.scheduled_at,
       duration_minutes: validation.value.duration_minutes,
-      location: location || null,
-      note: note || null,
+      location: locationValidation.value,
+      note: noteValidation.value,
     }).select().single();
     if (error) throw error;
     return res.status(201).json(data);
@@ -52,10 +61,12 @@ router.get('/mine', requireClient, async (req, res) => {
 // GET /api/bookings (coach) ?status=pending
 router.get('/', requireCoach, async (req, res) => {
   try {
+    const validation = validateBookingListQuery(req.query);
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
     let q = supabaseAdmin.from('booking_requests').select('*, client:clients(id, name)')
       .eq('archived', false).order('created_at', { ascending: false });
     if (req.user.role !== 'admin') q = q.eq('coach_id', req.user.coach.id);
-    if (req.query.status) q = q.eq('status', req.query.status);
+    if (validation.value.status) q = q.eq('status', validation.value.status);
     const { data, error } = await q;
     if (error) throw error;
     return res.json(data);
@@ -66,8 +77,13 @@ router.get('/', requireCoach, async (req, res) => {
 });
 
 async function loadBookingForCoach(req, res) {
+  const idValidation = validateUuid(req.params.id, 'Booking request ID');
+  if (!idValidation.ok) {
+    res.status(400).json({ error: idValidation.error });
+    return null;
+  }
   const { data: booking } = await supabaseAdmin.from('booking_requests').select('*')
-    .eq('id', req.params.id).eq('archived', false).maybeSingle();
+    .eq('id', idValidation.value).eq('archived', false).maybeSingle();
   if (!booking || (req.user.role !== 'admin' && booking.coach_id !== req.user.coach.id)) {
     res.status(404).json({ error: 'Booking request not found' });
     return null;

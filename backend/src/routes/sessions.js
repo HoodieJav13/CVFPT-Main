@@ -2,14 +2,25 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
-const { validateSchedulePayload } = require('../validation/business');
+const {
+  validateOptionalText,
+  validateSchedulePayload,
+  validateSessionListQuery,
+  validateSessionNotePayload,
+  validateUuid,
+} = require('../validation/business');
 
 const router = express.Router();
 router.use(requireAuth);
 
 async function loadSessionForCoach(req, res) {
+  const idValidation = validateUuid(req.params.id, 'Session ID');
+  if (!idValidation.ok) {
+    res.status(400).json({ error: idValidation.error });
+    return null;
+  }
   const { data: session } = await supabaseAdmin.from('sessions').select('*')
-    .eq('id', req.params.id).eq('archived', false).maybeSingle();
+    .eq('id', idValidation.value).eq('archived', false).maybeSingle();
   if (!session || (req.user.role !== 'admin' && session.coach_id !== req.user.coach.id)) {
     res.status(404).json({ error: 'Session not found' });
     return null;
@@ -20,15 +31,17 @@ async function loadSessionForCoach(req, res) {
 // GET /api/sessions  (coach/admin) ?from=&to=&client_id=&status=
 router.get('/', requireCoach, async (req, res) => {
   try {
+    const validation = validateSessionListQuery(req.query);
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
     let q = supabaseAdmin.from('sessions')
       .select('*, client:clients(id, name), coach:coaches(id, name)')
       .eq('archived', false)
       .order('scheduled_at', { ascending: true });
     if (req.user.role !== 'admin') q = q.eq('coach_id', req.user.coach.id);
-    if (req.query.client_id) q = q.eq('client_id', req.query.client_id);
-    if (req.query.status) q = q.eq('status', req.query.status);
-    if (req.query.from) q = q.gte('scheduled_at', req.query.from);
-    if (req.query.to) q = q.lt('scheduled_at', req.query.to);
+    if (validation.value.client_id) q = q.eq('client_id', validation.value.client_id);
+    if (validation.value.status) q = q.eq('status', validation.value.status);
+    if (validation.value.from) q = q.gte('scheduled_at', validation.value.from);
+    if (validation.value.to) q = q.lt('scheduled_at', validation.value.to);
     const { data, error } = await q;
     if (error) throw error;
     return res.json(data);
@@ -43,18 +56,22 @@ router.post('/', requireCoach, async (req, res) => {
   try {
     const { client_id, scheduled_at, duration_minutes, location } = req.body || {};
     if (!client_id) return res.status(400).json({ error: 'Client and date/time are required' });
+    const clientIdValidation = validateUuid(client_id, 'Client ID');
+    if (!clientIdValidation.ok) return res.status(400).json({ error: clientIdValidation.error });
     const validation = validateSchedulePayload({ scheduled_at, duration_minutes }, { requireDate: true });
     if (!validation.ok) return res.status(400).json({ error: validation.error });
+    const locationValidation = validateOptionalText(location, 'Location');
+    if (!locationValidation.ok) return res.status(400).json({ error: locationValidation.error });
     const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
-      .eq('id', client_id).eq('archived', false).maybeSingle();
+      .eq('id', clientIdValidation.value).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const coachId = req.user.role === 'admin' ? clientRow.coach_id : req.user.coach.id;
     const { data, error } = await supabaseAdmin.from('sessions').insert({
-      client_id,
+      client_id: clientIdValidation.value,
       coach_id: coachId,
       scheduled_at: validation.value.scheduled_at,
       duration_minutes: validation.value.duration_minutes,
-      location: location || null,
+      location: locationValidation.value,
     }).select('*, client:clients(id, name)').single();
     if (error) throw error;
     return res.status(201).json(data);
@@ -72,7 +89,11 @@ router.put('/:id', requireCoach, async (req, res) => {
     const validation = validateSchedulePayload(req.body || {});
     if (!validation.ok) return res.status(400).json({ error: validation.error });
     const updates = { ...validation.value };
-    if ('location' in (req.body || {})) updates.location = req.body.location || null;
+    if (Object.hasOwn(req.body || {}, 'location')) {
+      const locationValidation = validateOptionalText(req.body.location, 'Location');
+      if (!locationValidation.ok) return res.status(400).json({ error: locationValidation.error });
+      updates.location = locationValidation.value;
+    }
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide a session field to update' });
     updates.updated_at = new Date().toISOString();
     const { data, error } = await supabaseAdmin.from('sessions').update(updates).eq('id', session.id)
@@ -141,13 +162,12 @@ router.post('/:id/notes', requireCoach, async (req, res) => {
   try {
     const session = await loadSessionForCoach(req, res);
     if (!session) return;
-    const { content, shared_with_client } = req.body || {};
-    if (!content || !String(content).trim()) return res.status(400).json({ error: 'Note content is required' });
+    const validation = validateSessionNotePayload(req.body || {});
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
     const { data, error } = await supabaseAdmin.from('session_notes').insert({
       session_id: session.id,
       coach_id: req.user.role === 'admin' ? session.coach_id : req.user.coach.id,
-      content: String(content).trim(),
-      shared_with_client: Boolean(shared_with_client),
+      ...validation.value,
     }).select().single();
     if (error) throw error;
     return res.status(201).json(data);
@@ -160,15 +180,17 @@ router.post('/:id/notes', requireCoach, async (req, res) => {
 // PUT /api/sessions/notes/:noteId  { content, shared_with_client }
 router.put('/notes/:noteId', requireCoach, async (req, res) => {
   try {
+    const idValidation = validateUuid(req.params.noteId, 'Note ID');
+    if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
     const { data: note } = await supabaseAdmin.from('session_notes')
       .select('*, session:sessions(coach_id, archived)')
-      .eq('id', req.params.noteId).eq('archived', false).maybeSingle();
+      .eq('id', idValidation.value).eq('archived', false).maybeSingle();
     if (!note || note.session?.archived || (req.user.role !== 'admin' && note.session?.coach_id !== req.user.coach.id)) {
       return res.status(404).json({ error: 'Note not found' });
     }
-    const updates = { updated_at: new Date().toISOString() };
-    if ('content' in req.body) updates.content = req.body.content;
-    if ('shared_with_client' in req.body) updates.shared_with_client = Boolean(req.body.shared_with_client);
+    const validation = validateSessionNotePayload(req.body || {}, { partial: true });
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    const updates = { ...validation.value, updated_at: new Date().toISOString() };
     const { data, error } = await supabaseAdmin.from('session_notes').update(updates).eq('id', note.id).select().single();
     if (error) throw error;
     return res.json(data);
