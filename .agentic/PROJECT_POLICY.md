@@ -16,6 +16,12 @@ where they are more specific.
 - Never merge. The owner performs merges manually on GitHub.
 - Deploys and hosted migrations require explicit task authorization and the
   sequencing defined in `CLAUDE.md` or the approved plan.
+- A merge to `main` triggers both Vercel Production projects through Git
+  integration. For any migration-bearing PR, disclose that consequence before
+  asking the owner to merge. If the approved release requires migration-first
+  ordering, apply and verify the backward-compatible migration before merge or
+  explicitly pause/disable automatic deployment; do not promise a post-merge
+  migration-first sequence that the Git trigger makes impossible.
 - Never expose or manipulate raw credentials. Existing authenticated tooling
   may be used only for an explicitly authorized action.
 
