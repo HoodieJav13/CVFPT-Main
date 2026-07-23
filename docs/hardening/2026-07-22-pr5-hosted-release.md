@@ -5,7 +5,12 @@ Release date: 2026-07-22 (America/Denver)
 Release commit: `2786aa356b6c2ca0632791fde723ac0addaa93cf`
 
 Scope: integrated API validation hardening, coach workout responses, and client
-exercise performance history from PR #5.
+exercise performance history from PR #5. The merged PR head was
+`c5f7f3ea00d96c0e9602cff3d7529e1155edf8b8`, one commit after the independently
+reviewed feature head `c6edeff`: that final commit changed only
+`backend/package-lock.json`, updating `body-parser` from 1.20.5 to 1.20.6 to
+resolve the reported dependency vulnerability. It made no application-source,
+schema, or public-interface change.
 
 ## What reached Production
 
@@ -30,6 +35,13 @@ migration-first gate was not achieved.
 The two pending migrations were then applied immediately in timestamp order.
 No additional application change was required. Post-application verification
 proved the deployed code and hosted schema converged successfully.
+
+There was therefore a real interval—not merely a theoretical risk—when deployed
+code could have reached tables/functions that were not hosted yet. No failure was
+observed during that interval, and the subsequent one-hour runtime scan found no
+backend error/fatal entry or `5xx` response. That evidence does not prove that no
+request encountered the gap; it proves only that no such failure was observed
+and that the final state is healthy.
 
 Future migration-bearing PRs must account for the Git deployment trigger before
 merge. If migration-first ordering is required, apply and verify a
