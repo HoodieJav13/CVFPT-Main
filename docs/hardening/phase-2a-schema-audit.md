@@ -3,6 +3,14 @@
 Audit date: 2026-07-10
 Credential/deployment verification updated: 2026-07-12
 
+> Historical scope note (2026-07-22): counts and findings in this document
+> describe the Phase 2A six-migration baseline as verified on the dates above.
+> They are not the current whole-schema inventory. The hosted project now has
+> 16/16 repository migrations applied through
+> `20260720173000_exercise_performance_history.sql`; see
+> `docs/hardening/2026-07-22-pr5-hosted-release.md` for the latest delta and
+> hosted evidence.
+
 ## Target discovery
 
 - Connected project: `CVFPT-Main` (`hhzpzcxcurmhpmfgriqb`), healthy, PostgreSQL 17, created 2026-07-06.

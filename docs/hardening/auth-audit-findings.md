@@ -1,9 +1,20 @@
 # Authentication and ownership audit findings
 
 Audit date: 2026-07-10
+
+> Historical scope note (2026-07-22): this ledger records the mounted surface
+> and remediation evidence as of its audit. Package/payment routes were later
+> retired, session completion no longer mutates credits, and workout tracking,
+> notifications, coach feedback, and exercise history expanded the active
+> surface. Use `docs/hardening/auth-route-inventory.md` for the current mounted
+> route inventory and `docs/hardening/2026-07-22-pr5-hosted-release.md` for the
+> latest hosted release evidence.
 Verification updated: 2026-07-12
 
-Scope: all 103 Express endpoints registered under `backend/src/routes`, the global authentication middleware, Supabase service-role isolation, CORS, payment/webhook handling, private PDF storage, and state-changing multi-step flows.
+Scope at audit time: all 103 Express endpoints then registered under
+`backend/src/routes`, the global authentication middleware, Supabase service-role
+isolation, CORS, payment/webhook handling, private PDF storage, and
+state-changing multi-step flows.
 
 Verification now includes 44 backend regression tests, five preview-mode browser
 tests, six expanded real-auth browser flows, an 88-check hosted-Supabase integration

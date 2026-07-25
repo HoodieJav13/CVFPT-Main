@@ -2,6 +2,14 @@
 
 Verification date: 2026-07-12
 
+> Historical scope note (2026-07-22): this report preserves what was exercised
+> on 2026-07-12, including package/credit flows that were active at that time.
+> Those runtime surfaces were retired on 2026-07-18 and are no longer current
+> product behavior. PR #5's coach-feedback/exercise-history release evidence and
+> the explicit distinction between the historical 7/7 real-auth result and the
+> suites actually rerun for that release are recorded in
+> `docs/hardening/2026-07-22-pr5-hosted-release.md`.
+
 Targets: protected Vercel previews, plus an isolated local frontend/backend pointed
 at the hosted fake-data Supabase development project. The 12-check protected role
 smoke covers deployed boundaries; the expanded real-auth browser and 88-check API
