@@ -6,11 +6,19 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, ['REACT_APP_', 'VITE_']);
   const hostedTestBackend = process.env.CVF_E2E_BACKEND_URL;
   const protectionBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  const vercelEnvironment = process.env.VERCEL_ENV || '';
+  const hostedPreviewDefines = vercelEnvironment === 'preview'
+    ? {
+        'import.meta.env.DEV': JSON.stringify(true),
+        'import.meta.env.REACT_APP_PREVIEW_MODE': JSON.stringify('true'),
+      }
+    : {};
   return {
     plugins: [react()],
     envPrefix: ['REACT_APP_', 'VITE_'],
     define: {
       'process.env': JSON.stringify(env),
+      ...hostedPreviewDefines,
     },
     resolve: {
       alias: {
