@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { ListSkeleton, LoadErrorState } from '@/components/common';
 import { ChatThread } from '@/components/Chat';
