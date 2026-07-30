@@ -87,7 +87,7 @@ export default function ClientDetail() {
           <AvatarFallback className="bg-primary/15 text-primary font-display font-semibold text-lg">{initials(client.name)}</AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight truncate" data-testid="client-detail-name">{client.name}</h1>
+          <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight break-words" data-testid="client-detail-name">{client.name}</h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             {client.archived && <Badge variant="outline" className="text-muted-foreground">Archived</Badge>}
             {client.auth_user_id ? (
@@ -105,7 +105,7 @@ export default function ClientDetail() {
       </div>
 
       <Tabs key={client.id} defaultValue={initialTab}>
-        <TabsList className="w-full justify-start overflow-x-auto rounded-xl">
+        <TabsList className="w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade">
           <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="check-ins" data-testid="tab-check-ins">Check-ins</TabsTrigger>
           <TabsTrigger value="progress" data-testid="tab-progress">Progress</TabsTrigger>

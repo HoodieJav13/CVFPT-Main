@@ -330,3 +330,20 @@
     }
   }
 }
+
+@layer utilities {
+  /* Mobile-only affordance for horizontally scrollable tab lists: the
+     trailing fade signals more tabs exist beyond the clipped edge. */
+  .tab-overflow-fade {
+    scrollbar-width: none;
+  }
+  .tab-overflow-fade::-webkit-scrollbar {
+    display: none;
+  }
+  @media (max-width: 640px) {
+    .tab-overflow-fade {
+      -webkit-mask-image: linear-gradient(to right, black calc(100% - 32px), transparent);
+      mask-image: linear-gradient(to right, black calc(100% - 32px), transparent);
+    }
+  }
+}
