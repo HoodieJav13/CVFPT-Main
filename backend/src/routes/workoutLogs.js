@@ -78,6 +78,30 @@ function canReadLog(user, log) {
   return canAccessClient(user, log.client);
 }
 
+/**
+ * Write access to a workout log (roadmap D1/D2): the owning client, or a
+ * coach/admin authorized for the log's client. Coaches cannot write for
+ * archived clients.
+ */
+function canWriteLog(user, log) {
+  if (!user || !log || log.archived) return false;
+  if (user.role === 'client') return log.client_id === user.client?.id;
+  return Boolean(log.client && !log.client.archived && canAccessClient(user, log.client));
+}
+
+/**
+ * Attribution stamp derived ONLY from the authenticated actor — never from
+ * the request body, so a client cannot claim coach-entered data (D5).
+ */
+function actorStamp(user) {
+  if (user?.role === 'coach' || user?.role === 'admin') {
+    return { entered_by: 'coach', entered_by_coach_id: user.coach.id };
+  }
+  return { entered_by: 'client', entered_by_coach_id: null };
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function canAuthorCoachResponse(user, log) {
   return Boolean(
     (user?.role === 'coach' || user?.role === 'admin')
@@ -145,9 +169,9 @@ async function clientActiveLog(clientId) {
   return data?.id ? workoutLogWithDetails(data.id) : null;
 }
 
-async function requireOwnedActiveLog(req, res) {
+async function requireWritableActiveLog(req, res) {
   const log = await workoutLogWithDetails(req.params.id);
-  if (!log || req.user.role !== 'client' || log.client_id !== req.user.client.id) {
+  if (!canWriteLog(req.user, log)) {
     res.status(404).json({ error: 'Workout log not found' });
     return null;
   }
@@ -219,7 +243,7 @@ function createExerciseHistoryHandler({
   };
 }
 
-router.post('/start', requireClient, async (req, res) => {
+router.post('/start', async (req, res) => {
   try {
     const body = req.body || {};
     const programAssignmentId = body.program_assignment_id || null;
@@ -230,11 +254,38 @@ router.post('/start', requireClient, async (req, res) => {
       || (!programSource && !workoutAssignmentId)) {
       return res.status(400).json({ error: 'Choose one assigned workout' });
     }
-    const { data, error } = await supabaseAdmin.rpc('start_workout_log', {
-      p_client_id: req.user.client.id,
+    const sessionId = body.session_id || null;
+    if (sessionId !== null && (typeof sessionId !== 'string' || !UUID_RE.test(sessionId))) {
+      return res.status(400).json({ error: 'Invalid session' });
+    }
+
+    // Resolve which client this workout belongs to from the authenticated
+    // actor — coaches name a client they own; clients are always themselves.
+    let clientId;
+    if (req.user.role === 'client') {
+      clientId = req.user.client.id;
+    } else {
+      const targetClientId = body.client_id;
+      if (typeof targetClientId !== 'string' || !UUID_RE.test(targetClientId)) {
+        return res.status(400).json({ error: 'Choose a client' });
+      }
+      const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+        .eq('id', targetClientId).eq('archived', false).maybeSingle();
+      if (!clientRow || !canAccessClient(req.user, clientRow)) {
+        return res.status(404).json({ error: 'Client not found' });
+      }
+      clientId = clientRow.id;
+    }
+
+    const stamp = actorStamp(req.user);
+    const { data, error } = await supabaseAdmin.rpc('start_workout_log_v2', {
+      p_client_id: clientId,
       p_program_assignment_id: programAssignmentId,
       p_program_day_id: programDayId,
       p_workout_assignment_id: workoutAssignmentId,
+      p_started_by: stamp.entered_by,
+      p_started_by_coach_id: stamp.entered_by_coach_id,
+      p_session_id: sessionId,
     });
     if (error) throw error;
     const log = await workoutLogWithDetails(data.workout_log_id);
@@ -362,16 +413,16 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.patch('/:id/sets/:setId', requireClient, async (req, res) => {
+router.patch('/:id/sets/:setId', async (req, res) => {
   try {
-    const log = await requireOwnedActiveLog(req, res);
+    const log = await requireWritableActiveLog(req, res);
     if (!log) return undefined;
     const exerciseIds = new Set(log.exercises.map((exercise) => exercise.id));
     const set = log.exercises.flatMap((exercise) => exercise.sets).find((row) => row.id === req.params.setId);
     if (!set || !exerciseIds.has(set.workout_log_exercise_id)) return res.status(404).json({ error: 'Workout set not found' });
     const { data, error } = await updateSetAtHandlerBoundary({
       body: req.body || {}, set,
-      mutate: (payload) => supabaseAdmin.from('workout_log_sets').update(payload)
+      mutate: (payload) => supabaseAdmin.from('workout_log_sets').update({ ...payload, ...actorStamp(req.user) })
         .eq('id', set.id).eq('archived', false).select().single(),
     });
     if (error) throw error;
@@ -383,9 +434,9 @@ router.patch('/:id/sets/:setId', requireClient, async (req, res) => {
   }
 });
 
-router.post('/:id/exercises/:exerciseId/sets', requireClient, async (req, res) => {
+router.post('/:id/exercises/:exerciseId/sets', async (req, res) => {
   try {
-    const log = await requireOwnedActiveLog(req, res);
+    const log = await requireWritableActiveLog(req, res);
     if (!log) return undefined;
     const exercise = log.exercises.find((row) => row.id === req.params.exerciseId);
     if (!exercise) return res.status(404).json({ error: 'Workout exercise not found' });
@@ -408,6 +459,7 @@ router.post('/:id/exercises/:exerciseId/sets', requireClient, async (req, res) =
       set_origin: 'extra',
       actual_load_value: exercise.prescribed_load_value,
       actual_load_unit: exercise.prescribed_load_unit,
+      ...actorStamp(req.user),
     }).select().single();
     if (error?.code === '23505') {
       const { data: duplicate, error: duplicateError } = await supabaseAdmin.from('workout_log_sets').select('*')
@@ -425,9 +477,9 @@ router.post('/:id/exercises/:exerciseId/sets', requireClient, async (req, res) =
   }
 });
 
-router.patch('/:id/sets/:setId/archive', requireClient, async (req, res) => {
+router.patch('/:id/sets/:setId/archive', async (req, res) => {
   try {
-    const log = await requireOwnedActiveLog(req, res);
+    const log = await requireWritableActiveLog(req, res);
     if (!log) return undefined;
     const set = log.exercises.flatMap((exercise) => exercise.sets).find((row) => row.id === req.params.setId);
     if (!set || set.set_origin !== 'extra') return res.status(404).json({ error: 'Extra set not found' });
@@ -442,9 +494,9 @@ router.patch('/:id/sets/:setId/archive', requireClient, async (req, res) => {
   }
 });
 
-router.patch('/:id/exercises/:exerciseId/notes', requireClient, async (req, res) => {
+router.patch('/:id/exercises/:exerciseId/notes', async (req, res) => {
   try {
-    const log = await requireOwnedActiveLog(req, res);
+    const log = await requireWritableActiveLog(req, res);
     if (!log) return undefined;
     const exercise = log.exercises.find((row) => row.id === req.params.exerciseId);
     if (!exercise) return res.status(404).json({ error: 'Workout exercise not found' });
@@ -460,12 +512,16 @@ router.patch('/:id/exercises/:exerciseId/notes', requireClient, async (req, res)
   }
 });
 
-router.post('/:id/complete-all', requireClient, async (req, res) => {
+router.post('/:id/complete-all', async (req, res) => {
   try {
-    const log = await requireOwnedActiveLog(req, res);
+    const log = await requireWritableActiveLog(req, res);
     if (!log) return undefined;
-    const { error } = await supabaseAdmin.rpc('complete_all_workout_sets', {
-      p_workout_log_id: log.id, p_client_id: req.user.client.id,
+    const stamp = actorStamp(req.user);
+    const { error } = await supabaseAdmin.rpc('complete_all_workout_sets_v2', {
+      p_workout_log_id: log.id,
+      p_client_id: log.client_id,
+      p_entered_by: stamp.entered_by,
+      p_entered_by_coach_id: stamp.entered_by_coach_id,
     });
     if (error) throw error;
     return res.json(await workoutLogWithDetails(log.id));
@@ -475,9 +531,9 @@ router.post('/:id/complete-all', requireClient, async (req, res) => {
   }
 });
 
-router.post('/:id/abandon', requireClient, async (req, res) => {
+router.post('/:id/abandon', async (req, res) => {
   try {
-    const log = await requireOwnedActiveLog(req, res);
+    const log = await requireWritableActiveLog(req, res);
     if (!log) return undefined;
     const { data, error } = await supabaseAdmin.from('workout_logs')
       .update({ status: 'abandoned', updated_at: new Date().toISOString() })
@@ -490,13 +546,13 @@ router.post('/:id/abandon', requireClient, async (req, res) => {
   }
 });
 
-router.post('/:id/complete', requireClient, async (req, res) => {
+router.post('/:id/complete', async (req, res) => {
   try {
     const log = await workoutLogWithDetails(req.params.id);
-    if (!log || log.client_id !== req.user.client.id) return res.status(404).json({ error: 'Workout log not found' });
+    if (!canWriteLog(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
     const { error } = await supabaseAdmin.rpc('complete_workout_log', {
       p_workout_log_id: log.id,
-      p_client_id: req.user.client.id,
+      p_client_id: log.client_id,
       p_notes: String(req.body?.notes || '').slice(0, 4000),
       p_feedback: String(req.body?.feedback || '').slice(0, 4000),
     });
@@ -515,6 +571,8 @@ router.post('/:id/complete', requireClient, async (req, res) => {
 module.exports = router;
 module.exports.workoutLogWithDetails = workoutLogWithDetails;
 module.exports.canReadLog = canReadLog;
+module.exports.canWriteLog = canWriteLog;
+module.exports.actorStamp = actorStamp;
 module.exports.workoutRpcStatus = workoutRpcStatus;
 module.exports.canAuthorCoachResponse = canAuthorCoachResponse;
 module.exports.newestCoachResponseFirst = newestCoachResponseFirst;

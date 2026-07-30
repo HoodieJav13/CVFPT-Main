@@ -61,7 +61,12 @@ test('snapshot load precedence and completion remain server-owned', () => {
 });
 
 test('HTTP surfaces require role checks and mask inaccessible workout data', () => {
-  assert.match(workoutRoutes, /router\.post\('\/start', requireClient/);
+  // /start is actor-aware since PR-B: clients start for themselves, coaches
+  // name a client they own (canAccessClient) and call the v2 RPC.
+  assert.match(workoutRoutes, /router\.post\('\/start', async/);
+  assert.match(workoutRoutes, /clientId = req\.user\.client\.id/);
+  assert.match(workoutRoutes, /if \(!clientRow \|\| !canAccessClient\(req\.user, clientRow\)\)/);
+  assert.match(workoutRoutes, /rpc\('start_workout_log_v2'/);
   assert.match(workoutRoutes, /router\.get\('\/client\/:clientId', requireCoach/);
   assert.match(workoutRoutes, /return res\.status\(404\)\.json\(\{ error: 'Workout log not found' \}\)/);
   assert.match(workoutRoutes, /if \(\/not found\|Assigned workout\/i\.test\(message\)\) return 404/);
