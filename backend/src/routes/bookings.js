@@ -100,6 +100,16 @@ router.patch('/:id/approve', requireCoach, async (req, res) => {
     const { data, error } = await supabaseAdmin.rpc('approve_booking', { p_booking_id: booking.id });
     if (error) throw error;
     if (!data) return res.status(400).json({ error: 'This request was already handled' });
+    if (data.outcome === 'coach_conflict' || data.outcome === 'client_conflict') {
+      const conflict = data.conflict_session || {};
+      const when = conflict.scheduled_at ? new Date(conflict.scheduled_at).toLocaleString('en-US', { timeZone: 'America/Denver' }) : 'another time';
+      return res.status(409).json({
+        error: data.outcome === 'client_conflict'
+          ? `Cannot approve: this client already has a session at ${when}. The request stays pending.`
+          : `Cannot approve: you already have a session at ${when}. The request stays pending.`,
+        conflict: { scope: data.outcome === 'client_conflict' ? 'client' : 'coach', session: conflict },
+      });
+    }
     return res.json(data);
   } catch (e) {
     logError('approve booking error', e);
