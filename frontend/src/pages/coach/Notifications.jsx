@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Bell, CheckCheck, ChevronRight, MessageSquare } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { useNotifications } from '@/context/NotificationsContext';
