@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingScreen, LoadErrorState, StatusBadge, MetricChart, EmptyState, SectionLabel, CheckInStats, IconButton } from '@/components/common';

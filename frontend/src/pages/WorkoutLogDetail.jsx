@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { m, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, Check, CircleSlash2, Clock3, MessageSquare } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
