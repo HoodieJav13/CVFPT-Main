@@ -75,6 +75,7 @@ export default function App() {
             <Route path="messages/:clientId" element={<CoachConversation />} />
             <Route path="notifications" element={<CoachNotifications />} />
             <Route path="workouts/:id" element={<WorkoutLogDetail />} />
+            <Route path="workouts/:id/track" element={<WorkoutTracker />} />
           </Route>
 
           <Route

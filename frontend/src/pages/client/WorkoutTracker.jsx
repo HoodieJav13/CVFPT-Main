@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Plus, Save, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { LoadingScreen, LoadErrorState, PageHeader } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -271,6 +272,9 @@ function ExerciseHistory({ logId, exercise }) {
 export default function WorkoutTracker() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isCoach = user.role === 'coach' || user.role === 'admin';
+  const basePath = isCoach ? '/coach' : '/client';
   const [log, setLog] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [finishOpen, setFinishOpen] = useState(false);
@@ -287,7 +291,7 @@ export default function WorkoutTracker() {
     try {
       const { data } = await api.get(`/workout-logs/${id}`);
       if (data.status !== 'active') {
-        navigate(`/client/workouts/${id}`, { replace: true });
+        navigate(`${basePath}/workouts/${id}`, { replace: true });
         return;
       }
       setLog(hydratePending(data));
@@ -295,7 +299,7 @@ export default function WorkoutTracker() {
     } catch (error) {
       setLoadError(errMsg(error, 'Failed to load workout'));
     }
-  }, [hydratePending, id, navigate]);
+  }, [basePath, hydratePending, id, navigate]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -405,8 +409,8 @@ export default function WorkoutTracker() {
         toast.error('Reconnect and wait for your workout to save before finishing.');
         return;
       }
-      await api.post(`/workout-logs/${id}/complete`, { notes: workoutNotes, feedback });
-      navigate(`/client/workouts/${id}`, {
+      await api.post(`/workout-logs/${id}/complete`, { notes: workoutNotes, feedback: isCoach ? '' : feedback });
+      navigate(`${basePath}/workouts/${id}`, {
         replace: true,
         state: { completedWorkoutId: id },
       });
@@ -418,11 +422,11 @@ export default function WorkoutTracker() {
   };
 
   const abandon = async () => {
-    if (!window.confirm('Abandon this workout? Saved progress will remain out of your completed history.')) return;
+    if (!window.confirm('Abandon this workout? Saved progress will remain out of the completed history.')) return;
     try {
       await api.post(`/workout-logs/${id}/abandon`);
       localStorage.removeItem(`cvf_workout_outbox_${id}`);
-      navigate('/client/programs', { replace: true });
+      navigate(isCoach ? `/coach/clients/${log.client_id}` : '/client/programs', { replace: true });
     } catch (error) {
       toast.error(errMsg(error));
     }
@@ -432,7 +436,7 @@ export default function WorkoutTracker() {
     <div data-testid="workout-tracker">
       <PageHeader
         title={log.workout_name}
-        subtitle={`${completedCount} of ${allSets.length} sets complete`}
+        subtitle={`${completedCount} of ${allSets.length} sets complete${isCoach && log.client?.name ? ` — logging for ${log.client.name}` : ''}`}
         action={<Button variant="ghost" size="sm" onClick={abandon}>Abandon</Button>}
       />
       <div className="mb-4 flex items-center gap-2 text-xs" aria-live="polite" data-testid="workout-save-state">
@@ -516,7 +520,8 @@ export default function WorkoutTracker() {
               <Button type="button" variant="outline" size="sm" onClick={() => addSet(exercise)}>
                 <Plus className="mr-1.5 h-4 w-4" /> Add set
               </Button>
-              <ExerciseHistory logId={id} exercise={exercise} />
+              {/* Exercise history endpoint is client-only; hidden for coach-driven logging. */}
+              {!isCoach && <ExerciseHistory logId={id} exercise={exercise} />}
               <div className="space-y-1.5">
                 <Label htmlFor={`notes-${exercise.id}`}>Exercise notes</Label>
                 <Textarea
@@ -571,7 +576,7 @@ export default function WorkoutTracker() {
             <DialogDescription>{completedCount} completed and {remainingCount} remaining sets. Remaining sets will be recorded as skipped.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-1.5"><Label htmlFor="workout-feedback">Feedback for your coach</Label><Textarea id="workout-feedback" rows={4} value={feedback} onChange={(event) => setFeedback(event.target.value)} /></div>
+            {!isCoach && <div className="space-y-1.5"><Label htmlFor="workout-feedback">Feedback for your coach</Label><Textarea id="workout-feedback" rows={4} value={feedback} onChange={(event) => setFeedback(event.target.value)} /></div>}
             <div className="space-y-1.5"><Label htmlFor="workout-notes">Workout notes</Label><Textarea id="workout-notes" rows={3} value={workoutNotes} onChange={(event) => setWorkoutNotes(event.target.value)} /></div>
           </div>
           <DialogFooter>
