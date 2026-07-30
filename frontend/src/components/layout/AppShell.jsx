@@ -3,7 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate, Link } from 'react-router';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
-  TrendingUp, FileSignature, ShieldCheck, LogOut, Plus, Home, Library, Bell,
+  TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell,
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
 import { Button } from '@/components/ui/button';
@@ -214,18 +214,6 @@ export default function AppShell() {
           </main>
         </div>
       </div>
-
-      {/* Coach quick-add FAB (mobile) */}
-      {isCoach && (
-        <Button
-          size="icon"
-          onClick={() => navigate('/coach/sessions?new=1')}
-          data-testid="coach-quick-add-button"
-          className="lg:hidden fixed bottom-20 right-4 z-50 h-[52px] w-[52px] rounded-full shadow-lg shadow-primary/30"
-        >
-          <Plus className="h-6 w-6" />
-        </Button>
-      )}
 
       {/* Mobile bottom tabs */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70" data-testid="mobile-bottom-navigation">

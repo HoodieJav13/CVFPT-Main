@@ -519,17 +519,13 @@ test('client workout completion creates a coach notification with immutable resu
   await expect(ownResponse).toContainText('Strong work. Add one controlled rep next time.');
   await expect(ownResponse.getByTestId('coach-response-edited')).toHaveText('Edited');
   const messageClient = page.getByRole('link', { name: 'Message client' });
-  const quickAdd = page.getByTestId('coach-quick-add-button');
   await expect(messageClient).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-  const [messageRect, quickAddRect] = await Promise.all([messageClient.boundingBox(), quickAdd.boundingBox()]);
+  // The global FAB was removed (UI-4): nothing floats over interactive
+  // elements anymore, so only the tap-target size remains to verify.
+  await expect(page.getByTestId('coach-quick-add-button')).toHaveCount(0);
+  const messageRect = await messageClient.boundingBox();
   expect(messageRect.height).toBeGreaterThanOrEqual(44);
-  expect(
-    messageRect.right <= quickAddRect.x
-      || quickAddRect.x + quickAddRect.width <= messageRect.x
-      || messageRect.y + messageRect.height <= quickAddRect.y
-      || quickAddRect.y + quickAddRect.height <= messageRect.y,
-  ).toBeTruthy();
   await messageClient.click();
   await expect(page).toHaveURL(/\/coach\/messages\/client_sarah$/);
 });

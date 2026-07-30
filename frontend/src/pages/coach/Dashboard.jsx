@@ -57,7 +57,7 @@ export default function CoachDashboard() {
         subtitle={user.role === 'admin' ? 'Admin view - all coaches' : 'Your day at CVF'}
         testId="coach-dashboard-header"
         action={
-          <Button onClick={() => navigate('/coach/sessions?new=1')} className="rounded-xl hidden sm:flex" data-testid="dashboard-new-session-button">
+          <Button onClick={() => navigate('/coach/sessions?new=1')} className="rounded-xl" data-testid="dashboard-new-session-button">
             <Plus className="h-4 w-4 mr-1.5" /> New session
           </Button>
         }
