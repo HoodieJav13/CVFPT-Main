@@ -45,19 +45,31 @@ affected sessions).
 - Decide: should clients see *why* a slot is gone? (Recommended: no — slots
   simply don't appear.)
 
-## A3. Session types — which can clients request?
+## A3. Session types — which can clients request, and how long is an assessment?
 
-Durations are locked (30/45/60/90 + assessment). To decide: **which types are
-client-requestable vs coach-initiated.**
+Durations are locked for the timed types (30/45/60/90). Two things to decide:
+**which types are client-requestable vs coach-initiated**, and **the
+assessment's duration** — the ballot named the type but never set its length,
+and `session_types.duration_minutes` needs a number to derive slots.
 
-**Recommended:** clients may request 30/45/60; the 90-minute and assessment
-types are coach-initiated only (assessments are how you onboard someone — the
-coach schedules them deliberately). Every type stays available to coaches in
-the session editor.
+**Recommended (requestability):** clients may request 30/45/60; the 90-minute
+and assessment types are coach-initiated only (assessments are how you onboard
+someone — the coach schedules them deliberately). Every type stays available
+to coaches in the session editor.
 
 - Alternative: everything requestable — simplest, but a new client
   self-booking a 90 into a tight day is exactly the calendar noise the
   approve step exists to catch.
+
+**Recommended (assessment duration): 90 minutes.** An onboarding assessment is
+movement screen + goals conversation + usually a first mini-workout; a 60 that
+runs long collides with the next booked slot, and since assessments are
+coach-initiated (above), the longer block costs no client-facing flexibility.
+
+- Alternative — 60 minutes: fits more assessments into a day; right answer if
+  your intake is talk-first and the first real session is booked separately.
+- This is per-type, not per-booking: whatever number lands here seeds
+  `session_types` and every assessment occupies exactly that long a slot.
 
 ## A4. Client slot-picking — what does the client see and do?
 
@@ -83,13 +95,20 @@ offered as slots.
 
 ## A6. Cancellation policy
 
-**Recommended: advisory only.** Show the policy text in the client booking
-flow ("please cancel at least X hours ahead"); no enforcement, no penalties —
-payments and accountability live outside the app (locked decision). Client
-cancellation requests notify the coach; the coach cancels the session.
+**Recommended: advisory only, with a 24-hour notice window.** Show the policy
+text in the client booking flow ("please cancel at least 24 hours ahead");
+no enforcement, no penalties — payments and accountability live outside the
+app (locked decision). Client cancellation requests notify the coach; the
+coach cancels the session. 24 hours is the personal-training norm and matches
+a coach's realistic chance of refilling the slot from the request queue.
 
-- Alternative — enforced cutoffs (client cannot cancel within X hours in the
-  app): decide only if late cancellations actually become a problem.
+- Alternative — 12 hours: matches the A5 booking lead time, so the two
+  windows read as one rule; kinder to clients, but a morning slot cancelled
+  the evening before rarely refills.
+- Alternative — enforced cutoffs (client cannot cancel within the window in
+  the app): decide only if late cancellations actually become a problem.
+- The number is stored as policy text only (no schema impact), so changing
+  it later is a copy edit, not a migration.
 
 ## A7. Whose hours — per coach or per studio?
 
@@ -125,10 +144,10 @@ decide now if a partner wants group sessions at launch.
 |----------|-------|-----------|-----------|
 | A1 granularity | | | |
 | A2 time off | | | |
-| A3 requestable types | | | |
+| A3 requestable types + assessment duration | | | |
 | A4 slot-picking + approve | | | |
 | A5 lead time / horizon | | | |
-| A6 cancellation policy | | | |
+| A6 cancellation policy + notice window | | | |
 | A7 per-coach hours | | | |
 | A8 group slots | | | |
 
