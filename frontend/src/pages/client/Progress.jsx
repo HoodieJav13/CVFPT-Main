@@ -121,8 +121,8 @@ export default function ClientProgress() {
     markersFetched.current = true;
     (async () => {
       try {
-        const { data } = await api.get('/workout-logs/mine');
-        setWorkoutMarkers((data || []).map((log) => log.completed_at).filter(Boolean));
+        const { data } = await api.get('/workout-logs/mine/completed-dates');
+        setWorkoutMarkers(data?.dates || []);
       } catch { /* silent: markers only */ }
     })();
   }, [metrics]);
@@ -244,7 +244,7 @@ export default function ClientProgress() {
                           <button
                             key={range.key}
                             type="button"
-                            className={`min-h-8 rounded-md px-2.5 text-xs font-medium transition-colors motion-reduce:transition-none ${(ranges[m.id] || 'all') === range.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                            className={`min-h-11 rounded-md px-3 text-xs font-medium transition-colors motion-reduce:transition-none ${(ranges[m.id] || 'all') === range.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
                             aria-pressed={(ranges[m.id] || 'all') === range.key}
                             onClick={() => setRanges((current) => ({ ...current, [m.id]: range.key }))}
                             data-testid={`metric-range-${range.key}`}

@@ -355,6 +355,23 @@ router.get('/mine', requireClient, async (req, res) => {
   }
 });
 
+// Lightweight companion to /mine for the progress-chart markers: one query,
+// dates only — never the full 50-log detail expansion.
+router.get('/mine/completed-dates', requireClient, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('workout_logs')
+      .select('completed_at').eq('client_id', req.user.client.id)
+      .eq('status', 'completed').eq('archived', false)
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false }).limit(500);
+    if (error) throw error;
+    return res.json({ dates: (data || []).map((row) => row.completed_at) });
+  } catch (error) {
+    logError('client workout completed-dates error', error);
+    return res.status(500).json({ error: 'Failed to load workout dates' });
+  }
+});
+
 router.get('/coach-feedback/unread-count', requireClient, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin.from('workout_coach_responses')

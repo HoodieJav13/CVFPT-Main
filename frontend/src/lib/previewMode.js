@@ -800,6 +800,14 @@ export function installPreviewApi(api) {
       return ok(state.workoutLogs.filter((row) => row.client_id === client.id && row.status === 'completed' && !row.archived)
         .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map((row) => workoutLogDetails(row.id)), config);
     }
+    if (path === '/workout-logs/mine/completed-dates' && method === 'get') {
+      return ok({
+        dates: state.workoutLogs
+          .filter((row) => row.client_id === client.id && row.status === 'completed' && !row.archived && row.completed_at)
+          .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))
+          .map((row) => row.completed_at),
+      }, config);
+    }
     if (path === '/workout-logs/coach-feedback/unread-count' && method === 'get') {
       if (role !== 'client') return fail(config, 403, 'Client access required');
       return ok({ unread: state.coachResponses.filter((row) => row.client_id === client.id && !row.archived && !row.read_at).length }, config);
