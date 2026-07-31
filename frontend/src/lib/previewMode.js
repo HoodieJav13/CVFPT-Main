@@ -1,4 +1,5 @@
 import draftTools from '@/lib/programDraft.js';
+import { parseRestSeconds } from '@/lib/rest';
 
 const {
   csvTemplate,
@@ -91,13 +92,13 @@ const state = {
     { id: 'workout_mobility_run', coach_id: 'coach_marcus', name: 'Run Prep Mobility', description: 'Hips, ankles, and trunk prep for running days.', goal: 'Mobility', archived: false, created_at: iso(-40), updated_at: iso(-40) },
   ],
   workoutExercises: [
-    { id: 'wex_1', workout_id: 'workout_lower_a', exercise_library_id: 'lib_goblet_squat', custom_name: null, sets: '3', reps: '8-10', target_rpe: '7', rest: '90s', tempo: '3-1-1', default_load_value: 30, default_load_unit: 'lb', notes: 'Slow lower, tall chest.', video_url: null, position: 0, archived: false, created_at: iso(-45) },
-    { id: 'wex_2', workout_id: 'workout_lower_a', exercise_library_id: 'lib_rdl', custom_name: null, sets: '3', reps: '8', target_rpe: '7-8', rest: '90s', tempo: '3-0-1', default_load_value: 40, default_load_unit: 'lb', notes: 'Stop when hamstrings limit range.', video_url: null, position: 1, archived: false, created_at: iso(-45) },
-    { id: 'wex_3', workout_id: 'workout_lower_a', exercise_library_id: null, custom_name: 'Half-kneeling Pallof Press', sets: '3', reps: '10/side', target_rpe: '7', rest: '45s', tempo: '', default_load_value: 15, default_load_unit: 'lb', notes: 'No torso rotation.', video_url: 'https://www.youtube.com/watch?v=ma2OjgP5XDc', position: 2, archived: false, created_at: iso(-45) },
-    { id: 'wex_4', workout_id: 'workout_upper_a', exercise_library_id: 'lib_db_bench', custom_name: null, sets: '3', reps: '8', target_rpe: '8', rest: '90s', tempo: '2-1-1', default_load_value: 20, default_load_unit: 'lb', notes: 'Pause at bottom.', video_url: null, position: 0, archived: false, created_at: iso(-44) },
-    { id: 'wex_5', workout_id: 'workout_upper_a', exercise_library_id: 'lib_cable_row', custom_name: null, sets: '3', reps: '10-12', target_rpe: '8', rest: '75s', tempo: '', default_load_value: 35, default_load_unit: 'lb', notes: 'Squeeze shoulder blades.', video_url: null, position: 1, archived: false, created_at: iso(-44) },
-    { id: 'wex_6', workout_id: 'workout_mobility_run', exercise_library_id: 'lib_world_stretch', custom_name: null, sets: '2', reps: '5/side', target_rpe: null, rest: '', tempo: '', default_load_value: null, default_load_unit: null, notes: 'Move slowly.', video_url: null, position: 0, archived: false, created_at: iso(-40) },
-    { id: 'wex_7', workout_id: 'workout_mobility_run', exercise_library_id: null, custom_name: 'Ankle Rocker', sets: '2', reps: '8/side', target_rpe: null, rest: '', tempo: '', default_load_value: null, default_load_unit: null, notes: 'Keep heel heavy.', video_url: '', position: 1, archived: false, created_at: iso(-40) },
+    { id: 'wex_1', workout_id: 'workout_lower_a', exercise_library_id: 'lib_goblet_squat', custom_name: null, sets: '3', reps: '8-10', target_rpe: '7', rest: '90s', rest_seconds: 90, tempo: '3-1-1', default_load_value: 30, default_load_unit: 'lb', notes: 'Slow lower, tall chest.', video_url: null, position: 0, archived: false, created_at: iso(-45) },
+    { id: 'wex_2', workout_id: 'workout_lower_a', exercise_library_id: 'lib_rdl', custom_name: null, sets: '3', reps: '8', target_rpe: '7-8', rest: '90s', rest_seconds: 90, tempo: '3-0-1', default_load_value: 40, default_load_unit: 'lb', notes: 'Stop when hamstrings limit range.', video_url: null, position: 1, archived: false, created_at: iso(-45) },
+    { id: 'wex_3', workout_id: 'workout_lower_a', exercise_library_id: null, custom_name: 'Half-kneeling Pallof Press', sets: '3', reps: '10/side', target_rpe: '7', rest: '45s', rest_seconds: 45, tempo: '', default_load_value: 15, default_load_unit: 'lb', notes: 'No torso rotation.', video_url: 'https://www.youtube.com/watch?v=ma2OjgP5XDc', position: 2, archived: false, created_at: iso(-45) },
+    { id: 'wex_4', workout_id: 'workout_upper_a', exercise_library_id: 'lib_db_bench', custom_name: null, sets: '3', reps: '8', target_rpe: '8', rest: '90s', rest_seconds: 90, tempo: '2-1-1', default_load_value: 20, default_load_unit: 'lb', notes: 'Pause at bottom.', video_url: null, position: 0, archived: false, created_at: iso(-44) },
+    { id: 'wex_5', workout_id: 'workout_upper_a', exercise_library_id: 'lib_cable_row', custom_name: null, sets: '3', reps: '10-12', target_rpe: '8', rest: '75s', rest_seconds: 75, tempo: '', default_load_value: 35, default_load_unit: 'lb', notes: 'Squeeze shoulder blades.', video_url: null, position: 1, archived: false, created_at: iso(-44) },
+    { id: 'wex_6', workout_id: 'workout_mobility_run', exercise_library_id: 'lib_world_stretch', custom_name: null, sets: '2', reps: '5/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Move slowly.', video_url: null, position: 0, archived: false, created_at: iso(-40) },
+    { id: 'wex_7', workout_id: 'workout_mobility_run', exercise_library_id: null, custom_name: 'Ankle Rocker', sets: '2', reps: '8/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Keep heel heavy.', video_url: '', position: 1, archived: false, created_at: iso(-40) },
   ],
   programs: [
     { id: 'program_foundation', coach_id: 'coach_marcus', name: 'Foundation Strength - Phase 1', description: 'Three days per week focused on clean mechanics and steady volume.', frequency_days: 3, archived: false, created_at: iso(-35), updated_at: iso(-35) },
@@ -357,6 +358,7 @@ function replaceWorkoutExercises(workoutId, exercises = []) {
         reps: exercise.reps || null,
         target_rpe: exercise.target_rpe || null,
         rest: exercise.rest || null,
+        rest_seconds: parseRestSeconds(exercise.rest || ''),
         tempo: exercise.tempo || null,
         default_load_value: exercise.default_load_value === '' || exercise.default_load_value == null ? null : Number(exercise.default_load_value),
         default_load_unit: exercise.default_load_value === '' || exercise.default_load_value == null ? null : (exercise.default_load_unit || 'lb'),
@@ -677,6 +679,7 @@ function startPreviewWorkout(clientId, payload) {
       exercise_library_id: exercise.exercise_library_id,
       exercise_name: exerciseName(exercise), prescribed_sets: exercise.sets, prescribed_reps: exercise.reps,
       prescribed_rpe: exercise.target_rpe, prescribed_rest: exercise.rest, prescribed_tempo: exercise.tempo,
+      prescribed_rest_seconds: exercise.rest_seconds ?? parseRestSeconds(exercise.rest || ''),
       prescribed_notes: exercise.notes, client_notes: null,
       prescribed_load_value: resolved?.load_value ?? null,
       prescribed_load_unit: resolved?.load_value == null ? null : (resolved.load_unit || 'lb'),

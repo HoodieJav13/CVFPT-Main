@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import draftTools from '@/lib/programDraft.js';
+import { parseRestSeconds } from '@/lib/rest';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const {
@@ -1060,7 +1061,23 @@ function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onS
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />
                     <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />
-                    <Input value={exercise.rest} onChange={(e) => setExercise(index, { rest: e.target.value })} placeholder="Rest" data-testid="workout-exercise-rest-input" />
+                    <div className="min-w-0">
+                      {/* Numeric authoring, serialized as canonical "Ns" text; the
+                          DB fill trigger derives rest_seconds from it. */}
+                      <Input
+                        type="number" min="0" step="5" inputMode="numeric"
+                        value={parseRestSeconds(exercise.rest) ?? ''}
+                        onChange={(e) => setExercise(index, { rest: e.target.value === '' ? '' : `${Math.max(0, Number(e.target.value))}s` })}
+                        placeholder="Rest (sec)"
+                        aria-label="Rest in seconds"
+                        data-testid="workout-exercise-rest-input"
+                      />
+                      {exercise.rest && parseRestSeconds(exercise.rest) === null && (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid="workout-exercise-rest-legacy">
+                          Unrecognized: “{exercise.rest}”
+                        </p>
+                      )}
+                    </div>
                     <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" />
                   </div>
                   <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] gap-2">
