@@ -136,10 +136,7 @@ The real-auth E2E rerun is **waived** — `CVF_E2E_*` credentials remain
 unprovisioned. Do not describe historical real-auth results as covering
 Track 1 changes.
 
-## Status ledger (2026-07-31, after owner review round)
-
-This ledger is refreshed as PRs land; this doc PR merges **last** so the
-ledger reaches `main` accurate.
+## Status ledger (2026-07-31, review round closed)
 
 Merged and, where ⚠, applied to hosted:
 
@@ -159,22 +156,17 @@ Merged and, where ⚠, applied to hosted:
 | btree_gist → extensions schema ⚠ | #19 | merged, applied |
 | Offline-flow e2e port | #21 | merged (owner approved) |
 | UI-1 tracker ergonomics + spin-button unclip | #22 | merged (owner approved) |
+| UI-2 review surface + bulk history expansion (O(1): five queries incl. the id lookup, was ~201) | #23 | merged after review-hold fix |
+| UI-3 date/time picker (held date survives reopen; 44px targets) | #24 | merged after review-hold fix |
+| UI-7 progress charts (dates-only marker endpoint; 44px range buttons) | #25 | merged after review-hold fix |
+| Calendar week grid (DST-safe day arithmetic) | #26 | merged after review-hold fix |
 | Coach-readable exercise history (backend) | #28 | merged (owner approved) |
+| Coach history/last-time unhide in tracker | #29 | merged (owner approved) |
+| Roadmap doc (this file) | #27 | merged last, ledger final for this round |
 
-Open, review-hold fixes pushed per owner findings (2026-07-31):
-
-| Item | PR | Fix pushed |
-|------|----|-----------|
-| UI-2 review surface | #23 | history lists expand in bulk (constant 4 queries, was ~201) |
-| UI-3 date/time picker | #24 | held date survives reopen; 44px calendar/nav/slot targets |
-| UI-7 progress charts | #25 | dates-only marker endpoint (1 query); 44px range buttons |
-| Calendar week grid | #26 | DST-safe calendar-day arithmetic (no fixed 24h ms) |
-| Roadmap doc (this file) | #27 | access wording corrected; ledger refreshed; merges last |
-
-Sequenced next: PR-F conflict surfacing (after #24 merges — no stacking on
-unmerged branches); structured rest ⚠ (unblocked by #22's merge); the
-two-line coach history/last-time unhide in the tracker (pairs with #28);
-UI-6 desktop pass (owner design gate); Goals ⚠ and Availability ⚠
+Sequenced next: PR-F conflict surfacing in the merged picker + booking
+approve (roadmap Track 3 item 9); structured rest ⚠ (unblocked by #22's
+merge); UI-6 desktop pass (owner design gate); Goals ⚠ and Availability ⚠
 (owner decisions).
 
 Old PR #7 is superseded by #9 and can be closed. PR #3 (Stripe) stays
