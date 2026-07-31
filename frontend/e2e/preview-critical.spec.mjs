@@ -444,7 +444,8 @@ test('client workout completion creates a coach notification with immutable resu
   await expect(squat.getByRole('combobox', { name: 'Goblet Squat set 1 weight unit', exact: true })).toBeVisible();
   await expect(squat.getByRole('combobox', { name: 'Goblet Squat set 2 weight unit', exact: true })).toBeVisible();
   await expect(squat.getByText('RPE 7')).toBeVisible();
-  await expect(squat.getByText('Rest 90s')).toBeVisible();
+  // Structured rest formats the column clock-style (90 -> 1:30).
+  await expect(squat.getByText('Rest 1:30')).toBeVisible();
 
   await context.setOffline(true);
   await weight.fill('37.5');
