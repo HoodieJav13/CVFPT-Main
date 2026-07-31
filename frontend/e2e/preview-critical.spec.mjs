@@ -465,7 +465,9 @@ test('client workout completion creates a coach notification with immutable resu
   await expect(squat.getByRole('button', { name: 'Remove extra set' })).toHaveCount(0);
   await expect(page.getByTestId('workout-save-state')).toContainText('Not saved yet');
   await expect(page.getByRole('button', { name: 'Complete all remaining' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Finish workout' })).toBeDisabled();
+  // Offline completion (docs/offline-workout-completion.md, PR #16): finishing
+  // is now allowed offline — the completion queues behind pending writes.
+  await expect(page.getByRole('button', { name: 'Finish workout' })).toBeEnabled();
 
   await context.setOffline(false);
   await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
