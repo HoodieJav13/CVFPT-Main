@@ -7,14 +7,19 @@ import { Button } from '@/components/ui/button';
 import { fmtTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 // Training weeks run Monday–Sunday.
 function startOfWeek(date) {
   const day = new Date(date);
   day.setHours(0, 0, 0, 0);
   day.setDate(day.getDate() - ((day.getDay() + 6) % 7));
   return day;
+}
+
+// Calendar-day arithmetic, never fixed 24h milliseconds: with DST a local
+// "day" can be 23 or 25 hours, so millisecond math lands a week jump on
+// Sunday 11 PM across the fall transition.
+function addDays(date, count) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + count);
 }
 
 const STATUS_STYLES = {
@@ -42,7 +47,7 @@ export default function CoachCalendar() {
   useEffect(() => { load(); }, [load]);
 
   const days = useMemo(
-    () => Array.from({ length: 7 }, (_, index) => new Date(weekStart.getTime() + (index * DAY_MS))),
+    () => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)),
     [weekStart],
   );
   const byDay = useMemo(() => {
@@ -63,10 +68,10 @@ export default function CoachCalendar() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const fmtShort = (day) => day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  const weekCount = (sessions || []).filter((session) => {
-    const time = new Date(session.scheduled_at).getTime();
-    return time >= weekStart.getTime() && time < weekStart.getTime() + (7 * DAY_MS) && session.status !== 'cancelled';
-  }).length;
+  const dayKeys = new Set(days.map((day) => day.toDateString()));
+  const weekCount = (sessions || []).filter((session) => (
+    dayKeys.has(new Date(session.scheduled_at).toDateString()) && session.status !== 'cancelled'
+  )).length;
 
   return (
     <div data-testid="coach-calendar">
@@ -77,7 +82,7 @@ export default function CoachCalendar() {
           <div className="flex items-center gap-1.5">
             <IconButton
               label="Previous week" variant="outline" size="touchIcon" className="rounded-xl"
-              onClick={() => setWeekStart((current) => new Date(current.getTime() - (7 * DAY_MS)))}
+              onClick={() => setWeekStart((current) => addDays(current, -7))}
               data-testid="calendar-prev-week"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -91,7 +96,7 @@ export default function CoachCalendar() {
             </Button>
             <IconButton
               label="Next week" variant="outline" size="touchIcon" className="rounded-xl"
-              onClick={() => setWeekStart((current) => new Date(current.getTime() + (7 * DAY_MS)))}
+              onClick={() => setWeekStart((current) => addDays(current, 7))}
               data-testid="calendar-next-week"
             >
               <ChevronRight className="h-4 w-4" />
