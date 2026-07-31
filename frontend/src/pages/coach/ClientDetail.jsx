@@ -23,7 +23,7 @@ import {
   ArrowLeft, Pencil, Archive, ArchiveRestore, Loader2, Plus, FileSignature,
   TrendingUp, Dumbbell, CalendarDays, MessageSquare, Trash2,
   ClipboardCheck, Play, StickyNote,
-  SlidersHorizontal, ChevronRight,
+  SlidersHorizontal, ChevronRight, Mail, Phone,
 } from 'lucide-react';
 import { initials, fmtDate, fmtDateTime, fmtTime, fmtDay } from '@/lib/format';
 import { toast } from 'sonner';
@@ -82,21 +82,15 @@ export default function ClientDetail() {
         <ArrowLeft className="h-4 w-4" /> Clients
       </button>
 
-      <div className="flex items-center gap-4 mb-5">
+      {/* Mobile identity header; at lg the identity rail replaces it. */}
+      <div className="flex items-center gap-4 mb-5 lg:hidden">
         <Avatar className="h-14 w-14">
           <AvatarFallback className="bg-primary/15 text-primary font-display font-semibold text-lg">{initials(client.name)}</AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight break-words" data-testid="client-detail-name">{client.name}</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight break-words" data-testid="client-detail-name">{client.name}</h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            {client.archived && <Badge variant="outline" className="text-muted-foreground">Archived</Badge>}
-            {client.auth_user_id ? (
-              <Badge variant="outline" className="bg-success/15 text-success-foreground border-success/25">Account active</Badge>
-            ) : client.invited ? (
-              <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Invited - awaiting signup</Badge>
-            ) : (
-              <Badge variant="outline" className="text-muted-foreground">Not invited</Badge>
-            )}
+            <ClientStatusBadges client={client} />
           </div>
         </div>
         <IconButton label={`Message ${client.name}`} variant="secondary" size="touchIcon" className="rounded-xl shrink-0" onClick={() => navigate(`/coach/messages/${client.id}`)} data-testid="client-message-button">
@@ -104,6 +98,60 @@ export default function ClientDetail() {
         </IconButton>
       </div>
 
+      <div className="lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start lg:gap-6">
+        {/* Desktop identity rail (UI-6 mixed direction: identity band on
+            top of a matte card; content below stays baseline). */}
+        <aside className="hidden lg:sticky lg:top-8 lg:block lg:space-y-4" data-testid="client-identity-rail">
+          <div className="overflow-hidden rounded-2xl border border-border bg-card/40">
+            <div className="flex flex-col items-center gap-3 bg-primary/[0.08] px-5 py-6 text-center">
+              <Avatar className="h-16 w-16">
+                <AvatarFallback className="bg-primary/15 text-primary font-display font-semibold text-xl">{initials(client.name)}</AvatarFallback>
+              </Avatar>
+              <div>
+                <h1 className="font-display text-2xl font-semibold tracking-tight break-words" data-testid="client-detail-name-desktop">{client.name}</h1>
+                <div className="mt-2 flex flex-wrap justify-center gap-2">
+                  <ClientStatusBadges client={client} />
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2.5 px-5 py-4">
+              {client.email && (
+                <p className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 break-words">{client.email}</span>
+                </p>
+              )}
+              {client.phone && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>{client.phone}</span>
+                </p>
+              )}
+              <div className="flex gap-2 pt-1.5">
+                <Button size="sm" className="min-h-11 flex-1 rounded-xl" onClick={() => navigate(`/coach/messages/${client.id}`)} data-testid="client-rail-message-button">
+                  <MessageSquare className="mr-1.5 h-4 w-4" /> Message
+                </Button>
+                <Button size="sm" variant="outline" className="min-h-11 flex-1 rounded-xl" onClick={() => navigate(`/coach/sessions?new=1&client=${client.id}`)} data-testid="client-rail-session-button">
+                  <CalendarDays className="mr-1.5 h-4 w-4" /> Session
+                </Button>
+              </div>
+            </div>
+          </div>
+          {client.goals && (
+            <div className="rounded-2xl border border-border bg-card/40 px-5 py-4" data-testid="client-rail-goals">
+              <SectionLabel className="mb-1.5">Goals</SectionLabel>
+              <p className="whitespace-pre-wrap text-sm text-muted-foreground">{client.goals}</p>
+            </div>
+          )}
+          {client.health_notes && (
+            <div className="rounded-2xl border border-border bg-card/40 px-5 py-4" data-testid="client-rail-health">
+              <SectionLabel className="mb-1.5">Health notes</SectionLabel>
+              <p className="whitespace-pre-wrap text-sm text-muted-foreground">{client.health_notes}</p>
+            </div>
+          )}
+        </aside>
+
+        <div className="min-w-0">
       <Tabs key={client.id} defaultValue={initialTab}>
         <TabsList className="w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade">
           <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
@@ -129,7 +177,24 @@ export default function ClientDetail() {
           <ProgramsTab clientId={client.id} sessionContextId={sessionContextId} />
         </TabsContent>
       </Tabs>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function ClientStatusBadges({ client }) {
+  return (
+    <>
+      {client.archived && <Badge variant="outline" className="text-muted-foreground">Archived</Badge>}
+      {client.auth_user_id ? (
+        <Badge variant="outline" className="bg-success/15 text-success-foreground border-success/25">Account active</Badge>
+      ) : client.invited ? (
+        <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Invited - awaiting signup</Badge>
+      ) : (
+        <Badge variant="outline" className="text-muted-foreground">Not invited</Badge>
+      )}
+    </>
   );
 }
 
