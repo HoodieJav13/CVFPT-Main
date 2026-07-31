@@ -141,9 +141,14 @@ export default function CoachSessions() {
         title="Sessions"
         subtitle="Schedule, complete and manage training sessions"
         action={
-          <Button className="rounded-xl" onClick={() => { setEditing(null); setDrawerOpen(true); }} data-testid="session-create-button">
-            <Plus className="h-4 w-4 mr-1.5" /> New
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button variant="outline" className="rounded-xl" onClick={() => navigate('/coach/calendar')} data-testid="session-week-view-button">
+              <CalendarDays className="h-4 w-4 mr-1.5" /> Week
+            </Button>
+            <Button className="rounded-xl" onClick={() => { setEditing(null); setDrawerOpen(true); }} data-testid="session-create-button">
+              <Plus className="h-4 w-4 mr-1.5" /> New
+            </Button>
+          </div>
         }
       />
 
