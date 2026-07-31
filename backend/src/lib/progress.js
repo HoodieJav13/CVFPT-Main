@@ -1,5 +1,13 @@
 const IMPROVEMENT_DIRECTIONS = new Set(['higher', 'lower', 'neutral']);
 
+// Coach-set goal for a metric (owner decision: coach-set, client-visible).
+// Empty/null clears the goal; anything non-numeric is rejected.
+function normalizeTargetValue(raw) {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  const value = Number(raw);
+  return Number.isFinite(value) ? { ok: true, value } : { ok: false, value: null };
+}
+
 function normalizeImprovementDirection(value) {
   return IMPROVEMENT_DIRECTIONS.has(value) ? value : 'neutral';
 }
@@ -72,6 +80,7 @@ function metricProgressSummary(metric, entries = []) {
 module.exports = {
   IMPROVEMENT_DIRECTIONS,
   normalizeImprovementDirection,
+  normalizeTargetValue,
   bestEntry,
   personalBestResult,
   metricProgressSummary,
