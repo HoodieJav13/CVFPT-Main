@@ -45,6 +45,7 @@ export default function CoachSessions() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [notesFor, setNotesFor] = useState(null);
+  const [bookingConflicts, setBookingConflicts] = useState({});
 
   const load = useCallback(async () => {
     try {
@@ -126,9 +127,24 @@ export default function CoachSessions() {
     try {
       await api.patch(`/bookings/${id}/${action}`);
       toast.success(action === 'approve' ? 'Approved - session created' : 'Request declined');
+      setBookingConflicts((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       load();
     } catch (e) {
-      toast.error(errMsg(e));
+      // A conflicting approval is refused server-side and the request stays
+      // pending — keep the reason visible on the row, not just in a toast.
+      const conflict = e?.response?.status === 409 && e?.response?.data?.conflict;
+      if (action === 'approve' && conflict) {
+        setBookingConflicts((current) => ({
+          ...current,
+          [id]: { scope: e.response.data.conflict.scope, message: e.response.data.error },
+        }));
+      } else {
+        toast.error(errMsg(e));
+      }
     }
   };
 
@@ -159,15 +175,27 @@ export default function CoachSessions() {
           </p>
           <div className="space-y-2">
             {bookings.map((b) => (
-              <div key={b.id} className="flex items-center justify-between gap-2 rounded-xl bg-card/70 border border-border px-3 py-2.5" data-testid="sessions-booking-row">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate" data-testid="booking-client-name">{b.client?.name}</p>
-                  <p className="text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
+              <div key={b.id} className="rounded-xl bg-card/70 border border-border px-3 py-2.5" data-testid="sessions-booking-row">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate" data-testid="booking-client-name">{b.client?.name}</p>
+                    <p className="text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <Button size="sm" className="rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button"><Check className="h-3.5 w-3.5 mr-1" /> Approve</Button>
+                    <Button size="sm" variant="ghost" className="rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
+                  </div>
                 </div>
-                <div className="flex gap-1.5 shrink-0">
-                  <Button size="sm" className="rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button"><Check className="h-3.5 w-3.5 mr-1" /> Approve</Button>
-                  <Button size="sm" variant="ghost" className="rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
-                </div>
+                {bookingConflicts[b.id] && (
+                  <p
+                    className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs"
+                    role="alert"
+                    data-testid="booking-conflict-note"
+                    data-conflict-scope={bookingConflicts[b.id].scope}
+                  >
+                    {bookingConflicts[b.id].message}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -267,9 +295,11 @@ export default function CoachSessions() {
 function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onSaved }) {
   const [form, setForm] = useState({ client_id: '', scheduled_at: '', duration_minutes: '60', location: '' });
   const [saving, setSaving] = useState(false);
+  const [conflict, setConflict] = useState(null);
 
   useEffect(() => {
     if (open) {
+      setConflict(null);
       if (editing) {
         setForm({
           client_id: editing.client_id,
@@ -282,6 +312,13 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
       }
     }
   }, [open, editing, presetClient]);
+
+  // A shown conflict is about a specific client + time + duration; changing
+  // any of those restarts the attempt, so the panel clears.
+  const setField = (patch) => {
+    setForm((current) => ({ ...current, ...patch }));
+    if (Object.keys(patch).some((key) => key !== 'location')) setConflict(null);
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -297,16 +334,23 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
         duration_minutes: Number(form.duration_minutes),
         location: form.location,
       };
-      if (editing) {
-        await api.put(`/sessions/${editing.id}`, payload);
-        toast.success('Session updated');
+      const { data } = editing
+        ? await api.put(`/sessions/${editing.id}`, payload)
+        : await api.post('/sessions', payload);
+      // Location overlap is advisory only (S1): the session is saved either way.
+      if (data?.location_overlaps > 0) {
+        toast.warning(`Scheduled — heads up: ${data.location_overlaps} other session${data.location_overlaps === 1 ? '' : 's'} at ${form.location.trim()} in that window.`);
       } else {
-        await api.post('/sessions', payload);
-        toast.success('Session scheduled');
+        toast.success(editing ? 'Session updated' : 'Session scheduled');
       }
       onSaved();
     } catch (err) {
-      toast.error(errMsg(err));
+      const conflictData = err?.response?.status === 409 && err?.response?.data?.conflict;
+      if (conflictData) {
+        setConflict(err.response.data.conflict);
+      } else {
+        toast.error(errMsg(err));
+      }
     } finally {
       setSaving(false);
     }
@@ -322,7 +366,7 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Client *</Label>
-              <Select value={form.client_id} onValueChange={(v) => setForm({ ...form, client_id: v })} disabled={Boolean(editing)}>
+              <Select value={form.client_id} onValueChange={(v) => setField({ client_id: v })} disabled={Boolean(editing)}>
                 <SelectTrigger className="rounded-xl h-11" data-testid="session-client-select">
                   <SelectValue placeholder="Choose client..." />
                 </SelectTrigger>
@@ -335,14 +379,32 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
               <Label>Date & time *</Label>
               <DateTimePicker
                 value={form.scheduled_at}
-                onChange={(scheduled_at) => setForm({ ...form, scheduled_at })}
+                onChange={(scheduled_at) => setField({ scheduled_at })}
                 data-testid="session-datetime-input"
               />
+              {conflict && (
+                <div
+                  className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm"
+                  role="alert"
+                  data-testid="session-conflict-panel"
+                  data-conflict-scope={conflict.scope}
+                >
+                  <p className="font-medium">
+                    {conflict.scope === 'client' ? 'This client is already booked then' : 'You already have a session then'}
+                  </p>
+                  {conflict.session?.scheduled_at && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {fmtDateTime(conflict.session.scheduled_at)} · {conflict.session.duration_minutes} min{conflict.session.location ? ` · ${conflict.session.location}` : ''}
+                    </p>
+                  )}
+                  <p className="mt-0.5 text-xs text-muted-foreground">Pick a different time or duration.</p>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Duration</Label>
-                <Select value={form.duration_minutes} onValueChange={(v) => setForm({ ...form, duration_minutes: v })}>
+                <Select value={form.duration_minutes} onValueChange={(v) => setField({ duration_minutes: v })}>
                   <SelectTrigger className="rounded-xl h-11" data-testid="session-duration-select">
                     <SelectValue />
                   </SelectTrigger>
@@ -353,7 +415,7 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
               </div>
               <div className="space-y-1.5">
                 <Label>Location</Label>
-                <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="CVF Studio" className="rounded-xl h-11" data-testid="session-location-input" />
+                <Input value={form.location} onChange={(e) => setField({ location: e.target.value })} placeholder="CVF Studio" className="rounded-xl h-11" data-testid="session-location-input" />
               </div>
             </div>
             <DrawerFooter className="px-0">

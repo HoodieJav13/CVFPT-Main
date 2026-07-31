@@ -549,6 +549,45 @@ function workoutLogDetails(logId) {
   return { ...log, client: clientById(log.client_id), coach_responses: coachResponses, exercises, attribution };
 }
 
+// PR-F: mirrors schedule_session's conflict semantics (S1-S4) so conflict
+// surfacing is reviewable in preview — half-open ranges (back-to-back never
+// collides), cancelled/archived excluded, coach checked before client.
+function previewScheduleConflict({ sessionId = null, clientId, coachId, scheduledAt, durationMinutes }) {
+  const start = new Date(scheduledAt).getTime();
+  const end = start + (Number(durationMinutes) * 60000);
+  const overlaps = (row) => {
+    const rowStart = new Date(row.scheduled_at).getTime();
+    return rowStart < end && start < (rowStart + (row.duration_minutes * 60000));
+  };
+  const active = state.sessions.filter((row) => !row.archived && row.status !== 'cancelled' && row.id !== sessionId);
+  const coachHit = active.find((row) => row.coach_id === coachId && overlaps(row));
+  if (coachHit) return { scope: 'coach', session: coachHit };
+  const clientHit = active.find((row) => row.client_id === clientId && overlaps(row));
+  if (clientHit) return { scope: 'client', session: clientHit };
+  return null;
+}
+
+function previewLocationOverlaps(session) {
+  if (!session.location || !String(session.location).trim()) return 0;
+  const start = new Date(session.scheduled_at).getTime();
+  const end = start + (session.duration_minutes * 60000);
+  return state.sessions.filter((row) => row.id !== session.id && !row.archived && row.status !== 'cancelled'
+    && row.location && String(row.location).trim().toLowerCase() === String(session.location).trim().toLowerCase()
+    && new Date(row.scheduled_at).getTime() < end
+    && start < (new Date(row.scheduled_at).getTime() + (row.duration_minutes * 60000))).length;
+}
+
+function scheduleConflictReject(config, conflict, { approving = false } = {}) {
+  const when = new Date(conflict.session.scheduled_at).toLocaleString('en-US', { timeZone: 'America/Denver' });
+  const base = conflict.scope === 'client'
+    ? `this client already has a session at ${when}.`
+    : `you already have a session at ${when}.`;
+  const error = approving
+    ? `Cannot approve: ${base} The request stays pending.`
+    : base.charAt(0).toUpperCase() + base.slice(1);
+  return Promise.reject({ response: { data: { error, conflict }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
+}
+
 function previewLoadForExercise({ exercise, programAssignmentId, programDayId, workoutAssignmentId }) {
   const programLoad = state.programAssignmentExerciseLoads.find((load) => !load.archived
     && load.program_assignment_id === programAssignmentId
@@ -1188,9 +1227,14 @@ export function installPreviewApi(api) {
     }
     if (path === '/sessions' && method === 'post') {
       const target = clientById(payload.client_id);
+      const conflict = previewScheduleConflict({
+        clientId: target.id, coachId: target.coach_id,
+        scheduledAt: payload.scheduled_at, durationMinutes: payload.duration_minutes || 60,
+      });
+      if (conflict) return scheduleConflictReject(config, conflict);
       const row = { id: id('session'), client_id: target.id, coach_id: target.coach_id, scheduled_at: payload.scheduled_at, duration_minutes: payload.duration_minutes || 60, location: payload.location || null, status: 'scheduled', credit_deducted: false, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), client: { id: target.id, name: target.name } };
       state.sessions.push(row);
-      return ok(row, config, 201);
+      return ok({ ...row, location_overlaps: previewLocationOverlaps(row) }, config, 201);
     }
     if (path === '/sessions/client/mine') {
       const rows = state.sessions.filter((s) => s.client_id === client.id && !s.archived).map((s) => ({ ...s, coach: coachById(s.coach_id), shared_notes: state.sessionNotes.filter((n) => n.session_id === s.id && n.shared_with_client && !n.archived) })).sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
@@ -1199,8 +1243,14 @@ export function installPreviewApi(api) {
     const sessionMatch = path.match(/^\/sessions\/([^/]+)$/);
     if (sessionMatch && method === 'put') {
       const row = state.sessions.find((s) => s.id === sessionMatch[1]);
+      const conflict = previewScheduleConflict({
+        sessionId: row.id, clientId: row.client_id, coachId: row.coach_id,
+        scheduledAt: payload.scheduled_at ?? row.scheduled_at,
+        durationMinutes: payload.duration_minutes ?? row.duration_minutes,
+      });
+      if (conflict) return scheduleConflictReject(config, conflict);
       Object.assign(row, payload, { updated_at: new Date().toISOString() });
-      return ok({ ...row, client: { id: row.client_id, name: clientById(row.client_id).name } }, config);
+      return ok({ ...row, client: { id: row.client_id, name: clientById(row.client_id).name }, location_overlaps: previewLocationOverlaps(row) }, config);
     }
     const completeMatch = path.match(/^\/sessions\/([^/]+)\/complete$/);
     if (completeMatch && method === 'patch') {
@@ -1244,8 +1294,17 @@ export function installPreviewApi(api) {
     const bookingAction = path.match(/^\/bookings\/([^/]+)\/(approve|decline)$/);
     if (bookingAction && method === 'patch') {
       const booking = state.bookingRequests.find((b) => b.id === bookingAction[1]);
+      if (bookingAction[2] === 'approve') {
+        // Mirrors approve_booking: a conflicting approval is refused and the
+        // request stays pending (S1/S3, docs/roadmap.md).
+        const conflict = previewScheduleConflict({
+          clientId: booking.client_id, coachId: booking.coach_id,
+          scheduledAt: booking.requested_time, durationMinutes: booking.duration_minutes,
+        });
+        if (conflict) return scheduleConflictReject(config, conflict, { approving: true });
+        state.sessions.push({ id: id('session'), client_id: booking.client_id, coach_id: booking.coach_id, scheduled_at: booking.requested_time, duration_minutes: booking.duration_minutes, location: booking.location, status: 'scheduled', credit_deducted: false, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      }
       booking.status = bookingAction[2] === 'approve' ? 'approved' : 'declined';
-      if (bookingAction[2] === 'approve') state.sessions.push({ id: id('session'), client_id: booking.client_id, coach_id: booking.coach_id, scheduled_at: booking.requested_time, duration_minutes: booking.duration_minutes, location: booking.location, status: 'scheduled', credit_deducted: false, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
       return ok({ booking, session: null }, config);
     }
 
