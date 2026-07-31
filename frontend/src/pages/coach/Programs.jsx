@@ -91,7 +91,7 @@ export default function Programs() {
     <div>
       <PageHeader title="Training builder" subtitle="Manage exercise library, workout days, structured programs, and assignments" />
       <Tabs defaultValue="library">
-        <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade">
           <TabsTrigger className="min-h-11" value="library" data-testid="training-builder-tab-library">Exercise Library</TabsTrigger>
           <TabsTrigger className="min-h-11" value="workouts" data-testid="training-builder-tab-workouts">Workout Days</TabsTrigger>
           <TabsTrigger className="min-h-11" value="programs" data-testid="training-builder-tab-programs">Programs</TabsTrigger>

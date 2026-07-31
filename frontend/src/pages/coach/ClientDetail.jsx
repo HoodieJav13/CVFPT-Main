@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Link, useParams, useNavigate } from 'react-router';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingScreen, LoadErrorState, StatusBadge, MetricChart, EmptyState, SectionLabel, CheckInStats, IconButton } from '@/components/common';
@@ -31,6 +31,10 @@ import { toast } from 'sonner';
 export default function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialTab = ['overview', 'check-ins', 'progress', 'sessions', 'programs'].includes(searchParams.get('tab'))
+    ? searchParams.get('tab') : 'overview';
+  const sessionContextId = searchParams.get('session') || null;
   const { user } = useAuth();
   const [client, setClient] = useState(null);
   const [waiver, setWaiver] = useState(null);
@@ -83,7 +87,7 @@ export default function ClientDetail() {
           <AvatarFallback className="bg-primary/15 text-primary font-display font-semibold text-lg">{initials(client.name)}</AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight truncate" data-testid="client-detail-name">{client.name}</h1>
+          <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight break-words" data-testid="client-detail-name">{client.name}</h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             {client.archived && <Badge variant="outline" className="text-muted-foreground">Archived</Badge>}
             {client.auth_user_id ? (
@@ -100,8 +104,8 @@ export default function ClientDetail() {
         </IconButton>
       </div>
 
-      <Tabs key={client.id} defaultValue="overview">
-        <TabsList className="w-full justify-start overflow-x-auto rounded-xl">
+      <Tabs key={client.id} defaultValue={initialTab}>
+        <TabsList className="w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade">
           <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="check-ins" data-testid="tab-check-ins">Check-ins</TabsTrigger>
           <TabsTrigger value="progress" data-testid="tab-progress">Progress</TabsTrigger>
@@ -122,7 +126,7 @@ export default function ClientDetail() {
           <SessionsTab clientId={client.id} />
         </TabsContent>
         <TabsContent value="programs">
-          <ProgramsTab clientId={client.id} />
+          <ProgramsTab clientId={client.id} sessionContextId={sessionContextId} />
         </TabsContent>
       </Tabs>
     </div>
@@ -753,7 +757,9 @@ function SessionsTab({ clientId }) {
   );
 }
 
-function ProgramsTab({ clientId }) {
+function ProgramsTab({ clientId, sessionContextId = null }) {
+  const navigate = useNavigate();
+  const [starting, setStarting] = useState(null);
   const [programs, setPrograms] = useState(null);
   const [workouts, setWorkouts] = useState(null);
   const [workoutAssignments, setWorkoutAssignments] = useState(null);
@@ -878,6 +884,28 @@ function ProgramsTab({ clientId }) {
 
   const noAssignments = assigned.length === 0 && workoutAssignments.length === 0;
 
+  const startWorkout = async (key, source) => {
+    setStarting(key);
+    try {
+      const { data } = await api.post('/workout-logs/start', {
+        ...source,
+        client_id: clientId,
+        ...(sessionContextId ? { session_id: sessionContextId } : {}),
+      });
+      navigate(`/coach/workouts/${data.workout_log.id}/track`);
+    } catch (error) {
+      const active = error.response?.data?.active_workout;
+      if (error.response?.status === 409 && active?.id) {
+        toast.info(`${active.workout_name} is already in progress — opening it.`);
+        navigate(`/coach/workouts/${active.id}/track`);
+      } else {
+        toast.error(errMsg(error, 'Could not start workout'));
+      }
+    } finally {
+      setStarting(null);
+    }
+  };
+
   return (
     <div className="space-y-3 mt-1">
       <div className="flex justify-end">
@@ -955,8 +983,16 @@ function ProgramsTab({ clientId }) {
           </DialogContent>
         </Dialog>
       </div>
+      {sessionContextId && (
+        <div className="flex gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2" data-testid="session-context-banner">
+          <CalendarDays className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          <p className="text-xs">Starting a workout here will link it to the selected session.</p>
+        </div>
+      )}
       {noAssignments && <EmptyState icon={Dumbbell} title="No training assigned" subtitle="Assign a structured program or standalone workout to this client." />}
-      {assigned.map((p) => (
+      {assigned.map((p) => {
+        const assignment = (p.active_assignments || []).find((row) => row.client?.id === clientId);
+        return (
         <Card key={p.id} data-testid="assigned-program-card">
           <CardContent className="p-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
@@ -965,18 +1001,30 @@ function ProgramsTab({ clientId }) {
                 <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} {p.frequency_days === 1 ? 'day' : 'days'}/week - {p.exercise_count} exercises</p>
               </div>
               <div className="flex gap-1">
-                <ExistingLoadEditor type="program" assignment={(p.active_assignments || []).find((row) => row.client?.id === clientId)} selection={p} onSaved={load} />
+                <ExistingLoadEditor type="program" assignment={assignment} selection={p} onSaved={load} />
                 <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
               </div>
             </div>
             <div className="divide-y divide-border">
               {(p.days || []).map((day) => (
                 <section key={day.id || day.day_number} className="py-3 first:pt-0 last:pb-0">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary text-xs font-display font-semibold tabular-nums shrink-0">
-                      {day.day_number}
-                    </span>
-                    <p className="text-sm font-medium">{day.workout?.name || 'Workout day'}</p>
+                  <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary text-xs font-display font-semibold tabular-nums shrink-0">
+                        {day.day_number}
+                      </span>
+                      <p className="text-sm font-medium">{day.workout?.name || 'Workout day'}</p>
+                    </div>
+                    {assignment && day.id && (
+                      <Button
+                        size="sm" variant="secondary" className="rounded-lg shrink-0"
+                        disabled={starting === `${assignment.id}-${day.id}`}
+                        onClick={() => startWorkout(`${assignment.id}-${day.id}`, { program_assignment_id: assignment.id, program_day_id: day.id })}
+                        data-testid="coach-log-program-workout"
+                      >
+                        {starting === `${assignment.id}-${day.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log workout'}
+                      </Button>
+                    )}
                   </div>
                   <CoachExerciseRows exercises={day.workout?.exercises || []} />
                 </section>
@@ -984,12 +1032,13 @@ function ProgramsTab({ clientId }) {
             </div>
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
       {activeWorkouts.map((assignment) => (
-        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} />
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} />
       ))}
       {datedWorkouts.map((assignment) => (
-        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} />
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} />
       ))}
       <section className="space-y-3 pt-3" data-testid="coach-client-workout-history">
         <div><h3 className="font-display text-lg font-semibold">Workout history</h3><p className="text-sm text-muted-foreground">Completed self-guided workouts.</p></div>
@@ -1111,7 +1160,7 @@ function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
   );
 }
 
-function CoachWorkoutAssignment({ assignment, onArchive, onReload }) {
+function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onStart }) {
   const workout = assignment.workout || {};
   const label = assignment.assignment_mode === 'dated'
     ? `Dated: ${assignment.assigned_for ? fmtDate(assignment.assigned_for) : 'No date'}`
@@ -1126,6 +1175,16 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload }) {
             <p className="text-xs text-muted-foreground mt-0.5">{label} - {(workout.exercises || []).length} exercises</p>
           </div>
           <div className="flex gap-1">
+            {onStart && (
+              <Button
+                size="sm" variant="secondary" className="rounded-lg"
+                disabled={starting === assignment.id}
+                onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })}
+                data-testid="coach-log-standalone-workout"
+              >
+                {starting === assignment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log workout'}
+              </Button>
+            )}
             <ExistingLoadEditor type="workout" assignment={assignment} selection={workout} onSaved={onReload} />
             <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">Unassign</Button>
           </div>

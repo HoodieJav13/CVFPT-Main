@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, SessionsSkeleton, LoadErrorState, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Plus, CalendarDays, MoreVertical, Check, X, Pencil, StickyNote, Loader2, Inbox,
+  Plus, CalendarDays, MoreVertical, Check, X, Pencil, StickyNote, Loader2, Inbox, Dumbbell,
 } from 'lucide-react';
 import { fmtTime, fmtDay, fmtDateTime, toLocalInputValue, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
@@ -34,6 +34,7 @@ const FILTERS = [
 ];
 
 export default function CoachSessions() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [sessions, setSessions] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -218,6 +219,11 @@ export default function CoachSessions() {
                         <DropdownMenuItem onClick={() => setNotesFor(s)} data-testid="session-notes-action">
                           <StickyNote className="h-4 w-4 mr-2" /> Notes
                         </DropdownMenuItem>
+                        {s.status !== 'cancelled' && (
+                          <DropdownMenuItem onClick={() => navigate(`/coach/clients/${s.client_id}?tab=programs&session=${s.id}`)} data-testid="session-log-workout-action">
+                            <Dumbbell className="h-4 w-4 mr-2" /> Log workout
+                          </DropdownMenuItem>
+                        )}
                         {s.status === 'scheduled' && (
                           <>
                             <DropdownMenuItem onClick={() => { setEditing(s); setDrawerOpen(true); }} data-testid="session-edit-action">
