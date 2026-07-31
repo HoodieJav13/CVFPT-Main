@@ -28,6 +28,16 @@ router.post('/', requireClient, async (req, res) => {
     if (new Date(validation.value.scheduled_at).getTime() <= Date.now()) {
       return res.status(400).json({ error: 'Requested time must be in the future' });
     }
+    // A3 (availability docket): clients may request only the
+    // client-requestable session lengths; 90-minute and assessment
+    // sessions are booked by the coach directly.
+    const { data: requestableTypes, error: typesError } = await supabaseAdmin
+      .from('session_types').select('duration_minutes').eq('client_requestable', true);
+    if (typesError) throw typesError;
+    const requestable = new Set((requestableTypes || []).map((t) => t.duration_minutes));
+    if (requestable.size && !requestable.has(validation.value.duration_minutes)) {
+      return res.status(400).json({ error: 'That session length is scheduled by your coach directly — ask them about it' });
+    }
     const { data, error } = await supabaseAdmin.from('booking_requests').insert({
       client_id: req.user.client.id,
       coach_id: req.user.client.coach_id,
