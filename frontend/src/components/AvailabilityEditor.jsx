@@ -24,6 +24,45 @@ function parseSpan(span) {
 
 const trimSeconds = (value) => (value || '').slice(0, 5);
 
+// Booked sessions overlapping a time-off span (A2: they stay booked —
+// this list makes resolving them explicit). Used for the add form
+// preview and for each existing row.
+function TimeOffImpact({ startsAt, endsAt }) {
+  const [sessions, setSessions] = useState(null);
+
+  useEffect(() => {
+    if (!startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt)) {
+      setSessions(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api.get(`/availability/impact?starts_at=${encodeURIComponent(new Date(startsAt).toISOString())}&ends_at=${encodeURIComponent(new Date(endsAt).toISOString())}`)
+        .then(({ data }) => { if (!cancelled) setSessions(data.sessions); })
+        .catch(() => { if (!cancelled) setSessions(null); });
+    }, 350);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [startsAt, endsAt]);
+
+  if (!sessions?.length) return null;
+  return (
+    <div className="mt-2 rounded-xl border border-gold/30 bg-gold/5 px-3 py-2.5" data-testid="availability-timeoff-impact">
+      <p className="text-xs font-semibold text-gold">
+        {sessions.length} booked session{sessions.length === 1 ? '' : 's'} fall{sessions.length === 1 ? 's' : ''} inside this time off
+      </p>
+      <div className="mt-1.5 space-y-1">
+        {sessions.slice(0, 4).map((session) => (
+          <p key={session.id} className="text-xs text-muted-foreground" data-testid="availability-timeoff-impact-row">
+            {session.client?.name} · {fmtDateTime(session.scheduled_at)} · {session.duration_minutes}m
+          </p>
+        ))}
+        {sessions.length > 4 && <p className="text-xs text-muted-foreground">…and {sessions.length - 4} more</p>}
+      </div>
+      <p className="mt-1.5 text-[11px] text-muted-foreground">They stay on the calendar — cancel or move them from Sessions if needed.</p>
+    </div>
+  );
+}
+
 export function AvailabilityDrawer({ open, onOpenChange }) {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -183,14 +222,17 @@ export function AvailabilityDrawer({ open, onOpenChange }) {
                   {data.time_off.map((t) => {
                     const span = parseSpan(t.span);
                     return (
-                      <div key={t.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2" data-testid="availability-timeoff-row">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm">{span ? `${fmtDateTime(span.starts_at)} – ${fmtDateTime(span.ends_at)}` : t.span}</p>
-                          {t.reason && <p className="truncate text-xs text-muted-foreground">{t.reason}</p>}
+                      <div key={t.id} className="rounded-xl border border-border bg-card/60 px-3 py-2" data-testid="availability-timeoff-row">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm">{span ? `${fmtDateTime(span.starts_at)} – ${fmtDateTime(span.ends_at)}` : t.span}</p>
+                            {t.reason && <p className="truncate text-xs text-muted-foreground">{t.reason}</p>}
+                          </div>
+                          <IconButton label="Remove time off" size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => remove('time-off', t.id)} data-testid="availability-timeoff-remove">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </IconButton>
                         </div>
-                        <IconButton label="Remove time off" size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => remove('time-off', t.id)} data-testid="availability-timeoff-remove">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </IconButton>
+                        {span && <TimeOffImpact startsAt={span.starts_at} endsAt={span.ends_at} />}
                       </div>
                     );
                   })}
@@ -202,6 +244,7 @@ export function AvailabilityDrawer({ open, onOpenChange }) {
                     <div className="space-y-1"><Label className="text-xs">To</Label>
                       <Input type="datetime-local" value={timeOff.ends_at} onChange={(e) => setTimeOff({ ...timeOff, ends_at: e.target.value })} className="h-11 rounded-xl" data-testid="availability-timeoff-end" /></div>
                   </div>
+                  <TimeOffImpact startsAt={timeOff.starts_at} endsAt={timeOff.ends_at} />
                   <div className="flex items-end gap-2">
                     <div className="flex-1 space-y-1"><Label className="text-xs">Reason (private)</Label>
                       <Input value={timeOff.reason} onChange={(e) => setTimeOff({ ...timeOff, reason: e.target.value })} placeholder="Vacation, appointment..." className="h-11 rounded-xl" data-testid="availability-timeoff-reason" /></div>

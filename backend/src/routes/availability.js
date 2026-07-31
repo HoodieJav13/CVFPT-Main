@@ -21,6 +21,37 @@ router.get('/session-types', async (req, res) => {
   }
 });
 
+// GET /api/availability/impact?starts_at=&ends_at= (coach): booked
+// sessions of the calling coach that overlap a prospective or existing
+// time-off span. Time off never auto-cancels sessions (A2) — this list
+// is what makes resolving them an explicit, visible step.
+router.get('/impact', requireCoach, async (req, res) => {
+  try {
+    const result = validateTimeOff(req.query || {});
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    const { starts_at, ends_at } = result.value;
+    // Sessions run at most 240 minutes, so every overlapping session
+    // starts after (span start - 240min) and before the span end; the
+    // exact tail check happens below.
+    const windowStart = new Date(new Date(starts_at).getTime() - 240 * 60000).toISOString();
+    const { data, error } = await supabaseAdmin.from('sessions')
+      .select('id, scheduled_at, duration_minutes, location, status, client:clients(id, name)')
+      .eq('coach_id', req.user.coach.id)
+      .neq('status', 'cancelled')
+      .eq('archived', false)
+      .gte('scheduled_at', windowStart)
+      .lt('scheduled_at', ends_at)
+      .order('scheduled_at');
+    if (error) throw error;
+    const startMs = new Date(starts_at).getTime();
+    const sessions = (data || []).filter((s) => new Date(s.scheduled_at).getTime() + (s.duration_minutes * 60000) > startMs);
+    return res.json({ sessions });
+  } catch (e) {
+    logError('time off impact error', e);
+    return res.status(500).json({ error: 'Failed to check affected sessions' });
+  }
+});
+
 // GET /api/availability/mine (coach): template + overrides + time off
 router.get('/mine', requireCoach, async (req, res) => {
   try {
