@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Plus, Save, Trash2, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Plus, Save, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingScreen, LoadErrorState, PageHeader } from '@/components/common';
@@ -16,18 +16,11 @@ import { toast } from 'sonner';
 import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
+import { formatRestSeconds } from '@/lib/rest';
 
-function parseRest(value) {
-  const text = String(value || '').trim().toLowerCase();
-  if (!text) return null;
-  const clock = text.match(/^(\d+):(\d{1,2})$/);
-  if (clock) return (Number(clock[1]) * 60) + Number(clock[2]);
-  const minutes = text.match(/([\d.]+)\s*(?:m|min|mins|minute|minutes)/);
-  const seconds = text.match(/([\d.]+)\s*(?:s|sec|secs|second|seconds)/);
-  if (minutes || seconds) return Math.round((Number(minutes?.[1] || 0) * 60) + Number(seconds?.[1] || 0));
-  if (/^\d+$/.test(text)) return Number(text);
-  return null;
-}
+// The rest timer reads prescribed_rest_seconds — the structured column the
+// database parses and backfills. The old runtime text parser is gone; text
+// only survives as a display fallback for legacy completed snapshots.
 
 function formatTimer(seconds) {
   const safe = Math.max(0, seconds);
@@ -125,10 +118,35 @@ export default function WorkoutTracker() {
   const [restEndsAt, setRestEndsAt] = useState(null);
   const [timerNow, setTimerNow] = useState(Date.now());
   const [lastTimeLoading, setLastTimeLoading] = useState(null);
+  const [restAlerts, setRestAlerts] = useState(() => localStorage.getItem('cvf_rest_alerts') === 'on');
   const lastTimeCache = useRef({});
+  const restAnnouncedRef = useRef(false);
   const intensity = useVisualIntensity();
   const outbox = useWorkoutOutbox(id, setLog);
   const hydratePending = outbox.hydrate;
+  const restStorageKey = `cvf_rest_timer_${id}`;
+
+  // A running rest timer survives reloads and app switches: the end
+  // timestamp persists per log and is restored while still in the future.
+  const startRest = (seconds) => {
+    const endsAt = Date.now() + (seconds * 1000);
+    localStorage.setItem(restStorageKey, String(endsAt));
+    setTimerNow(Date.now());
+    setRestEndsAt(endsAt);
+  };
+  const clearRest = () => {
+    localStorage.removeItem(restStorageKey);
+    setRestEndsAt(null);
+  };
+  useEffect(() => {
+    const stored = Number(localStorage.getItem(restStorageKey));
+    if (stored && stored > Date.now()) {
+      setTimerNow(Date.now());
+      setRestEndsAt(stored);
+    } else if (stored) {
+      localStorage.removeItem(restStorageKey);
+    }
+  }, [restStorageKey]);
 
   const load = useCallback(async () => {
     try {
@@ -157,6 +175,43 @@ export default function WorkoutTracker() {
     tick();
     return () => window.clearInterval(timer);
   }, [restEndsAt]);
+
+  // Opt-in end-of-rest cue: fires once per timer, only when enabled, and
+  // only through capabilities the device actually has.
+  const restIsComplete = Boolean(restEndsAt && timerNow >= restEndsAt);
+  useEffect(() => {
+    if (!restIsComplete) {
+      restAnnouncedRef.current = false;
+      return;
+    }
+    if (restAnnouncedRef.current || !restAlerts) return;
+    restAnnouncedRef.current = true;
+    try {
+      if (typeof navigator.vibrate === 'function') navigator.vibrate(200);
+    } catch { /* capability declined */ }
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        const context = new AudioCtx();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.05;
+        oscillator.start();
+        oscillator.stop(context.currentTime + 0.18);
+        oscillator.onended = () => context.close();
+      }
+    } catch { /* audio unavailable or blocked */ }
+  }, [restIsComplete, restAlerts]);
+
+  const toggleRestAlerts = () => {
+    setRestAlerts((current) => {
+      localStorage.setItem('cvf_rest_alerts', current ? 'off' : 'on');
+      return !current;
+    });
+  };
 
   if (!log && loadError) return <LoadErrorState message={loadError} scope="workout-tracker" onRetry={load} />;
   if (!log) return <LoadingScreen />;
@@ -201,12 +256,8 @@ export default function WorkoutTracker() {
         actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
         actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe) },
     });
-    if (status === 'completed') {
-      const seconds = parseRest(exercise.prescribed_rest);
-      if (seconds) {
-        setTimerNow(Date.now());
-        setRestEndsAt(Date.now() + (seconds * 1000));
-      }
+    if (status === 'completed' && exercise.prescribed_rest_seconds > 0) {
+      startRest(exercise.prescribed_rest_seconds);
     }
   };
 
@@ -318,6 +369,7 @@ export default function WorkoutTracker() {
         },
       });
       const flushed = await outbox.flush();
+      localStorage.removeItem(restStorageKey);
       navigate(`${basePath}/workouts/${id}`, {
         replace: true,
         state: flushed ? { completedWorkoutId: id } : { finishedLocally: true },
@@ -332,6 +384,7 @@ export default function WorkoutTracker() {
     try {
       await api.post(`/workout-logs/${id}/abandon`);
       localStorage.removeItem(`cvf_workout_outbox_${id}`);
+      localStorage.removeItem(restStorageKey);
       navigate(isCoach ? `/coach/clients/${log.client_id}` : '/client/programs', { replace: true });
     } catch (error) {
       toast.error(errMsg(error));
@@ -358,6 +411,18 @@ export default function WorkoutTracker() {
         {outbox.saveState === 'saving' && <><Loader2 className="h-3.5 w-3.5 animate-spin text-primary motion-reduce:animate-none" /> Saving</>}
         {outbox.saveState === 'not_saved' && <><CircleAlert className="h-3.5 w-3.5 text-gold" /> Not saved yet</>}
         {!outbox.online && <Badge variant="outline"><WifiOff className="mr-1 h-3.5 w-3.5" /> Offline</Badge>}
+        <Button
+          type="button" variant="ghost" size="sm"
+          className="ml-auto min-h-11 px-2 text-xs text-muted-foreground"
+          onClick={toggleRestAlerts}
+          aria-pressed={restAlerts}
+          aria-label={restAlerts ? 'Turn rest alerts off' : 'Turn rest alerts on'}
+          data-testid="rest-alerts-toggle"
+          data-rest-alerts={restAlerts ? 'on' : 'off'}
+        >
+          {restAlerts ? <Bell className="mr-1 h-3.5 w-3.5 text-primary" /> : <BellOff className="mr-1 h-3.5 w-3.5" />}
+          Rest alerts {restAlerts ? 'on' : 'off'}
+        </Button>
       </div>
 
       <div className="space-y-4">
@@ -378,7 +443,9 @@ export default function WorkoutTracker() {
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 {exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
                 {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
-                {exercise.prescribed_rest && <span>Rest {exercise.prescribed_rest}</span>}
+                {(exercise.prescribed_rest_seconds != null || exercise.prescribed_rest) && (
+                  <span>Rest {exercise.prescribed_rest_seconds != null ? formatRestSeconds(exercise.prescribed_rest_seconds) : exercise.prescribed_rest}</span>
+                )}
                 {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
               </div>
               {exercise.prescribed_notes && <p className="text-xs text-muted-foreground">{exercise.prescribed_notes}</p>}
@@ -513,7 +580,7 @@ export default function WorkoutTracker() {
         <>
           <Button
             type="button"
-            onClick={() => setRestEndsAt(null)}
+            onClick={clearRest}
             className={`signature-glass fixed bottom-40 right-4 z-40 h-14 min-w-28 rounded-full px-4 font-display text-base font-semibold lg:bottom-24 ${restComplete ? 'signature-glass-success motion-attention-pop-once hover:bg-success/90' : 'text-foreground hover:bg-card/80'}`}
             style={restComplete ? { '--motion-attention-scale': attentionRecipe.scale } : undefined}
             aria-label={restComplete ? 'Rest complete, tap to dismiss' : `Rest timer ${formatTimer(restSeconds)}, tap to stop`}
