@@ -126,6 +126,25 @@ function newestCoachResponseFirst(a, b) {
   return activityDelta || String(b.id).localeCompare(String(a.id));
 }
 
+
+/**
+ * Log-level attribution derived from completed, non-archived sets only:
+ * untouched prescribed sets carry the schema default and skipped sets were
+ * never entered by anyone, so neither is evidence of who logged data. A log
+ * with no completed sets falls back to who started it (D5, docs/roadmap.md).
+ */
+function computeLogAttribution(log) {
+  const entries = new Set(
+    (log.exercises || [])
+      .flatMap((exercise) => exercise.sets || [])
+      .filter((set) => !set.archived && set.status === 'completed')
+      .map((set) => (set.entered_by === 'coach' ? 'coach' : 'client')),
+  );
+  if (entries.size === 0) return log.started_by === 'coach' ? 'coach' : 'client';
+  if (entries.size === 1) return entries.values().next().value;
+  return 'mixed';
+}
+
 async function workoutLogWithDetails(id) {
   const { data: log, error } = await supabaseAdmin.from('workout_logs')
     .select('*, client:clients(id, name, coach_id, archived)')
@@ -152,7 +171,7 @@ async function workoutLogWithDetails(id) {
     rows.push(set);
     setsByExercise.set(set.workout_log_exercise_id, rows);
   });
-  return {
+  const detailed = {
     ...log,
     coach_responses: (coachResponses || []).sort(newestCoachResponseFirst),
     exercises: (exercises || []).map((exercise) => ({
@@ -160,6 +179,7 @@ async function workoutLogWithDetails(id) {
       sets: setsByExercise.get(exercise.id) || [],
     })),
   };
+  return { ...detailed, attribution: computeLogAttribution(detailed) };
 }
 
 async function clientActiveLog(clientId) {
@@ -573,6 +593,7 @@ module.exports.workoutLogWithDetails = workoutLogWithDetails;
 module.exports.canReadLog = canReadLog;
 module.exports.canWriteLog = canWriteLog;
 module.exports.actorStamp = actorStamp;
+module.exports.computeLogAttribution = computeLogAttribution;
 module.exports.workoutRpcStatus = workoutRpcStatus;
 module.exports.canAuthorCoachResponse = canAuthorCoachResponse;
 module.exports.newestCoachResponseFirst = newestCoachResponseFirst;
