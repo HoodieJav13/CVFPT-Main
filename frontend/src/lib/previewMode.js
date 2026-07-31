@@ -814,9 +814,19 @@ export function installPreviewApi(api) {
     }
     const exerciseHistory = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/history$/);
     if (exerciseHistory && method === 'get') {
-      const log = state.workoutLogs.find((row) => row.id === exerciseHistory[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
-      const exercise = state.workoutLogExercises.find((row) => row.id === exerciseHistory[2] && row.workout_log_id === log?.id && !row.archived);
-      if (!exercise || role !== 'client') return fail(config, 404, 'Workout exercise not found');
+      // Mirrors the API: client on their own active log, coach/admin via
+      // ownership of the log's client; history is always the log's client's.
+      const log = state.workoutLogs.find((row) => row.id === exerciseHistory[1] && row.status === 'active' && !row.archived);
+      const historyOwner = log ? clientById(log.client_id) : null;
+      const allowed = Boolean(log && historyOwner) && (
+        role === 'client'
+          ? log.client_id === client.id
+          : (role === 'admin' || historyOwner.coach_id === currentCoach().id)
+      );
+      const exercise = allowed
+        ? state.workoutLogExercises.find((row) => row.id === exerciseHistory[2] && row.workout_log_id === log.id && !row.archived)
+        : null;
+      if (!exercise) return fail(config, 404, 'Workout exercise not found');
       if (localStorage.getItem('cvf_preview_history_failure') === 'once') {
         localStorage.removeItem('cvf_preview_history_failure');
         return fail(config, 503, 'Exercise history is temporarily unavailable');
@@ -837,7 +847,7 @@ export function installPreviewApi(api) {
           : !row.exercise_library_id && row.source_workout_exercise_id === exercise.source_workout_exercise_id
       ));
       const matchByLog = new Map(matchingExercises.map((row) => [row.workout_log_id, row]));
-      const matches = state.workoutLogs.filter((row) => row.client_id === client.id && row.status === 'completed' && !row.archived && matchByLog.has(row.id))
+      const matches = state.workoutLogs.filter((row) => row.client_id === log.client_id && row.status === 'completed' && !row.archived && matchByLog.has(row.id))
         .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at) || b.id.localeCompare(a.id))
         .filter((row) => !before || row.completed_at < before.completed_at || (row.completed_at === before.completed_at && row.id < before.id));
       const page = matches.slice(0, 10);

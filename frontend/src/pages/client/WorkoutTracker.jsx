@@ -449,23 +449,19 @@ export default function WorkoutTracker() {
                 <Button type="button" variant="outline" size="sm" disabled={sealed} onClick={() => addSet(exercise)}>
                   <Plus className="mr-1.5 h-4 w-4" /> Add set
                 </Button>
-                {/* History endpoint is client-only; hidden for coach-driven logging. */}
-                {!isCoach && (
-                  <Button
-                    type="button" variant="outline" size="sm"
-                    disabled={sealed || lastTimeLoading === exercise.id}
-                    onClick={() => applyLastTime(exercise)}
-                    data-testid="same-as-last-time"
-                  >
-                    {lastTimeLoading === exercise.id
-                      ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
-                      : <History className="mr-1.5 h-4 w-4" />}
-                    Same as last time
-                  </Button>
-                )}
+                <Button
+                  type="button" variant="outline" size="sm"
+                  disabled={sealed || lastTimeLoading === exercise.id}
+                  onClick={() => applyLastTime(exercise)}
+                  data-testid="same-as-last-time"
+                >
+                  {lastTimeLoading === exercise.id
+                    ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                    : <History className="mr-1.5 h-4 w-4" />}
+                  Same as last time
+                </Button>
               </div>
-              {/* Exercise history endpoint is client-only; hidden for coach-driven logging. */}
-              {!isCoach && <ExerciseHistory logId={id} exercise={exercise} />}
+              <ExerciseHistory logId={id} exercise={exercise} />
               <div className="space-y-1.5">
                 <Label htmlFor={`notes-${exercise.id}`}>Exercise notes</Label>
                 <Textarea
