@@ -45,6 +45,7 @@ function historyRequest(overrides = {}) {
 function activeLog(exercise = {}) {
   return {
     id: 'active-log', client_id: 'client-owned', status: 'active', archived: false,
+    client: { id: 'client-owned', coach_id: 'coach-owner', archived: false },
     exercises: [{
       id: 'active-exercise', archived: false, exercise_library_id: 'library-owned',
       source_workout_exercise_id: 'source-owned', ...exercise,
@@ -153,6 +154,52 @@ test('mounted history handler masks foreign, non-active, and wrong-exercise requ
   assert.equal(res.statusCode, 404);
   assert.equal(res.body.error, 'Workout exercise not found');
   assert.equal(rpcCalls, 0);
+});
+
+test('history reads are scoped like writes: own coach allowed, others masked', async (t) => {
+  const coachOwner = { role: 'coach', coach: { id: 'coach-owner' } };
+  const coachOther = { role: 'coach', coach: { id: 'coach-other' } };
+  const admin = { role: 'admin', coach: { id: 'admin-1' } };
+
+  for (const [name, user, expected] of [
+    ["log client's own coach", coachOwner, 200],
+    ['admin', admin, 200],
+    ["another client's coach", coachOther, 404],
+  ]) {
+    await t.test(name, async () => {
+      let args = null;
+      const handler = createExerciseHistoryHandler({
+        findLog: async () => activeLog(),
+        runHistory: async (value) => { args = value; return { data: [], error: null }; },
+      });
+      const res = responseRecorder();
+      await handler(historyRequest({ user }), res);
+      assert.equal(res.statusCode, expected);
+      if (expected === 200) {
+        // Always the log's client — never derived from the caller.
+        assert.equal(args.p_client_id, 'client-owned');
+      } else {
+        assert.equal(args, null);
+        assert.equal(res.body.error, 'Workout log not found');
+      }
+    });
+  }
+
+  await t.test('archived client masks even the owning coach', async () => {
+    const log = activeLog();
+    log.client = { ...log.client, archived: true };
+    const handler = createExerciseHistoryHandler({
+      findLog: async () => log,
+      runHistory: async () => { throw new Error('must not run'); },
+    });
+    const res = responseRecorder();
+    await handler(historyRequest({ user: coachOwner }), res);
+    assert.equal(res.statusCode, 404);
+  });
+
+  // The mounted route relies on handler-level role logic, not requireClient.
+  assert.doesNotMatch(routes, /history', requireClient/);
+  assert.match(routes, /p_client_id: log\.client_id/);
 });
 
 test('mounted history handler sends exact owned library and custom identities', async (t) => {

@@ -38,6 +38,10 @@ function displayPerformed(value, suffix = '') {
   return value === null || value === undefined ? 'Not recorded' : `${value}${suffix}`;
 }
 
+function isBlank(value) {
+  return value === '' || value === null || value === undefined;
+}
+
 function ExerciseHistory({ logId, exercise }) {
   const [open, setOpen] = useState(false);
   const [occurrences, setOccurrences] = useState([]);
@@ -120,6 +124,8 @@ export default function WorkoutTracker() {
   const [finishing, setFinishing] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
   const [timerNow, setTimerNow] = useState(Date.now());
+  const [lastTimeLoading, setLastTimeLoading] = useState(null);
+  const lastTimeCache = useRef({});
   const intensity = useVisualIntensity();
   const outbox = useWorkoutOutbox(id, setLog);
   const hydratePending = outbox.hydrate;
@@ -228,6 +234,62 @@ export default function WorkoutTracker() {
     });
   };
 
+  // One tap fills blank fields from the most recent completed occurrence of
+  // this exercise; typed values are never overwritten.
+  const applyLastTime = async (exercise) => {
+    if (sealed || lastTimeLoading) return;
+    let occurrence = lastTimeCache.current[exercise.id];
+    if (occurrence === undefined) {
+      if (!navigator.onLine) {
+        toast.error('You are offline. Reconnect to copy last time.');
+        return;
+      }
+      setLastTimeLoading(exercise.id);
+      try {
+        const { data } = await api.get(`/workout-logs/${id}/exercises/${exercise.id}/history`);
+        occurrence = data.occurrences[0] || null;
+        lastTimeCache.current[exercise.id] = occurrence;
+      } catch (error) {
+        toast.error(errMsg(error, 'Failed to load last time'));
+        return;
+      } finally {
+        setLastTimeLoading(null);
+      }
+    }
+    if (!occurrence) {
+      toast.info('No completed history yet for this exercise.');
+      return;
+    }
+    const bySetNumber = new Map(occurrence.sets.map((row) => [row.set_number, row]));
+    let filledCount = 0;
+    for (const set of exercise.sets) {
+      const last = bySetNumber.get(set.set_number);
+      if (!last) continue;
+      const fillLoad = isBlank(set.actual_load_value) && last.actual_load_value != null;
+      const fillReps = isBlank(set.actual_reps) && last.actual_reps != null;
+      const fillRpe = isBlank(set.actual_rpe) && last.actual_rpe != null;
+      if (!fillLoad && !fillReps && !fillRpe) continue;
+      filledCount += 1;
+      const loadValue = fillLoad ? last.actual_load_value : set.actual_load_value;
+      outbox.enqueue({
+        kind: 'set', exerciseId: exercise.id, setId: set.id,
+        method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
+        data: {
+          actual_load_value: isBlank(loadValue) ? null : Number(loadValue),
+          actual_load_unit: isBlank(loadValue) ? null : ((fillLoad ? last.actual_load_unit : set.actual_load_unit) || 'lb'),
+          actual_reps: fillReps ? last.actual_reps : (isBlank(set.actual_reps) ? null : Number(set.actual_reps)),
+          actual_rpe: fillRpe ? last.actual_rpe : (isBlank(set.actual_rpe) ? null : Number(set.actual_rpe)),
+          status: set.status,
+        },
+      });
+    }
+    if (!filledCount) {
+      toast.info('Nothing blank to fill — your entries are kept.');
+      return;
+    }
+    toast.success(`Filled ${filledCount} set${filledCount === 1 ? '' : 's'} from ${new Date(occurrence.completed_at).toLocaleDateString()}`);
+  };
+
   const completeAll = async () => {
     if (!outbox.online || outbox.saveState !== 'saved') return;
     try {
@@ -302,7 +364,17 @@ export default function WorkoutTracker() {
         {log.exercises.map((exercise) => (
           <Card key={exercise.id} data-testid="tracker-exercise-card">
             <CardHeader className="pb-3">
-              <CardTitle className="font-display text-lg">{exercise.exercise_name}</CardTitle>
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="font-display text-lg">{exercise.exercise_name}</CardTitle>
+                <Badge
+                  variant="outline"
+                  className={`shrink-0 tabular-nums ${exercise.sets.length && exercise.sets.every((set) => set.status === 'completed') ? 'border-success/40 bg-success/10 text-success' : 'text-muted-foreground'}`}
+                  aria-label={`${exercise.sets.filter((set) => set.status === 'completed').length} of ${exercise.sets.length} sets complete`}
+                  data-testid="exercise-done-chip"
+                >
+                  {exercise.sets.filter((set) => set.status === 'completed').length}/{exercise.sets.length}
+                </Badge>
+              </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 {exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
                 {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
@@ -320,8 +392,9 @@ export default function WorkoutTracker() {
                   <span className="text-center text-sm tabular-nums">{set.set_number}</span>
                   <div className="flex min-w-0 gap-1">
                     <Input
-                      type="number" min="0" step="0.5" inputMode="decimal" className="h-10 min-w-0 tabular-nums"
+                      type="number" min="0" step="0.5" inputMode="decimal" className="h-10 min-w-0 px-2 text-sm tabular-nums"
                       value={set.actual_load_value ?? ''}
+                      placeholder={exercise.prescribed_load_value != null ? String(exercise.prescribed_load_value) : undefined}
                       onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
                       onBlur={() => saveSet(exercise, set)}
                       disabled={sealed}
@@ -342,7 +415,7 @@ export default function WorkoutTracker() {
                       });
                     }}>
                       <SelectTrigger
-                        className="h-10 w-[68px] px-2"
+                        className="h-10 w-14 shrink-0 px-1.5"
                         aria-label={`${exercise.exercise_name} set ${set.set_number} weight unit`}
                       >
                         <SelectValue />
@@ -350,10 +423,12 @@ export default function WorkoutTracker() {
                       <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
                     </Select>
                   </div>
-                  <Input type="number" min="0" step="1" inputMode="numeric" className="h-10 px-2 tabular-nums" value={set.actual_reps ?? ''}
+                  <Input type="number" min="0" step="1" inputMode="numeric" className="h-10 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
+                    placeholder={exercise.prescribed_reps || undefined}
                     onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
                     aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} />
-                  <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-10 px-2 tabular-nums" value={set.actual_rpe ?? ''}
+                  <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-10 px-2 text-sm tabular-nums" value={set.actual_rpe ?? ''}
+                    placeholder={exercise.prescribed_rpe || undefined}
                     onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
                     aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
                   <Button
@@ -370,9 +445,25 @@ export default function WorkoutTracker() {
                   )}
                 </div>
               ))}
-              <Button type="button" variant="outline" size="sm" disabled={sealed} onClick={() => addSet(exercise)}>
-                <Plus className="mr-1.5 h-4 w-4" /> Add set
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" disabled={sealed} onClick={() => addSet(exercise)}>
+                  <Plus className="mr-1.5 h-4 w-4" /> Add set
+                </Button>
+                {/* History endpoint is client-only; hidden for coach-driven logging. */}
+                {!isCoach && (
+                  <Button
+                    type="button" variant="outline" size="sm"
+                    disabled={sealed || lastTimeLoading === exercise.id}
+                    onClick={() => applyLastTime(exercise)}
+                    data-testid="same-as-last-time"
+                  >
+                    {lastTimeLoading === exercise.id
+                      ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                      : <History className="mr-1.5 h-4 w-4" />}
+                    Same as last time
+                  </Button>
+                )}
+              </div>
               {/* Exercise history endpoint is client-only; hidden for coach-driven logging. */}
               {!isCoach && <ExerciseHistory logId={id} exercise={exercise} />}
               <div className="space-y-1.5">
@@ -392,15 +483,34 @@ export default function WorkoutTracker() {
       </div>
 
       <div
-        className="signature-glass sticky bottom-20 z-30 mt-5 flex gap-2 rounded-2xl p-2.5 lg:bottom-4"
+        className="signature-glass sticky bottom-20 z-30 mt-5 flex flex-col gap-2 rounded-2xl p-2.5 lg:bottom-4"
         data-testid="workout-control-dock"
       >
-        <Button variant="outline" className="min-h-11 flex-1" disabled={sealed || !remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
-          Complete all remaining
-        </Button>
-        <Button className="min-h-11 flex-1" disabled={sealed || !completedCount} onClick={() => setFinishOpen(true)}>
-          Finish workout
-        </Button>
+        <div className="flex items-center gap-2 px-1">
+          <div
+            className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary"
+            role="progressbar"
+            aria-label="Sets completed"
+            aria-valuemin={0}
+            aria-valuemax={allSets.length}
+            aria-valuenow={completedCount}
+            data-testid="workout-progress-bar"
+          >
+            <div
+              className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${allSets.length && completedCount === allSets.length ? 'bg-success' : 'bg-primary'}`}
+              style={{ width: `${allSets.length ? Math.round((completedCount / allSets.length) * 100) : 0}%` }}
+            />
+          </div>
+          <span className="text-xs tabular-nums text-muted-foreground">{completedCount}/{allSets.length}</span>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" className="min-h-11 flex-1" disabled={sealed || !remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
+            Complete all remaining
+          </Button>
+          <Button className="min-h-11 flex-1" disabled={sealed || !completedCount} onClick={() => setFinishOpen(true)}>
+            Finish workout
+          </Button>
+        </div>
       </div>
 
       {restEndsAt && (
