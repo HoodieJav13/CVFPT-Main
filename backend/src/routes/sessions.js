@@ -13,6 +13,17 @@ const {
 const router = express.Router();
 router.use(requireAuth);
 
+function conflictResponse(result) {
+  const conflict = result.conflict_session || {};
+  const when = conflict.scheduled_at ? new Date(conflict.scheduled_at).toLocaleString('en-US', { timeZone: 'America/Denver' }) : 'another time';
+  return {
+    error: result.outcome === 'client_conflict'
+      ? `This client already has a session at ${when}.`
+      : `You already have a session at ${when}.`,
+    conflict: { scope: result.outcome === 'client_conflict' ? 'client' : 'coach', session: conflict },
+  };
+}
+
 async function loadSessionForCoach(req, res) {
   const idValidation = validateUuid(req.params.id, 'Session ID');
   if (!idValidation.ok) {
@@ -66,15 +77,21 @@ router.post('/', requireCoach, async (req, res) => {
       .eq('id', clientIdValidation.value).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const coachId = req.user.role === 'admin' ? clientRow.coach_id : req.user.coach.id;
-    const { data, error } = await supabaseAdmin.from('sessions').insert({
-      client_id: clientIdValidation.value,
-      coach_id: coachId,
-      scheduled_at: validation.value.scheduled_at,
-      duration_minutes: validation.value.duration_minutes,
-      location: locationValidation.value,
-    }).select('*, client:clients(id, name)').single();
+    const { data, error } = await supabaseAdmin.rpc('schedule_session', {
+      p_session_id: null,
+      p_client_id: clientIdValidation.value,
+      p_coach_id: coachId,
+      p_scheduled_at: validation.value.scheduled_at,
+      p_duration_minutes: validation.value.duration_minutes,
+      p_location: locationValidation.value,
+      p_set_location: true,
+    });
     if (error) throw error;
-    return res.status(201).json(data);
+    if (data.outcome !== 'scheduled') return res.status(409).json(conflictResponse(data));
+    const { data: created, error: readError } = await supabaseAdmin.from('sessions')
+      .select('*, client:clients(id, name)').eq('id', data.session.id).single();
+    if (readError) throw readError;
+    return res.status(201).json({ ...created, location_overlaps: data.location_overlaps || 0 });
   } catch (e) {
     logError('create session error', e);
     return res.status(500).json({ error: 'Failed to create session' });
@@ -95,11 +112,21 @@ router.put('/:id', requireCoach, async (req, res) => {
       updates.location = locationValidation.value;
     }
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide a session field to update' });
-    updates.updated_at = new Date().toISOString();
-    const { data, error } = await supabaseAdmin.from('sessions').update(updates).eq('id', session.id)
-      .select('*, client:clients(id, name)').single();
+    const { data, error } = await supabaseAdmin.rpc('schedule_session', {
+      p_session_id: session.id,
+      p_client_id: session.client_id,
+      p_coach_id: session.coach_id,
+      p_scheduled_at: updates.scheduled_at || session.scheduled_at,
+      p_duration_minutes: updates.duration_minutes || session.duration_minutes,
+      p_location: Object.hasOwn(updates, 'location') ? updates.location : session.location,
+      p_set_location: Object.hasOwn(updates, 'location'),
+    });
     if (error) throw error;
-    return res.json(data);
+    if (data.outcome !== 'scheduled') return res.status(409).json(conflictResponse(data));
+    const { data: updated, error: readError } = await supabaseAdmin.from('sessions')
+      .select('*, client:clients(id, name)').eq('id', session.id).single();
+    if (readError) throw readError;
+    return res.json({ ...updated, location_overlaps: data.location_overlaps || 0 });
   } catch (e) {
     logError('update session error', e);
     return res.status(500).json({ error: 'Failed to update session' });
