@@ -12,6 +12,7 @@ import CoachDashboard from '@/pages/coach/Dashboard';
 import Clients from '@/pages/coach/Clients';
 import ClientDetail from '@/pages/coach/ClientDetail';
 import CoachSessions from '@/pages/coach/Sessions';
+import CoachCalendar from '@/pages/coach/Calendar';
 import Programs from '@/pages/coach/Programs';
 import CoachResources from '@/pages/coach/Resources';
 import CoachMessages from '@/pages/coach/Messages';
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="clients" element={<Clients />} />
             <Route path="clients/:id" element={<ClientDetail />} />
             <Route path="sessions" element={<CoachSessions />} />
+            <Route path="calendar" element={<CoachCalendar />} />
             <Route path="programs" element={<Programs />} />
             <Route path="resources" element={<CoachResources />} />
             <Route path="messages" element={<CoachMessages />} />
