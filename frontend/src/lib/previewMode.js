@@ -1391,6 +1391,16 @@ export function installPreviewApi(api) {
       return ok(rows.map((b) => ({ ...b, client: { id: b.client_id, name: clientById(b.client_id).name } })), config);
     }
     if (path === '/bookings' && method === 'post') {
+      // Mirrors the API's A4 guard: with published hours, only offered
+      // slots are accepted; without them the free picker is the fallback.
+      const hasHours = state.coachAvailability.some((w) => w.coach_id === client.coach_id)
+        || state.coachAvailabilityOverrides.some((o) => o.coach_id === client.coach_id);
+      if (hasHours) {
+        const requestedMs = new Date(payload.requested_time).getTime();
+        const offered = previewOpenSlots(client.coach_id, payload.duration_minutes || 60)
+          .some((slot) => new Date(slot.starts_at).getTime() === requestedMs);
+        if (!offered) return fail(config, 400, "That time isn't one of your coach's open slots — pick from the open times");
+      }
       const row = { id: id('booking'), client_id: client.id, coach_id: client.coach_id, requested_time: payload.requested_time, duration_minutes: payload.duration_minutes || 60, location: payload.location || null, note: payload.note || null, status: 'pending', archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       state.bookingRequests.push(row);
       return ok(row, config, 201);

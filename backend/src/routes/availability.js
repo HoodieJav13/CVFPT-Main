@@ -26,9 +26,9 @@ router.get('/mine', requireCoach, async (req, res) => {
   try {
     const coachId = req.user.coach.id;
     const [windows, overrides, timeOff] = await Promise.all([
-      supabaseAdmin.from('coach_availability').select('*').eq('coach_id', coachId).order('weekday').order('start_time'),
-      supabaseAdmin.from('coach_availability_overrides').select('*').eq('coach_id', coachId).order('on_date').order('start_time'),
-      supabaseAdmin.from('coach_time_off').select('*').eq('coach_id', coachId).order('span'),
+      supabaseAdmin.from('coach_availability').select('*').eq('coach_id', coachId).eq('archived', false).order('weekday').order('start_time'),
+      supabaseAdmin.from('coach_availability_overrides').select('*').eq('coach_id', coachId).eq('archived', false).order('on_date').order('start_time'),
+      supabaseAdmin.from('coach_time_off').select('*').eq('coach_id', coachId).eq('archived', false).order('span'),
     ]);
     const failed = [windows, overrides, timeOff].find((r) => r.error);
     if (failed) throw failed.error;
@@ -50,17 +50,16 @@ router.put('/windows', requireCoach, async (req, res) => {
     for (const row of rows) {
       const result = validateWindow(row);
       if (!result.ok) return res.status(400).json({ error: result.error });
-      validated.push({ ...result.value, coach_id: coachId });
+      validated.push(result.value);
     }
-    const { error: deleteError } = await supabaseAdmin.from('coach_availability').delete().eq('coach_id', coachId);
-    if (deleteError) throw deleteError;
-    let data = [];
-    if (validated.length) {
-      const inserted = await supabaseAdmin.from('coach_availability').insert(validated).select();
-      if (inserted.error) throw inserted.error;
-      data = inserted.data;
-    }
-    return res.json({ windows: data });
+    // Atomic archive-and-insert: a failed insert can never erase the
+    // coach's existing template (soft-delete-only invariant included).
+    const { data, error } = await supabaseAdmin.rpc('replace_coach_availability', {
+      p_coach_id: coachId,
+      p_windows: validated,
+    });
+    if (error) throw error;
+    return res.json({ windows: data || [] });
   } catch (e) {
     logError('availability windows error', e);
     return res.status(500).json({ error: 'Failed to save availability' });
@@ -88,7 +87,7 @@ router.delete('/overrides/:id', requireCoach, async (req, res) => {
     const idValidation = validateUuid(req.params.id, 'Override');
     if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
     const { data, error } = await supabaseAdmin.from('coach_availability_overrides')
-      .delete().eq('id', req.params.id).eq('coach_id', req.user.coach.id).select();
+      .update({ archived: true }).eq('id', req.params.id).eq('coach_id', req.user.coach.id).eq('archived', false).select();
     if (error) throw error;
     if (!data?.length) return res.status(404).json({ error: 'Override not found' });
     return res.json({ ok: true });
@@ -122,7 +121,7 @@ router.delete('/time-off/:id', requireCoach, async (req, res) => {
     const idValidation = validateUuid(req.params.id, 'Time off');
     if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
     const { data, error } = await supabaseAdmin.from('coach_time_off')
-      .delete().eq('id', req.params.id).eq('coach_id', req.user.coach.id).select();
+      .update({ archived: true }).eq('id', req.params.id).eq('coach_id', req.user.coach.id).eq('archived', false).select();
     if (error) throw error;
     if (!data?.length) return res.status(404).json({ error: 'Time off not found' });
     return res.json({ ok: true });

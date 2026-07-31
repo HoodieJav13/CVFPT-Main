@@ -42,6 +42,7 @@ create table if not exists public.coach_availability (
   start_time time not null,
   end_time time not null check (end_time > start_time),
   capacity integer not null default 1 check (capacity between 1 and 10),
+  archived boolean not null default false,
   created_at timestamptz not null default now()
 );
 create index if not exists idx_coach_availability_coach on public.coach_availability(coach_id, weekday);
@@ -53,6 +54,7 @@ create table if not exists public.coach_availability_overrides (
   start_time time not null,
   end_time time not null check (end_time > start_time),
   capacity integer not null default 1 check (capacity between 1 and 10),
+  archived boolean not null default false,
   created_at timestamptz not null default now()
 );
 create index if not exists idx_coach_availability_overrides_coach on public.coach_availability_overrides(coach_id, on_date);
@@ -62,9 +64,57 @@ create table if not exists public.coach_time_off (
   coach_id uuid not null references public.coaches(id),
   span tstzrange not null check (not isempty(span)),
   reason text,
+  archived boolean not null default false,
   created_at timestamptz not null default now()
 );
 create index if not exists idx_coach_time_off_coach on public.coach_time_off using gist (span);
+
+-- The Express backend (service role) is the only caller: RLS on with no
+-- client policies, and grants without DELETE — rows are archived, never
+-- hard-deleted (locked repository invariants).
+alter table public.session_types enable row level security;
+alter table public.coach_availability enable row level security;
+alter table public.coach_availability_overrides enable row level security;
+alter table public.coach_time_off enable row level security;
+grant select, insert, update on table public.session_types to service_role;
+grant select, insert, update on table public.coach_availability to service_role;
+grant select, insert, update on table public.coach_availability_overrides to service_role;
+grant select, insert, update on table public.coach_time_off to service_role;
+
+-- ---------- Atomic weekly-template replacement ----------
+-- Archive-then-insert in one transaction, so a failed insert can never
+-- leave a coach with an erased schedule. Element validation is the table
+-- constraints; any bad element aborts the whole call.
+create or replace function public.replace_coach_availability(
+  p_coach_id uuid,
+  p_windows jsonb
+)
+returns setof public.coach_availability
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if p_windows is null or jsonb_typeof(p_windows) <> 'array' then
+    raise exception 'windows must be a JSON array';
+  end if;
+  update public.coach_availability
+  set archived = true
+  where coach_id = p_coach_id and not archived;
+  return query
+  insert into public.coach_availability (coach_id, weekday, start_time, end_time, capacity)
+  select
+    p_coach_id,
+    (w->>'weekday')::integer,
+    (w->>'start_time')::time,
+    (w->>'end_time')::time,
+    coalesce((w->>'capacity')::integer, 1)
+  from jsonb_array_elements(p_windows) w
+  returning *;
+end;
+$$;
+
+revoke execute on function public.replace_coach_availability(uuid, jsonb) from public, anon, authenticated;
+grant execute on function public.replace_coach_availability(uuid, jsonb) to service_role;
 
 -- ---------- Open-slot derivation ----------
 -- Candidate starts every 30 minutes inside the day's windows (per-date
@@ -107,15 +157,16 @@ begin
     for v_window in
       select o.start_time, o.end_time, o.capacity
       from public.coach_availability_overrides o
-      where o.coach_id = p_coach_id and o.on_date = v_day
+      where o.coach_id = p_coach_id and o.on_date = v_day and not o.archived
       union all
       select a.start_time, a.end_time, a.capacity
       from public.coach_availability a
       where a.coach_id = p_coach_id
         and a.weekday = extract(dow from v_day)::integer
+        and not a.archived
         and not exists (
           select 1 from public.coach_availability_overrides o2
-          where o2.coach_id = p_coach_id and o2.on_date = v_day
+          where o2.coach_id = p_coach_id and o2.on_date = v_day and not o2.archived
         )
     loop
       v_cursor := v_window.start_time;
@@ -126,6 +177,7 @@ begin
           if not exists (
             select 1 from public.coach_time_off t
             where t.coach_id = p_coach_id
+              and not t.archived
               and t.span && tstzrange(v_slot_start, v_slot_end, '[)')
           ) then
             select count(*) into v_busy
