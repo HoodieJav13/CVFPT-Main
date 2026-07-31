@@ -20,28 +20,30 @@ function Calendar({
       classNames={{
         months: "flex flex-col sm:flex-row gap-4",
         month: "flex flex-col gap-4",
-        month_caption: "flex h-7 items-center justify-center",
+        // 44px controls throughout — scheduling is a primary mobile flow and
+        // the app's touch-target floor is 44px.
+        month_caption: "flex h-11 items-center justify-center",
         caption_label: "text-sm font-medium",
         nav: "absolute inset-x-3 top-3 z-10 flex items-center justify-between",
         button_previous: cn(
           buttonVariants({ variant: "outline" }),
-          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
+          "h-11 w-11 bg-transparent p-0 opacity-50 hover:opacity-100"
         ),
         button_next: cn(
           buttonVariants({ variant: "outline" }),
-          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
+          "h-11 w-11 bg-transparent p-0 opacity-50 hover:opacity-100"
         ),
         month_grid: "w-full border-collapse",
         weekdays: "flex",
-        weekday: "w-8 rounded-md text-[0.8rem] font-normal text-muted-foreground",
-        week: "mt-2 flex w-full",
+        weekday: "w-11 rounded-md text-[0.8rem] font-normal text-muted-foreground",
+        week: "mt-1 flex w-full",
         day: cn(
           "relative p-0 text-center text-sm focus-within:relative focus-within:z-20",
           "[&:has([aria-selected])]:rounded-md [&:has([aria-selected])]:bg-accent"
         ),
         day_button: cn(
           buttonVariants({ variant: "ghost" }),
-          "h-8 w-8 p-0 font-normal aria-selected:opacity-100"
+          "h-11 w-11 p-0 font-normal aria-selected:opacity-100"
         ),
         range_start: "day-range-start",
         range_end: "day-range-end",

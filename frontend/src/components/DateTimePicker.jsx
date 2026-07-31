@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -62,10 +62,12 @@ export default function DateTimePicker({
   const date = pendingDate || valueDate;
   const time = pendingDate && valueDate && pendingDate.getTime() !== valueDate.getTime() ? null : valueTime;
 
-  const openChange = (nextOpen) => {
-    setOpen(nextOpen);
-    if (nextOpen) setPendingDate(null);
-  };
+  // A held partial selection survives closing and reopening the picker —
+  // it only resets when the committed value changes (a slot was picked,
+  // Clear was tapped, or the form repopulated externally).
+  useEffect(() => {
+    setPendingDate(null);
+  }, [value]);
 
   const pickSlot = (slot) => {
     const target = date || new Date();
@@ -75,7 +77,7 @@ export default function DateTimePicker({
   };
 
   return (
-    <Popover open={open} onOpenChange={openChange}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -104,7 +106,7 @@ export default function DateTimePicker({
         <div className="border-t border-border/70 p-3">
           {!date && <p className="pb-1 text-xs text-muted-foreground">Pick a day to choose a time.</p>}
           {date && (
-            <div className="max-h-44 space-y-3 overflow-y-auto pr-1" data-testid="time-slot-list">
+            <div className="max-h-56 space-y-3 overflow-y-auto pr-1" data-testid="time-slot-list">
               {SLOT_GROUPS.map((group) => (
                 <div key={group.label}>
                   <p className="pb-1.5 text-xs font-medium text-muted-foreground">{group.label}</p>
@@ -117,7 +119,7 @@ export default function DateTimePicker({
                           type="button"
                           size="sm"
                           variant={selected ? 'default' : 'outline'}
-                          className="h-9 px-1 text-xs tabular-nums"
+                          className="h-11 px-1 text-xs tabular-nums"
                           onClick={() => pickSlot(slot)}
                           data-testid="time-slot"
                         >
