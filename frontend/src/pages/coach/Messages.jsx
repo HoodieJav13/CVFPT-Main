@@ -18,7 +18,7 @@ function ThreadRow({ thread, active, onSelect }) {
       className={cn(
         'w-full flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors text-left',
         active
-          ? 'border-primary/40 bg-primary/10'
+          ? 'border-l-[3px] border-l-primary border-primary/40 bg-primary/15'
           : 'border-border bg-card/60 hover:bg-card',
       )}
       data-testid="message-thread-row"
@@ -184,12 +184,12 @@ export default function CoachMessages() {
             </div>
           ) : (
             <>
-              <div className="mb-1 hidden items-center justify-between gap-3 border-b border-border/70 pb-3 lg:flex" data-testid="conversation-context-header">
+              <div className="mb-2 hidden items-center justify-between gap-3 rounded-xl bg-primary/[0.08] px-4 py-3 lg:flex" data-testid="conversation-context-header">
                 <div className="flex min-w-0 items-center gap-3">
-                  <Avatar className="h-9 w-9 shrink-0">
+                  <Avatar className="h-11 w-11 shrink-0">
                     <AvatarFallback className="bg-primary/15 text-primary text-sm font-semibold">{initials(conversation?.client?.name || '')}</AvatarFallback>
                   </Avatar>
-                  <h2 className="truncate font-display text-lg font-semibold" data-testid="conversation-client-name-desktop">{conversation?.client?.name || '...'}</h2>
+                  <h2 className="truncate font-display text-xl font-semibold" data-testid="conversation-client-name-desktop">{conversation?.client?.name || '...'}</h2>
                 </div>
                 <Button asChild variant="secondary" size="sm" className="rounded-lg shrink-0">
                   <Link to={`/coach/clients/${clientId}`} data-testid="conversation-view-client">
