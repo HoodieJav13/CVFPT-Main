@@ -64,9 +64,9 @@ const state = {
     { id: 'note_1', session_id: 'session_done', coach_id: 'coach_marcus', content: 'Great pacing today. Keep squats controlled and pain-free.', shared_with_client: true, archived: false, created_at: iso(-3, 11), updated_at: iso(-3, 11) },
   ],
   metrics: [
-    { id: 'metric_weight', client_id: 'client_sarah', name: 'Body Weight', unit: 'lbs', improvement_direction: 'lower', archived: false, created_at: iso(-40) },
-    { id: 'metric_waist', client_id: 'client_sarah', name: 'Waist', unit: 'in', improvement_direction: 'lower', archived: false, created_at: iso(-40) },
-    { id: 'metric_mile', client_id: 'client_david', name: 'Mile Time', unit: 'min', improvement_direction: 'lower', archived: false, created_at: iso(-30) },
+    { id: 'metric_weight', client_id: 'client_sarah', name: 'Body Weight', unit: 'lbs', improvement_direction: 'lower', target_value: 155, archived: false, created_at: iso(-40) },
+    { id: 'metric_waist', client_id: 'client_sarah', name: 'Waist', unit: 'in', improvement_direction: 'lower', target_value: null, archived: false, created_at: iso(-40) },
+    { id: 'metric_mile', client_id: 'client_david', name: 'Mile Time', unit: 'min', improvement_direction: 'lower', target_value: 7, archived: false, created_at: iso(-30) },
   ],
   metricEntries: [
     { id: 'entry_w1', metric_id: 'metric_weight', value: 168, notes: null, recorded_on: dateOnly(-28), archived: false, created_at: iso(-28) },
@@ -1320,7 +1320,7 @@ export function installPreviewApi(api) {
     const coachMetrics = path.match(/^\/progress\/clients\/([^/]+)\/metrics$/);
     if (coachMetrics && method === 'get') return ok(state.metrics.filter((m) => m.client_id === coachMetrics[1] && !m.archived).map(metricWithEntries), config);
     if (coachMetrics && method === 'post') {
-      const row = { id: id('metric'), client_id: coachMetrics[1], name: payload.name, unit: payload.unit || null, improvement_direction: payload.improvement_direction || 'neutral', archived: false, created_at: new Date().toISOString(), entries: [] };
+      const row = { id: id('metric'), client_id: coachMetrics[1], name: payload.name, unit: payload.unit || null, improvement_direction: payload.improvement_direction || 'neutral', target_value: payload.target_value ?? null, archived: false, created_at: new Date().toISOString(), entries: [] };
       state.metrics.push(row);
       return ok(row, config, 201);
     }

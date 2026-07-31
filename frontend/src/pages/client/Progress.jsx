@@ -216,6 +216,11 @@ export default function ClientProgress() {
                     ) : (
                       <p className="text-xs text-muted-foreground mt-0.5">No entries yet</p>
                     )}
+                    {m.target_value != null && (
+                      <p className="text-xs text-gold mt-0.5" data-testid="client-metric-goal">
+                        Goal: <span className="font-semibold tabular-nums">{m.target_value}{m.unit ? ` ${m.unit}` : ''}</span>
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {m.latest_is_personal_best && (
@@ -263,6 +268,7 @@ export default function ClientProgress() {
                         unit={m.unit}
                         highlightLatest={isAchievementMetric}
                         markers={workoutMarkers}
+                        targetValue={m.target_value}
                       />
                     ) : (
                       <p className="py-6 text-center text-sm text-muted-foreground" data-testid="metric-range-empty">
