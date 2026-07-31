@@ -3,9 +3,10 @@ import { Outlet, NavLink, useLocation, useNavigate, Link } from 'react-router';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
-  TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell,
+  TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search,
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
+import ClientJump from '@/components/ClientJump';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -84,6 +85,19 @@ export default function AppShell() {
   const location = useLocation();
   const { unread, unreadInitialized, refresh: refreshNotifications } = useNotifications();
   const isCoach = user.role === 'coach' || user.role === 'admin';
+  const [jumpOpen, setJumpOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isCoach) return undefined;
+    const onKey = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setJumpOpen((current) => !current);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isCoach]);
   const notificationIdentity = `${user.role}:${user.profile?.id || user.email}`;
   const displayedUnread = Math.min(unread, 99);
   const previousDisplayedUnread = useRef(null);
@@ -155,6 +169,18 @@ export default function AppShell() {
             ))}
           </nav>
           {isCoach && (
+            <button
+              type="button"
+              onClick={() => setJumpOpen(true)}
+              className="mb-1 flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              data-testid="desktop-client-jump-trigger"
+            >
+              <Search className="h-[18px] w-[18px]" />
+              <span className="flex-1 text-left">Find client</span>
+              <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">⌘K</kbd>
+            </button>
+          )}
+          {isCoach && (
             <Link
               to="/coach/notifications"
               className="mb-2 flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -187,6 +213,11 @@ export default function AppShell() {
               <span className="font-display font-semibold">CVF PT</span>
             </Link>
             <div className="flex items-center gap-2" data-testid="mobile-header-actions">
+              {isCoach && (
+                <Button variant="ghost" size="icon" onClick={() => setJumpOpen(true)} data-testid="mobile-client-jump-trigger" aria-label="Find client">
+                  <Search className="h-5 w-5" />
+                </Button>
+              )}
               {isCoach && (
                 <Button variant="ghost" size="icon" className="relative" onClick={() => navigate('/coach/notifications')} data-testid="mobile-notifications-link" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
                   <Bell className="h-5 w-5" />
@@ -248,6 +279,8 @@ export default function AppShell() {
           ))}
         </div>
       </nav>
+
+      {isCoach && <ClientJump open={jumpOpen} onOpenChange={setJumpOpen} />}
     </div>
   );
 }
