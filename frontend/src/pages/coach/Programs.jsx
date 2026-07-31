@@ -20,6 +20,7 @@ import {
   Dumbbell, FileText, FileUp, Loader2, Pencil, Plus, Trash2, UserPlus, Video,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -250,11 +251,37 @@ function ExerciseLibraryTab({ library, reload }) {
   );
 }
 
+function workoutToForm(workout) {
+  return {
+    name: workout.name || '',
+    description: workout.description || '',
+    goal: workout.goal || '',
+    exercises: workout.exercises.length ? workout.exercises.map((ex) => ({
+      id: ex.id || '',
+      exercise_library_id: ex.exercise_library_id || '',
+      custom_name: ex.custom_name || ex.library_exercise?.name || '',
+      sets: ex.sets || '',
+      reps: ex.reps || '',
+      rest: ex.rest || '',
+      tempo: ex.tempo || '',
+      target_rpe: ex.target_rpe || '',
+      default_load_value: ex.default_load_value ?? '',
+      default_load_unit: ex.default_load_unit || 'lb',
+      client_notes: ex.client_notes || ex.notes || '',
+      coach_notes: ex.coach_notes || '',
+      video_url: ex.video_url || ex.library_exercise?.video_url || '',
+    })) : [{ ...EMPTY_EXERCISE }],
+  };
+}
+
 function WorkoutsTab({ workouts, library, reload }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_WORKOUT);
   const [saving, setSaving] = useState(false);
+  // Desktop two-pane (UI-6): the editor lives beside the list instead of
+  // in the dialog; mobile keeps the dialog flow with the same state.
+  const [paneActive, setPaneActive] = useState(false);
 
   const openCreate = () => {
     setEditing(null);
@@ -264,27 +291,20 @@ function WorkoutsTab({ workouts, library, reload }) {
 
   const openEdit = (workout) => {
     setEditing(workout);
-    setForm({
-      name: workout.name || '',
-      description: workout.description || '',
-      goal: workout.goal || '',
-      exercises: workout.exercises.length ? workout.exercises.map((ex) => ({
-        id: ex.id || '',
-        exercise_library_id: ex.exercise_library_id || '',
-        custom_name: ex.custom_name || ex.library_exercise?.name || '',
-        sets: ex.sets || '',
-        reps: ex.reps || '',
-        rest: ex.rest || '',
-        tempo: ex.tempo || '',
-        target_rpe: ex.target_rpe || '',
-        default_load_value: ex.default_load_value ?? '',
-        default_load_unit: ex.default_load_unit || 'lb',
-        client_notes: ex.client_notes || ex.notes || '',
-        coach_notes: ex.coach_notes || '',
-        video_url: ex.video_url || ex.library_exercise?.video_url || '',
-      })) : [{ ...EMPTY_EXERCISE }],
-    });
+    setForm(workoutToForm(workout));
     setOpen(true);
+  };
+
+  const selectCreate = () => {
+    setEditing(null);
+    setForm(EMPTY_WORKOUT);
+    setPaneActive(true);
+  };
+
+  const selectEdit = (workout) => {
+    setEditing(workout);
+    setForm(workoutToForm(workout));
+    setPaneActive(true);
   };
 
   const save = async (e) => {
@@ -301,6 +321,9 @@ function WorkoutsTab({ workouts, library, reload }) {
       } else {
         await api.post('/programs/workouts', form);
         toast.success('Workout created');
+        // A second submit of the same pane form would create a duplicate.
+        setForm(EMPTY_WORKOUT);
+        setPaneActive(false);
       }
       setOpen(false);
       reload();
@@ -315,6 +338,7 @@ function WorkoutsTab({ workouts, library, reload }) {
     try {
       await api.patch(`/programs/workouts/${workout.id}/archive`);
       toast.success('Workout archived');
+      if (editing?.id === workout.id) setPaneActive(false);
       reload();
     } catch (e) {
       toast.error(errMsg(e));
@@ -323,11 +347,60 @@ function WorkoutsTab({ workouts, library, reload }) {
 
   return (
     <div className="space-y-4 mt-1">
-      <div className="flex justify-end">
+      <div className="flex justify-end lg:hidden">
         <Button className="rounded-xl" onClick={openCreate} data-testid="workout-create-button"><Plus className="h-4 w-4 mr-1.5" /> New workout day</Button>
       </div>
       {workouts.length === 0 && <EmptyState icon={Dumbbell} title="No workout days yet" subtitle="Create reusable day templates from library exercises or custom movements." />}
-      <div className="grid gap-3 md:grid-cols-2">
+
+      {/* ---------- Desktop: list rail + persistent editor pane ---------- */}
+      <div className="hidden lg:grid lg:h-[calc(100dvh-320px)] lg:min-h-[480px] lg:grid-cols-[300px_1fr] lg:gap-6">
+        <aside className="min-h-0 space-y-2 overflow-y-auto pr-1" data-testid="workout-rail">
+          <Button className="w-full rounded-xl" onClick={selectCreate} data-testid="workout-rail-create">
+            <Plus className="h-4 w-4 mr-1.5" /> New workout day
+          </Button>
+          {workouts.map((workout) => (
+            <button
+              key={workout.id}
+              onClick={() => selectEdit(workout)}
+              aria-current={paneActive && editing?.id === workout.id ? 'true' : undefined}
+              className={cn(
+                'w-full rounded-xl border px-4 py-3 text-left transition-colors',
+                paneActive && editing?.id === workout.id
+                  ? 'border-l-[3px] border-l-primary border-primary/40 bg-primary/15'
+                  : 'border-border bg-card/60 hover:bg-card',
+              )}
+              data-testid="workout-rail-row"
+            >
+              <p className="truncate font-medium">{workout.name}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {workout.goal || workout.description || 'Workout day'} · {workout.exercise_count} exercise{workout.exercise_count === 1 ? '' : 's'}
+              </p>
+            </button>
+          ))}
+        </aside>
+        <section className="flex min-h-0 flex-col overflow-y-auto rounded-2xl border border-border bg-card/40 p-5" data-testid="workout-editor-pane">
+          {!paneActive ? (
+            <div className="flex flex-1 items-center justify-center">
+              <EmptyState icon={Dumbbell} title="Select a workout day" subtitle="Pick a day from the list to edit it here, or start a new one." testId="workout-editor-empty" />
+            </div>
+          ) : (
+            <>
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-primary/[0.08] px-4 py-3" data-testid="workout-editor-header">
+                <h3 className="truncate font-display text-xl font-semibold">{editing ? editing.name : 'New workout day'}</h3>
+                {editing && (
+                  <IconButton label={`Archive ${editing.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground shrink-0" onClick={() => archive(editing)} data-testid="workout-editor-archive">
+                    <Archive className="h-4 w-4" />
+                  </IconButton>
+                )}
+              </div>
+              <WorkoutFormFields form={form} setForm={setForm} library={library} saving={saving} onSubmit={save} />
+            </>
+          )}
+        </section>
+      </div>
+
+      {/* ---------- Mobile: card grid + dialog (unchanged flow) ---------- */}
+      <div className="grid gap-3 md:grid-cols-2 lg:hidden">
         {workouts.map((workout) => (
           <Card key={workout.id} data-testid="workout-card">
             <CardHeader className="pb-2">
@@ -1009,7 +1082,9 @@ function AssignmentsTab({ programs, workouts, clients, reload }) {
   );
 }
 
-function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onSubmit, editing }) {
+// Shared editor body for the mobile dialog and the desktop pane. The
+// datalist id is prefixed so both mounts can coexist in the DOM.
+function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix = 'workout' }) {
   const setExercise = (index, updates) => {
     setForm({ ...form, exercises: form.exercises.map((ex, i) => i === index ? { ...ex, ...updates } : ex) });
   };
@@ -1024,19 +1099,13 @@ function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onS
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{editing ? 'Edit workout day' : 'New workout day'}</DialogTitle>
-          <DialogDescription>Create or update a workout day and its ordered exercises.</DialogDescription>
-        </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Workout day name" data-testid="workout-name-input" />
             <Input value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} placeholder="Goal/focus" data-testid="workout-goal-input" />
           </div>
           <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" data-testid="workout-description-input" />
-          <datalist id="exercise-library-options">
+          <datalist id={`${idPrefix}-exercise-options`}>
             {library.map((exercise) => <option key={exercise.id} value={exercise.name} />)}
           </datalist>
           <Accordion
@@ -1055,7 +1124,7 @@ function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onS
                 </AccordionTrigger>
                 <AccordionContent className="space-y-2 pb-3">
                   <div className="flex items-center gap-2">
-                    <Input list="exercise-library-options" value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
+                    <Input list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
                     <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== index) })} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
                   </div>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -1101,8 +1170,22 @@ function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onS
           <Button type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setForm({ ...form, exercises: [...form.exercises, { ...EMPTY_EXERCISE }] })} data-testid="workout-exercise-add-button">
             <Plus className="h-4 w-4 mr-1.5" /> Add exercise
           </Button>
-          <DialogFooter><Button disabled={saving} className="rounded-xl" data-testid="workout-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save workout'}</Button></DialogFooter>
+          <div className="flex justify-end">
+            <Button disabled={saving} className="rounded-xl" data-testid="workout-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save workout'}</Button>
+          </div>
         </form>
+  );
+}
+
+function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onSubmit, editing }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{editing ? 'Edit workout day' : 'New workout day'}</DialogTitle>
+          <DialogDescription>Create or update a workout day and its ordered exercises.</DialogDescription>
+        </DialogHeader>
+        <WorkoutFormFields form={form} setForm={setForm} library={library} saving={saving} onSubmit={onSubmit} idPrefix="workout-dialog" />
       </DialogContent>
     </Dialog>
   );
