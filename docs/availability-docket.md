@@ -1,10 +1,13 @@
 # Availability & Booking — Decision Docket
 
-Status: **awaiting decisions** (owner + partners). This docket resolves the
-product questions for roadmap item 18 before any schema or code is built.
-Each decision lists a recommended default, alternatives, and what deferring
-costs. Circulate to both partners — the ballot decision of 2026-07-30 gives
-them a formal say on availability.
+Status: **resolved 2026-07-31** — all nine recommendations accepted as
+written (owner decision, partners consulted in person per the 2026-07-30
+ballot; answers relayed in the working session rather than initialed
+below). The accepted defaults are the build contract for roadmap item 18.
+
+This docket resolved the product questions for roadmap item 18 before any
+schema or code was built. Each decision lists the accepted default,
+alternatives considered, and what deferring would have cost.
 
 Context already locked (not up for re-decision here):
 
@@ -140,15 +143,17 @@ decide now if a partner wants group sessions at launch.
 
 ## Sign-off
 
-| Decision | Owner | Partner 1 | Partner 2 |
-|----------|-------|-----------|-----------|
-| A1 granularity | | | |
-| A2 time off | | | |
-| A3 requestable types + assessment duration | | | |
-| A4 slot-picking + approve | | | |
-| A5 lead time / horizon | | | |
-| A6 cancellation policy + notice window | | | |
-| A7 per-coach hours | | | |
-| A8 group slots | | | |
+Resolved 2026-07-31: every decision accepted as recommended (owner, with
+partners consulted in person — the in-person answers replaced the
+initial-per-row process below).
 
-When every row has three initials (or "default"), the build starts.
+| Decision | Outcome |
+|----------|---------|
+| A1 granularity | accepted — weekly template + per-date overrides |
+| A2 time off | accepted — tstzrange spans; no auto-cancel; reason private |
+| A3 requestable types + assessment duration | accepted — 30/45/60 requestable; 90 + assessment coach-only; assessment = 90 min |
+| A4 slot-picking + approve | accepted — pick-from-open-slots, request → approve; auto-book deferred to phase 2 |
+| A5 lead time / horizon | accepted — 12 h lead, 21-day horizon |
+| A6 cancellation policy + notice window | accepted — advisory only, 24-hour notice copy |
+| A7 per-coach hours | accepted |
+| A8 group slots | accepted — deferred; capacity modeled, default 1 |
