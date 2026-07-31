@@ -23,6 +23,7 @@ import {
 import {
   Plus, CalendarDays, MoreVertical, Check, X, Pencil, StickyNote, Loader2, Inbox, Dumbbell,
 } from 'lucide-react';
+import DateTimePicker from '@/components/DateTimePicker';
 import { fmtTime, fmtDay, fmtDateTime, toLocalInputValue, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -140,9 +141,14 @@ export default function CoachSessions() {
         title="Sessions"
         subtitle="Schedule, complete and manage training sessions"
         action={
-          <Button className="rounded-xl" onClick={() => { setEditing(null); setDrawerOpen(true); }} data-testid="session-create-button">
-            <Plus className="h-4 w-4 mr-1.5" /> New
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button variant="outline" className="rounded-xl" onClick={() => navigate('/coach/calendar')} data-testid="session-week-view-button">
+              <CalendarDays className="h-4 w-4 mr-1.5" /> Week
+            </Button>
+            <Button className="rounded-xl" onClick={() => { setEditing(null); setDrawerOpen(true); }} data-testid="session-create-button">
+              <Plus className="h-4 w-4 mr-1.5" /> New
+            </Button>
+          </div>
         }
       />
 
@@ -327,7 +333,11 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
             </div>
             <div className="space-y-1.5">
               <Label>Date & time *</Label>
-              <Input type="datetime-local" required value={form.scheduled_at} onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })} className="rounded-xl h-11" data-testid="session-datetime-input" />
+              <DateTimePicker
+                value={form.scheduled_at}
+                onChange={(scheduled_at) => setForm({ ...form, scheduled_at })}
+                data-testid="session-datetime-input"
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

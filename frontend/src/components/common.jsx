@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, ReferenceLine, Tooltip,
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { useVisualIntensity } from '@/lib/visualIntensity';
@@ -241,16 +241,27 @@ export function ChartSkeleton() {
 
 /* ---------- Metric chart ---------- */
 
-export function MetricChart({ entries = [], unit, highlightLatest = false }) {
+export function MetricChart({ entries = [], unit, highlightLatest = false, markers = [] }) {
   const gradientId = `metric-fill-${useId().replace(/:/g, '')}`;
   const reducedMotion = useReducedMotion();
   const intensity = useVisualIntensity();
   const data = entries.map((e) => ({
-    date: (() => { try { return format(parseISO(e.recorded_on), 'MMM d'); } catch { return e.recorded_on; } })(),
+    ts: (() => { try { return parseISO(e.recorded_on).getTime(); } catch { return null; } })(),
     value: Number(e.value),
-  }));
+  })).filter((point) => point.ts !== null).sort((a, b) => a.ts - b.ts);
   if (!data.length) return null;
   const lastIndex = data.length - 1;
+  // Time-scaled axis (instead of one category per entry) so session markers
+  // can sit at their true dates between entries. Padded so single-entry
+  // charts and edge markers still render inside the plot.
+  const minTs = data[0].ts;
+  const maxTs = data[lastIndex].ts;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const pad = Math.max(dayMs / 2, (maxTs - minTs) * 0.03);
+  const domain = [minTs - pad, maxTs + pad];
+  const markerTs = [...new Set(markers
+    .map((iso) => { try { return parseISO(iso).getTime(); } catch { return null; } })
+    .filter((ts) => ts !== null && ts >= domain[0] && ts <= domain[1]))];
   return (
     <div className="min-h-[220px]">
       <ResponsiveContainer width="100%" height={220}>
@@ -262,12 +273,25 @@ export function MetricChart({ entries = [], unit, highlightLatest = false }) {
             </linearGradient>
           </defs>
           <CartesianGrid stroke="hsl(var(--border) / 0.55)" strokeDasharray="3 6" vertical={false} />
-          <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+          <XAxis
+            dataKey="ts"
+            type="number"
+            scale="time"
+            domain={domain}
+            tickFormatter={(ts) => format(ts, 'MMM d')}
+            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
           <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
           <Tooltip
             contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 12, color: 'hsl(var(--foreground))' }}
+            labelFormatter={(ts) => format(ts, 'MMM d, yyyy')}
             formatter={(v) => [`${v}${unit ? ` ${unit}` : ''}`, 'Value']}
           />
+          {markerTs.map((ts) => (
+            <ReferenceLine key={ts} x={ts} stroke="hsl(var(--chart-2) / 0.22)" />
+          ))}
           <Area
             key={entries.map((entry) => `${entry.id}:${entry.value}:${entry.recorded_on}`).join('|')}
             type="monotone"
@@ -321,6 +345,11 @@ export function MetricChart({ entries = [], unit, highlightLatest = false }) {
           />
         </AreaChart>
       </ResponsiveContainer>
+      {markerTs.length > 0 && (
+        <p className="mt-1 text-[11px] text-muted-foreground" data-testid="chart-marker-legend">
+          Vertical lines mark workout days
+        </p>
+      )}
     </div>
   );
 }

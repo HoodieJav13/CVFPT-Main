@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { m, useReducedMotion } from 'framer-motion';
-import { ArrowLeft, Check, CircleSlash2, Clock3, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Check, CircleSlash2, Clock3, MessageSquare, ShieldCheck, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { fmtDateTime } from '@/lib/format';
@@ -15,6 +15,39 @@ import { MOTION_EASINGS, WORKOUT_COMPLETION_MOTION, msToSeconds } from '@/lib/mo
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { useNotifications } from '@/context/NotificationsContext';
 import { hasQueuedCompleteFor, useWorkoutOutbox } from '@/lib/workoutOutbox';
+
+// Same identity rule as the exercise-history RPC: match by library exercise
+// when linked, otherwise by the source workout exercise.
+function exerciseMatchKey(exercise) {
+  return exercise.exercise_library_id
+    ? `lib:${exercise.exercise_library_id}`
+    : `src:${exercise.source_workout_exercise_id}`;
+}
+
+// Per-unit training volume (load × reps) across completed sets.
+function completedVolume(exercise) {
+  const totals = {};
+  for (const set of exercise.sets || []) {
+    if (set.status !== 'completed' || set.actual_load_value == null || set.actual_reps == null) continue;
+    const unit = set.actual_load_unit || 'lb';
+    totals[unit] = (totals[unit] || 0) + (set.actual_load_value * set.actual_reps);
+  }
+  return totals;
+}
+
+function formatVolume(totals) {
+  return Object.entries(totals)
+    .map(([unit, value]) => `${Math.round(value).toLocaleString()} ${unit}`)
+    .join(' + ');
+}
+
+// D5 (docs/roadmap.md): coach-entered data displays as verified; the
+// log-level badge is derived server-side from per-set attribution.
+const ATTRIBUTION_BADGES = {
+  coach: { label: 'Coach verified', Icon: ShieldCheck, className: 'border-primary/40 bg-primary/10 text-primary' },
+  mixed: { label: 'Coach + client logged', Icon: Users, className: 'border-gold/40 bg-gold/10 text-gold' },
+  client: { label: 'Self-reported', Icon: null, className: 'text-muted-foreground' },
+};
 
 export default function WorkoutLogDetail() {
   const { id } = useParams();
@@ -39,6 +72,8 @@ export default function WorkoutLogDetail() {
   ));
   const [waitingToSync, setWaitingToSync] = useState(() => hasQueuedCompleteFor(id));
   const [syncError, setSyncError] = useState(null);
+  const [previousByExercise, setPreviousByExercise] = useState({});
+  const previousFetchedFor = useRef(null);
   // Drains a completion queued by the tracker before navigation
   // (docs/offline-workout-completion.md). The celebration fires only once
   // the server confirms — never for unsynced data.
@@ -97,6 +132,35 @@ export default function WorkoutLogDetail() {
   useEffect(() => {
     setCompletionSignalId((current) => (current === id ? current : null));
   }, [id]);
+  useEffect(() => {
+    if (!log || log.status !== 'completed' || previousFetchedFor.current === log.id) return undefined;
+    previousFetchedFor.current = log.id;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get(isClient ? '/workout-logs/mine' : `/workout-logs/client/${log.client_id}`);
+        const older = (data || [])
+          .filter((row) => row.id !== log.id && row.completed_at
+            && new Date(row.completed_at) < new Date(log.completed_at))
+          .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at));
+        const map = {};
+        for (const exercise of log.exercises) {
+          const key = exerciseMatchKey(exercise);
+          for (const prior of older) {
+            const match = (prior.exercises || []).find((row) => exerciseMatchKey(row) === key);
+            if (match) {
+              map[key] = { totals: completedVolume(match), completed_at: prior.completed_at };
+              break;
+            }
+          }
+        }
+        if (!cancelled) setPreviousByExercise(map);
+      } catch {
+        // The comparison is an enhancement; the review page stands without it.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isClient, log]);
   useEffect(() => {
     if (!isClient || !location.state?.completedWorkoutId) return;
     if (location.state.completedWorkoutId === id) setCompletionSignalId(id);
@@ -180,32 +244,92 @@ export default function WorkoutLogDetail() {
           <Badge variant="outline" className="bg-success/10 text-success-foreground"><Check className="mr-1 h-3.5 w-3.5" /> {completed} completed</Badge>
           {skipped > 0 && <Badge variant="outline"><CircleSlash2 className="mr-1 h-3.5 w-3.5" /> {skipped} skipped</Badge>}
           <Badge variant="outline"><Clock3 className="mr-1 h-3.5 w-3.5" /> {log.status}</Badge>
+          {ATTRIBUTION_BADGES[log.attribution] && (
+            <Badge
+              variant="outline"
+              className={ATTRIBUTION_BADGES[log.attribution].className}
+              data-testid="attribution-badge"
+              data-attribution={log.attribution}
+            >
+              {(() => {
+                const { Icon } = ATTRIBUTION_BADGES[log.attribution];
+                return Icon ? <Icon className="mr-1 h-3.5 w-3.5" /> : null;
+              })()}
+              {ATTRIBUTION_BADGES[log.attribution].label}
+            </Badge>
+          )}
         </div>
       </m.section>
       <div className="space-y-3">
-        {log.exercises.map((exercise) => (
-          <Card key={exercise.id}>
-            <CardHeader className="pb-2"><CardTitle className="font-display text-lg">{exercise.exercise_name}</CardTitle></CardHeader>
-            <CardContent>
-              <div className="mb-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                {exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
-                {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
-                {exercise.prescribed_rest && <span>Rest {exercise.prescribed_rest}</span>}
-                {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
-              </div>
-              <div className="divide-y divide-border/70">
-                {exercise.sets.map((set) => (
-                  <div key={set.id} className="grid min-h-11 grid-cols-[2.5rem_1fr_auto] items-center gap-2 py-2 text-sm">
-                    <span className="tabular-nums text-muted-foreground">{set.set_number}</span>
-                    <span>{set.actual_load_value === null ? 'No weight logged' : `${set.actual_load_value} ${set.actual_load_unit}`}</span>
-                    <Badge variant={set.status === 'completed' ? 'default' : 'outline'}>{set.status}</Badge>
+        {log.exercises.map((exercise) => {
+          const hasTarget = exercise.prescribed_sets || exercise.prescribed_load_value != null
+            || exercise.prescribed_reps || exercise.prescribed_rpe || exercise.prescribed_rest || exercise.prescribed_tempo;
+          const totals = completedVolume(exercise);
+          const units = Object.keys(totals);
+          const previous = previousByExercise[exerciseMatchKey(exercise)];
+          let delta = null;
+          if (units.length === 1 && previous) {
+            const prevUnits = Object.keys(previous.totals);
+            if (prevUnits.length === 1 && prevUnits[0] === units[0] && previous.totals[units[0]] > 0) {
+              delta = {
+                pct: ((totals[units[0]] - previous.totals[units[0]]) / previous.totals[units[0]]) * 100,
+                when: new Date(previous.completed_at).toLocaleDateString(),
+              };
+            }
+          }
+          return (
+            <Card key={exercise.id}>
+              <CardHeader className="pb-2"><CardTitle className="font-display text-lg">{exercise.exercise_name}</CardTitle></CardHeader>
+              <CardContent>
+                {hasTarget && (
+                  <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" data-testid="exercise-target-line">
+                    <span className="font-medium">Target</span>
+                    {exercise.prescribed_sets && <span>Sets {exercise.prescribed_sets}</span>}
+                    {exercise.prescribed_load_value != null && <span>Load {exercise.prescribed_load_value} {exercise.prescribed_load_unit}</span>}
+                    {exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
+                    {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
+                    {exercise.prescribed_rest && <span>Rest {exercise.prescribed_rest}</span>}
+                    {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
                   </div>
-                ))}
-              </div>
-              {exercise.client_notes && <p className="mt-3 rounded-md bg-secondary px-3 py-2 text-sm">{exercise.client_notes}</p>}
-            </CardContent>
-          </Card>
-        ))}
+                )}
+                <div className="grid grid-cols-[2rem_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 pb-1 text-xs font-medium text-muted-foreground">
+                  <span>Set</span><span>Weight</span><span>Reps</span><span>RPE</span><span className="sr-only">Status</span>
+                </div>
+                <div className="divide-y divide-border/70">
+                  {exercise.sets.map((set) => (
+                    <div key={set.id} className="grid min-h-11 grid-cols-[2rem_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 py-2 text-sm" data-testid="review-set-row">
+                      <span className="tabular-nums text-muted-foreground">{set.set_number}</span>
+                      <span className="tabular-nums">{set.actual_load_value === null ? <span aria-label="No weight logged">—</span> : `${set.actual_load_value} ${set.actual_load_unit}`}</span>
+                      <span className="tabular-nums">{set.actual_reps ?? <span aria-label="No reps logged">—</span>}</span>
+                      <span className="tabular-nums">{set.actual_rpe ?? <span aria-label="No RPE logged">—</span>}</span>
+                      <Badge variant={set.status === 'completed' ? 'default' : 'outline'}>{set.status}</Badge>
+                    </div>
+                  ))}
+                </div>
+                {units.length > 0 && (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-testid="exercise-volume">
+                    <span className="text-muted-foreground">Volume</span>
+                    <span className="font-medium tabular-nums">{formatVolume(totals)}</span>
+                    {delta && Math.abs(delta.pct) < 0.5 && (
+                      <span className="text-muted-foreground" data-testid="volume-delta">even with {delta.when}</span>
+                    )}
+                    {delta && delta.pct >= 0.5 && (
+                      <span className="inline-flex items-center gap-1 tabular-nums text-success" data-testid="volume-delta">
+                        <TrendingUp className="h-3.5 w-3.5" /> +{Math.round(delta.pct)}% vs {delta.when}
+                      </span>
+                    )}
+                    {delta && delta.pct <= -0.5 && (
+                      <span className="inline-flex items-center gap-1 tabular-nums text-muted-foreground" data-testid="volume-delta">
+                        <TrendingDown className="h-3.5 w-3.5" /> −{Math.abs(Math.round(delta.pct))}% vs {delta.when}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {exercise.client_notes && <p className="mt-3 rounded-md bg-secondary px-3 py-2 text-sm">{exercise.client_notes}</p>}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
       {readError && (
         <div className="mt-4 flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="coach-feedback-read-error">

@@ -148,7 +148,7 @@ const state = {
     })),
   ],
   workoutLogSets: [
-    ...[1, 2, 3].map((setNumber) => ({ id: `logset_preview_bench_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_bench', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: setNumber === 3 ? 22.5 : 20, actual_load_unit: 'lb', client_operation_id: null, archived: false })),
+    ...[1, 2, 3].map((setNumber) => ({ id: `logset_preview_bench_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_bench', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: setNumber === 3 ? 22.5 : 20, actual_load_unit: 'lb', actual_reps: 8, client_operation_id: null, entered_by: 'coach', entered_by_coach_id: 'coach_marcus', archived: false })),
     ...[1, 2].map((setNumber) => ({ id: `logset_preview_row_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_row', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: 35, actual_load_unit: 'lb', client_operation_id: null, archived: false })),
     { id: 'logset_preview_row_3', workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_row', set_number: 3, set_origin: 'prescribed', status: 'skipped', actual_load_value: 35, actual_load_unit: 'lb', client_operation_id: null, archived: false },
     ...Array.from({ length: 12 }, (_, index) => ({
@@ -537,7 +537,16 @@ function workoutLogDetails(logId) {
       const activity = new Date(b.edited_at || b.created_at) - new Date(a.edited_at || a.created_at);
       return activity || String(b.id).localeCompare(String(a.id));
     });
-  return { ...log, client: clientById(log.client_id), coach_responses: coachResponses, exercises };
+  // Mirrors the API's log-level attribution derivation (PR-D′): completed,
+  // non-archived sets only; falls back to who started the log.
+  const enteredBy = new Set(exercises
+    .flatMap((exercise) => exercise.sets)
+    .filter((set) => set.status === 'completed')
+    .map((set) => (set.entered_by === 'coach' ? 'coach' : 'client')));
+  const attribution = enteredBy.size === 0
+    ? (log.started_by === 'coach' ? 'coach' : 'client')
+    : (enteredBy.size === 1 ? enteredBy.values().next().value : 'mixed');
+  return { ...log, client: clientById(log.client_id), coach_responses: coachResponses, exercises, attribution };
 }
 
 function previewLoadForExercise({ exercise, programAssignmentId, programDayId, workoutAssignmentId }) {
@@ -800,6 +809,14 @@ export function installPreviewApi(api) {
       return ok(state.workoutLogs.filter((row) => row.client_id === client.id && row.status === 'completed' && !row.archived)
         .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map((row) => workoutLogDetails(row.id)), config);
     }
+    if (path === '/workout-logs/mine/completed-dates' && method === 'get') {
+      return ok({
+        dates: state.workoutLogs
+          .filter((row) => row.client_id === client.id && row.status === 'completed' && !row.archived && row.completed_at)
+          .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))
+          .map((row) => row.completed_at),
+      }, config);
+    }
     if (path === '/workout-logs/coach-feedback/unread-count' && method === 'get') {
       if (role !== 'client') return fail(config, 403, 'Client access required');
       return ok({ unread: state.coachResponses.filter((row) => row.client_id === client.id && !row.archived && !row.read_at).length }, config);
@@ -814,9 +831,19 @@ export function installPreviewApi(api) {
     }
     const exerciseHistory = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/history$/);
     if (exerciseHistory && method === 'get') {
-      const log = state.workoutLogs.find((row) => row.id === exerciseHistory[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
-      const exercise = state.workoutLogExercises.find((row) => row.id === exerciseHistory[2] && row.workout_log_id === log?.id && !row.archived);
-      if (!exercise || role !== 'client') return fail(config, 404, 'Workout exercise not found');
+      // Mirrors the API: client on their own active log, coach/admin via
+      // ownership of the log's client; history is always the log's client's.
+      const log = state.workoutLogs.find((row) => row.id === exerciseHistory[1] && row.status === 'active' && !row.archived);
+      const historyOwner = log ? clientById(log.client_id) : null;
+      const allowed = Boolean(log && historyOwner) && (
+        role === 'client'
+          ? log.client_id === client.id
+          : (role === 'admin' || historyOwner.coach_id === currentCoach().id)
+      );
+      const exercise = allowed
+        ? state.workoutLogExercises.find((row) => row.id === exerciseHistory[2] && row.workout_log_id === log.id && !row.archived)
+        : null;
+      if (!exercise) return fail(config, 404, 'Workout exercise not found');
       if (localStorage.getItem('cvf_preview_history_failure') === 'once') {
         localStorage.removeItem('cvf_preview_history_failure');
         return fail(config, 503, 'Exercise history is temporarily unavailable');
@@ -837,7 +864,7 @@ export function installPreviewApi(api) {
           : !row.exercise_library_id && row.source_workout_exercise_id === exercise.source_workout_exercise_id
       ));
       const matchByLog = new Map(matchingExercises.map((row) => [row.workout_log_id, row]));
-      const matches = state.workoutLogs.filter((row) => row.client_id === client.id && row.status === 'completed' && !row.archived && matchByLog.has(row.id))
+      const matches = state.workoutLogs.filter((row) => row.client_id === log.client_id && row.status === 'completed' && !row.archived && matchByLog.has(row.id))
         .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at) || b.id.localeCompare(a.id))
         .filter((row) => !before || row.completed_at < before.completed_at || (row.completed_at === before.completed_at && row.id < before.id));
       const page = matches.slice(0, 10);

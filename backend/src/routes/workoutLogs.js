@@ -182,6 +182,66 @@ async function workoutLogWithDetails(id) {
   return { ...detailed, attribution: computeLogAttribution(detailed) };
 }
 
+/**
+ * Bulk variant of workoutLogWithDetails for the history lists: a constant
+ * four queries (logs, responses, exercises, sets) however many logs are
+ * expanded — the sequential per-log loop was ~4 queries × 50 logs for a
+ * single page view. Per-log shape is identical to the single builder, and
+ * the input id order (completed_at desc) is preserved.
+ */
+async function workoutLogsWithDetailsBulk(ids) {
+  if (!ids.length) return [];
+  const { data: logs, error } = await supabaseAdmin.from('workout_logs')
+    .select('*, client:clients(id, name, coach_id, archived)')
+    .in('id', ids).eq('archived', false);
+  if (error) throw error;
+  const logIds = (logs || []).map((log) => log.id);
+  if (!logIds.length) return [];
+  const { data: coachResponses, error: responseError } = await supabaseAdmin.from('workout_coach_responses')
+    .select('*').in('workout_log_id', logIds).eq('archived', false);
+  if (responseError) throw responseError;
+  const { data: exercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
+    .select('*').in('workout_log_id', logIds).eq('archived', false).order('position');
+  if (exerciseError) throw exerciseError;
+  const exerciseIds = (exercises || []).map((exercise) => exercise.id);
+  let sets = [];
+  if (exerciseIds.length) {
+    const { data, error: setError } = await supabaseAdmin.from('workout_log_sets')
+      .select('*').in('workout_log_exercise_id', exerciseIds).eq('archived', false).order('set_number');
+    if (setError) throw setError;
+    sets = data || [];
+  }
+  const setsByExercise = new Map();
+  for (const set of sets) {
+    const rows = setsByExercise.get(set.workout_log_exercise_id) || [];
+    rows.push(set);
+    setsByExercise.set(set.workout_log_exercise_id, rows);
+  }
+  const exercisesByLog = new Map();
+  for (const exercise of exercises || []) {
+    const rows = exercisesByLog.get(exercise.workout_log_id) || [];
+    rows.push({ ...exercise, sets: setsByExercise.get(exercise.id) || [] });
+    exercisesByLog.set(exercise.workout_log_id, rows);
+  }
+  const responsesByLog = new Map();
+  for (const response of coachResponses || []) {
+    const rows = responsesByLog.get(response.workout_log_id) || [];
+    rows.push(response);
+    responsesByLog.set(response.workout_log_id, rows);
+  }
+  const position = new Map(ids.map((id, index) => [id, index]));
+  return (logs || [])
+    .map((log) => {
+      const detailed = {
+        ...log,
+        coach_responses: (responsesByLog.get(log.id) || []).sort(newestCoachResponseFirst),
+        exercises: exercisesByLog.get(log.id) || [],
+      };
+      return { ...detailed, attribution: computeLogAttribution(detailed) };
+    })
+    .sort((a, b) => position.get(a.id) - position.get(b.id));
+}
+
 async function clientActiveLog(clientId) {
   const { data, error } = await supabaseAdmin.from('workout_logs')
     .select('id').eq('client_id', clientId).eq('status', 'active').eq('archived', false).maybeSingle();
@@ -215,15 +275,23 @@ function createExerciseHistoryHandler({
     }
     try {
       const log = await findLog(req.params.id);
-      if (!log || req.user.role !== 'client' || log.client_id !== req.user.client?.id
-        || log.status !== 'active' || log.archived) {
+      // Client on their own active log, or coach/admin on an active log of a
+      // client they own (matrix rows 1-4, docs/roadmap.md) — reads are scoped
+      // exactly like writes, and archived clients stay off-limits.
+      const allowed = Boolean(log) && !log.archived && log.status === 'active' && (
+        (req.user.role === 'client' && log.client_id === req.user.client?.id)
+        || ((req.user.role === 'coach' || req.user.role === 'admin')
+          && log.client && !log.client.archived && canAccessClient(req.user, log.client))
+      );
+      if (!allowed) {
         return res.status(404).json({ error: 'Workout log not found' });
       }
       const exercise = log.exercises.find((row) => row.id === req.params.exerciseId && !row.archived);
       if (!exercise) return res.status(404).json({ error: 'Workout exercise not found' });
 
       const { data, error } = await runHistory({
-        p_client_id: req.user.client.id,
+        // Always the log's own client: history is the client's, whoever reads it.
+        p_client_id: log.client_id,
         p_exercise_library_id: exercise.exercise_library_id || null,
         p_source_workout_exercise_id: exercise.source_workout_exercise_id || null,
         p_before_completed_at: cursor?.completed_at || null,
@@ -338,12 +406,27 @@ router.get('/mine', requireClient, async (req, res) => {
       .select('id').eq('client_id', req.user.client.id).eq('status', 'completed').eq('archived', false)
       .order('completed_at', { ascending: false }).limit(50);
     if (error) throw error;
-    const result = [];
-    for (const row of data || []) result.push(await workoutLogWithDetails(row.id));
-    return res.json(result);
+    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
   } catch (error) {
     logError('client workout history error', error);
     return res.status(500).json({ error: 'Failed to load workout history' });
+  }
+});
+
+// Lightweight companion to /mine for the progress-chart markers: one query,
+// dates only — never the full 50-log detail expansion.
+router.get('/mine/completed-dates', requireClient, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('workout_logs')
+      .select('completed_at').eq('client_id', req.user.client.id)
+      .eq('status', 'completed').eq('archived', false)
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false }).limit(500);
+    if (error) throw error;
+    return res.json({ dates: (data || []).map((row) => row.completed_at) });
+  } catch (error) {
+    logError('client workout completed-dates error', error);
+    return res.status(500).json({ error: 'Failed to load workout dates' });
   }
 });
 
@@ -391,9 +474,7 @@ router.get('/client/:clientId', requireCoach, async (req, res) => {
       .eq('client_id', client.id).eq('status', 'completed').eq('archived', false)
       .order('completed_at', { ascending: false }).limit(50);
     if (error) throw error;
-    const result = [];
-    for (const row of data || []) result.push(await workoutLogWithDetails(row.id));
-    return res.json(result);
+    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
   } catch (error) {
     logError('coach workout history error', error);
     return res.status(500).json({ error: 'Failed to load workout history' });
@@ -420,7 +501,8 @@ router.put('/:id/coach-response', requireCoach, async (req, res) => {
   }
 });
 
-router.get('/:id/exercises/:exerciseId/history', requireClient, createExerciseHistoryHandler());
+// Role logic lives in the handler: client on own log, coach/admin via ownership.
+router.get('/:id/exercises/:exerciseId/history', createExerciseHistoryHandler());
 
 router.get('/:id', async (req, res) => {
   try {

@@ -608,3 +608,60 @@ test('exercise history disclosure stays keyboard-operable without desktop overfl
     cards.every((element) => element.scrollWidth <= element.clientWidth)
   ))).toBeTruthy();
 });
+
+test('offline finish queues completion, defers celebration, and syncs on reconnect', async ({ page }) => {
+  // App-level offline: navigator.onLine override keeps the dev server
+  // reachable while the outbox believes it is offline (Playwright's
+  // context.setOffline would block the SPA itself on reload).
+  await page.addInitScript(() => {
+    window.__cvfOnline = true;
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => window.__cvfOnline });
+    window.__setOnline = (value) => {
+      window.__cvfOnline = value;
+      window.dispatchEvent(new Event(value ? 'online' : 'offline'));
+    };
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  const trackPath = new URL(page.url()).pathname;
+
+  const squat = page.getByTestId('tracker-exercise-card').first();
+  await squat.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+
+  await page.evaluate(() => window.__setOnline(false));
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  await page.getByRole('button', { name: 'Confirm completion' }).click();
+
+  // Finished locally: detail view, waiting banner, and no celebration for
+  // unsynced data (docs/offline-workout-completion.md).
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+$/);
+  await expect(page.getByTestId('waiting-to-sync-banner')).toBeVisible();
+  await expect(page.getByTestId('workout-completion-summary')).toHaveAttribute('data-completion-motion', 'none');
+
+  // SPA-return to the tracker: sealed read-only with a keep-editing undo.
+  await page.evaluate((path) => {
+    window.history.pushState({}, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, trackPath);
+  await expect(page.getByTestId('finished-locally-banner')).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: 'Goblet Squat set 1 weight', exact: true })).toBeDisabled();
+  await page.getByTestId('keep-editing-button').click();
+  await expect(page.getByTestId('finished-locally-banner')).toHaveCount(0);
+  await expect(page.getByRole('spinbutton', { name: 'Goblet Squat set 1 weight', exact: true })).toBeEnabled();
+
+  // Re-finish offline, then reconnect: exactly one confirmed celebration
+  // and an emptied outbox.
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  await page.getByRole('button', { name: 'Confirm completion' }).click();
+  await expect(page.getByTestId('waiting-to-sync-banner')).toBeVisible();
+  await page.evaluate(() => window.__setOnline(true));
+  await expect(page.getByTestId('workout-completion-summary')).toHaveAttribute('data-completion-motion', 'active');
+  await expect(page.getByTestId('waiting-to-sync-banner')).toHaveCount(0);
+  const outboxes = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('cvf_workout_outbox_')).length);
+  expect(outboxes).toBe(0);
+});
