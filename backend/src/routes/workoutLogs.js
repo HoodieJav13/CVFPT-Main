@@ -215,15 +215,23 @@ function createExerciseHistoryHandler({
     }
     try {
       const log = await findLog(req.params.id);
-      if (!log || req.user.role !== 'client' || log.client_id !== req.user.client?.id
-        || log.status !== 'active' || log.archived) {
+      // Client on their own active log, or coach/admin on an active log of a
+      // client they own (matrix rows 1-4, docs/roadmap.md) — reads are scoped
+      // exactly like writes, and archived clients stay off-limits.
+      const allowed = Boolean(log) && !log.archived && log.status === 'active' && (
+        (req.user.role === 'client' && log.client_id === req.user.client?.id)
+        || ((req.user.role === 'coach' || req.user.role === 'admin')
+          && log.client && !log.client.archived && canAccessClient(req.user, log.client))
+      );
+      if (!allowed) {
         return res.status(404).json({ error: 'Workout log not found' });
       }
       const exercise = log.exercises.find((row) => row.id === req.params.exerciseId && !row.archived);
       if (!exercise) return res.status(404).json({ error: 'Workout exercise not found' });
 
       const { data, error } = await runHistory({
-        p_client_id: req.user.client.id,
+        // Always the log's own client: history is the client's, whoever reads it.
+        p_client_id: log.client_id,
         p_exercise_library_id: exercise.exercise_library_id || null,
         p_source_workout_exercise_id: exercise.source_workout_exercise_id || null,
         p_before_completed_at: cursor?.completed_at || null,
@@ -420,7 +428,8 @@ router.put('/:id/coach-response', requireCoach, async (req, res) => {
   }
 });
 
-router.get('/:id/exercises/:exerciseId/history', requireClient, createExerciseHistoryHandler());
+// Role logic lives in the handler: client on own log, coach/admin via ownership.
+router.get('/:id/exercises/:exerciseId/history', createExerciseHistoryHandler());
 
 router.get('/:id', async (req, res) => {
   try {
