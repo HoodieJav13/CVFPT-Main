@@ -1,8 +1,9 @@
 # Offline workout completion — design (roadmap #13)
 
-Status: **awaiting owner conformance review** (direction pre-approved
-2026-07-30; the owner's stop is checking this doc against the four named
-hard parts, not re-deciding).
+Status: **conformance review in progress.** Direction pre-approved
+2026-07-30; the one flagged open question (completion timestamp) was
+answered by the owner on 2026-07-31: performance time. Merge of this doc
+constitutes approval to build.
 
 ## What changes and why
 
@@ -104,13 +105,18 @@ Two layers, one existing and one new:
    to 200-with-log instead of 409, so a duplicate queued send after an
    ambiguous failure resolves as success. (Read-only change to the
    route's error mapping; no RPC change.)
-2. **Stale-completion guard (decision needed at build time):** a queued
-   completion can arrive hours later. Current design sends it as-is —
-   acceptable because the log was genuinely performed then; the server
-   stamps `completed_at = now()` (sync time), not performance time. If
-   the owner wants performance-time accuracy, the RPC needs an optional
-   `p_completed_at` bounded to (started_at, now()] — flagged as the one
-   open question rather than silently decided.
+2. **Completion timestamp — DECIDED (owner, 2026-07-31): performance
+   time.** The queued `complete` operation persists the local timestamp
+   at which the user confirmed the finish dialog; the sync sends it and
+   the server records it as `completed_at`. Because the applied
+   `complete_workout_log` signature cannot grow a defaulted parameter
+   without creating an ambiguous overload, this lands as
+   `complete_workout_log_v2(uuid, uuid, text, text, timestamptz)` in a
+   new forward-only migration (same versioning pattern as
+   `start_workout_log_v2`). The server clamps the value to
+   `(started_at, now()]` — anything missing, malformed, or out of bounds
+   falls back to `now()`, so a device with a wrong clock cannot write an
+   impossible history.
 
 ## Not in scope
 
