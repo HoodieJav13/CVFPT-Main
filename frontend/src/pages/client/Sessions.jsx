@@ -12,6 +12,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Plus, CalendarDays, MapPin, Loader2, StickyNote } from 'lucide-react';
+import DateTimePicker from '@/components/DateTimePicker';
 import { fmtTime, fmtDay, fmtDateTime, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -174,7 +175,11 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Preferred date & time *</Label>
-              <Input type="datetime-local" required value={form.requested_time} onChange={(e) => setForm({ ...form, requested_time: e.target.value })} className="rounded-xl h-11" data-testid="booking-datetime-input" />
+              <DateTimePicker
+                value={form.requested_time}
+                onChange={(requested_time) => setForm({ ...form, requested_time })}
+                data-testid="booking-datetime-input"
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

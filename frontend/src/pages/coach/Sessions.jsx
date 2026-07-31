@@ -23,6 +23,7 @@ import {
 import {
   Plus, CalendarDays, MoreVertical, Check, X, Pencil, StickyNote, Loader2, Inbox, Dumbbell,
 } from 'lucide-react';
+import DateTimePicker from '@/components/DateTimePicker';
 import { fmtTime, fmtDay, fmtDateTime, toLocalInputValue, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -327,7 +328,11 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
             </div>
             <div className="space-y-1.5">
               <Label>Date & time *</Label>
-              <Input type="datetime-local" required value={form.scheduled_at} onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })} className="rounded-xl h-11" data-testid="session-datetime-input" />
+              <DateTimePicker
+                value={form.scheduled_at}
+                onChange={(scheduled_at) => setForm({ ...form, scheduled_at })}
+                data-testid="session-datetime-input"
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

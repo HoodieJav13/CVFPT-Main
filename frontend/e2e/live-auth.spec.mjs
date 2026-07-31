@@ -19,6 +19,20 @@ const clientFlowMarker = `CVF LIVE CLIENT ${Date.now()}`;
 
 test.skip(!configured, 'Live-auth browser tests require the documented CVF_E2E_* environment variables');
 
+/** Drive the branded DateTimePicker (UI-3): open, pick the target day, pick a slot. */
+async function pickDateTime(page, testId, target, slotText = '9:00 AM') {
+  await page.getByTestId(testId).click();
+  const panel = page.getByTestId(`${testId}-panel`);
+  const dayName = new RegExp(`${target.toLocaleDateString('en-US', { month: 'long' })} ${target.getDate()}(st|nd|rd|th)?, ${target.getFullYear()}`);
+  for (let hops = 0; hops < 3; hops += 1) {
+    if (await panel.getByRole('button', { name: dayName }).count()) break;
+    await panel.getByRole('button', { name: /next month/i }).click();
+  }
+  await panel.getByRole('button', { name: dayName }).first().click();
+  await panel.getByTestId('time-slot').filter({ hasText: slotText }).first().click();
+  await expect(panel).toBeHidden();
+}
+
 async function login(page, account, expectedPath) {
   await page.goto('/login');
   await page.getByTestId('login-email-input').fill(account.email);
@@ -124,8 +138,7 @@ test('real client auth covers check-in, booking, messaging, route protection, an
   await page.goto('/client/sessions');
   await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible();
   await page.getByTestId('booking-request-button').click();
-  const tomorrow = new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString().slice(0, 16);
-  await page.getByTestId('booking-datetime-input').fill(tomorrow);
+  await pickDateTime(page, 'booking-datetime-input', new Date(Date.now() + 36 * 60 * 60 * 1000));
   await page.getByTestId('booking-location-input').fill('CVF Preview Studio');
   await page.getByTestId('booking-note-input').fill(marker);
   await page.getByTestId('booking-submit-button').click();
@@ -260,7 +273,7 @@ test('real coach auth covers ownership surfaces and archives created test data',
   await page.getByTestId('schedule-for-client-button').click();
   await page.getByTestId('session-client-select').click();
   await page.getByRole('option', { name: marker }).click();
-  await page.getByTestId('session-datetime-input').fill(new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 16));
+  await pickDateTime(page, 'session-datetime-input', new Date(Date.now() + 4 * 86_400_000), '10:00 AM');
   await page.getByTestId('session-location-input').fill(marker);
   await page.getByTestId('session-save-button').click();
   await expect(page.getByText('Session scheduled')).toBeVisible();
