@@ -570,11 +570,20 @@ router.post('/:id/complete', async (req, res) => {
   try {
     const log = await workoutLogWithDetails(req.params.id);
     if (!canWriteLog(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
-    const { error } = await supabaseAdmin.rpc('complete_workout_log', {
+    // Performance-time completion (docs/offline-workout-completion.md):
+    // a queued offline finish carries the locally-confirmed timestamp. Only
+    // a parseable ISO string is forwarded; the RPC clamps to
+    // (started_at, now()] and falls back to sync time otherwise.
+    const rawCompletedAt = req.body?.completed_at_local;
+    const completedAt = typeof rawCompletedAt === 'string' && rawCompletedAt.length <= 40
+      && !Number.isNaN(Date.parse(rawCompletedAt))
+      ? new Date(rawCompletedAt).toISOString() : null;
+    const { error } = await supabaseAdmin.rpc('complete_workout_log_v2', {
       p_workout_log_id: log.id,
       p_client_id: log.client_id,
       p_notes: String(req.body?.notes || '').slice(0, 4000),
       p_feedback: String(req.body?.feedback || '').slice(0, 4000),
+      p_completed_at: completedAt,
     });
     if (error) {
       if (/Complete at least one set/i.test(error.message || '')) return res.status(400).json({ error: 'Complete at least one set' });
