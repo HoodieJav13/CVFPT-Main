@@ -182,6 +182,66 @@ async function workoutLogWithDetails(id) {
   return { ...detailed, attribution: computeLogAttribution(detailed) };
 }
 
+/**
+ * Bulk variant of workoutLogWithDetails for the history lists: a constant
+ * four queries (logs, responses, exercises, sets) however many logs are
+ * expanded — the sequential per-log loop was ~4 queries × 50 logs for a
+ * single page view. Per-log shape is identical to the single builder, and
+ * the input id order (completed_at desc) is preserved.
+ */
+async function workoutLogsWithDetailsBulk(ids) {
+  if (!ids.length) return [];
+  const { data: logs, error } = await supabaseAdmin.from('workout_logs')
+    .select('*, client:clients(id, name, coach_id, archived)')
+    .in('id', ids).eq('archived', false);
+  if (error) throw error;
+  const logIds = (logs || []).map((log) => log.id);
+  if (!logIds.length) return [];
+  const { data: coachResponses, error: responseError } = await supabaseAdmin.from('workout_coach_responses')
+    .select('*').in('workout_log_id', logIds).eq('archived', false);
+  if (responseError) throw responseError;
+  const { data: exercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
+    .select('*').in('workout_log_id', logIds).eq('archived', false).order('position');
+  if (exerciseError) throw exerciseError;
+  const exerciseIds = (exercises || []).map((exercise) => exercise.id);
+  let sets = [];
+  if (exerciseIds.length) {
+    const { data, error: setError } = await supabaseAdmin.from('workout_log_sets')
+      .select('*').in('workout_log_exercise_id', exerciseIds).eq('archived', false).order('set_number');
+    if (setError) throw setError;
+    sets = data || [];
+  }
+  const setsByExercise = new Map();
+  for (const set of sets) {
+    const rows = setsByExercise.get(set.workout_log_exercise_id) || [];
+    rows.push(set);
+    setsByExercise.set(set.workout_log_exercise_id, rows);
+  }
+  const exercisesByLog = new Map();
+  for (const exercise of exercises || []) {
+    const rows = exercisesByLog.get(exercise.workout_log_id) || [];
+    rows.push({ ...exercise, sets: setsByExercise.get(exercise.id) || [] });
+    exercisesByLog.set(exercise.workout_log_id, rows);
+  }
+  const responsesByLog = new Map();
+  for (const response of coachResponses || []) {
+    const rows = responsesByLog.get(response.workout_log_id) || [];
+    rows.push(response);
+    responsesByLog.set(response.workout_log_id, rows);
+  }
+  const position = new Map(ids.map((id, index) => [id, index]));
+  return (logs || [])
+    .map((log) => {
+      const detailed = {
+        ...log,
+        coach_responses: (responsesByLog.get(log.id) || []).sort(newestCoachResponseFirst),
+        exercises: exercisesByLog.get(log.id) || [],
+      };
+      return { ...detailed, attribution: computeLogAttribution(detailed) };
+    })
+    .sort((a, b) => position.get(a.id) - position.get(b.id));
+}
+
 async function clientActiveLog(clientId) {
   const { data, error } = await supabaseAdmin.from('workout_logs')
     .select('id').eq('client_id', clientId).eq('status', 'active').eq('archived', false).maybeSingle();
@@ -346,9 +406,7 @@ router.get('/mine', requireClient, async (req, res) => {
       .select('id').eq('client_id', req.user.client.id).eq('status', 'completed').eq('archived', false)
       .order('completed_at', { ascending: false }).limit(50);
     if (error) throw error;
-    const result = [];
-    for (const row of data || []) result.push(await workoutLogWithDetails(row.id));
-    return res.json(result);
+    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
   } catch (error) {
     logError('client workout history error', error);
     return res.status(500).json({ error: 'Failed to load workout history' });
@@ -399,9 +457,7 @@ router.get('/client/:clientId', requireCoach, async (req, res) => {
       .eq('client_id', client.id).eq('status', 'completed').eq('archived', false)
       .order('completed_at', { ascending: false }).limit(50);
     if (error) throw error;
-    const result = [];
-    for (const row of data || []) result.push(await workoutLogWithDetails(row.id));
-    return res.json(result);
+    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
   } catch (error) {
     logError('coach workout history error', error);
     return res.status(500).json({ error: 'Failed to load workout history' });

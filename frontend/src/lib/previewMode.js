@@ -148,7 +148,7 @@ const state = {
     })),
   ],
   workoutLogSets: [
-    ...[1, 2, 3].map((setNumber) => ({ id: `logset_preview_bench_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_bench', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: setNumber === 3 ? 22.5 : 20, actual_load_unit: 'lb', client_operation_id: null, archived: false })),
+    ...[1, 2, 3].map((setNumber) => ({ id: `logset_preview_bench_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_bench', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: setNumber === 3 ? 22.5 : 20, actual_load_unit: 'lb', actual_reps: 8, client_operation_id: null, entered_by: 'coach', entered_by_coach_id: 'coach_marcus', archived: false })),
     ...[1, 2].map((setNumber) => ({ id: `logset_preview_row_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_row', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: 35, actual_load_unit: 'lb', client_operation_id: null, archived: false })),
     { id: 'logset_preview_row_3', workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_row', set_number: 3, set_origin: 'prescribed', status: 'skipped', actual_load_value: 35, actual_load_unit: 'lb', client_operation_id: null, archived: false },
     ...Array.from({ length: 12 }, (_, index) => ({
@@ -537,7 +537,16 @@ function workoutLogDetails(logId) {
       const activity = new Date(b.edited_at || b.created_at) - new Date(a.edited_at || a.created_at);
       return activity || String(b.id).localeCompare(String(a.id));
     });
-  return { ...log, client: clientById(log.client_id), coach_responses: coachResponses, exercises };
+  // Mirrors the API's log-level attribution derivation (PR-D′): completed,
+  // non-archived sets only; falls back to who started the log.
+  const enteredBy = new Set(exercises
+    .flatMap((exercise) => exercise.sets)
+    .filter((set) => set.status === 'completed')
+    .map((set) => (set.entered_by === 'coach' ? 'coach' : 'client')));
+  const attribution = enteredBy.size === 0
+    ? (log.started_by === 'coach' ? 'coach' : 'client')
+    : (enteredBy.size === 1 ? enteredBy.values().next().value : 'mixed');
+  return { ...log, client: clientById(log.client_id), coach_responses: coachResponses, exercises, attribution };
 }
 
 function previewLoadForExercise({ exercise, programAssignmentId, programDayId, workoutAssignmentId }) {
