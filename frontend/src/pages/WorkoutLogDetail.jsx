@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { MOTION_EASINGS, WORKOUT_COMPLETION_MOTION, msToSeconds } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { useNotifications } from '@/context/NotificationsContext';
+import { hasQueuedCompleteFor, useWorkoutOutbox } from '@/lib/workoutOutbox';
 
 export default function WorkoutLogDetail() {
   const { id } = useParams();
@@ -36,6 +37,25 @@ export default function WorkoutLogDetail() {
   const [completionSignalId, setCompletionSignalId] = useState(() => (
     isClient && location.state?.completedWorkoutId === id ? id : null
   ));
+  const [waitingToSync, setWaitingToSync] = useState(() => hasQueuedCompleteFor(id));
+  const [syncError, setSyncError] = useState(null);
+  // Drains a completion queued by the tracker before navigation
+  // (docs/offline-workout-completion.md). The celebration fires only once
+  // the server confirms — never for unsynced data.
+  const outbox = useWorkoutOutbox(id, () => {}, {
+    onCompleteSynced: (freshLog) => {
+      setWaitingToSync(false);
+      setSyncError(null);
+      setLog(freshLog);
+      if (isClient) setCompletionSignalId(id);
+    },
+    onCompleteRejected: (message, freshLog) => {
+      setWaitingToSync(false);
+      setSyncError(message);
+      if (freshLog) setLog(freshLog);
+    },
+  });
+  const queueStillWaiting = waitingToSync && outbox.queuedComplete;
   const celebrateCompletion = isClient && completionSignalId === id;
   const completionRecipe = WORKOUT_COMPLETION_MOTION[intensity];
 
@@ -127,6 +147,20 @@ export default function WorkoutLogDetail() {
       <button type="button" onClick={() => navigate(-1)} className="mb-3 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
+      {queueStillWaiting && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
+          <Clock3 className="h-4 w-4 shrink-0 text-gold" />
+          Finished on this phone — syncing when a connection returns. Your results are safe.
+        </div>
+      )}
+      {syncError && (
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="completion-sync-error">
+          <span>{syncError} The workout is active again.</span>
+          <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => navigate(`/client/workouts/${id}/track`)}>
+            Back to tracking
+          </Button>
+        </div>
+      )}
       <m.section
         initial={celebrateCompletion && !reducedMotion
           ? { opacity: 0, transform: `translateY(${completionRecipe.distance}px) scale(${completionRecipe.initialScale})` }

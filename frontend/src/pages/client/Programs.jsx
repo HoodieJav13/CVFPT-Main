@@ -9,6 +9,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { CalendarDays, ChevronRight, Dumbbell, Loader2, Play, StickyNote } from 'lucide-react';
 import { fmtDate, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
+import { hasQueuedCompleteFor } from '@/lib/workoutOutbox';
 
 export default function ClientPrograms() {
   const navigate = useNavigate();
@@ -73,8 +74,8 @@ export default function ClientPrograms() {
       {activeLog && (
         <Card className="mb-5 border-primary/30 bg-primary/5" data-testid="active-workout-banner">
           <CardContent className="flex items-center justify-between gap-3 p-4">
-            <div className="min-w-0"><p className="text-xs font-medium uppercase text-primary">In progress</p><p className="truncate font-display font-semibold">{activeLog.workout_name}</p></div>
-            <Button asChild><Link to={`/client/workouts/${activeLog.id}/track`}>Resume</Link></Button>
+            <div className="min-w-0"><p className="text-xs font-medium uppercase text-primary">{hasQueuedCompleteFor(activeLog.id) ? 'Finishing — waiting to sync' : 'In progress'}</p><p className="truncate font-display font-semibold">{activeLog.workout_name}</p></div>
+            <Button asChild><Link to={hasQueuedCompleteFor(activeLog.id) ? `/client/workouts/${activeLog.id}` : `/client/workouts/${activeLog.id}/track`}>{hasQueuedCompleteFor(activeLog.id) ? 'View' : 'Resume'}</Link></Button>
           </CardContent>
         </Card>
       )}

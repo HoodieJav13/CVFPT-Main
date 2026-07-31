@@ -16,6 +16,9 @@ const {
 const migration = fs.readFileSync(path.join(__dirname, '../../supabase/migrations/20260720173000_exercise_performance_history.sql'), 'utf8');
 const routes = fs.readFileSync(path.join(__dirname, '../src/routes/workoutLogs.js'), 'utf8');
 const tracker = fs.readFileSync(path.join(__dirname, '../../frontend/src/pages/client/WorkoutTracker.jsx'), 'utf8');
+// The outbox machinery moved to a shared module for offline completion
+// (docs/offline-workout-completion.md) so the detail page can drain it too.
+const outbox = fs.readFileSync(path.join(__dirname, '../../frontend/src/lib/workoutOutbox.js'), 'utf8');
 
 const storedSet = {
   status: 'pending', actual_load_value: 30, actual_load_unit: 'lb', actual_reps: null, actual_rpe: null,
@@ -213,8 +216,9 @@ test('mounted history handler turns 11 stable occurrences into 10 plus a cursor 
 });
 
 test('permanent write failures advance the outbox while retryable failures retain ordering', () => {
-  assert.match(tracker, /status >= 400 && status < 500 && status !== 408 && status !== 429/);
-  assert.match(tracker, /filter\(\(queued\) => queued\.id !== operation\.id\)[\s\S]*continue;/);
-  assert.match(tracker, /Math\.min\(30_000[\s\S]*setTimeout\(\(\) => flush\(\), delay\)[\s\S]*return false/);
+  assert.match(outbox, /status >= 400 && status < 500 && status !== 408 && status !== 429/);
+  assert.match(outbox, /filter\(\(queued\) => queued\.id !== operation\.id\)[\s\S]*continue;/);
+  assert.match(outbox, /Math\.min\(30_000[\s\S]*setTimeout\(\(\) => flush\(\), delay\)[\s\S]*return false/);
+  assert.match(tracker, /useWorkoutOutbox/);
   assert.doesNotMatch(tracker, /history[\s\S]{0,200}enqueue\(/i);
 });
