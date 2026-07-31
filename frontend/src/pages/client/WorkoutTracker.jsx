@@ -15,170 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
-
-function makeId() {
-  if (crypto.randomUUID) return crypto.randomUUID();
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
-    const value = Math.random() * 16 | 0;
-    return (char === 'x' ? value : (value & 0x3) | 0x8).toString(16);
-  });
-}
-
-function updateExercise(log, exerciseId, updater) {
-  if (!log) return log;
-  return { ...log, exercises: log.exercises.map((exercise) => exercise.id === exerciseId ? updater(exercise) : exercise) };
-}
-
-function applyOptimistic(log, operation) {
-  if (!log) return log;
-  if (operation.kind === 'set') {
-    return updateExercise(log, operation.exerciseId, (exercise) => ({
-      ...exercise,
-      sets: exercise.sets.map((set) => set.id === operation.setId ? { ...set, ...operation.data } : set),
-    }));
-  }
-  if (operation.kind === 'note') {
-    return updateExercise(log, operation.exerciseId, (exercise) => ({ ...exercise, client_notes: operation.data.client_notes }));
-  }
-  if (operation.kind === 'add') {
-    return updateExercise(log, operation.exerciseId, (exercise) => {
-      if (exercise.sets.some((set) => set.client_operation_id === operation.clientOperationId)) return exercise;
-      const setNumber = Math.max(0, ...exercise.sets.map((set) => set.set_number)) + 1;
-      return {
-        ...exercise,
-        sets: [...exercise.sets, {
-          id: `pending-${operation.clientOperationId}`,
-          client_operation_id: operation.clientOperationId,
-          workout_log_exercise_id: exercise.id,
-          set_number: setNumber,
-          set_origin: 'extra',
-          status: 'pending',
-          actual_load_value: exercise.prescribed_load_value,
-          actual_load_unit: exercise.prescribed_load_unit,
-          actual_reps: null,
-          actual_rpe: null,
-          archived: false,
-        }],
-      };
-    });
-  }
-  if (operation.kind === 'archive') {
-    return updateExercise(log, operation.exerciseId, (exercise) => ({
-      ...exercise,
-      sets: exercise.sets.filter((set) => set.id !== operation.setId),
-    }));
-  }
-  return log;
-}
-
-function useWorkoutOutbox(logId, setLog) {
-  const storageKey = `cvf_workout_outbox_${logId}`;
-  const initial = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch { return []; }
-  }, [storageKey]);
-  const queueRef = useRef(initial);
-  const processingRef = useRef(false);
-  const retryRef = useRef(null);
-  const [saveState, setSaveState] = useState(initial.length ? 'not_saved' : 'saved');
-  const [online, setOnline] = useState(navigator.onLine);
-
-  const persist = useCallback((queue) => {
-    queueRef.current = queue;
-    if (queue.length) localStorage.setItem(storageKey, JSON.stringify(queue));
-    else localStorage.removeItem(storageKey);
-  }, [storageKey]);
-
-  const flush = useCallback(async () => {
-    if (processingRef.current || !navigator.onLine) {
-      setSaveState('not_saved');
-      return false;
-    }
-    processingRef.current = true;
-    window.clearTimeout(retryRef.current);
-    try {
-      while (queueRef.current.length) {
-        setSaveState('saving');
-        const operation = queueRef.current[0];
-        try {
-          const { data } = await api.request({ method: operation.method, url: operation.url, data: operation.data });
-          if (operation.kind === 'add') {
-            const pendingId = `pending-${operation.clientOperationId}`;
-            setLog((current) => updateExercise(current, operation.exerciseId, (exercise) => ({
-              ...exercise,
-              sets: exercise.sets.map((set) => set.client_operation_id === operation.clientOperationId ? data : set),
-            })));
-            queueRef.current = queueRef.current.map((queued) => queued.setId === pendingId ? {
-              ...queued,
-              setId: data.id,
-              url: queued.url.replace(pendingId, data.id),
-            } : queued);
-          }
-          persist(queueRef.current.filter((queued) => queued.id !== operation.id));
-        } catch (error) {
-          const status = error?.response?.status;
-          if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
-            const remaining = queueRef.current.filter((queued) => queued.id !== operation.id);
-            persist(remaining);
-            try {
-              const { data } = await api.get(`/workout-logs/${logId}`);
-              setLog(remaining.reduce((current, queued) => applyOptimistic(current, queued), data));
-            } catch {
-              // The failed write is still removed; a later page reload reconciles server state.
-            }
-            toast.error(error?.response?.data?.error || 'A workout change was rejected. Check the value and try again.');
-            continue;
-          }
-          const attempts = (operation.attempts || 0) + 1;
-          const updated = queueRef.current.map((queued) => queued.id === operation.id ? { ...queued, attempts } : queued);
-          persist(updated);
-          setSaveState('not_saved');
-          const delay = Math.min(30_000, 1000 * (2 ** Math.min(attempts - 1, 5)));
-          retryRef.current = window.setTimeout(() => flush(), delay);
-          return false;
-        }
-      }
-      setSaveState('saved');
-      return true;
-    } finally {
-      processingRef.current = false;
-    }
-  }, [logId, persist, setLog]);
-
-  const enqueue = useCallback((operation) => {
-    const queued = { id: makeId(), attempts: 0, ...operation };
-    persist([...queueRef.current, queued]);
-    setLog((current) => applyOptimistic(current, queued));
-    setSaveState('saving');
-    window.setTimeout(() => flush(), 0);
-  }, [flush, persist, setLog]);
-
-  useEffect(() => {
-    const onOnline = () => { setOnline(true); flush(); };
-    const onOffline = () => { setOnline(false); setSaveState('not_saved'); };
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    if (initial.length) window.setTimeout(() => flush(), 0);
-    return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
-      window.clearTimeout(retryRef.current);
-    };
-  }, [flush, initial.length]);
-
-  const hydrate = useCallback((log) => queueRef.current.reduce(
-    (current, operation) => applyOptimistic(current, operation),
-    log,
-  ), []);
-
-  return {
-    enqueue,
-    flush,
-    hydrate,
-    saveState,
-    online,
-    markDirty: () => setSaveState('not_saved'),
-  };
-}
+import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 
 function parseRest(value) {
   const text = String(value || '').trim().toLowerCase();
@@ -323,6 +160,7 @@ export default function WorkoutTracker() {
   const remainingCount = allSets.filter((set) => set.status === 'pending').length;
   const restSeconds = restEndsAt ? Math.max(0, Math.ceil((restEndsAt - timerNow) / 1000)) : 0;
   const restComplete = Boolean(restEndsAt && timerNow >= restEndsAt);
+  const sealed = outbox.queuedComplete;
   const attentionRecipe = ATTENTION_FEEDBACK_MOTION[intensity];
 
   const setLocalValue = (exerciseId, setId, key, value) => {
@@ -404,18 +242,24 @@ export default function WorkoutTracker() {
   const finish = async () => {
     setFinishing(true);
     try {
+      // Queue the completion behind any pending set writes (FIFO). The
+      // performance timestamp is captured at confirmation, not at sync
+      // (docs/offline-workout-completion.md).
+      outbox.enqueue({
+        kind: 'complete',
+        method: 'post',
+        url: `/workout-logs/${id}/complete`,
+        data: {
+          notes: workoutNotes,
+          feedback: isCoach ? '' : feedback,
+          completed_at_local: new Date().toISOString(),
+        },
+      });
       const flushed = await outbox.flush();
-      if (!flushed || !navigator.onLine) {
-        toast.error('Reconnect and wait for your workout to save before finishing.');
-        return;
-      }
-      await api.post(`/workout-logs/${id}/complete`, { notes: workoutNotes, feedback: isCoach ? '' : feedback });
       navigate(`${basePath}/workouts/${id}`, {
         replace: true,
-        state: { completedWorkoutId: id },
+        state: flushed ? { completedWorkoutId: id } : { finishedLocally: true },
       });
-    } catch (error) {
-      toast.error(errMsg(error));
     } finally {
       setFinishing(false);
     }
@@ -439,6 +283,14 @@ export default function WorkoutTracker() {
         subtitle={`${completedCount} of ${allSets.length} sets complete${isCoach && log.client?.name ? ` — logging for ${log.client.name}` : ''}`}
         action={<Button variant="ghost" size="sm" onClick={abandon}>Abandon</Button>}
       />
+      {outbox.queuedComplete && (
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="finished-locally-banner">
+          <p className="text-sm font-medium">Finished on this phone — waiting to sync. Editing is locked so the finished workout stays exactly as you left it.</p>
+          <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={outbox.removeQueuedComplete} data-testid="keep-editing-button">
+            Keep editing instead
+          </Button>
+        </div>
+      )}
       <div className="mb-4 flex items-center gap-2 text-xs" aria-live="polite" data-testid="workout-save-state">
         {outbox.saveState === 'saved' && <><Save className="h-3.5 w-3.5 text-success" /> Saved</>}
         {outbox.saveState === 'saving' && <><Loader2 className="h-3.5 w-3.5 animate-spin text-primary motion-reduce:animate-none" /> Saving</>}
@@ -472,6 +324,7 @@ export default function WorkoutTracker() {
                       value={set.actual_load_value ?? ''}
                       onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
                       onBlur={() => saveSet(exercise, set)}
+                      disabled={sealed}
                       aria-label={`${exercise.exercise_name} set ${set.set_number} weight`}
                     />
                     <Select value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
@@ -498,14 +351,14 @@ export default function WorkoutTracker() {
                     </Select>
                   </div>
                   <Input type="number" min="0" step="1" inputMode="numeric" className="h-10 px-2 tabular-nums" value={set.actual_reps ?? ''}
-                    onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)}
+                    onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
                     aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} />
                   <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-10 px-2 tabular-nums" value={set.actual_rpe ?? ''}
-                    onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)}
+                    onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
                     aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
                   <Button
                     type="button" size="icon" variant={set.status === 'completed' ? 'default' : 'outline'}
-                    className="h-11 w-11" onClick={() => toggleSet(exercise, set)}
+                    className="h-11 w-11" disabled={sealed} onClick={() => toggleSet(exercise, set)}
                     aria-label={`${set.status === 'completed' ? 'Mark incomplete' : 'Complete'} set ${set.set_number}`}
                   >
                     <Check className="h-5 w-5" />
@@ -517,7 +370,7 @@ export default function WorkoutTracker() {
                   )}
                 </div>
               ))}
-              <Button type="button" variant="outline" size="sm" onClick={() => addSet(exercise)}>
+              <Button type="button" variant="outline" size="sm" disabled={sealed} onClick={() => addSet(exercise)}>
                 <Plus className="mr-1.5 h-4 w-4" /> Add set
               </Button>
               {/* Exercise history endpoint is client-only; hidden for coach-driven logging. */}
@@ -542,10 +395,10 @@ export default function WorkoutTracker() {
         className="signature-glass sticky bottom-20 z-30 mt-5 flex gap-2 rounded-2xl p-2.5 lg:bottom-4"
         data-testid="workout-control-dock"
       >
-        <Button variant="outline" className="min-h-11 flex-1" disabled={!remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
+        <Button variant="outline" className="min-h-11 flex-1" disabled={sealed || !remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
           Complete all remaining
         </Button>
-        <Button className="min-h-11 flex-1" disabled={!completedCount || !outbox.online || outbox.saveState !== 'saved'} onClick={() => setFinishOpen(true)}>
+        <Button className="min-h-11 flex-1" disabled={sealed || !completedCount} onClick={() => setFinishOpen(true)}>
           Finish workout
         </Button>
       </div>
