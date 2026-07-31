@@ -28,6 +28,45 @@ router.post('/', requireClient, async (req, res) => {
     if (new Date(validation.value.scheduled_at).getTime() <= Date.now()) {
       return res.status(400).json({ error: 'Requested time must be in the future' });
     }
+    // A3 (availability docket): clients may request only the
+    // client-requestable session lengths. Fails closed — an empty
+    // session_types table rejects everything rather than allowing
+    // anything.
+    const { data: requestableTypes, error: typesError } = await supabaseAdmin
+      .from('session_types').select('duration_minutes').eq('client_requestable', true);
+    if (typesError) throw typesError;
+    const requestable = new Set((requestableTypes || []).map((t) => t.duration_minutes));
+    if (!requestable.has(validation.value.duration_minutes)) {
+      return res.status(400).json({ error: 'That session length is scheduled by your coach directly — ask them about it' });
+    }
+    // A4/A5: when the coach has published hours, the requested time must
+    // be one of the offered slots — the same derivation the picker uses,
+    // so hours, time off, the 12-hour lead, and the 21-day horizon can't
+    // be bypassed by calling the API directly. Coaches with no active
+    // hours keep the documented free-picker fallback.
+    const coachId = req.user.client.coach_id;
+    const [templateCount, overrideCount] = await Promise.all([
+      supabaseAdmin.from('coach_availability').select('id', { count: 'exact', head: true }).eq('coach_id', coachId).eq('archived', false),
+      supabaseAdmin.from('coach_availability_overrides').select('id', { count: 'exact', head: true }).eq('coach_id', coachId).eq('archived', false),
+    ]);
+    if (templateCount.error) throw templateCount.error;
+    if (overrideCount.error) throw overrideCount.error;
+    if ((templateCount.count || 0) + (overrideCount.count || 0) > 0) {
+      const requestedMs = new Date(validation.value.scheduled_at).getTime();
+      const requestedDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' })
+        .format(new Date(requestedMs));
+      const { data: openSlots, error: slotsError } = await supabaseAdmin.rpc('get_open_slots', {
+        p_coach_id: coachId,
+        p_duration_minutes: validation.value.duration_minutes,
+        p_from: requestedDay,
+        p_to: requestedDay,
+      });
+      if (slotsError) throw slotsError;
+      const offered = (openSlots || []).some((slot) => new Date(slot.starts_at).getTime() === requestedMs);
+      if (!offered) {
+        return res.status(400).json({ error: "That time isn't one of your coach's open slots — pick from the open times" });
+      }
+    }
     const { data, error } = await supabaseAdmin.from('booking_requests').insert({
       client_id: req.user.client.id,
       coach_id: req.user.client.coach_id,

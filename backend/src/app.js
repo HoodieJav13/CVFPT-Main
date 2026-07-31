@@ -38,5 +38,6 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/workout-logs', require('./routes/workoutLogs'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/availability', require('./routes/availability'));
 
 module.exports = app;

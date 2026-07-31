@@ -136,15 +136,55 @@ export default function ClientSessions() {
 function RequestDrawer({ open, onOpenChange, onSaved }) {
   const [form, setForm] = useState({ requested_time: '', duration_minutes: '60', location: '', note: '' });
   const [saving, setSaving] = useState(false);
+  // Open-slot picking (availability docket A4): slots === null means the
+  // coach hasn't published availability, so the free date-time picker
+  // stays as the fallback.
+  const [slots, setSlots] = useState(null);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotDay, setSlotDay] = useState(null);
 
   useEffect(() => {
-    if (open) setForm({ requested_time: '', duration_minutes: '60', location: '', note: '' });
+    if (open) {
+      setForm({ requested_time: '', duration_minutes: '60', location: '', note: '' });
+      setSlotDay(null);
+    }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setSlotsLoading(true);
+    setForm((current) => ({ ...current, requested_time: '' }));
+    api.get(`/availability/slots?duration=${form.duration_minutes}`)
+      .then(({ data }) => { if (!cancelled) setSlots(data.slots.length ? data.slots : null); })
+      .catch(() => { if (!cancelled) setSlots(null); })
+      .finally(() => { if (!cancelled) setSlotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, form.duration_minutes]);
+
+  const slotDays = useMemo(() => {
+    if (!slots) return [];
+    const byDay = new Map();
+    for (const slot of slots) {
+      // Group by the viewer's local calendar day — the UTC date in the
+      // ISO string can differ for evening slots.
+      const local = new Date(slot.starts_at);
+      const day = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day).push(slot);
+    }
+    return [...byDay.entries()];
+  }, [slots]);
+
+  const activeDay = slotDay && slotDays.some(([day]) => day === slotDay)
+    ? slotDay
+    : slotDays[0]?.[0] ?? null;
+  const activeDaySlots = slotDays.find(([day]) => day === activeDay)?.[1] || [];
 
   const submit = async (e) => {
     e.preventDefault();
     if (!form.requested_time) {
-      toast.error('Please choose a date and time');
+      toast.error(slots ? 'Please pick an open time' : 'Please choose a date and time');
       return;
     }
     setSaving(true);
@@ -174,27 +214,70 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
           <p className="text-xs text-muted-foreground -mt-2 mb-4">Your coach must confirm before it's booked.</p>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label>Preferred date & time *</Label>
-              <DateTimePicker
-                value={form.requested_time}
-                onChange={(requested_time) => setForm({ ...form, requested_time })}
-                data-testid="booking-datetime-input"
-              />
+              <Label>Duration</Label>
+              <Select value={form.duration_minutes} onValueChange={(v) => setForm({ ...form, duration_minutes: v, requested_time: '' })}>
+                <SelectTrigger className="rounded-xl h-11" data-testid="booking-duration-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {['30', '45', '60'].map((d) => <SelectItem key={d} value={d}>{d} min</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Longer sessions and assessments are scheduled by your coach.</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Duration</Label>
-                <Select value={form.duration_minutes} onValueChange={(v) => setForm({ ...form, duration_minutes: v })}>
-                  <SelectTrigger className="rounded-xl h-11" data-testid="booking-duration-select"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {['30', '45', '60', '90'].map((d) => <SelectItem key={d} value={d}>{d} min</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            {slotsLoading ? (
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-card/60 px-4 py-3 text-sm text-muted-foreground" data-testid="booking-slots-loading">
+                <Loader2 className="h-4 w-4 animate-spin" /> Finding open times...
               </div>
-              <div className="space-y-1.5">
-                <Label>Location</Label>
-                <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="CVF Studio" className="rounded-xl h-11" data-testid="booking-location-input" />
+            ) : slots ? (
+              <div className="space-y-3" data-testid="booking-slot-picker">
+                <div className="space-y-1.5">
+                  <Label>Open days (next 3 weeks)</Label>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {slotDays.map(([day]) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => { setSlotDay(day); setForm({ ...form, requested_time: '' }); }}
+                        aria-pressed={day === activeDay}
+                        className={`min-h-11 shrink-0 rounded-xl border px-3 text-xs font-medium transition-colors ${day === activeDay ? 'border-primary/40 bg-primary/10 text-foreground' : 'border-border bg-card/60 text-muted-foreground hover:text-foreground'}`}
+                        data-testid="booking-slot-day"
+                      >
+                        {fmtDay(`${day}T12:00:00`)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Open times *</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {activeDaySlots.map((slot) => (
+                      <button
+                        key={slot.starts_at}
+                        type="button"
+                        onClick={() => setForm({ ...form, requested_time: slot.starts_at })}
+                        aria-pressed={form.requested_time === slot.starts_at}
+                        className={`min-h-11 rounded-xl border text-sm font-medium tabular-nums transition-colors ${form.requested_time === slot.starts_at ? 'border-primary bg-primary/15 text-foreground' : 'border-border bg-card/60 text-muted-foreground hover:text-foreground'}`}
+                        data-testid="booking-slot-time"
+                      >
+                        {fmtTime(slot.starts_at)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>Preferred date & time *</Label>
+                <DateTimePicker
+                  value={form.requested_time}
+                  onChange={(requested_time) => setForm({ ...form, requested_time })}
+                  data-testid="booking-datetime-input"
+                />
+                <p className="text-xs text-muted-foreground">Your coach hasn't published open times yet, so pick what works and they'll confirm.</p>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Location</Label>
+              <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="CVF Studio" className="rounded-xl h-11" data-testid="booking-location-input" />
             </div>
             <div className="space-y-1.5">
               <Label>Note to your coach</Label>

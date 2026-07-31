@@ -24,6 +24,7 @@ import {
   Plus, CalendarDays, MoreVertical, Check, X, Pencil, StickyNote, Loader2, Inbox, Dumbbell,
 } from 'lucide-react';
 import DateTimePicker from '@/components/DateTimePicker';
+import { AvailabilityDrawer } from '@/components/AvailabilityEditor';
 import { fmtTime, fmtDay, fmtDateTime, toLocalInputValue, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -43,6 +44,7 @@ export default function CoachSessions() {
   const [clients, setClients] = useState([]);
   const [filter, setFilter] = useState('upcoming');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [hoursOpen, setHoursOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [notesFor, setNotesFor] = useState(null);
   const [bookingConflicts, setBookingConflicts] = useState({});
@@ -158,6 +160,9 @@ export default function CoachSessions() {
         subtitle="Schedule, complete and manage training sessions"
         action={
           <div className="flex items-center gap-1.5">
+            <Button variant="outline" className="rounded-xl" onClick={() => setHoursOpen(true)} data-testid="session-hours-button">
+              Hours
+            </Button>
             <Button variant="outline" className="rounded-xl" onClick={() => navigate('/coach/calendar')} data-testid="session-week-view-button">
               <CalendarDays className="h-4 w-4 mr-1.5" /> Week
             </Button>
@@ -288,6 +293,7 @@ export default function CoachSessions() {
       />
 
       <NotesDialog session={notesFor} onClose={() => setNotesFor(null)} />
+      <AvailabilityDrawer open={hoursOpen} onOpenChange={setHoursOpen} />
     </div>
   );
 }

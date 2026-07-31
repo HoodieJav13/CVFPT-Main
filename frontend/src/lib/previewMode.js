@@ -63,6 +63,21 @@ const state = {
   sessionNotes: [
     { id: 'note_1', session_id: 'session_done', coach_id: 'coach_marcus', content: 'Great pacing today. Keep squats controlled and pain-free.', shared_with_client: true, archived: false, created_at: iso(-3, 11), updated_at: iso(-3, 11) },
   ],
+  sessionTypes: [
+    { key: '30min', label: '30 minutes', duration_minutes: 30, client_requestable: true },
+    { key: '45min', label: '45 minutes', duration_minutes: 45, client_requestable: true },
+    { key: '60min', label: '60 minutes', duration_minutes: 60, client_requestable: true },
+    { key: '90min', label: '90 minutes', duration_minutes: 90, client_requestable: false },
+    { key: 'assessment', label: 'Assessment', duration_minutes: 90, client_requestable: false },
+  ],
+  coachAvailability: [1, 2, 3, 4, 5].flatMap((weekday) => ([
+    { id: `avail_${weekday}_am`, coach_id: 'coach_marcus', weekday, start_time: '06:00', end_time: '11:00', capacity: 1, created_at: iso(-30) },
+    { id: `avail_${weekday}_pm`, coach_id: 'coach_marcus', weekday, start_time: '16:00', end_time: '20:00', capacity: 1, created_at: iso(-30) },
+  ])),
+  coachAvailabilityOverrides: [],
+  coachTimeOff: [
+    { id: 'timeoff_1', coach_id: 'coach_marcus', starts_at: iso(2, 13), ends_at: iso(2, 23), reason: 'Family afternoon', created_at: iso(-2) },
+  ],
   metrics: [
     { id: 'metric_weight', client_id: 'client_sarah', name: 'Body Weight', unit: 'lbs', improvement_direction: 'lower', target_value: 155, archived: false, created_at: iso(-40) },
     { id: 'metric_waist', client_id: 'client_sarah', name: 'Waist', unit: 'in', improvement_direction: 'lower', target_value: null, archived: false, created_at: iso(-40) },
@@ -572,6 +587,46 @@ function previewScheduleConflict({ sessionId = null, clientId, coachId, schedule
   const clientHit = active.find((row) => row.client_id === clientId && overlaps(row));
   if (clientHit) return { scope: 'client', session: clientHit };
   return null;
+}
+
+// Mirrors get_open_slots: 30-minute starts inside the day's windows
+// (per-date overrides replace the template), minus time off, the 12-hour
+// lead, the 21-day horizon, and starts whose overlapping sessions fill
+// the window's capacity. Fixture times run in the viewer's local zone;
+// the real RPC pins America/Denver.
+function previewOpenSlots(coachId, durationMinutes) {
+  const slots = [];
+  const lead = Date.now() + 12 * 3600000;
+  const timeAt = (day, hhmm) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime();
+  };
+  const sessions = state.sessions.filter((s) => s.coach_id === coachId && !s.archived && s.status !== 'cancelled');
+  const timeOff = state.coachTimeOff.filter((t) => t.coach_id === coachId);
+  for (let offset = 0; offset <= 21; offset += 1) {
+    const day = new Date();
+    day.setDate(day.getDate() + offset);
+    const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+    const overrides = state.coachAvailabilityOverrides.filter((o) => o.coach_id === coachId && o.on_date === dayKey);
+    const windows = overrides.length
+      ? overrides
+      : state.coachAvailability.filter((w) => w.coach_id === coachId && w.weekday === day.getDay());
+    for (const window of windows) {
+      const windowEnd = timeAt(day, window.end_time);
+      for (let start = timeAt(day, window.start_time); start + durationMinutes * 60000 <= windowEnd; start += 30 * 60000) {
+        const end = start + durationMinutes * 60000;
+        if (start < lead) continue;
+        if (timeOff.some((t) => new Date(t.starts_at).getTime() < end && start < new Date(t.ends_at).getTime())) continue;
+        const busy = sessions.filter((s) => {
+          const sessionStart = new Date(s.scheduled_at).getTime();
+          return sessionStart < end && start < sessionStart + s.duration_minutes * 60000;
+        }).length;
+        if (busy >= (window.capacity || 1)) continue;
+        slots.push({ starts_at: new Date(start).toISOString(), ends_at: new Date(end).toISOString() });
+      }
+    }
+  }
+  return slots;
 }
 
 function previewLocationOverlaps(session) {
@@ -1288,6 +1343,47 @@ export function installPreviewApi(api) {
       return ok(row, config);
     }
 
+    // ---------- Availability (mirrors /api/availability semantics) ----------
+    if (path === '/availability/session-types') return ok(state.sessionTypes, config);
+    if (path === '/availability/mine') {
+      const coachId = currentCoach().id;
+      return ok({
+        windows: state.coachAvailability.filter((w) => w.coach_id === coachId),
+        overrides: state.coachAvailabilityOverrides.filter((o) => o.coach_id === coachId),
+        time_off: state.coachTimeOff.filter((t) => t.coach_id === coachId)
+          .map((t) => ({ ...t, span: `["${t.starts_at}","${t.ends_at}")` })),
+      }, config);
+    }
+    if (path === '/availability/windows' && method === 'put') {
+      const coachId = currentCoach().id;
+      state.coachAvailability = state.coachAvailability.filter((w) => w.coach_id !== coachId)
+        .concat((payload.windows || []).map((w) => ({ id: id('avail'), coach_id: coachId, weekday: Number(w.weekday), start_time: w.start_time, end_time: w.end_time, capacity: w.capacity || 1, created_at: new Date().toISOString() })));
+      return ok({ windows: state.coachAvailability.filter((w) => w.coach_id === coachId) }, config);
+    }
+    if (path === '/availability/overrides' && method === 'post') {
+      const row = { id: id('override'), coach_id: currentCoach().id, on_date: payload.on_date, start_time: payload.start_time, end_time: payload.end_time, capacity: payload.capacity || 1, created_at: new Date().toISOString() };
+      state.coachAvailabilityOverrides.push(row);
+      return ok(row, config, 201);
+    }
+    const overrideDelete = path.match(/^\/availability\/overrides\/([^/]+)$/);
+    if (overrideDelete && method === 'delete') {
+      state.coachAvailabilityOverrides = state.coachAvailabilityOverrides.filter((o) => o.id !== overrideDelete[1]);
+      return ok({ ok: true }, config);
+    }
+    if (path === '/availability/time-off' && method === 'post') {
+      const row = { id: id('timeoff'), coach_id: currentCoach().id, starts_at: payload.starts_at, ends_at: payload.ends_at, reason: payload.reason || null, created_at: new Date().toISOString() };
+      state.coachTimeOff.push(row);
+      return ok({ ...row, span: `["${row.starts_at}","${row.ends_at}")` }, config, 201);
+    }
+    const timeOffDelete = path.match(/^\/availability\/time-off\/([^/]+)$/);
+    if (timeOffDelete && method === 'delete') {
+      state.coachTimeOff = state.coachTimeOff.filter((t) => t.id !== timeOffDelete[1]);
+      return ok({ ok: true }, config);
+    }
+    if (path === '/availability/slots') {
+      return ok({ slots: previewOpenSlots(client.coach_id, Number(search.get('duration')) || 60) }, config);
+    }
+
     if (path === '/bookings/mine') return ok(state.bookingRequests.filter((b) => b.client_id === client.id && !b.archived).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)), config);
     if (path === '/bookings' && method === 'get') {
       let rows = state.bookingRequests.filter((b) => !b.archived);
@@ -1295,6 +1391,16 @@ export function installPreviewApi(api) {
       return ok(rows.map((b) => ({ ...b, client: { id: b.client_id, name: clientById(b.client_id).name } })), config);
     }
     if (path === '/bookings' && method === 'post') {
+      // Mirrors the API's A4 guard: with published hours, only offered
+      // slots are accepted; without them the free picker is the fallback.
+      const hasHours = state.coachAvailability.some((w) => w.coach_id === client.coach_id)
+        || state.coachAvailabilityOverrides.some((o) => o.coach_id === client.coach_id);
+      if (hasHours) {
+        const requestedMs = new Date(payload.requested_time).getTime();
+        const offered = previewOpenSlots(client.coach_id, payload.duration_minutes || 60)
+          .some((slot) => new Date(slot.starts_at).getTime() === requestedMs);
+        if (!offered) return fail(config, 400, "That time isn't one of your coach's open slots — pick from the open times");
+      }
       const row = { id: id('booking'), client_id: client.id, coach_id: client.coach_id, requested_time: payload.requested_time, duration_minutes: payload.duration_minutes || 60, location: payload.location || null, note: payload.note || null, status: 'pending', archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       state.bookingRequests.push(row);
       return ok(row, config, 201);
