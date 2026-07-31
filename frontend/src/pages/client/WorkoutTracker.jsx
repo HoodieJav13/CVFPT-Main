@@ -392,7 +392,7 @@ export default function WorkoutTracker() {
                   <span className="text-center text-sm tabular-nums">{set.set_number}</span>
                   <div className="flex min-w-0 gap-1">
                     <Input
-                      type="number" min="0" step="0.5" inputMode="decimal" className="h-10 min-w-0 tabular-nums"
+                      type="number" min="0" step="0.5" inputMode="decimal" className="h-10 min-w-0 px-2 text-sm tabular-nums"
                       value={set.actual_load_value ?? ''}
                       placeholder={exercise.prescribed_load_value != null ? String(exercise.prescribed_load_value) : undefined}
                       onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
@@ -415,7 +415,7 @@ export default function WorkoutTracker() {
                       });
                     }}>
                       <SelectTrigger
-                        className="h-10 w-[68px] px-2"
+                        className="h-10 w-14 shrink-0 px-1.5"
                         aria-label={`${exercise.exercise_name} set ${set.set_number} weight unit`}
                       >
                         <SelectValue />
@@ -423,11 +423,11 @@ export default function WorkoutTracker() {
                       <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
                     </Select>
                   </div>
-                  <Input type="number" min="0" step="1" inputMode="numeric" className="h-10 px-2 tabular-nums" value={set.actual_reps ?? ''}
+                  <Input type="number" min="0" step="1" inputMode="numeric" className="h-10 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
                     placeholder={exercise.prescribed_reps || undefined}
                     onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
                     aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} />
-                  <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-10 px-2 tabular-nums" value={set.actual_rpe ?? ''}
+                  <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-10 px-2 text-sm tabular-nums" value={set.actual_rpe ?? ''}
                     placeholder={exercise.prescribed_rpe || undefined}
                     onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
                     aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
