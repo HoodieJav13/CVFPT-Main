@@ -62,3 +62,13 @@ test('booking approval refuses conflicts and keeps the request pending', () => {
   assert.match(bookingRoutes, /The request stays pending/);
   assert.match(bookingRoutes, /status\(409\)/);
 });
+
+const relocationMigration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260731071500_relocate_btree_gist.sql'),
+  'utf8',
+);
+
+test('btree_gist is relocated out of public per Supabase lint', () => {
+  assert.match(relocationMigration, /alter extension btree_gist set schema extensions;/);
+  assert.match(relocationMigration, /create schema if not exists extensions;/);
+});
