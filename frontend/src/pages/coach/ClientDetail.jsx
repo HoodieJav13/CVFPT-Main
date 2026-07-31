@@ -461,7 +461,7 @@ function NoteBlock({ label, value, accent }) {
   );
 }
 
-const blankMetricForm = () => ({ name: '', unit: '', improvement_direction: 'neutral' });
+const blankMetricForm = () => ({ name: '', unit: '', improvement_direction: 'neutral', target_value: '' });
 
 const improvementDirectionLabel = (direction) => ({
   higher: 'Higher is better',
@@ -512,6 +512,7 @@ function ProgressTab({ clientId }) {
       name: metric.name,
       unit: metric.unit || '',
       improvement_direction: metric.improvement_direction || 'neutral',
+      target_value: metric.target_value ?? '',
     });
     setMetricOpen(true);
   };
@@ -520,11 +521,12 @@ function ProgressTab({ clientId }) {
     e.preventDefault();
     setSaving(true);
     try {
+      const body = { ...metricForm, target_value: metricForm.target_value === '' ? null : Number(metricForm.target_value) };
       if (editingMetric) {
-        await api.patch(`/progress/metrics/${editingMetric.id}`, metricForm);
+        await api.patch(`/progress/metrics/${editingMetric.id}`, body);
         toast.success('Metric updated');
       } else {
-        await api.post(`/progress/clients/${clientId}/metrics`, metricForm);
+        await api.post(`/progress/clients/${clientId}/metrics`, body);
         toast.success('Metric added');
       }
       closeMetric();
@@ -623,6 +625,10 @@ function ProgressTab({ clientId }) {
                 </Select>
                 <p className="text-xs text-muted-foreground">Used only to recognize genuine personal records.</p>
               </div>
+              <div className="space-y-1.5"><Label>Goal{metricForm.unit ? ` (${metricForm.unit})` : ''}</Label>
+                <Input type="number" step="any" inputMode="decimal" value={metricForm.target_value} onChange={(e) => setMetricForm({ ...metricForm, target_value: e.target.value })} placeholder="Optional target" data-testid="metric-target-input" />
+                <p className="text-xs text-muted-foreground">Shown to the client as a goal line on their chart. Leave blank for no goal.</p>
+              </div>
               <DialogFooter>
                 <Button type="submit" disabled={saving} className="rounded-xl w-full sm:w-auto" data-testid="metric-save-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingMetric ? 'Save changes' : 'Create'}
@@ -647,7 +653,10 @@ function ProgressTab({ clientId }) {
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {latest ? <>Latest: <span className="text-primary font-semibold tabular-nums">{latest.value}{m.unit ? ` ${m.unit}` : ''}</span> on {fmtDate(latest.recorded_on)}</> : 'No entries yet'}
                 </p>
-                <p className="text-[11px] text-muted-foreground mt-1">{improvementDirectionLabel(m.improvement_direction)}</p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {improvementDirectionLabel(m.improvement_direction)}
+                  {m.target_value != null && <span className="text-gold"> · Goal {m.target_value}{m.unit ? ` ${m.unit}` : ''}</span>}
+                </p>
               </div>
               <div className="flex gap-1.5">
                 <Button size="sm" variant="secondary" className="rounded-lg" onClick={() => openNewEntry(m)} data-testid="log-entry-button">
@@ -664,7 +673,7 @@ function ProgressTab({ clientId }) {
             <CardContent>
               {m.entries.length > 0 ? (
                 <>
-                  <MetricChart entries={m.entries} unit={m.unit} />
+                  <MetricChart entries={m.entries} unit={m.unit} targetValue={m.target_value} />
                   <div className="mt-3 space-y-2">
                     {m.entries.slice().reverse().slice(0, 4).map((entry) => (
                       <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2" data-testid="coach-progress-entry-row">

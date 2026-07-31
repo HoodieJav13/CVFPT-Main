@@ -5,6 +5,7 @@ const { requireAuth, requireCoach, requireClient, canAccessClient } = require('.
 const {
   IMPROVEMENT_DIRECTIONS,
   normalizeImprovementDirection,
+  normalizeTargetValue,
   personalBestResult,
   metricProgressSummary,
 } = require('../lib/progress');
@@ -52,21 +53,24 @@ router.get('/clients/:clientId/metrics', requireCoach, async (req, res) => {
   }
 });
 
-// POST /api/progress/clients/:clientId/metrics { name, unit, improvement_direction }
+// POST /api/progress/clients/:clientId/metrics { name, unit, improvement_direction, target_value }
 router.post('/clients/:clientId/metrics', requireCoach, async (req, res) => {
   try {
     const clientRow = await guardClient(req, res);
     if (!clientRow) return;
-    const { name, unit, improvement_direction = 'neutral' } = req.body || {};
+    const { name, unit, improvement_direction = 'neutral', target_value } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Metric name is required' });
     if (!IMPROVEMENT_DIRECTIONS.has(improvement_direction)) {
       return res.status(400).json({ error: 'Choose whether higher, lower, or neither direction represents improvement' });
     }
+    const target = normalizeTargetValue(target_value);
+    if (!target.ok) return res.status(400).json({ error: 'Goal must be a number, or blank for no goal' });
     const { data, error } = await supabaseAdmin.from('metrics').insert({
       client_id: clientRow.id,
       name: String(name).trim(),
       unit: unit || null,
       improvement_direction,
+      target_value: target.value,
     }).select().single();
     if (error) throw error;
     return res.status(201).json({ ...data, entries: [] });
@@ -87,7 +91,7 @@ async function guardMetric(req, res) {
   return metric;
 }
 
-// PATCH /api/progress/metrics/:metricId { name?, unit?, improvement_direction? }
+// PATCH /api/progress/metrics/:metricId { name?, unit?, improvement_direction?, target_value? }
 router.patch('/metrics/:metricId', requireCoach, async (req, res) => {
   try {
     const metric = await guardMetric(req, res);
@@ -104,6 +108,11 @@ router.patch('/metrics/:metricId', requireCoach, async (req, res) => {
         return res.status(400).json({ error: 'Choose whether higher, lower, or neither direction represents improvement' });
       }
       updates.improvement_direction = req.body.improvement_direction;
+    }
+    if ('target_value' in (req.body || {})) {
+      const target = normalizeTargetValue(req.body.target_value);
+      if (!target.ok) return res.status(400).json({ error: 'Goal must be a number, or blank for no goal' });
+      updates.target_value = target.value;
     }
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'No metric changes provided' });
 

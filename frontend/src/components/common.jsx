@@ -241,7 +241,10 @@ export function ChartSkeleton() {
 
 /* ---------- Metric chart ---------- */
 
-export function MetricChart({ entries = [], unit, highlightLatest = false, markers = [] }) {
+export function MetricChart({ entries = [], unit, highlightLatest = false, markers = [], targetValue = null }) {
+  const goal = targetValue === null || targetValue === undefined || targetValue === ''
+    ? null
+    : (Number.isFinite(Number(targetValue)) ? Number(targetValue) : null);
   const gradientId = `metric-fill-${useId().replace(/:/g, '')}`;
   const reducedMotion = useReducedMotion();
   const intensity = useVisualIntensity();
@@ -292,6 +295,20 @@ export function MetricChart({ entries = [], unit, highlightLatest = false, marke
           {markerTs.map((ts) => (
             <ReferenceLine key={ts} x={ts} stroke="hsl(var(--chart-2) / 0.22)" />
           ))}
+          {goal !== null && (
+            <ReferenceLine
+              y={goal}
+              ifOverflow="extendDomain"
+              stroke="hsl(var(--gold) / 0.6)"
+              strokeDasharray="6 5"
+              label={{
+                value: `Goal ${goal}${unit ? ` ${unit}` : ''}`,
+                position: 'insideTopRight',
+                fill: 'hsl(var(--gold))',
+                fontSize: 10,
+              }}
+            />
+          )}
           <Area
             key={entries.map((entry) => `${entry.id}:${entry.value}:${entry.recorded_on}`).join('|')}
             type="monotone"
