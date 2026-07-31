@@ -118,3 +118,24 @@ test('v2 RPCs are invoker-security and service-role-only', () => {
   }
   assert.match(rpcMigration, /Session not found for this client/);
 });
+
+const completionV2Migration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260731060050_complete_workout_log_v2.sql'),
+  'utf8',
+);
+const routesSource = fs.readFileSync(path.join(root, 'backend', 'src', 'routes', 'workoutLogs.js'), 'utf8');
+
+test('performance-time completion is clamped and service-role-only', () => {
+  assert.match(completionV2Migration, /p_completed_at is null or p_completed_at <= v_log\.started_at or p_completed_at > now\(\)/);
+  assert.match(completionV2Migration, /create or replace function public\.complete_workout_log_v2[\s\S]*?security invoker[\s\S]*?set search_path = ''/);
+  assert.match(completionV2Migration, /revoke execute on function public\.complete_workout_log_v2\(uuid, uuid, text, text, timestamptz\) from public, anon, authenticated;/);
+  assert.match(completionV2Migration, /grant execute on function public\.complete_workout_log_v2\(uuid, uuid, text, text, timestamptz\) to service_role;/);
+  // Duplicate completion stays an idempotent success.
+  assert.match(completionV2Migration, /if v_log\.status = 'completed' then return v_log\.id; end if;/);
+});
+
+test('complete route forwards only a parseable local timestamp to v2', () => {
+  assert.match(routesSource, /rpc\('complete_workout_log_v2'/);
+  assert.match(routesSource, /completed_at_local/);
+  assert.match(routesSource, /Number\.isNaN\(Date\.parse\(rawCompletedAt\)\)/);
+});
