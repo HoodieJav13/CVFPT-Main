@@ -665,3 +665,53 @@ test('offline finish queues completion, defers celebration, and syncs on reconne
   const outboxes = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('cvf_workout_outbox_')).length);
   expect(outboxes).toBe(0);
 });
+
+test('session conflicts surface inline, clear on relevant edits, and keep refused bookings pending', async ({ page }) => {
+  await usePreviewRole(page, 'coach');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/coach/sessions', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('session-create-button')).toBeVisible();
+
+  const pickDay = async (offsetDays) => {
+    const panel = page.getByTestId('session-datetime-input-panel');
+    const target = new Date();
+    target.setDate(target.getDate() + offsetDays);
+    if (target.getMonth() !== new Date().getMonth()) {
+      await panel.getByRole('button', { name: /next/i }).click();
+    }
+    await panel.getByRole('grid')
+      .getByRole('button', { name: new RegExp(`\\b${target.getDate()}(st|nd|rd|th)?\\b`) })
+      .first().click();
+  };
+
+  // Overlapping the fixture 3:00 PM session as the same coach is a hard
+  // block: the panel names the coach scope and the conflicting session.
+  await page.getByTestId('session-create-button').click();
+  await page.getByTestId('session-client-select').click();
+  await page.getByRole('option', { name: /David/ }).click();
+  await page.getByTestId('session-datetime-input').click();
+  await pickDay(0);
+  await page.getByTestId('time-slot').filter({ hasText: /^3:15 PM$/ }).click();
+  await page.getByTestId('session-save-button').click();
+  await expect(page.getByTestId('session-conflict-panel')).toBeVisible();
+  await expect(page.getByTestId('session-conflict-panel')).toHaveAttribute('data-conflict-scope', 'coach');
+
+  // Changing duration restarts the attempt, so the stale conflict clears.
+  await page.getByTestId('session-duration-select').click();
+  await page.getByRole('option', { name: '45 min' }).click();
+  await expect(page.getByTestId('session-conflict-panel')).toHaveCount(0);
+
+  // Booking the pending request's exact slot succeeds (nothing there yet)…
+  await page.getByTestId('session-datetime-input').click();
+  await pickDay(5);
+  await page.getByTestId('time-slot').filter({ hasText: /^11:00 AM$/ }).click();
+  await page.getByTestId('session-save-button').click();
+  await expect(page.getByTestId('session-editor-drawer')).toHaveCount(0);
+
+  // …so approving that request now conflicts: it is refused, the reason is
+  // pinned to the row, and the request stays pending.
+  await page.getByTestId('booking-approve-button').click();
+  await expect(page.getByTestId('booking-conflict-note')).toBeVisible();
+  await expect(page.getByTestId('booking-conflict-note')).toContainText('The request stays pending');
+  await expect(page.getByTestId('sessions-booking-row')).toHaveCount(1);
+});
