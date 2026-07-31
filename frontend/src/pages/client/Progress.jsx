@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { AnimatePresence, m, useReducedMotion } from 'framer-motion';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, ChartSkeleton, LoadErrorState, EmptyState, MetricChart, IconButton } from '@/components/common';
@@ -9,6 +9,9 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle,
+} from '@/components/ui/drawer';
 import { TrendingUp, Plus, Pencil, Loader2 } from 'lucide-react';
 import { fmtDate } from '@/lib/format';
 import { toast } from 'sonner';
@@ -18,6 +21,22 @@ import { PERSONAL_RECORD_MOTION, MOTION_EASINGS, msToSeconds } from '@/lib/motio
 import { cn } from '@/lib/utils';
 
 const blankEntry = () => ({ value: '', recorded_on: new Date().toISOString().slice(0, 10), notes: '' });
+
+const CHART_RANGES = [
+  { key: '30', label: '30d', days: 30 },
+  { key: '90', label: '90d', days: 90 },
+  { key: 'all', label: 'All', days: null },
+];
+
+function entriesInRange(entries, rangeKey) {
+  const range = CHART_RANGES.find((r) => r.key === rangeKey);
+  if (!range?.days) return entries;
+  const cutoff = Date.now() - (range.days * 24 * 60 * 60 * 1000);
+  return entries.filter((entry) => {
+    const time = new Date(entry.recorded_on).getTime();
+    return !Number.isNaN(time) && time >= cutoff;
+  });
+}
 
 function AchievementMoment({ achievement }) {
   const reducedMotion = useReducedMotion();
@@ -69,6 +88,10 @@ export default function ClientProgress() {
   const [entryForm, setEntryForm] = useState(blankEntry());
   const [saving, setSaving] = useState(false);
   const [achievement, setAchievement] = useState(null);
+  const [ranges, setRanges] = useState({});
+  const [historyFor, setHistoryFor] = useState(null);
+  const [workoutMarkers, setWorkoutMarkers] = useState([]);
+  const markersFetched = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -90,6 +113,19 @@ export default function ClientProgress() {
     const timeout = window.setTimeout(() => setAchievement(null), 6500);
     return () => window.clearTimeout(timeout);
   }, [achievement]);
+
+  // Completed-workout dates become chart markers, tying metric movement to
+  // training days. Purely an enhancement — charts render without them.
+  useEffect(() => {
+    if (markersFetched.current || !metrics || metrics.length === 0) return;
+    markersFetched.current = true;
+    (async () => {
+      try {
+        const { data } = await api.get('/workout-logs/mine');
+        setWorkoutMarkers((data || []).map((log) => log.completed_at).filter(Boolean));
+      } catch { /* silent: markers only */ }
+    })();
+  }, [metrics]);
 
   const openNewEntry = (metric) => {
     setEntryFor(metric);
@@ -202,9 +238,39 @@ export default function ClientProgress() {
                 <AchievementMoment achievement={isAchievementMetric ? achievement : null} />
                 {m.entries.length > 0 ? (
                   <>
-                    <MetricChart entries={m.entries} unit={m.unit} highlightLatest={isAchievementMetric} />
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="inline-flex rounded-lg border border-border bg-secondary/50 p-0.5" role="group" aria-label={`${m.name} chart range`}>
+                        {CHART_RANGES.map((range) => (
+                          <button
+                            key={range.key}
+                            type="button"
+                            className={`min-h-8 rounded-md px-2.5 text-xs font-medium transition-colors motion-reduce:transition-none ${(ranges[m.id] || 'all') === range.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                            aria-pressed={(ranges[m.id] || 'all') === range.key}
+                            onClick={() => setRanges((current) => ({ ...current, [m.id]: range.key }))}
+                            data-testid={`metric-range-${range.key}`}
+                          >
+                            {range.label}
+                          </button>
+                        ))}
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => setHistoryFor(m)} data-testid="metric-history-button">
+                        All entries ({m.entries.length})
+                      </Button>
+                    </div>
+                    {entriesInRange(m.entries, ranges[m.id] || 'all').length > 0 ? (
+                      <MetricChart
+                        entries={entriesInRange(m.entries, ranges[m.id] || 'all')}
+                        unit={m.unit}
+                        highlightLatest={isAchievementMetric}
+                        markers={workoutMarkers}
+                      />
+                    ) : (
+                      <p className="py-6 text-center text-sm text-muted-foreground" data-testid="metric-range-empty">
+                        No entries in this range.
+                      </p>
+                    )}
                     <div className="mt-3 space-y-2">
-                      {m.entries.slice().reverse().slice(0, 4).map((entry) => (
+                      {entriesInRange(m.entries, ranges[m.id] || 'all').slice().reverse().slice(0, 4).map((entry) => (
                         <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2" data-testid="client-progress-entry-row">
                           <div>
                             <p className="text-sm font-medium tabular-nums">{entry.value}{m.unit ? ` ${m.unit}` : ''}</p>
@@ -225,6 +291,37 @@ export default function ClientProgress() {
           );
         })}
       </div>
+
+      <Drawer open={Boolean(historyFor)} onOpenChange={(open) => !open && setHistoryFor(null)}>
+        <DrawerContent data-testid="metric-history-sheet">
+          <DrawerHeader>
+            <DrawerTitle className="font-display">{historyFor?.name} — all entries</DrawerTitle>
+            <DrawerDescription>
+              {historyFor?.entries.length} logged value{historyFor?.entries.length === 1 ? '' : 's'}, newest first.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto px-4 pb-8">
+            {(historyFor?.entries || []).slice().reverse().map((entry) => (
+              <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2" data-testid="metric-history-row">
+                <div>
+                  <p className="text-sm font-medium tabular-nums">{entry.value}{historyFor.unit ? ` ${historyFor.unit}` : ''}</p>
+                  <p className="text-xs text-muted-foreground">{fmtDate(entry.recorded_on)}{entry.notes ? ` - ${entry.notes}` : ''}</p>
+                </div>
+                <IconButton
+                  label={`Edit ${historyFor.name} entry from ${fmtDate(entry.recorded_on)}`}
+                  size="touchIcon"
+                  variant="ghost"
+                  className="rounded-lg"
+                  onClick={() => { setHistoryFor(null); openEditEntry(historyFor, entry); }}
+                  data-testid="metric-history-edit-button"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </IconButton>
+              </div>
+            ))}
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       <Dialog open={Boolean(entryFor)} onOpenChange={(open) => !open && closeEntry()}>
         <DialogContent className="max-w-sm" data-testid="client-progress-entry-dialog">
