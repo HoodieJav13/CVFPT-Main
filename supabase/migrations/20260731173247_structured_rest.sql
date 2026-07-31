@@ -93,14 +93,25 @@ where wl.id = wle.workout_log_id
   and wle.prescribed_rest_seconds is null
   and wle.prescribed_rest is not null;
 
--- ---------- Fill triggers (explicit values always win) ----------
+-- ---------- Fill triggers ----------
+-- Insert: fill a missing rest_seconds from text. Update: an explicitly
+-- changed rest_seconds always wins; otherwise a changed rest text
+-- RE-derives rest_seconds — an UPDATE carries the old (backfilled)
+-- seconds forward implicitly, so "fill only when null" would let edited
+-- text ("90s" -> "120s") leave stale seconds behind for new snapshots.
 create or replace function public.fill_workout_exercise_rest()
 returns trigger
 language plpgsql
 set search_path = ''
 as $$
 begin
-  if new.rest_seconds is null then
+  if tg_op = 'INSERT' then
+    if new.rest_seconds is null then
+      new.rest_seconds := public.parse_rest_seconds(new.rest);
+    end if;
+  elsif new.rest_seconds is distinct from old.rest_seconds then
+    null; -- explicit change wins as provided
+  elsif new.rest is distinct from old.rest or new.rest_seconds is null then
     new.rest_seconds := public.parse_rest_seconds(new.rest);
   end if;
   return new;
@@ -118,15 +129,21 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if new.prescribed_rest_seconds is null then
-    if new.source_workout_exercise_id is not null then
-      select rest_seconds into new.prescribed_rest_seconds
-      from public.workout_exercises
-      where id = new.source_workout_exercise_id;
-    end if;
+  if tg_op = 'INSERT' then
     if new.prescribed_rest_seconds is null then
-      new.prescribed_rest_seconds := public.parse_rest_seconds(new.prescribed_rest);
+      if new.source_workout_exercise_id is not null then
+        select rest_seconds into new.prescribed_rest_seconds
+        from public.workout_exercises
+        where id = new.source_workout_exercise_id;
+      end if;
+      if new.prescribed_rest_seconds is null then
+        new.prescribed_rest_seconds := public.parse_rest_seconds(new.prescribed_rest);
+      end if;
     end if;
+  elsif new.prescribed_rest_seconds is distinct from old.prescribed_rest_seconds then
+    null; -- explicit change wins as provided
+  elsif new.prescribed_rest is distinct from old.prescribed_rest or new.prescribed_rest_seconds is null then
+    new.prescribed_rest_seconds := public.parse_rest_seconds(new.prescribed_rest);
   end if;
   return new;
 end;

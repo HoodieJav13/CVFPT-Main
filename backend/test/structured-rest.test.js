@@ -32,9 +32,16 @@ test('backfill converts mutable logs only — completed snapshots stay immutable
 test('fill triggers keep every writer consistent, explicit values winning', () => {
   assert.match(migration, /create trigger fill_workout_exercise_rest\s*before insert or update on public\.workout_exercises/);
   assert.match(migration, /create trigger fill_workout_log_exercise_rest\s*before insert or update on public\.workout_log_exercises/);
-  // Both trigger bodies only act when the incoming value is null.
+  // INSERT fills only when the incoming value is null.
   assert.match(migration, /if new\.rest_seconds is null then/);
   assert.match(migration, /if new\.prescribed_rest_seconds is null then/);
+  // UPDATE: an explicitly changed seconds value wins; otherwise a changed
+  // rest text re-derives seconds (stale-backfill bug fix — an UPDATE
+  // carries old seconds forward implicitly).
+  assert.match(migration, /elsif new\.rest_seconds is distinct from old\.rest_seconds then/);
+  assert.match(migration, /elsif new\.rest is distinct from old\.rest or new\.rest_seconds is null then/);
+  assert.match(migration, /elsif new\.prescribed_rest_seconds is distinct from old\.prescribed_rest_seconds then/);
+  assert.match(migration, /elsif new\.prescribed_rest is distinct from old\.prescribed_rest or new\.prescribed_rest_seconds is null then/);
   // The snapshot path copies the source exercise's seconds before parsing text.
   assert.match(migration, /from public\.workout_exercises\s*where id = new\.source_workout_exercise_id/);
 });
