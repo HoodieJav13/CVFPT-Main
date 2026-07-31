@@ -592,7 +592,8 @@ test('real coach auth covers ownership surfaces and archives created test data',
     await page.getByTestId(`bottom-tab-${tab}`).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
   }
-  await page.getByTestId('coach-quick-add-button').click();
+  await page.getByTestId('bottom-tab-home').click();
+  await page.getByTestId('dashboard-new-session-button').click();
   await expect(page.getByTestId('session-editor-drawer')).toBeVisible();
   await page.keyboard.press('Escape');
   await logout(page);
