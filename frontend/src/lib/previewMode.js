@@ -1400,7 +1400,13 @@ export function installPreviewApi(api) {
         overrides: state.coachAvailabilityOverrides.filter((o) => o.coach_id === coachId),
         time_off: state.coachTimeOff.filter((t) => t.coach_id === coachId)
           .map((t) => ({ ...t, span: `["${t.starts_at}","${t.ends_at}")` })),
+        auto_book: Boolean(currentCoach().auto_book),
       }, config);
+    }
+    if (path === '/availability/auto-book' && method === 'patch') {
+      const coach = currentCoach();
+      coach.auto_book = Boolean(payload.enabled);
+      return ok({ auto_book: coach.auto_book }, config);
     }
     if (path === '/availability/windows' && method === 'put') {
       const coachId = currentCoach().id;
@@ -1429,7 +1435,10 @@ export function installPreviewApi(api) {
       return ok({ ok: true }, config);
     }
     if (path === '/availability/slots') {
-      return ok({ slots: previewOpenSlots(client.coach_id, Number(search.get('duration')) || 60) }, config);
+      return ok({
+        slots: previewOpenSlots(client.coach_id, Number(search.get('duration')) || 60),
+        auto_book: Boolean(coachById(client.coach_id)?.auto_book),
+      }, config);
     }
 
     if (path === '/bookings/mine') return ok(state.bookingRequests.filter((b) => b.client_id === client.id && !b.archived).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)), config);
@@ -1451,6 +1460,14 @@ export function installPreviewApi(api) {
       }
       const row = { id: id('booking'), client_id: client.id, coach_id: client.coach_id, requested_time: payload.requested_time, duration_minutes: payload.duration_minutes || 60, location: payload.location || null, note: payload.note || null, status: 'pending', archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       state.bookingRequests.push(row);
+      // D3 auto-book mirror: an opted-in coach's offered slot approves
+      // itself immediately (the slot check above already ran).
+      if (hasHours && coachById(client.coach_id)?.auto_book) {
+        row.status = 'approved';
+        const session = { id: id('session'), client_id: client.id, coach_id: client.coach_id, scheduled_at: row.requested_time, duration_minutes: row.duration_minutes, location: row.location, status: 'scheduled', credit_deducted: false, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+        state.sessions.push(session);
+        return ok({ ...row, auto_booked: true, session }, config, 201);
+      }
       return ok(row, config, 201);
     }
     const bookingAction = path.match(/^\/bookings\/([^/]+)\/(approve|decline)$/);

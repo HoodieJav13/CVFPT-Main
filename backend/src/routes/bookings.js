@@ -45,12 +45,15 @@ router.post('/', requireClient, async (req, res) => {
     // be bypassed by calling the API directly. Coaches with no active
     // hours keep the documented free-picker fallback.
     const coachId = req.user.client.coach_id;
-    const [templateCount, overrideCount] = await Promise.all([
+    const [templateCount, overrideCount, coachRow] = await Promise.all([
       supabaseAdmin.from('coach_availability').select('id', { count: 'exact', head: true }).eq('coach_id', coachId).eq('archived', false),
       supabaseAdmin.from('coach_availability_overrides').select('id', { count: 'exact', head: true }).eq('coach_id', coachId).eq('archived', false),
+      supabaseAdmin.from('coaches').select('auto_book').eq('id', coachId).maybeSingle(),
     ]);
     if (templateCount.error) throw templateCount.error;
     if (overrideCount.error) throw overrideCount.error;
+    if (coachRow.error) throw coachRow.error;
+    let offeredSlot = false;
     if ((templateCount.count || 0) + (overrideCount.count || 0) > 0) {
       const requestedMs = new Date(validation.value.scheduled_at).getTime();
       const requestedDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' })
@@ -66,17 +69,31 @@ router.post('/', requireClient, async (req, res) => {
       if (!offered) {
         return res.status(400).json({ error: "That time isn't one of your coach's open slots — pick from the open times" });
       }
+      offeredSlot = true;
     }
-    const { data, error } = await supabaseAdmin.from('booking_requests').insert({
-      client_id: req.user.client.id,
-      coach_id: req.user.client.coach_id,
-      requested_time: validation.value.scheduled_at,
-      duration_minutes: validation.value.duration_minutes,
-      location: locationValidation.value,
-      note: noteValidation.value,
-    }).select().single();
+    // D3 auto-book: creation and optional auto-approval run in ONE
+    // transaction (request_booking). If approval errors, the insert
+    // rolls back with it — a retry can never duplicate, and "failed"
+    // never hides a pending row. Only an explicit 'auto_booked' outcome
+    // reports success; a lost race or anything unexpected leaves the
+    // request pending for the coach.
+    const { data: result, error } = await supabaseAdmin.rpc('request_booking', {
+      p_client_id: req.user.client.id,
+      p_coach_id: req.user.client.coach_id,
+      p_requested_time: validation.value.scheduled_at,
+      p_duration_minutes: validation.value.duration_minutes,
+      p_location: locationValidation.value,
+      p_note: noteValidation.value,
+      p_auto_book: offeredSlot && Boolean(coachRow.data?.auto_book),
+    });
     if (error) throw error;
-    return res.status(201).json(data);
+    if (result?.outcome === 'auto_booked') {
+      return res.status(201).json({ ...result.request, auto_booked: true, session: result.session || null });
+    }
+    if (result?.outcome === 'pending') {
+      return res.status(201).json({ ...result.request, auto_booked: false });
+    }
+    throw new Error(`unexpected request_booking outcome: ${result?.outcome ?? 'null'}`);
   } catch (e) {
     logError('create booking error', e);
     return res.status(500).json({ error: 'Failed to send booking request' });
