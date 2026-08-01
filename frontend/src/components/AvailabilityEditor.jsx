@@ -8,6 +8,10 @@ import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription,
 } from '@/components/ui/drawer';
 import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
@@ -95,6 +99,21 @@ export function AvailabilityDrawer({ open, onOpenChange }) {
   const [override, setOverride] = useState({ on_date: '', start_time: '', end_time: '' });
   const [timeOff, setTimeOff] = useState({ starts_at: '', ends_at: '', reason: '' });
   const [busy, setBusy] = useState(false);
+  const [confirmAutoBook, setConfirmAutoBook] = useState(false);
+
+  // D3: enabling requires an explicit confirmation because published
+  // hours become instantly bookable; disabling is one tap.
+  const setAutoBook = async (enabled) => {
+    try {
+      const { data: result } = await api.patch('/availability/auto-book', { enabled });
+      setData((current) => (current ? { ...current, auto_book: result.auto_book } : current));
+      toast.success(result.auto_book
+        ? 'Instant booking on — open slots book without approval'
+        : 'Instant booking off — requests need your approval again');
+    } catch (e) {
+      toast.error(errMsg(e, 'Failed to update instant booking'));
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -178,6 +197,22 @@ export function AvailabilityDrawer({ open, onOpenChange }) {
           {!data && !loadError && <ListSkeleton rows={3} />}
           {data && (
             <div className="space-y-6">
+              <section className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="auto-book-section">
+                <div>
+                  <p className="text-sm font-medium">Instant booking</p>
+                  <p className="text-xs text-muted-foreground">
+                    {data.auto_book
+                      ? 'On — clients book your open slots instantly, no approval step.'
+                      : 'Off — clients request a slot and you approve it.'}
+                  </p>
+                </div>
+                <Switch
+                  checked={Boolean(data.auto_book)}
+                  onCheckedChange={(checked) => { if (checked) setConfirmAutoBook(true); else setAutoBook(false); }}
+                  aria-label="Instant booking"
+                  data-testid="auto-book-switch"
+                />
+              </section>
               <section>
                 <SectionLabel className="mb-2">Weekly hours</SectionLabel>
                 <div className="space-y-2">
@@ -281,6 +316,20 @@ export function AvailabilityDrawer({ open, onOpenChange }) {
             </div>
           )}
         </div>
+        <Dialog open={confirmAutoBook} onOpenChange={setConfirmAutoBook}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Turn on instant booking?</DialogTitle>
+              <DialogDescription>
+                Your published hours become instantly bookable: when a client picks an open slot it goes straight onto your calendar with no approval step. Conflict protection still applies, and you can turn this off anytime.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" className="rounded-xl" onClick={() => setConfirmAutoBook(false)} data-testid="auto-book-cancel">Keep approvals</Button>
+              <Button className="rounded-xl" onClick={() => { setConfirmAutoBook(false); setAutoBook(true); }} data-testid="auto-book-confirm">Turn on</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DrawerContent>
     </Drawer>
   );

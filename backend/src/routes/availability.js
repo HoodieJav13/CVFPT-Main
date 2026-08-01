@@ -56,17 +56,40 @@ router.get('/impact', requireCoach, async (req, res) => {
 router.get('/mine', requireCoach, async (req, res) => {
   try {
     const coachId = req.user.coach.id;
-    const [windows, overrides, timeOff] = await Promise.all([
+    const [windows, overrides, timeOff, coachRow] = await Promise.all([
       supabaseAdmin.from('coach_availability').select('*').eq('coach_id', coachId).eq('archived', false).order('weekday').order('start_time'),
       supabaseAdmin.from('coach_availability_overrides').select('*').eq('coach_id', coachId).eq('archived', false).order('on_date').order('start_time'),
       supabaseAdmin.from('coach_time_off').select('*').eq('coach_id', coachId).eq('archived', false).order('span'),
+      supabaseAdmin.from('coaches').select('auto_book').eq('id', coachId).maybeSingle(),
     ]);
-    const failed = [windows, overrides, timeOff].find((r) => r.error);
+    const failed = [windows, overrides, timeOff, coachRow].find((r) => r.error);
     if (failed) throw failed.error;
-    return res.json({ windows: windows.data, overrides: overrides.data, time_off: timeOff.data });
+    return res.json({
+      windows: windows.data,
+      overrides: overrides.data,
+      time_off: timeOff.data,
+      auto_book: Boolean(coachRow.data?.auto_book),
+    });
   } catch (e) {
     logError('availability mine error', e);
     return res.status(500).json({ error: 'Failed to load availability' });
+  }
+});
+
+// PATCH /api/availability/auto-book { enabled } (coach, own flag only).
+// D3: each coach controls their own toggle; the UI confirms before
+// enabling because published hours become instantly bookable.
+router.patch('/auto-book', requireCoach, async (req, res) => {
+  try {
+    const enabled = req.body?.enabled;
+    if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false' });
+    const { data, error } = await supabaseAdmin.from('coaches')
+      .update({ auto_book: enabled }).eq('id', req.user.coach.id).select('auto_book').single();
+    if (error) throw error;
+    return res.json({ auto_book: data.auto_book });
+  } catch (e) {
+    logError('auto-book toggle error', e);
+    return res.status(500).json({ error: 'Failed to update instant booking' });
   }
 });
 

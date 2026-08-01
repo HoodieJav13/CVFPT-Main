@@ -45,12 +45,15 @@ router.post('/', requireClient, async (req, res) => {
     // be bypassed by calling the API directly. Coaches with no active
     // hours keep the documented free-picker fallback.
     const coachId = req.user.client.coach_id;
-    const [templateCount, overrideCount] = await Promise.all([
+    const [templateCount, overrideCount, coachRow] = await Promise.all([
       supabaseAdmin.from('coach_availability').select('id', { count: 'exact', head: true }).eq('coach_id', coachId).eq('archived', false),
       supabaseAdmin.from('coach_availability_overrides').select('id', { count: 'exact', head: true }).eq('coach_id', coachId).eq('archived', false),
+      supabaseAdmin.from('coaches').select('auto_book').eq('id', coachId).maybeSingle(),
     ]);
     if (templateCount.error) throw templateCount.error;
     if (overrideCount.error) throw overrideCount.error;
+    if (coachRow.error) throw coachRow.error;
+    let offeredSlot = false;
     if ((templateCount.count || 0) + (overrideCount.count || 0) > 0) {
       const requestedMs = new Date(validation.value.scheduled_at).getTime();
       const requestedDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' })
@@ -66,6 +69,7 @@ router.post('/', requireClient, async (req, res) => {
       if (!offered) {
         return res.status(400).json({ error: "That time isn't one of your coach's open slots — pick from the open times" });
       }
+      offeredSlot = true;
     }
     const { data, error } = await supabaseAdmin.from('booking_requests').insert({
       client_id: req.user.client.id,
@@ -76,6 +80,20 @@ router.post('/', requireClient, async (req, res) => {
       note: noteValidation.value,
     }).select().single();
     if (error) throw error;
+    // D3 auto-book: an opted-in coach's offered slot approves itself
+    // through the same transactional RPC the manual approve uses, so
+    // every conflict check still runs. A race lost between the slot
+    // check and the approve leaves the request pending for the coach —
+    // never an error for the client.
+    if (offeredSlot && Boolean(coachRow.data?.auto_book)) {
+      const { data: approval, error: approveError } = await supabaseAdmin
+        .rpc('approve_booking', { p_booking_id: data.id });
+      if (approveError) throw approveError;
+      if (approval.outcome !== 'coach_conflict' && approval.outcome !== 'client_conflict') {
+        return res.status(201).json({ ...data, status: 'approved', auto_booked: true, session: approval.session || null });
+      }
+      return res.status(201).json({ ...data, auto_booked: false });
+    }
     return res.status(201).json(data);
   } catch (e) {
     logError('create booking error', e);

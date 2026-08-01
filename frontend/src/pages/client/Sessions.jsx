@@ -189,13 +189,15 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
     }
     setSaving(true);
     try {
-      await api.post('/bookings', {
+      const { data } = await api.post('/bookings', {
         requested_time: new Date(form.requested_time).toISOString(),
         duration_minutes: Number(form.duration_minutes),
         location: form.location,
         note: form.note,
       });
-      toast.success('Request sent - your coach will confirm');
+      toast.success(data?.auto_booked
+        ? "Booked — you're on the calendar"
+        : 'Request sent - your coach will confirm');
       onSaved();
     } catch (err) {
       toast.error(errMsg(err));
