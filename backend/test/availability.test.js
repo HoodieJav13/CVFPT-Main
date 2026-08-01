@@ -73,6 +73,35 @@ test('routes scope writes to the calling coach and slots to the client\'s own co
   assert.match(routes, /router\.get\('\/slots', requireClient/);
 });
 
+test('impact UI: failed checks show error+retry, expired spans skip, jump link exists', () => {
+  const editor = fs.readFileSync(
+    path.join(root, 'frontend', 'src', 'components', 'AvailabilityEditor.jsx'),
+    'utf8',
+  );
+  // A failed check must never render as "no affected sessions".
+  assert.match(editor, /availability-timeoff-impact-error/);
+  assert.match(editor, /availability-timeoff-impact-retry/);
+  assert.match(editor, /setFailed\(true\)/);
+  // Historical rows don't fire requests: fully-past spans are skipped.
+  assert.match(editor, /const expired = endsAt && new Date\(endsAt\) <= new Date\(\);/);
+  // The promised jump link: Open Sessions closes the drawer onto Sessions.
+  assert.match(editor, /availability-timeoff-open-sessions/);
+  assert.match(editor, /onOpenSessions=\{\(\) => onOpenChange\(false\)\}/);
+});
+
+test('time-off impact lists own-coach overlapping sessions and never cancels them', () => {
+  // Coach-only, scoped to the caller; cancelled/archived excluded.
+  assert.match(routes, /router\.get\('\/impact', requireCoach/);
+  assert.match(routes, /\.neq\('status', 'cancelled'\)/);
+  // Overlap tail check: the query window widens by the 240-minute max
+  // duration, then the exact end-after-start filter runs in code.
+  assert.match(routes, /240 \* 60000/);
+  assert.match(routes, /new Date\(s\.scheduled_at\)\.getTime\(\) \+ \(s\.duration_minutes \* 60000\) > startMs/);
+  // Read-only: the impact route performs no writes.
+  const impactBlock = routes.slice(routes.indexOf("router.get('/impact'"), routes.indexOf("// GET /api/availability/mine"));
+  assert.doesNotMatch(impactBlock, /\.update\(|\.insert\(|\.delete\(/);
+});
+
 test('review blocker 1: RLS enabled on all four tables, service-role grants without DELETE', () => {
   for (const table of ['session_types', 'coach_availability', 'coach_availability_overrides', 'coach_time_off']) {
     assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security;`));

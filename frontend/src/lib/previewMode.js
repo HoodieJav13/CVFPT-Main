@@ -1345,6 +1345,20 @@ export function installPreviewApi(api) {
 
     // ---------- Availability (mirrors /api/availability semantics) ----------
     if (path === '/availability/session-types') return ok(state.sessionTypes, config);
+    if (path === '/availability/impact') {
+      const coachId = currentCoach().id;
+      const startMs = new Date(search.get('starts_at')).getTime();
+      const endMs = new Date(search.get('ends_at')).getTime();
+      const sessions = state.sessions
+        .filter((s) => s.coach_id === coachId && !s.archived && s.status !== 'cancelled')
+        .filter((s) => {
+          const sessionStart = new Date(s.scheduled_at).getTime();
+          return sessionStart < endMs && sessionStart + (s.duration_minutes * 60000) > startMs;
+        })
+        .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
+        .map((s) => ({ ...s, client: { id: s.client_id, name: clientById(s.client_id)?.name } }));
+      return ok({ sessions }, config);
+    }
     if (path === '/availability/mine') {
       const coachId = currentCoach().id;
       return ok({
