@@ -73,6 +73,11 @@ list changes.
 ⚠ migrations expected: #2 and #3 (small, sequential), possibly #7.
 Applied before merge, never two pending, exactly as in v2.
 
+**v3 close-out (2026-08-01):** every unblocked item is merged. The two
+remaining builds each wait on an owner action — group slots ⚠ on the D5
+partner decision (recommended wording is in this doc), and the email
+build ⚠ on provider setup (steps in docs/email-notifications-design.md).
+
 ## Status ledger
 
 | Item | PR | State |
@@ -83,4 +88,5 @@ Applied before merge, never two pending, exactly as in v2.
 | Auto-book ⚠ | #43 | merged (migration applied) |
 | PWA installability | #44 | merged |
 | Email notifications design note | #45 | merged — D2 spec settled; build awaits owner provider setup + ships one opt-out migration ⚠ |
-| Coach analytics design note | #46 | open — D4 attention thresholds approved by owner; review corrections applied |
+| Coach analytics design note | #46 | merged — thresholds approved, response contract settled |
+| Coach analytics build | #47 | merged — endpoint + dashboard live; thresholds now tune against real usage by editing the ATTENTION constants |
