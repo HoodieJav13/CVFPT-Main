@@ -17,6 +17,7 @@ import Programs from '@/pages/coach/Programs';
 import CoachResources from '@/pages/coach/Resources';
 import CoachMessages from '@/pages/coach/Messages';
 import CoachNotifications from '@/pages/coach/Notifications';
+import CoachAnalytics from '@/pages/coach/Analytics';
 import ClientHome from '@/pages/client/Home';
 import ClientSessions from '@/pages/client/Sessions';
 import ClientProgress from '@/pages/client/Progress';
@@ -70,6 +71,7 @@ export default function App() {
             <Route path="clients/:id" element={<ClientDetail />} />
             <Route path="sessions" element={<CoachSessions />} />
             <Route path="calendar" element={<CoachCalendar />} />
+            <Route path="analytics" element={<CoachAnalytics />} />
             <Route path="programs" element={<Programs />} />
             <Route path="resources" element={<CoachResources />} />
             <Route path="messages" element={<CoachMessages />} />
