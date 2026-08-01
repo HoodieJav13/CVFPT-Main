@@ -23,16 +23,23 @@ test('toggle route: own coach only, boolean-validated', () => {
   assert.match(availability, /auto_book: Boolean\(coachRow\.data\?\.auto_book\)/);
 });
 
-test('auto-book approves through the same transactional RPC, never bypassing checks', () => {
-  // Only an offered slot from an opted-in coach auto-approves.
-  assert.match(bookings, /if \(offeredSlot && Boolean\(coachRow\.data\?\.auto_book\)\)/);
-  assert.match(bookings, /\.rpc\('approve_booking', \{ p_booking_id: data\.id \}\)/);
-  // A race lost between slot check and approve leaves the request
-  // pending for the coach — a 201, never an error for the client.
-  assert.match(bookings, /return res\.status\(201\)\.json\(\{ \.\.\.data, auto_booked: false \}\);/);
-  assert.match(bookings, /approval\.outcome !== 'coach_conflict' && approval\.outcome !== 'client_conflict'/);
+test('auto-book runs creation + approval in one RPC with strict outcomes', () => {
+  // One transaction: request_booking wraps insert + optional approve.
+  assert.match(migration, /create or replace function public\.request_booking\(/);
+  assert.match(migration, /v_approval := public\.approve_booking\(v_request\.id\);/);
+  // SQL side only reports success on an explicit 'approved'.
+  assert.match(migration, /v_approval is not null and v_approval->>'outcome' = 'approved'/);
+  assert.match(migration, /revoke execute on function public\.request_booking\(uuid, uuid, timestamptz, integer, text, text, boolean\) from public, anon, authenticated;/);
+  // Route side: single RPC call, strict outcome mapping, everything
+  // unexpected throws instead of claiming a booking.
+  assert.match(bookings, /\.rpc\('request_booking', \{/);
+  assert.match(bookings, /p_auto_book: offeredSlot && Boolean\(coachRow\.data\?\.auto_book\)/);
+  assert.match(bookings, /result\?\.outcome === 'auto_booked'/);
+  assert.match(bookings, /result\?\.outcome === 'pending'/);
+  assert.match(bookings, /throw new Error\(`unexpected request_booking outcome/);
   // The free-picker fallback (no published hours) never auto-books.
   assert.match(bookings, /let offeredSlot = false;/);
+  assert.doesNotMatch(bookings, /from\('booking_requests'\)\.insert/);
 });
 
 test('D3 UI: enabling requires confirmation; client sees the booked outcome', () => {
@@ -42,5 +49,11 @@ test('D3 UI: enabling requires confirmation; client sees the booked outcome', ()
   // Turning ON goes through the dialog; turning OFF is direct.
   assert.match(editor, /if \(checked\) setConfirmAutoBook\(true\); else setAutoBook\(false\);/);
   assert.match(editor, /instantly bookable/);
+  // Copy reflects the setting on both sides: the coach drawer states
+  // instant booking when on, and the client submit says Book session
+  // only for offered slots under an opted-in coach.
+  assert.match(editor, /Instant booking is on/);
+  assert.match(clientSessions, /coachAutoBook && slots \? 'Book session' : 'Send request'/);
+  assert.match(clientSessions, /Open times book instantly/);
   assert.match(clientSessions, /data\?\.auto_booked/);
 });

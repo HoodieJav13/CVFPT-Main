@@ -193,20 +193,25 @@ router.get('/slots', requireClient, async (req, res) => {
     const queryValidation = validateSlotQuery(req.query || {});
     if (!queryValidation.ok) return res.status(400).json({ error: queryValidation.error });
     const { duration, from, to } = queryValidation.value;
-    const { data, error } = await supabaseAdmin.rpc('get_open_slots', {
-      p_coach_id: req.user.client.coach_id,
-      p_duration_minutes: duration,
-      p_from: from,
-      p_to: to,
-    });
-    if (error) throw error;
+    const [slotsResult, coachRow] = await Promise.all([
+      supabaseAdmin.rpc('get_open_slots', {
+        p_coach_id: req.user.client.coach_id,
+        p_duration_minutes: duration,
+        p_from: from,
+        p_to: to,
+      }),
+      supabaseAdmin.from('coaches').select('auto_book').eq('id', req.user.client.coach_id).maybeSingle(),
+    ]);
+    if (slotsResult.error) throw slotsResult.error;
+    if (coachRow.error) throw coachRow.error;
     const seen = new Set();
-    const slots = (data || []).filter((slot) => {
+    const slots = (slotsResult.data || []).filter((slot) => {
       if (seen.has(slot.starts_at)) return false;
       seen.add(slot.starts_at);
       return true;
     });
-    return res.json({ slots });
+    // The picker's copy depends on this: instant booking vs request.
+    return res.json({ slots, auto_book: Boolean(coachRow.data?.auto_book) });
   } catch (e) {
     logError('open slots error', e);
     return res.status(500).json({ error: 'Failed to load open times' });

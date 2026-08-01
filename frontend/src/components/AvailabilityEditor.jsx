@@ -189,8 +189,10 @@ export function AvailabilityDrawer({ open, onOpenChange }) {
         <div className="mx-auto w-full max-w-lg px-4 pb-8 max-h-[80vh] overflow-y-auto">
           <DrawerHeader className="px-0">
             <DrawerTitle className="font-display">My hours</DrawerTitle>
-            <DrawerDescription>
-              Clients pick session times from these open windows. Requests still come to you to approve.
+            <DrawerDescription data-testid="hours-drawer-copy">
+              {data?.auto_book
+                ? 'Instant booking is on — clients book your open slots straight onto your calendar.'
+                : 'Clients pick session times from these open windows. Requests still come to you to approve.'}
             </DrawerDescription>
           </DrawerHeader>
           {loadError && !data && <LoadErrorState message={loadError} scope="availability" onRetry={() => { setLoadError(null); load(); }} />}

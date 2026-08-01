@@ -71,30 +71,29 @@ router.post('/', requireClient, async (req, res) => {
       }
       offeredSlot = true;
     }
-    const { data, error } = await supabaseAdmin.from('booking_requests').insert({
-      client_id: req.user.client.id,
-      coach_id: req.user.client.coach_id,
-      requested_time: validation.value.scheduled_at,
-      duration_minutes: validation.value.duration_minutes,
-      location: locationValidation.value,
-      note: noteValidation.value,
-    }).select().single();
+    // D3 auto-book: creation and optional auto-approval run in ONE
+    // transaction (request_booking). If approval errors, the insert
+    // rolls back with it — a retry can never duplicate, and "failed"
+    // never hides a pending row. Only an explicit 'auto_booked' outcome
+    // reports success; a lost race or anything unexpected leaves the
+    // request pending for the coach.
+    const { data: result, error } = await supabaseAdmin.rpc('request_booking', {
+      p_client_id: req.user.client.id,
+      p_coach_id: req.user.client.coach_id,
+      p_requested_time: validation.value.scheduled_at,
+      p_duration_minutes: validation.value.duration_minutes,
+      p_location: locationValidation.value,
+      p_note: noteValidation.value,
+      p_auto_book: offeredSlot && Boolean(coachRow.data?.auto_book),
+    });
     if (error) throw error;
-    // D3 auto-book: an opted-in coach's offered slot approves itself
-    // through the same transactional RPC the manual approve uses, so
-    // every conflict check still runs. A race lost between the slot
-    // check and the approve leaves the request pending for the coach —
-    // never an error for the client.
-    if (offeredSlot && Boolean(coachRow.data?.auto_book)) {
-      const { data: approval, error: approveError } = await supabaseAdmin
-        .rpc('approve_booking', { p_booking_id: data.id });
-      if (approveError) throw approveError;
-      if (approval.outcome !== 'coach_conflict' && approval.outcome !== 'client_conflict') {
-        return res.status(201).json({ ...data, status: 'approved', auto_booked: true, session: approval.session || null });
-      }
-      return res.status(201).json({ ...data, auto_booked: false });
+    if (result?.outcome === 'auto_booked') {
+      return res.status(201).json({ ...result.request, auto_booked: true, session: result.session || null });
     }
-    return res.status(201).json(data);
+    if (result?.outcome === 'pending') {
+      return res.status(201).json({ ...result.request, auto_booked: false });
+    }
+    throw new Error(`unexpected request_booking outcome: ${result?.outcome ?? 'null'}`);
   } catch (e) {
     logError('create booking error', e);
     return res.status(500).json({ error: 'Failed to send booking request' });

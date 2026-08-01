@@ -1401,7 +1401,10 @@ export function installPreviewApi(api) {
       return ok({ ok: true }, config);
     }
     if (path === '/availability/slots') {
-      return ok({ slots: previewOpenSlots(client.coach_id, Number(search.get('duration')) || 60) }, config);
+      return ok({
+        slots: previewOpenSlots(client.coach_id, Number(search.get('duration')) || 60),
+        auto_book: Boolean(coachById(client.coach_id)?.auto_book),
+      }, config);
     }
 
     if (path === '/bookings/mine') return ok(state.bookingRequests.filter((b) => b.client_id === client.id && !b.archived).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)), config);
