@@ -1,10 +1,12 @@
 # Coach analytics — design note (v3 item 8)
 
-Status: **draft for owner review.** D4 settled *which* metrics; it also
-required that the "clients needing attention" threshold be defined in a
-design note before any code. That threshold is the main decision below.
-No schema change, no new decisions beyond the threshold — every metric is
-computed from data the app already stores.
+Status: **owner-reviewed 2026-08-01** — all five attention thresholds
+are approved (including D and E, the coach-owned triggers), the
+aggregate-only stance on any future studio view is confirmed, and four
+factual corrections from review are applied. D4's "define the threshold
+before code" requirement is satisfied; this note is now the build spec.
+No schema change — every metric is computed from data the app already
+stores.
 
 ## What this is for
 
@@ -58,8 +60,14 @@ Source: `check_ins.check_in_date`, distinct dates per client.
 
 - **7-day**: distinct check-in dates in the last 7 days ÷ 7.
 - **30-day**: distinct dates in the last 30 days ÷ 30.
-- Multiple check-ins in one day count once (the `distinct` matters —
-  `check_in_date` has no uniqueness constraint).
+- Counted as **distinct** `check_in_date` values. The database already
+  enforces one active check-in per client per day —
+  `idx_check_ins_one_active_per_day on check_ins(client_id,
+  check_in_date) where archived = false` — so within the
+  `archived = false` filter these queries use, duplicates cannot occur.
+  `distinct` is kept as cheap defence: the index is *partial*, so an
+  archived row and an active row can share a date, and any future query
+  that forgets the archive filter would otherwise double-count.
 - Check-ins created by a coach on the client's behalf
   (`created_by_role = 'coach'`) **do** count: the metric measures whether
   the coach has current information about the client, not who typed it.
@@ -69,14 +77,32 @@ Definition below — this is the metric that drives action, so it is the
 one that gets the most care.
 
 ### 5. 30-day personal records (secondary)
-Count of `workout_log_sets` rows in the last 30 days that qualified as a
-personal best under the existing `lib/progress.js` logic, per client.
+Source: **`metric_entries`** (`value`, `recorded_on`) joined to
+`metrics` (`client_id`, `improvement_direction`), evaluated with the
+existing `backend/src/lib/progress.js` helpers. Not `workout_log_sets` —
+logged training loads are not the PR system.
+
+`is_personal_best` is **not a stored column**: `personalBestResult()`
+decides it by comparing one entry against the others at call time. So a
+"PRs in the last 30 days" count cannot be a `where` clause. The
+aggregation must, per metric, load that metric's entries **in
+`recorded_on` order** and walk them chronologically, marking an entry a
+PR when it beats the best of everything strictly before it. Filtering to
+the last 30 days *first* and then testing would mislabel the window's
+opening entry as a PR whenever an older, better entry exists — the
+window bounds which PRs are *reported*, never which history is
+*compared against*.
+
+Metrics with `improvement_direction = 'neutral'` (the column default)
+never produce PRs by design, so a client tracking only neutral metrics
+correctly shows zero rather than noise.
+
 Presented as a positive-news strip, not a KPI — it exists so a coach has
 something concrete to congratulate someone for. Explicitly *not* used in
 the attention threshold; a client can be setting PRs and still be
 drifting away.
 
-## The attention threshold (decision needed)
+## The attention threshold (approved 2026-08-01)
 
 A client appears on the **needs attention** list when **any one** of
 these is true:
@@ -84,9 +110,9 @@ these is true:
 | # | Trigger | Rationale |
 |---|---------|-----------|
 | A | No completed session in **21 days** *and* has at least one completed session ever | Three missed weeks is past "on holiday" and into "drifting". The second clause keeps brand-new clients off the list. |
-| B | Dated-workout adherence **below 50%** over the last 30 days, with **at least 3** dated assignments in that window | Needs enough denominator to mean something; 1-of-2 missed is noise. |
+| B | Dated-workout adherence **below 50%** over the last 30 days, with at least **3 eligible** assignments — `assigned_for` already past, matching the adherence denominator in §2 | Needs a real denominator; 1-of-2 missed is noise. Counting future-dated assignments toward the minimum would let not-yet-due work push a client onto the list. |
 | C | **Zero** check-ins in the last **14 days** | The coach has no current information about this person. |
-| D | A client message unanswered for more than **3 days** — newest message in the thread is from the client and `read_by_recipient = false` (or read with no coach reply after it) | This one is the coach's own service failure rather than the client's behavior, and it is the most fixable. |
+| D | A client message unanswered for more than **3 days**, measured from the **oldest** client message sent after the last coach reply | Coach-owned service failure, and the most fixable. Measuring from the *newest* client message would be wrong: a client who follows up on day 6 would reset their own timer and drop off the list precisely when they are being ignored hardest. |
 | E | A booking request still `pending` more than **48 hours** | Same reasoning as D. Overlaps the email digest's 24 h nudge deliberately — the digest prompts, the list escalates. |
 
 Each row shows **which trigger(s) fired**, in plain language ("no session
@@ -104,11 +130,11 @@ real data — not to build a settings screen for a 3-coach studio.
 trigger is C, and who have been a client for fewer than 14 days, are
 suppressed — a new client hasn't had time to establish a check-in habit.
 
-**Owner decisions needed:** confirm or adjust the five thresholds
-(21 days / 50% over ≥3 / 14 days / 3 days / 48 hours), and confirm that
-D and E — the two that point at the coach rather than the client —
-belong on the list at all. My recommendation is yes: they are the
-triggers a coach can act on immediately and fix the same day.
+**Owner decision (resolved):** all five thresholds approved as written
+— 21 days / below 50% over ≥3 eligible / 14 days / 3 days / 48 hours —
+and D and E stay on the list. The owner's reasoning is worth recording
+because it shapes future additions: coach-owned service failures belong
+precisely *because* they are the most immediately actionable.
 
 ## Endpoint and performance shape
 
@@ -127,6 +153,20 @@ scans.
 Range: default **last 30 days**, with 7 / 30 / 90 toggles reusing the
 Progress page's existing range-toggle pattern so it feels familiar.
 
+**The toggle governs the tiles only.** Three things keep fixed windows
+regardless of where the toggle sits, and the UI labels them with their
+own window so the page never implies otherwise:
+
+- the **attention thresholds** (§4) — a client is not "less overdue"
+  because the coach is looking at a 7-day view, and letting the toggle
+  move them would make the list mean something different on every visit;
+- **30-day personal records** (§5);
+- **7- and 30-day check-in consistency** (§3), which are defined as a
+  pair and are not a single windowed rate.
+
+Only the session counts, cancellation rate, and adherence rate follow
+the selected range.
+
 Caching: none in v1. The data is small and coaches will open this
 occasionally; a stale-cache bug would cost more than the query does.
 
@@ -135,9 +175,10 @@ occasionally; a stale-cache bug would cost more than the query does.
 Consistent with D1: a coach sees only their own clients' data. Admin sees
 all coaches and can switch which coach is being viewed. There is no
 cross-coach comparison view — three coaches in one studio is exactly the
-size where a leaderboard does more social damage than analytical good. If
-the owner wants studio-wide totals later, that is an admin-only roll-up
-with no per-coach breakdown, and it is a separate decision.
+size where a leaderboard does more social damage than analytical good.
+**Owner-confirmed:** any future studio view stays aggregate-only, with
+no per-coach breakdown. Treat that as a standing constraint on this
+surface, not a default to revisit per feature.
 
 ## UI shape
 

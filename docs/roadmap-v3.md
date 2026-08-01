@@ -83,4 +83,4 @@ Applied before merge, never two pending, exactly as in v2.
 | Auto-book ⚠ | #43 | merged (migration applied) |
 | PWA installability | #44 | merged |
 | Email notifications design note | #45 | merged — D2 spec settled; build awaits owner provider setup + ships one opt-out migration ⚠ |
-| Coach analytics design note | this branch | open — defines the D4 attention threshold before code |
+| Coach analytics design note | #46 | open — D4 attention thresholds approved by owner; review corrections applied |
