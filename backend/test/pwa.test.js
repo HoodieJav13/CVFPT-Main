@@ -65,6 +65,16 @@ test('registration is production-only and wired at the entry point', () => {
   assert.match(mainEntry, /initPwa\(\);/);
 });
 
+test('standalone iOS safe areas: header clears the status bar, tabs clear the home indicator', () => {
+  // black-translucent draws the page under the status bar, so the fixed
+  // chrome must pad itself with the safe-area insets (viewport-fit=cover
+  // makes env() real on notched iPhones).
+  assert.match(indexHtml, /viewport-fit=cover/);
+  assert.match(appShell, /pt-\[calc\(0\.75rem\+env\(safe-area-inset-top\)\)\]/);
+  assert.match(appShell, /pb-\[env\(safe-area-inset-bottom\)\]/);
+  assert.match(appShell, /pb-\[calc\(6rem\+env\(safe-area-inset-bottom\)\)\]/);
+});
+
 test('install entry: native prompt when available, iOS steps otherwise, dismissible', () => {
   // beforeinstallprompt is captured (it fires before components mount) and
   // eligibility goes quiet once installed, standalone, or dismissed.

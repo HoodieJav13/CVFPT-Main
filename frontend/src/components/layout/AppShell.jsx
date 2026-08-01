@@ -212,7 +212,9 @@ export default function AppShell() {
 
         <div className="relative z-10">
           {/* Mobile top bar */}
-          <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur" data-testid="mobile-header">
+          {/* pt-safe: standalone iOS draws the page under the status bar
+              (black-translucent), so the sticky header pads itself below it. */}
+          <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur" data-testid="mobile-header">
             <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2" data-testid="mobile-brand">
               <BrandLogo size="mobile" />
               <span className="font-display font-semibold">CVF PT</span>
@@ -245,14 +247,15 @@ export default function AppShell() {
             </div>
           </header>
 
-          <main className="px-4 pb-24 pt-5 lg:px-8 lg:pb-10 lg:pt-8 max-w-5xl mx-auto w-full">
+          <main className="px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 lg:px-8 lg:pb-10 lg:pt-8 max-w-5xl mx-auto w-full">
             <Outlet />
           </main>
         </div>
       </div>
 
       {/* Mobile bottom tabs */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70" data-testid="mobile-bottom-navigation">
+      {/* pb-safe keeps the tab row above the iPhone home indicator. */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/85 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70" data-testid="mobile-bottom-navigation">
         <div className="grid grid-cols-6 h-16">
           {nav.map((item) => (
             <NavLink
