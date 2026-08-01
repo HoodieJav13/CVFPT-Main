@@ -67,6 +67,44 @@ test('the page is wired into routing and the coach sidebar only', () => {
   assert.match(shell, /sidebarNav[\s\S]{0,160}COACH_EXTRA/);
 });
 
+test('stale responses cannot win: only the newest request writes state', () => {
+  // Rapid range switching issues overlapping requests; without a guard the
+  // slowest (oldest) response arrives last and sits under the newest label.
+  assert.match(page, /const requestSeq = useRef\(0\)/);
+  assert.match(page, /const seq = requestSeq\.current \+ 1/);
+  assert.match(page, /if \(seq !== requestSeq\.current\) return/);
+  // The guard covers the error path too — a stale failure must not clobber
+  // a fresh success.
+  const catchBlock = page.slice(page.indexOf('} catch (error) {'), page.indexOf('}, [rangeKey, attempt])'));
+  assert.match(catchBlock, /seq !== requestSeq\.current/);
+});
+
+test('mobile can reach analytics through the account menu', () => {
+  assert.match(shell, /menu-analytics-link/);
+  // Gated to coaches: the item renders in the !isClient branch.
+  const menuAt = shell.indexOf('menu-analytics-link');
+  const gateAt = shell.lastIndexOf('{!isClient && (', menuAt);
+  assert.ok(gateAt !== -1 && menuAt - gateAt < 600, 'analytics menu item sits inside the coach-only branch');
+});
+
+test('preview toolbar exposes the incomplete-analytics lever visibly', () => {
+  const toolbar = fs.readFileSync(path.join(root, 'frontend', 'src', 'components', 'PreviewToolbar.jsx'), 'utf8');
+  assert.match(toolbar, /preview-incomplete-analytics-checkbox/);
+  assert.match(toolbar, /cvf_preview_incomplete_analytics/);
+  // The lever hard-loads the page so the flag applies immediately even when
+  // already viewing analytics.
+  assert.match(toolbar, /window\.location\.assign\('\/coach\/analytics'\)/);
+  assert.match(toolbar, /\['Analytics', '\/coach\/analytics'\]/);
+});
+
+test('delta and empty copy are honest', () => {
+  // A rate delta is a difference of percentages: percentage points, not %.
+  assert.match(page, /percentage points/);
+  // The empty list claims only what was measured.
+  assert.match(page, /No clients currently meet an attention threshold\./);
+  assert.doesNotMatch(page, /Every client has trained/);
+});
+
 test('preview mode mirrors the response shape the page branches on', () => {
   assert.match(preview, /path === '\/analytics\/coach'/);
   assert.match(preview, /from and to date-times are required/);

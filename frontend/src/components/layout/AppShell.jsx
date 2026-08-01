@@ -327,6 +327,17 @@ function UserMenu({ user, logout, compact }) {
           <p className="text-xs font-normal text-muted-foreground truncate">{user.email}</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {!isClient && (
+          <>
+            {/* The mobile tab row is capped at six daily surfaces, so this
+                periodic page lives here — otherwise phones can only reach
+                it by typing the URL. */}
+            <DropdownMenuItem onClick={() => navigate('/coach/analytics')} data-testid="menu-analytics-link">
+              <BarChart3 className="h-4 w-4 mr-2" /> Analytics
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {isClient && (
           <>
             <DropdownMenuItem onClick={() => navigate('/client/waiver')} data-testid="menu-waiver-link">

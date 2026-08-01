@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import {
   TrendingUp, TrendingDown, Minus, AlertTriangle, Trophy, ChevronRight, RotateCcw,
@@ -51,7 +51,11 @@ function Delta({ current, previous, invert = false, suffix = '' }) {
   const rising = diff > 0;
   const good = invert ? !rising : rising;
   const Icon = rising ? TrendingUp : TrendingDown;
-  const magnitude = suffix === '%' ? `${Math.abs(Math.round(diff * 100))}%` : Math.abs(diff);
+  // Rate deltas are differences between percentages, so the honest unit is
+  // percentage points — "5%" would misread as a relative change.
+  const magnitude = suffix === '%'
+    ? `${Math.abs(Math.round(diff * 100))} percentage points`
+    : Math.abs(diff);
   return (
     <span className={cn('inline-flex items-center gap-1 text-[11px] font-medium', good ? 'text-success' : 'text-destructive')}>
       <Icon className="h-3 w-3" aria-hidden />
@@ -76,8 +80,14 @@ export default function CoachAnalytics() {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  // Sequence guard: rapid range switching can let an older response arrive
+  // last, leaving stale numbers under the newest label. Only the most
+  // recently issued request may write state.
+  const requestSeq = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = requestSeq.current + 1;
+    requestSeq.current = seq;
     setData(null);
     setLoadError(null);
     const days = RANGES.find((r) => r.key === rangeKey)?.days || 30;
@@ -87,8 +97,10 @@ export default function CoachAnalytics() {
       const response = await api.get(
         `/analytics/coach?from=${from.toISOString()}&to=${to.toISOString()}`
       );
+      if (seq !== requestSeq.current) return; // superseded — drop it
       setData(response.data);
     } catch (error) {
+      if (seq !== requestSeq.current) return;
       setLoadError(errMsg(error));
     }
   }, [rangeKey, attempt]);
@@ -249,8 +261,8 @@ export default function CoachAnalytics() {
         ) : data.attention.length === 0 ? (
           <EmptyState
             icon={Trophy}
-            title="Nobody needs chasing"
-            subtitle="Every client has trained, checked in, and been replied to recently."
+            title="All quiet"
+            subtitle="No clients currently meet an attention threshold."
             testId="analytics-attention-empty"
           />
         ) : (
