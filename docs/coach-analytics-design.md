@@ -170,6 +170,29 @@ the selected range.
 Caching: none in v1. The data is small and coaches will open this
 occasionally; a stale-cache bug would cost more than the query does.
 
+## Response contract (settled after backend review)
+
+- **Windows are half-open Denver date buckets**, `[from, to)`. An inclusive
+  upper bound puts the boundary date in both the current and previous
+  window and stretches a nominal seven-day period across eight dates.
+- **Adherence counts assignments strictly before today.** A workout
+  assigned for today is still live; counting it as missed inflates
+  non-adherence and can flag a client for work that is not yet due.
+- **Every paged read ends on a unique tie-breaker (`id`).** Paging by
+  `scheduled_at` / `assigned_for` / `created_at` alone can skip or
+  duplicate rows when values tie — group sessions and same-day assignments
+  make ties likely. `metric_entries` orders by `recorded_on, created_at,
+  id` so two entries on one date have a deterministic chronology for the
+  PR walk.
+- **`previous` is always present**, including in the no-clients response,
+  so consumers never special-case an empty practice.
+- **`coverage.complete === false` means the analytics are incomplete.**
+  The frontend must NOT render a trustworthy-looking attention list with a
+  passive footnote: an incomplete read can hide a client who needs
+  attention, and a list that looks authoritative while missing someone is
+  worse than no list. Show the failure state and offer a retry; tiles may
+  render only if clearly marked partial.
+
 ## Privacy
 
 Consistent with D1: a coach sees only their own clients' data. Admin sees

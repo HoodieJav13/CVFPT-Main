@@ -3,7 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate, Link } from 'react-router';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
-  TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search,
+  TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search, BarChart3,
   Download, Share,
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
@@ -39,6 +39,10 @@ const CLIENT_NAV = [
   { to: '/client/programs', label: 'Programs', icon: Dumbbell },
   { to: '/client/resources', label: 'Resources', icon: Library },
   { to: '/client/messages', label: 'Messages', icon: MessageSquare },
+];
+
+const COACH_EXTRA = [
+  { to: '/coach/analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
 const CLIENT_EXTRA = [
@@ -110,7 +114,7 @@ export default function AppShell() {
   const [arrivalRevision, setArrivalRevision] = useState(0);
   const nav = isCoach ? COACH_NAV : CLIENT_NAV;
   const sidebarNav = isCoach
-    ? [...COACH_NAV, ...(user.role === 'admin' ? [{ to: '/admin', label: 'Admin', icon: ShieldCheck }] : [])]
+    ? [...COACH_NAV, ...COACH_EXTRA, ...(user.role === 'admin' ? [{ to: '/admin', label: 'Admin', icon: ShieldCheck }] : [])]
     : [...CLIENT_NAV, ...CLIENT_EXTRA];
 
   useEffect(() => { refreshNotifications(); }, [location.pathname, refreshNotifications]);
@@ -323,6 +327,17 @@ function UserMenu({ user, logout, compact }) {
           <p className="text-xs font-normal text-muted-foreground truncate">{user.email}</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {!isClient && (
+          <>
+            {/* The mobile tab row is capped at six daily surfaces, so this
+                periodic page lives here — otherwise phones can only reach
+                it by typing the URL. */}
+            <DropdownMenuItem onClick={() => navigate('/coach/analytics')} data-testid="menu-analytics-link">
+              <BarChart3 className="h-4 w-4 mr-2" /> Analytics
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {isClient && (
           <>
             <DropdownMenuItem onClick={() => navigate('/client/waiver')} data-testid="menu-waiver-link">

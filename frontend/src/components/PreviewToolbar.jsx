@@ -27,6 +27,7 @@ const LINKS = {
     ['Sessions', '/coach/sessions'],
     ['Programs', '/coach/programs'],
     ['Messages', '/coach/messages'],
+    ['Analytics', '/coach/analytics'],
   ],
   admin: [
     ['Admin', '/admin'],
@@ -42,6 +43,12 @@ export default function PreviewToolbar() {
   const [role, setRole] = useState(getPreviewRole());
   const [clientId, setClientId] = useState(getPreviewClientId());
   const [expanded, setExpanded] = useState(false);
+  // Failure-state lever for owner review: flips the analytics response to
+  // coverage.complete === false. Lives in the visible controls so review
+  // stays link-tap accessible — no dev tools required.
+  const [incompleteAnalytics, setIncompleteAnalytics] = useState(() => {
+    try { return localStorage.getItem('cvf_preview_incomplete_analytics') === '1'; } catch { return false; }
+  });
   const clients = useMemo(() => getPreviewClients(), []);
 
   useEffect(() => onPreviewChange(() => {
@@ -61,6 +68,18 @@ export default function PreviewToolbar() {
     setPreviewClientId(nextClientId);
     if (location.pathname.includes('/coach/clients/')) navigate(`/coach/clients/${nextClientId}`);
     if (location.pathname.startsWith('/client')) navigate('/client');
+  };
+
+  const toggleIncompleteAnalytics = (checked) => {
+    setIncompleteAnalytics(checked);
+    try {
+      if (checked) localStorage.setItem('cvf_preview_incomplete_analytics', '1');
+      else localStorage.removeItem('cvf_preview_incomplete_analytics');
+    } catch { /* private mode: the lever just won't persist */ }
+    // Hard-load the page so the flag is applied on the very next fetch even
+    // when already viewing analytics (an in-app navigate would be a no-op
+    // there). Preview fixtures reset on reload; role + flag persist.
+    window.location.assign('/coach/analytics');
   };
 
   const links = LINKS[role] || LINKS.client;
@@ -111,6 +130,18 @@ export default function PreviewToolbar() {
               <option key={client.id} value={client.id}>{client.name}</option>
             ))}
           </select>
+          {role !== 'client' && (
+            <label className="flex h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-2 text-xs lg:h-8" data-testid="preview-incomplete-analytics">
+              <input
+                type="checkbox"
+                checked={incompleteAnalytics}
+                onChange={(e) => toggleIncompleteAnalytics(e.target.checked)}
+                className="h-3.5 w-3.5 accent-primary"
+                data-testid="preview-incomplete-analytics-checkbox"
+              />
+              Incomplete analytics
+            </label>
+          )}
         </div>
         <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
           {links.map(([label, to]) => {

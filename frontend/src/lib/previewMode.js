@@ -192,7 +192,7 @@ const state = {
     { id: 'msg_3', client_id: 'client_david', coach_id: 'coach_marcus', sender_role: 'client', content: 'Can we keep tomorrow a little lighter?', read_by_recipient: false, archived: false, created_at: iso(0, 8) },
   ],
   bookingRequests: [
-    { id: 'booking_1', client_id: 'client_sarah', coach_id: 'coach_marcus', requested_time: iso(5, 11), duration_minutes: 60, location: 'CVF Studio', note: 'Late morning works best.', status: 'pending', archived: false, created_at: iso(-1), updated_at: iso(-1), client: { id: 'client_sarah', name: 'Sarah Martinez' } },
+    { id: 'booking_1', client_id: 'client_sarah', coach_id: 'coach_marcus', requested_time: iso(5, 11), duration_minutes: 60, location: 'CVF Studio', note: 'Late morning works best.', status: 'pending', archived: false, created_at: iso(-3), updated_at: iso(-3), client: { id: 'client_sarah', name: 'Sarah Martinez' } },
   ],
   waiverVersions: [
     { id: 'waiver_v1', version_number: 1, full_text: 'CVF PT liability waiver preview text. This is sample legal copy for local review only.', created_at: iso(-90) },
@@ -1282,6 +1282,126 @@ export function installPreviewApi(api) {
       const row = clientById(reassignMatch[1]);
       row.coach_id = payload.coach_id;
       return ok(shapeClient(row), config);
+    }
+
+    // Mirrors GET /api/analytics/coach. The real endpoint aggregates
+    // server-side; this reproduces the response SHAPE and the rules the UI
+    // branches on — range required, previous-window deltas, fixed-window
+    // attention triggers, and coverage. Deliberate divergence: preview
+    // computes from the small fixture set in the browser rather than
+    // paging, so `coverage.complete` is always true unless forced below.
+    if (path === '/analytics/coach') {
+      const safeLocal = (key) => {
+        try { return localStorage.getItem(key); } catch { return null; }
+      };
+      const fromMs = new Date(search.get('from') || '').getTime();
+      const toMs = new Date(search.get('to') || '').getTime();
+      if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+        return fail(config, 400, 'from and to date-times are required');
+      }
+      const spanMs = toMs - fromMs;
+      if (spanMs <= 0 || spanMs > 366 * 86400000) {
+        return fail(config, 400, 'Range must be positive and at most 366 days');
+      }
+      const coachId = currentCoach().id;
+      const now = Date.now();
+      const clients = state.clients.filter((c) => !c.archived && c.coach_id === coachId);
+      const clientIds = new Set(clients.map((c) => c.id));
+
+      const tally = (lo, hi) => {
+        const rows = state.sessions.filter((sn) => !sn.archived && sn.coach_id === coachId
+          && new Date(sn.scheduled_at).getTime() >= lo && new Date(sn.scheduled_at).getTime() < hi);
+        const completed = rows.filter((r) => r.status === 'completed').length;
+        const cancelled = rows.filter((r) => r.status === 'cancelled').length;
+        const scheduled = rows.filter((r) => r.status === 'scheduled');
+        const upcoming = scheduled.filter((r) => new Date(r.scheduled_at).getTime() >= now).length;
+        const settled = completed + cancelled;
+        return {
+          completed,
+          scheduled: scheduled.length,
+          upcoming,
+          stale: scheduled.length - upcoming,
+          cancelled,
+          cancellation_rate: settled > 0 ? cancelled / settled : null,
+        };
+      };
+
+      // Attention rules use fixed windows, never the selected range.
+      const attention = [];
+      for (const client of clients) {
+        const reasons = [];
+        const completedSessions = state.sessions
+          .filter((sn) => !sn.archived && sn.client_id === client.id && sn.status === 'completed')
+          .sort((a, b) => (a.scheduled_at < b.scheduled_at ? 1 : -1));
+        if (completedSessions.length) {
+          const days = Math.floor((now - new Date(completedSessions[0].scheduled_at).getTime()) / 86400000);
+          if (days >= 21) reasons.push({ code: 'session_gap', label: `No session in ${days} days`, days });
+        }
+        const checkIns = (state.checkIns || [])
+          .filter((ci) => !ci.archived && ci.client_id === client.id)
+          .map((ci) => ci.check_in_date).sort();
+        const latest = checkIns[checkIns.length - 1] || null;
+        const checkInDays = latest
+          ? Math.floor((now - new Date(`${latest}T00:00:00.000Z`).getTime()) / 86400000)
+          : null;
+        if (checkInDays === null || checkInDays >= 14) {
+          reasons.push({
+            code: 'no_check_in',
+            label: checkInDays === null ? 'No check-ins yet' : `No check-in in ${checkInDays} days`,
+            days: checkInDays,
+          });
+        }
+        // Oldest client message after the last coach reply — a follow-up
+        // must not reset the clock.
+        const thread = (state.messages || [])
+          .filter((m) => !m.archived && m.client_id === client.id)
+          .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+        let oldestPending = null;
+        for (const message of thread) {
+          if (message.sender_role === 'coach') oldestPending = null;
+          else if (oldestPending === null) oldestPending = message.created_at;
+        }
+        if (oldestPending) {
+          const days = Math.floor((now - new Date(oldestPending).getTime()) / 86400000);
+          if (days >= 3) reasons.push({ code: 'unanswered_message', label: `${days} days without a reply`, days });
+        }
+        const pending = (state.bookingRequests || [])
+          .filter((r) => !r.archived && r.client_id === client.id && r.status === 'pending')
+          .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))[0];
+        if (pending) {
+          const hours = Math.floor((now - new Date(pending.created_at).getTime()) / 3600000);
+          if (hours >= 48) reasons.push({ code: 'pending_request', label: `Booking request waiting ${hours} hours`, hours });
+        }
+        if (!reasons.length) continue;
+        const ageDays = client.created_at
+          ? Math.floor((now - new Date(client.created_at).getTime()) / 86400000) : null;
+        if (reasons.length === 1 && reasons[0].code === 'no_check_in' && ageDays !== null && ageDays < 14) continue;
+        attention.push({ client_id: client.id, client_name: client.name, reasons });
+      }
+      attention.sort((a, b) => b.reasons.length - a.reasons.length);
+
+      return ok({
+        coach_id: coachId,
+        range: { from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() },
+        sessions: tally(fromMs, toMs),
+        adherence: { assigned: 0, completed: 0, rate: null },
+        previous: {
+          range: { from: new Date(fromMs - spanMs).toISOString(), to: new Date(fromMs).toISOString() },
+          sessions: tally(fromMs - spanMs, fromMs),
+          adherence: { assigned: 0, completed: 0, rate: null },
+        },
+        check_ins: {
+          clients_measured: clients.filter((c) => (state.checkIns || [])
+            .some((ci) => !ci.archived && ci.client_id === c.id)).length,
+          average_rate_7: null,
+          average_rate_30: null,
+        },
+        personal_records_30d: 0,
+        attention,
+        // Preview-only lever so the incomplete-coverage failure state is
+        // reviewable: set cvf_preview_incomplete_analytics=1 in localStorage.
+        coverage: { complete: safeLocal('cvf_preview_incomplete_analytics') !== '1' },
+      }, config);
     }
 
     // Mirrors GET /api/sessions/studio: every coach's schedule with
