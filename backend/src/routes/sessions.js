@@ -10,6 +10,7 @@ const {
   validateTimestamp,
   validateUuid,
 } = require('../validation/business');
+const { dispatchEmail, notifySessionCancelled } = require('../services/email');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -192,6 +193,7 @@ router.patch('/:id/cancel', requireCoach, async (req, res) => {
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', session.id).select('*, client:clients(id, name)').single();
     if (error) throw error;
+    await dispatchEmail(() => notifySessionCancelled(data));
     return res.json(data);
   } catch (e) {
     logError('cancel session error', e);

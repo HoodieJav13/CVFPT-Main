@@ -8,6 +8,7 @@ const {
   validateSchedulePayload,
   validateUuid,
 } = require('../validation/business');
+const { dispatchEmail, notifyBookingEvent } = require('../services/email');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -88,9 +89,14 @@ router.post('/', requireClient, async (req, res) => {
     });
     if (error) throw error;
     if (result?.outcome === 'auto_booked') {
+      await dispatchEmail(() => Promise.all([
+        notifyBookingEvent('booking-auto-client', { booking: result.request, session: result.session }),
+        notifyBookingEvent('booking-auto-coach', { booking: result.request, session: result.session }),
+      ]));
       return res.status(201).json({ ...result.request, auto_booked: true, session: result.session || null });
     }
     if (result?.outcome === 'pending') {
+      await dispatchEmail(() => notifyBookingEvent('booking-pending', { booking: result.request, session: null }));
       return res.status(201).json({ ...result.request, auto_booked: false });
     }
     throw new Error(`unexpected request_booking outcome: ${result?.outcome ?? 'null'}`);
@@ -166,6 +172,7 @@ router.patch('/:id/approve', requireCoach, async (req, res) => {
         conflict: { scope: data.outcome === 'client_conflict' ? 'client' : 'coach', session: conflict },
       });
     }
+    await dispatchEmail(() => notifyBookingEvent('booking-approved', { booking, session: data.session || null }));
     return res.json(data);
   } catch (e) {
     logError('approve booking error', e);
@@ -185,6 +192,7 @@ router.patch('/:id/decline', requireCoach, async (req, res) => {
       .select('*, client:clients(id, name)').maybeSingle();
     if (error) throw error;
     if (!data) return res.status(400).json({ error: 'This request was already handled' });
+    await dispatchEmail(() => notifyBookingEvent('booking-declined', { booking: data, session: null }));
     return res.json(data);
   } catch (e) {
     logError('decline booking error', e);

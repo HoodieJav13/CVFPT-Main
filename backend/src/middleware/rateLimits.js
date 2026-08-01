@@ -76,6 +76,12 @@ const resourceUploadLimiter = createRateLimiter({
   limit: 10,
 });
 
+const telemetryLimiter = createRateLimiter({
+  identifier: 'product-telemetry',
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+});
+
 module.exports = {
   RATE_LIMIT_MESSAGE,
   createRateLimiter,
@@ -89,4 +95,5 @@ module.exports = {
   resourceUploadLimiter,
   requestKey,
   signupLimiter,
+  telemetryLimiter,
 };
