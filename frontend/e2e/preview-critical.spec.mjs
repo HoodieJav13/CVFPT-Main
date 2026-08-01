@@ -23,7 +23,7 @@ test('coach booking request preserves content and actions at mobile width', asyn
   await usePreviewRole(page, 'coach');
   await page.goto('/coach');
 
-  const row = page.getByTestId('booking-request-row').first();
+  const row = page.getByTestId('coach-action-booking').first();
   const name = row.getByTestId('booking-client-name');
   const note = row.getByTestId('booking-request-note');
   const approve = row.getByTestId('booking-approve-button');
@@ -37,6 +37,38 @@ test('coach booking request preserves content and actions at mobile width', asyn
 
   const [noteBox, approveBox] = await Promise.all([note.boundingBox(), approve.boundingBox()]);
   expect(approveBox.y).toBeGreaterThan(noteBox.y + noteBox.height);
+});
+
+test('closed-loop priorities, client Today plan, and mobile primary actions stay operable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach');
+  await expect(page.getByTestId('coach-action-queue')).toBeVisible();
+  await expect(page.getByTestId('coach-action-booking')).toBeVisible();
+
+  await page.goto('/coach/sessions');
+  for (const testId of ['session-hours-button', 'session-week-view-button', 'session-create-button']) {
+    await expect(page.getByTestId(testId)).toBeVisible();
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+
+  await page.goto('/coach/clients/client_sarah');
+  await expect(page.getByTestId('client-tabs-overflow-hint')).toBeVisible();
+  await expect(page.getByTestId('client-detail-tabs')).toHaveAttribute('aria-label', 'Client detail sections');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+
+  await usePreviewRole(page, 'client');
+  await page.goto('/client');
+  await expect(page.getByTestId('client-today-plan')).toBeVisible();
+  await expect(page.getByTestId('client-today-primary-action')).toBeVisible();
+
+  await page.goto('/client/programs');
+  await expect(page.getByTestId('client-training-sections')).toBeVisible();
+  await page.getByTestId('client-training-tab-other').click();
+  await expect(page.getByTestId('client-training-other')).toBeVisible();
+  await page.getByTestId('client-training-tab-history').click();
+  await expect(page.getByTestId('client-workout-history')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
 });
 
 test('coach preview covers dashboard, clients, sessions, builder, resources, and messages', async ({ page }) => {
@@ -175,6 +207,7 @@ test('client coach feedback badge, history marker, failure retention, and retry 
   await page.goto('/client/programs');
 
   await expect(page.getByTestId('desktop-programs-feedback-count')).toHaveText('1');
+  await page.getByTestId('client-training-tab-history').click();
   const historyRow = page.getByTestId('workout-history-row').filter({ hasText: 'Upper Strength A' });
   await expect(historyRow.getByTestId('new-coach-feedback-marker')).toHaveText('New coach feedback');
 
