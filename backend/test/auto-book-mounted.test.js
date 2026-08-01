@@ -10,13 +10,15 @@ const http = require('node:http');
 
 const COACH_ID = 'aaaaaaaa-0000-0000-0000-00000000000a';
 const CLIENT_ID = 'cccccccc-0000-0000-0000-00000000000c';
-const SLOT_ISO = '2026-08-05T15:00:00.000Z'; // must stay in the future
+const SLOT_START_MS = Date.now() + (7 * 24 * 60 * 60 * 1000);
+const SLOT_ISO = new Date(SLOT_START_MS).toISOString();
+const SLOT_END_ISO = new Date(SLOT_START_MS + (60 * 60 * 1000)).toISOString();
 
 // Per-test knobs the stub reads.
 const state = {
   hoursCount: 1,
   coachAutoBook: true,
-  openSlots: [{ starts_at: SLOT_ISO, ends_at: '2026-08-05T16:00:00.000Z' }],
+  openSlots: [{ starts_at: SLOT_ISO, ends_at: SLOT_END_ISO }],
   requestBookingResult: null, // set per test
   lastRequestBookingArgs: null,
   lastCoachUpdate: null,
