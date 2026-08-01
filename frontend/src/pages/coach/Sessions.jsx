@@ -78,6 +78,11 @@ export default function CoachSessions() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const requestedView = searchParams.get('view');
+    if (FILTERS.some((item) => item.key === requestedView)) setFilter(requestedView);
+  }, [searchParams]);
+
   const presetClient = searchParams.get('client');
 
   const filtered = useMemo(() => {
@@ -159,15 +164,15 @@ export default function CoachSessions() {
         title="Sessions"
         subtitle="Schedule, complete and manage training sessions"
         action={
-          <div className="flex items-center gap-1.5">
-            <Button variant="outline" className="rounded-xl" onClick={() => setHoursOpen(true)} data-testid="session-hours-button">
+          <div className="grid w-full grid-cols-3 gap-1.5 sm:flex sm:w-auto sm:items-center">
+            <Button variant="outline" className="min-h-11 min-w-0 rounded-xl px-2 sm:px-4" onClick={() => setHoursOpen(true)} data-testid="session-hours-button">
               Hours
             </Button>
-            <Button variant="outline" className="rounded-xl" onClick={() => navigate('/coach/calendar')} data-testid="session-week-view-button">
-              <CalendarDays className="h-4 w-4 mr-1.5" /> Week
+            <Button variant="outline" className="min-h-11 min-w-0 rounded-xl px-2 sm:px-4" onClick={() => navigate('/coach/calendar')} data-testid="session-week-view-button">
+              <CalendarDays className="mr-1 h-4 w-4" /> Week
             </Button>
-            <Button className="rounded-xl" onClick={() => { setEditing(null); setDrawerOpen(true); }} data-testid="session-create-button">
-              <Plus className="h-4 w-4 mr-1.5" /> New
+            <Button className="min-h-11 min-w-0 rounded-xl px-2 sm:px-4" onClick={() => { setEditing(null); setDrawerOpen(true); }} data-testid="session-create-button">
+              <Plus className="mr-1 h-4 w-4" /> New
             </Button>
           </div>
         }
@@ -187,8 +192,8 @@ export default function CoachSessions() {
                     <p className="text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
                   </div>
                   <div className="flex gap-1.5 shrink-0">
-                    <Button size="sm" className="rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button"><Check className="h-3.5 w-3.5 mr-1" /> Approve</Button>
-                    <Button size="sm" variant="ghost" className="rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
+                    <Button size="sm" className="min-h-11 rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button"><Check className="h-3.5 w-3.5 mr-1" /> Approve</Button>
+                    <Button size="sm" variant="ghost" className="min-h-11 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
                   </div>
                 </div>
                 {bookingConflicts[b.id] && (
@@ -245,7 +250,7 @@ export default function CoachSessions() {
                     <StatusBadge status={s.status} />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" data-testid="session-actions-button">
+                        <Button size="icon" variant="ghost" className="h-11 w-11 rounded-lg" data-testid="session-actions-button">
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
