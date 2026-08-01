@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
   TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search,
+  Download, Share,
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
 import ClientJump from '@/components/ClientJump';
@@ -13,6 +14,10 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import { useInstallMode, promptInstall, dismissInstall } from '@/lib/pwa';
 import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
@@ -288,7 +293,10 @@ export default function AppShell() {
 function UserMenu({ user, logout, compact }) {
   const navigate = useNavigate();
   const isClient = user.role === 'client';
+  const installMode = useInstallMode();
+  const [iosHelpOpen, setIosHelpOpen] = useState(false);
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
@@ -320,10 +328,58 @@ function UserMenu({ user, logout, compact }) {
             <DropdownMenuSeparator />
           </>
         )}
+        {installMode && (
+          <>
+            <DropdownMenuItem
+              onClick={() => (installMode === 'prompt' ? promptInstall() : setIosHelpOpen(true))}
+              data-testid="install-app-item"
+            >
+              <Download className="h-4 w-4 mr-2" /> Install app
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem onClick={logout} data-testid="logout-button">
           <LogOut className="h-4 w-4 mr-2" /> Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <Dialog open={iosHelpOpen} onOpenChange={setIosHelpOpen}>
+      <DialogContent className="max-w-sm" data-testid="ios-install-help">
+        <DialogHeader>
+          <DialogTitle>Add CVF PT to your Home Screen</DialogTitle>
+          <DialogDescription>
+            iPhones and iPads install web apps from Safari's share menu.
+          </DialogDescription>
+        </DialogHeader>
+        <ol className="space-y-2 text-sm">
+          <li className="flex items-start gap-2">
+            <span className="font-semibold text-primary">1.</span>
+            <span>Tap the <Share className="inline h-4 w-4 align-text-bottom" aria-label="Share" /> Share button in Safari's toolbar.</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="font-semibold text-primary">2.</span>
+            <span>Scroll down and tap <span className="font-medium">Add to Home Screen</span>.</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="font-semibold text-primary">3.</span>
+            <span>Tap <span className="font-medium">Add</span> — CVF PT opens full-screen from your Home Screen.</span>
+          </li>
+        </ol>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button
+            variant="ghost"
+            onClick={() => { dismissInstall(); setIosHelpOpen(false); }}
+            data-testid="ios-install-dismiss"
+          >
+            Don't show again
+          </Button>
+          <Button onClick={() => setIosHelpOpen(false)} data-testid="ios-install-done">
+            Got it
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

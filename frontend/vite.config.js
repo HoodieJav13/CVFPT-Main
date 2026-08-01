@@ -1,6 +1,27 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
+
+// Emits sw.js into the build with __SW_VERSION__ replaced by a per-build id.
+// The source lives at frontend/sw.js (not public/) so it can never ship with
+// the placeholder unreplaced; every deploy byte-changes the worker, which is
+// what makes browsers install the new one and drop old-build caches.
+function serviceWorkerPlugin() {
+  return {
+    name: 'cvf-service-worker',
+    apply: 'build',
+    generateBundle() {
+      const source = fs.readFileSync(path.resolve(__dirname, 'sw.js'), 'utf8');
+      const buildId = Date.now().toString(36);
+      this.emitFile({
+        type: 'asset',
+        fileName: 'sw.js',
+        source: source.replace(/__SW_VERSION__/g, buildId),
+      });
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, ['REACT_APP_', 'VITE_']);
@@ -23,7 +44,7 @@ export default defineConfig(({ mode }) => {
         }
       : {};
   return {
-    plugins: [react()],
+    plugins: [react(), serviceWorkerPlugin()],
     envPrefix: ['REACT_APP_', 'VITE_'],
     define: {
       'process.env': JSON.stringify(env),
