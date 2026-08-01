@@ -34,16 +34,32 @@ export default function CoachCalendar() {
   const [sessions, setSessions] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  // 'mine' = own sessions (unchanged behavior); 'studio' = every coach,
+  // privacy-scoped server-side per roadmap-v3 D1 (foreign clients
+  // arrive masked — the name never reaches this page).
+  const [scope, setScope] = useState('mine');
 
+  // Studio queries exactly the displayed week (the endpoint requires the
+  // bounds) and reloads when the week changes; My week keeps its
+  // existing single fetch.
+  const studioWeekKey = scope === 'studio' ? weekStart.getTime() : 0;
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/sessions');
-      setSessions(data);
+      if (scope === 'studio') {
+        const from = weekStart.toISOString();
+        const to = addDays(weekStart, 7).toISOString();
+        const { data } = await api.get(`/sessions/studio?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+        setSessions(data);
+      } else {
+        const { data } = await api.get('/sessions');
+        setSessions(data);
+      }
       setLoadError(null);
     } catch (error) {
       setLoadError(errMsg(error, 'Failed to load sessions'));
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, studioWeekKey]);
   useEffect(() => { load(); }, [load]);
 
   const days = useMemo(
@@ -79,28 +95,47 @@ export default function CoachCalendar() {
         title="Calendar"
         subtitle={`${fmtShort(days[0])} – ${fmtShort(days[6])} · ${weekCount} session${weekCount === 1 ? '' : 's'}`}
         action={
-          <div className="flex items-center gap-1.5">
-            <IconButton
-              label="Previous week" variant="outline" size="touchIcon" className="rounded-xl"
-              onClick={() => setWeekStart((current) => addDays(current, -7))}
-              data-testid="calendar-prev-week"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </IconButton>
-            <Button
-              variant="outline" className="min-h-11 rounded-xl"
-              onClick={() => setWeekStart(startOfWeek(new Date()))}
-              data-testid="calendar-today-button"
-            >
-              Today
-            </Button>
-            <IconButton
-              label="Next week" variant="outline" size="touchIcon" className="rounded-xl"
-              onClick={() => setWeekStart((current) => addDays(current, 7))}
-              data-testid="calendar-next-week"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </IconButton>
+          <div className="flex flex-col items-stretch gap-1.5 sm:flex-row sm:items-center">
+            <div className="inline-flex self-start rounded-xl border border-border bg-secondary/50 p-0.5" role="group" aria-label="Calendar scope">
+              {[['mine', 'My week'], ['studio', 'Studio']].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => { setScope(key); setSessions(null); }}
+                  aria-pressed={scope === key}
+                  className={cn(
+                    'min-h-11 rounded-lg px-3 text-xs font-medium transition-colors motion-reduce:transition-none',
+                    scope === key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  data-testid={`calendar-scope-${key}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <IconButton
+                label="Previous week" variant="outline" size="touchIcon" className="rounded-xl"
+                onClick={() => setWeekStart((current) => addDays(current, -7))}
+                data-testid="calendar-prev-week"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </IconButton>
+              <Button
+                variant="outline" className="min-h-11 flex-1 rounded-xl sm:flex-none"
+                onClick={() => setWeekStart(startOfWeek(new Date()))}
+                data-testid="calendar-today-button"
+              >
+                Today
+              </Button>
+              <IconButton
+                label="Next week" variant="outline" size="touchIcon" className="rounded-xl"
+                onClick={() => setWeekStart((current) => addDays(current, 7))}
+                data-testid="calendar-next-week"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </IconButton>
+            </div>
           </div>
         }
       />
@@ -139,8 +174,10 @@ export default function CoachCalendar() {
                     <p className={cn('font-medium tabular-nums', session.status === 'cancelled' && 'line-through opacity-70')}>
                       {fmtTime(session.scheduled_at)} · {session.duration_minutes}m
                     </p>
-                    <p className={cn('truncate', session.status === 'cancelled' && 'opacity-70')}>{session.client?.name || 'Client'}</p>
-                    {isAdmin && session.coach?.name && <p className="truncate text-muted-foreground">{session.coach.name}</p>}
+                    <p className={cn('truncate', session.status === 'cancelled' && 'opacity-70', session.masked && 'text-muted-foreground italic')} data-masked={session.masked || undefined}>
+                      {session.masked ? 'Busy' : (session.client?.name || 'Client')}
+                    </p>
+                    {(scope === 'studio' || isAdmin) && session.coach?.name && <p className="truncate text-muted-foreground">{session.coach.name}</p>}
                     {session.location && <p className="truncate text-muted-foreground">{session.location}</p>}
                   </div>
                 ))}
