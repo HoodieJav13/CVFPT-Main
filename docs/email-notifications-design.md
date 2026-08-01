@@ -24,7 +24,7 @@ flow is ever built, it gets its own template then. No extra work now.
 **Daily digest** (one email per person, only when there is something to say)
 | Content | Recipient |
 |---------|-----------|
-| Unread messages — counted as `messages.read_by_recipient = false` at send time with `created_at` inside the window (the schema has no `read_at` column; unread is a boolean flag) | Clients and coaches |
+| Unread messages — **all** messages with `messages.read_by_recipient = false` at send time, with no `created_at` filter (the schema has no `read_at` column; unread is a boolean flag). Deliberately not windowed: a message that goes unread for three days should keep appearing until it is read, and this is what makes a skipped digest day self-healing | Clients and coaches |
 | New assignments — programs / dated workouts created inside the window | Clients |
 | Booking requests still `pending` more than 24 h after `created_at` | Coaches |
 
@@ -62,15 +62,28 @@ deliberately:
   digest — carries a deterministic Resend **idempotency key**:
   `digest/{recipientId}/{YYYY-MM-DD}` for digests (date computed in
   America/Denver so a UTC-boundary double-fire still collides), and
-  `{event}/{recordId}` for instant emails (e.g.
-  `booking-approved/{bookingId}`). A double-fired cron, a retry, or a
+  `{event}/{recordId}/{recipientId}` for instant emails (e.g.
+  `booking-approved/{bookingId}/{clientId}`). The recipient segment is
+  required, not decorative: an auto-booked session sends two different
+  emails — a client confirmation and a coach FYI — off the same event and
+  record, and reusing one key for two different payloads makes Resend
+  reject the second send with a `409`. A double-fired cron, a retry, or a
   duplicate webhook re-sends the same key and Resend drops it.
-- *Missed runs are not recovered.* The digest queries a fixed 24-hour
-  window; if a day's cron never fires, that day's digest is skipped with
-  no catch-up. This is acceptable because everything time-critical
-  (requests, approvals, cancellations) already went out as an instant
-  email, and unread messages still appear in the next day's count while
-  they remain unread. Only "new assignments" from the missed day are
+- *The protection window is 24 hours.* Resend deduplicates a given key for
+  24 hours from first use; after that the same key sends again. Both key
+  shapes are built for that: digest keys carry the date, so the next day's
+  digest is a new key anyway, and instant keys are tied to a single
+  record-and-recipient event that never legitimately repeats. The window
+  only matters for retries — a retry more than 24 h after the original
+  send would duplicate, which is well outside any retry we would attempt.
+- *Missed runs are not recovered.* The windowed part of the digest — new
+  assignments — queries a fixed 24 hours; if a day's cron never fires,
+  that day's digest is skipped with no catch-up. This is acceptable
+  because everything time-critical (requests, approvals, cancellations)
+  already went out as an instant
+  email, and unread messages carry forward automatically because that
+  count is not windowed — a message unread through a skipped day still
+  appears the next day. Only "new assignments" from the missed day are
   genuinely lost, and those are visible in-app.
 - If that ever proves insufficient, the upgrade path is a small
   `digest_sends` checkpoint table (recipient, digest date, sent_at) that
