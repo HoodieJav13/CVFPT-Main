@@ -14,6 +14,13 @@ test('studio route: coach-only, registered before param routes, D1 masking serve
     routes.indexOf("router.get('/studio'") < routes.indexOf("router.put('/:id'"),
     'studio route must be registered before /:id routes',
   );
+  // The endpoint is bounded: both range ends validated and required,
+  // sanity-capped, and applied to the query.
+  assert.match(routes, /const from = validateTimestamp\(req\.query\?\.from, 'From'\);/);
+  assert.match(routes, /if \(!from\.ok \|\| !to\.ok\)/);
+  assert.match(routes, /spanMs <= 0 \|\| spanMs > 31 \* 24 \* 3600 \* 1000/);
+  assert.match(routes, /\.gte\('scheduled_at', from\.value\)/);
+  assert.match(routes, /\.lt\('scheduled_at', to\.value\)/);
   // Masking keys on the CLIENT's coach (not the session's), with an
   // admin exemption; the name is stripped server-side, never client-side.
   assert.match(routes, /session\.client\?\.coach_id === viewerCoachId/);
@@ -29,7 +36,10 @@ test('studio route: coach-only, registered before param routes, D1 masking serve
 test('calendar renders masked rows as Busy and keeps My week unchanged', () => {
   assert.match(calendar, /calendar-scope-\$\{key\}/);
   assert.match(calendar, /\[\['mine', 'My week'\], \['studio', 'Studio'\]\]/);
-  assert.match(calendar, /scope === 'studio' \? '\/sessions\/studio' : '\/sessions'/);
+  // Studio fetches exactly the displayed week and reloads on week change.
+  assert.match(calendar, /\/sessions\/studio\?from=/);
+  assert.match(calendar, /const studioWeekKey = scope === 'studio' \? weekStart\.getTime\(\) : 0;/);
+  assert.match(calendar, /\[scope, studioWeekKey\]/);
   assert.match(calendar, /session\.masked \? 'Busy'/);
   assert.match(calendar, /data-masked=\{session\.masked \|\| undefined\}/);
 });

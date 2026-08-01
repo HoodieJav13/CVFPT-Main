@@ -7,6 +7,7 @@ const {
   validateSchedulePayload,
   validateSessionListQuery,
   validateSessionNotePayload,
+  validateTimestamp,
   validateUuid,
 } = require('../validation/business');
 
@@ -69,9 +70,22 @@ router.get('/', requireCoach, async (req, res) => {
 // client's coach or an admin. Registered before any '/:id' routes.
 router.get('/studio', requireCoach, async (req, res) => {
   try {
+    // The grid shows one week at a time; an unbounded query would ship
+    // the studio's entire history on every load. Both bounds required.
+    const from = validateTimestamp(req.query?.from, 'From');
+    const to = validateTimestamp(req.query?.to, 'To');
+    if (!from.ok || !to.ok) {
+      return res.status(400).json({ error: 'from and to date-times are required' });
+    }
+    const spanMs = new Date(to.value).getTime() - new Date(from.value).getTime();
+    if (spanMs <= 0 || spanMs > 31 * 24 * 3600 * 1000) {
+      return res.status(400).json({ error: 'Range must be positive and at most 31 days' });
+    }
     const { data, error } = await supabaseAdmin.from('sessions')
       .select('id, coach_id, scheduled_at, duration_minutes, location, status, coach:coaches(id, name), client:clients(id, name, coach_id)')
       .eq('archived', false)
+      .gte('scheduled_at', from.value)
+      .lt('scheduled_at', to.value)
       .order('scheduled_at', { ascending: true });
     if (error) throw error;
     const viewerCoachId = req.user.coach.id;

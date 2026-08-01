@@ -39,15 +39,27 @@ export default function CoachCalendar() {
   // arrive masked — the name never reaches this page).
   const [scope, setScope] = useState('mine');
 
+  // Studio queries exactly the displayed week (the endpoint requires the
+  // bounds) and reloads when the week changes; My week keeps its
+  // existing single fetch.
+  const studioWeekKey = scope === 'studio' ? weekStart.getTime() : 0;
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get(scope === 'studio' ? '/sessions/studio' : '/sessions');
-      setSessions(data);
+      if (scope === 'studio') {
+        const from = weekStart.toISOString();
+        const to = addDays(weekStart, 7).toISOString();
+        const { data } = await api.get(`/sessions/studio?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+        setSessions(data);
+      } else {
+        const { data } = await api.get('/sessions');
+        setSessions(data);
+      }
       setLoadError(null);
     } catch (error) {
       setLoadError(errMsg(error, 'Failed to load sessions'));
     }
-  }, [scope]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, studioWeekKey]);
   useEffect(() => { load(); }, [load]);
 
   const days = useMemo(
@@ -83,8 +95,8 @@ export default function CoachCalendar() {
         title="Calendar"
         subtitle={`${fmtShort(days[0])} – ${fmtShort(days[6])} · ${weekCount} session${weekCount === 1 ? '' : 's'}`}
         action={
-          <div className="flex items-center gap-1.5">
-            <div className="inline-flex rounded-xl border border-border bg-secondary/50 p-0.5" role="group" aria-label="Calendar scope">
+          <div className="flex flex-col items-stretch gap-1.5 sm:flex-row sm:items-center">
+            <div className="inline-flex self-start rounded-xl border border-border bg-secondary/50 p-0.5" role="group" aria-label="Calendar scope">
               {[['mine', 'My week'], ['studio', 'Studio']].map(([key, label]) => (
                 <button
                   key={key}
@@ -101,27 +113,29 @@ export default function CoachCalendar() {
                 </button>
               ))}
             </div>
-            <IconButton
-              label="Previous week" variant="outline" size="touchIcon" className="rounded-xl"
-              onClick={() => setWeekStart((current) => addDays(current, -7))}
-              data-testid="calendar-prev-week"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </IconButton>
-            <Button
-              variant="outline" className="min-h-11 rounded-xl"
-              onClick={() => setWeekStart(startOfWeek(new Date()))}
-              data-testid="calendar-today-button"
-            >
-              Today
-            </Button>
-            <IconButton
-              label="Next week" variant="outline" size="touchIcon" className="rounded-xl"
-              onClick={() => setWeekStart((current) => addDays(current, 7))}
-              data-testid="calendar-next-week"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </IconButton>
+            <div className="flex items-center gap-1.5">
+              <IconButton
+                label="Previous week" variant="outline" size="touchIcon" className="rounded-xl"
+                onClick={() => setWeekStart((current) => addDays(current, -7))}
+                data-testid="calendar-prev-week"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </IconButton>
+              <Button
+                variant="outline" className="min-h-11 flex-1 rounded-xl sm:flex-none"
+                onClick={() => setWeekStart(startOfWeek(new Date()))}
+                data-testid="calendar-today-button"
+              >
+                Today
+              </Button>
+              <IconButton
+                label="Next week" variant="outline" size="touchIcon" className="rounded-xl"
+                onClick={() => setWeekStart((current) => addDays(current, 7))}
+                data-testid="calendar-next-week"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </IconButton>
+            </div>
           </div>
         }
       />

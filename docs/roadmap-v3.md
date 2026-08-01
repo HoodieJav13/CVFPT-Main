@@ -38,7 +38,7 @@ list changes.
 | 1 | Time-off impact list | When a coach adds (or reviews) time off that overlaps booked sessions, list the affected sessions right in the Hours editor with jump links — resolves A2's "the app can list the affected sessions". Read-only; no schema change. | Screenshot review |
 | 2 | Auto-book ⚠ | Per-coach `auto_book` flag (default off; per D3 each coach flips their own, behind a confirmation dialog explaining published hours become instantly bookable). A client picking an open slot books instantly through the existing transactional conflict RPC instead of filing a request; coaches with it off keep request → approve. The picker already guarantees slot membership server-side. | **Apply migration** |
 | 3 | Group slots ⚠ | Hours editor exposes the capacity field (1–10) already modeled on windows; `get_open_slots` returns remaining capacity so the client picker can show "2 spots left". Booking/privacy/cancellation semantics per D5 once resolved. | **Resolve D5 (partners), then apply migration** |
-| 4 | Studio week view | The coach calendar gains an all-coaches toggle composing the three calendars (sessions + published hours) into one week grid — A7's seam. Per D1: foreign clients render as busy blocks (coach, time, duration, location) with identity masked; own clients and admin views show names. Read-only. | Screenshot review |
+| 4 | Studio week view | The coach calendar gains an all-coaches toggle composing the three coaches' **sessions** into one week grid — A7's seam. Per D1: foreign clients render as busy blocks (coach, time, duration, location) with identity masked; own clients and admin views show names. Read-only, week-bounded queries. **Sessions-only by owner decision (2026-08-01): published hours describe coach availability, not studio occupancy — composing them would create misleading density. If wanted later, hours become a separate optional overlay, not permanent strips.** | Screenshot review |
 | 5 | Evidence-gated knobs | Per-coach lead/horizon overrides (A5) and cancellation-notice enforcement (A6) stay parked until real usage shows the defaults chafing. Not scheduled; listed so the parking is deliberate. | Owner raises it if usage demands |
 
 ## Track 2 — Reach & reliability
@@ -77,5 +77,7 @@ Applied before merge, never two pending, exactly as in v2.
 
 | Item | PR | State |
 |------|----|-------|
-| Roadmap v3 (this doc) | #40 | open — amended per owner review: D1–D4 resolved, D5 added, order revised |
-| Time-off impact list | #41 | open — review fixes pushed (error/retry state, Open Sessions jump, expired-span skip) |
+| Roadmap v3 (this doc) | #40 | merged (amended per owner review: D1–D4 resolved, D5 added, order revised) |
+| Time-off impact list | #41 | merged |
+| Studio week view | #42 | open — review fixes pushed (mobile header rows, required week-bounded query, mounted privacy route tests); sessions-only direction approved |
+| Auto-book ⚠ | #43 | open — awaiting owner apply + review |

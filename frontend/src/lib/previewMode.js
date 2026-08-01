@@ -1292,7 +1292,16 @@ export function installPreviewApi(api) {
     // could never be reviewed here.
     if (path === '/sessions/studio') {
       const viewerCoachId = currentCoach().id;
+      // Parity with the API: the range is required and only the
+      // requested window is returned.
+      const fromMs = new Date(search.get('from') || '').getTime();
+      const toMs = new Date(search.get('to') || '').getTime();
+      if (Number.isNaN(fromMs) || Number.isNaN(toMs)) return fail(config, 400, 'from and to date-times are required');
       const rows = state.sessions.filter((s) => !s.archived)
+        .filter((s) => {
+          const ts = new Date(s.scheduled_at).getTime();
+          return ts >= fromMs && ts < toMs;
+        })
         .map((s) => {
           const own = clientById(s.client_id)?.coach_id === viewerCoachId;
           return {
