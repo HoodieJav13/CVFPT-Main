@@ -21,23 +21,24 @@ list changes.
   client policies, service-role grants without DELETE, soft delete only,
   Express as the sole caller.
 
-## Decisions needed before their items build (D1–D4)
+## Decisions (D1–D4 resolved by the owner 2026-08-01; D5 open)
 
-| ID | Decision | Recommendation |
-|----|----------|----------------|
-| D1 | Studio week view visibility: do all three coaches see each other's calendars, or admin only? | All coaches — it's a three-person studio and the data isn't sensitive between partners |
-| D2 | Notifications: channel and events. Email first or wait for push? Which events are instant vs daily digest? Provider account is an owner-only setup step (like Supabase keys) | Email first (push needs the PWA installed); instant for booking approved/declined, digest for unread messages and newly assigned workouts |
-| D3 | Auto-book: who flips the toggle — each coach for themselves, or admin only? Default stays off | Each coach for themselves, in the Hours editor — trusting your own template is a personal call |
-| D4 | Analytics metric set for the coach dashboard | Sessions kept/week, workout completion rate, check-in streak, PRs in the last 30 days — argue at build time from real data shapes |
+| ID | Decision | Resolution |
+|----|----------|------------|
+| D1 | Studio week view visibility | **Decided: shared studio calendar, privacy-scoped.** Every coach sees every coach's schedule as coach + time + duration + location + busy status; client identity is masked unless the viewer is that client's coach or an admin. Matches the PR-B cross-coach authorization rules (foreign clients are 404-masked everywhere else) — an all-visible calendar would have contradicted them. |
+| D2 | Notification channel and events | **Decided: email first.** Instant: new booking requests → the coach; approved / declined / rescheduled / cancelled sessions → the client. Daily digest: unread messages and new assignments. Provider account and key are an owner-only setup step (same rule as Supabase keys). |
+| D3 | Auto-book control | **Decided: each coach flips their own toggle**, default off, with a confirmation dialog stating that published hours become instantly bookable when enabled. |
+| D4 | Analytics metric set | **Decided (revised):** sessions completed / scheduled / cancelled, dated-workout adherence, 7- and 30-day check-in consistency, a "clients needing attention" list, and 30-day PRs as a secondary metric. "Streak" alone was dropped as insufficiently actionable. The attention-list threshold (what qualifies a client) is defined in the build's design note before code. |
+| D5 | **Group slot semantics — open; blocks item 3** | Capacity alone doesn't settle the product rules. To decide: does a capacity-N booking create **one shared event with a roster**, or **N overlapping individual session records**? Plus attendee privacy and cancellation behavior. Recommendation: N overlapping individual session records — each client keeps their own session row (notes, completion, attribution, and cancellation already work per client), the roster is derived, one cancellation frees one spot, attendees never see each other (consistent with D1's masking), and no new event entity is needed. Partners get a say, like the availability docket. |
 
 ## Track 1 — Scheduling phase 2 (builds on the availability system)
 
 | # | Item | Contents | Owner check-in |
 |---|------|----------|----------------|
 | 1 | Time-off impact list | When a coach adds (or reviews) time off that overlaps booked sessions, list the affected sessions right in the Hours editor with jump links — resolves A2's "the app can list the affected sessions". Read-only; no schema change. | Screenshot review |
-| 2 | Auto-book ⚠ | Per-coach `auto_book` flag (default off, D3 decides who flips it). A client picking an open slot books instantly through the existing transactional conflict RPC instead of filing a request; coaches with it off keep request → approve. The picker already guarantees slot membership server-side. | **Apply migration; confirm D3** |
-| 3 | Group slots ⚠ | Hours editor exposes the capacity field (1–10) already modeled on windows; `get_open_slots` returns remaining capacity so the client picker can show "2 spots left". Capacity > 1 remains RPC-enforced only (known v2 ceiling, unchanged). | **Apply migration** (RPC signature change) |
-| 4 | Studio week view | The coach calendar gains an all-coaches toggle composing the three calendars (sessions + published hours) into one week grid — A7's seam. Read-only. | **Resolve D1**, then screenshot review |
+| 2 | Auto-book ⚠ | Per-coach `auto_book` flag (default off; per D3 each coach flips their own, behind a confirmation dialog explaining published hours become instantly bookable). A client picking an open slot books instantly through the existing transactional conflict RPC instead of filing a request; coaches with it off keep request → approve. The picker already guarantees slot membership server-side. | **Apply migration** |
+| 3 | Group slots ⚠ | Hours editor exposes the capacity field (1–10) already modeled on windows; `get_open_slots` returns remaining capacity so the client picker can show "2 spots left". Booking/privacy/cancellation semantics per D5 once resolved. | **Resolve D5 (partners), then apply migration** |
+| 4 | Studio week view | The coach calendar gains an all-coaches toggle composing the three calendars (sessions + published hours) into one week grid — A7's seam. Per D1: foreign clients render as busy blocks (coach, time, duration, location) with identity masked; own clients and admin views show names. Read-only. | Screenshot review |
 | 5 | Evidence-gated knobs | Per-coach lead/horizon overrides (A5) and cancellation-notice enforcement (A6) stay parked until real usage shows the defaults chafing. Not scheduled; listed so the parking is deliberate. | Owner raises it if usage demands |
 
 ## Track 2 — Reach & reliability
@@ -46,7 +47,7 @@ list changes.
 |---|------|----------|----------------|
 | 6 | PWA installability | Web app manifest, icons, service worker with deploy-safe versioning (never cache-pin a stale bundle), install prompt. Groundwork for push later. No schema change. | Screenshot review + install test on a real phone |
 | 7 | Email notifications ⚠? | Provider integration (owner creates the account and holds the key — same owner-only rule as Supabase keys), event wiring per D2, unsubscribe/preferences. Migration only if a preferences table proves necessary — decided at design time, and it must not collide with any other migration in flight. | **Resolve D2 + provider setup**; design note before build |
-| 8 | Coach analytics | Adherence dashboard per coach: aggregation endpoints over the now-rich session/attribution/check-in data, dashboard tiles + per-client drill-in. Metric set per D4. Read-only; no schema change expected. | **Resolve D4**, then screenshot review |
+| 8 | Coach analytics | Adherence dashboard per coach: aggregation endpoints over the now-rich session/attribution/check-in data, dashboard tiles + per-client drill-in. Metric set per D4 (decided); the "clients needing attention" threshold is defined in a short design note before code. Deliberately last — it wants real usage data to aggregate. | Design note (attention threshold), then screenshot review |
 
 ## Deferred by explicit decision
 
@@ -58,14 +59,15 @@ list changes.
 - Push notifications — follows email (7) and the PWA (6); not scheduled
   until both are live.
 
-## Execution order
+## Execution order (owner-revised 2026-08-01)
 
 ```
-1 ──► 2 ⚠ ──► 3 ⚠      scheduling chain; one migration in flight at a time
-4     ──► after D1      independent read-only build
-6     ──► anytime       independent; before push ever becomes possible
-7     ──► after D2 + provider setup (owner)
-8     ──► after D4      last; wants a few weeks of real usage data anyway
+1 ──► 4 ──► 2 ⚠ ──► 3 ⚠   impact list, then studio view (read-only, no
+                           migration), then auto-book, then group slots
+                           (blocked on D5); one migration in flight at
+                           a time
+6 ──► 7                    PWA, then email — independent lane
+8     ──► last             analytics waits for real usage data
 ```
 
 ⚠ migrations expected: #2 and #3 (small, sequential), possibly #7.
@@ -75,4 +77,5 @@ Applied before merge, never two pending, exactly as in v2.
 
 | Item | PR | State |
 |------|----|-------|
-| Roadmap v3 (this doc) | — | open |
+| Roadmap v3 (this doc) | #40 | open — amended per owner review: D1–D4 resolved, D5 added, order revised |
+| Time-off impact list | #41 | open — review fixes pushed (error/retry state, Open Sessions jump, expired-span skip) |
