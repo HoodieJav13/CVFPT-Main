@@ -55,19 +55,24 @@ function sessionTotals(sessions = [], nowMs = Date.now()) {
 /**
  * Dated-workout adherence.
  *
- * Only assignments whose `assigned_for` has already passed are counted —
- * future-dated work is not yet missable. Clients with no eligible
+ * Only assignments whose `assigned_for` is strictly before today (in
+ * America/Denver) are counted — today's and future-dated work is not yet
+ * missable. Clients with no eligible
  * assignments are omitted from `per_client` entirely rather than recorded
  * as 0%: someone training on an undated active program is not adherent
  * or non-adherent, they are simply not measured by this metric.
  */
 function adherence(assignments = [], completedAssignmentIds = new Set(), todayIso = null) {
-  const cutoff = todayIso || new Date().toISOString().slice(0, 10);
+  const today = todayIso || new Date().toISOString().slice(0, 10);
   const perClient = new Map();
   let assigned = 0;
   let completed = 0;
   for (const assignment of assignments) {
-    if (!assignment.assigned_for || assignment.assigned_for > cutoff) continue;
+    // Strictly before today: a workout assigned for today is still live —
+    // the client has the rest of the day. Counting it as missed inflates
+    // non-adherence and can push someone onto the attention list for work
+    // that is not yet due.
+    if (!assignment.assigned_for || assignment.assigned_for >= today) continue;
     assigned += 1;
     const done = completedAssignmentIds.has(assignment.id);
     if (done) completed += 1;
@@ -142,9 +147,18 @@ function personalRecordCounts(metrics = [], entriesByMetric = new Map(), sinceIs
   for (const metric of metrics) {
     const direction = metric.improvement_direction;
     if (direction !== 'higher' && direction !== 'lower') continue;
-    const entries = (entriesByMetric.get(metric.id) || [])
-      .slice()
-      .sort((a, b) => (a.recorded_on < b.recorded_on ? -1 : a.recorded_on > b.recorded_on ? 1 : 0));
+    // recorded_on is a date, so two entries on one day tie. Chronology
+    // then falls to created_at and finally id, which decides whether the
+    // second entry of the day counts as beating the first.
+    const compare = (a, b) => {
+      for (const key of ['recorded_on', 'created_at', 'id']) {
+        const av = a[key]; const bv = b[key];
+        if (av === bv || av === undefined || bv === undefined) continue;
+        return av < bv ? -1 : 1;
+      }
+      return 0;
+    };
+    const entries = (entriesByMetric.get(metric.id) || []).slice().sort(compare);
 
     let best = null;
     for (const entry of entries) {

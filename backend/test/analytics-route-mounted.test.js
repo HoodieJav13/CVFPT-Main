@@ -35,7 +35,7 @@ require.cache[supabasePath] = {
     supabaseAdmin: {
       from(table) {
         const filters = [];
-        let sort = null;
+        const sorts = [];
         let range = null;
         const chain = {
           select() { return chain; },
@@ -44,16 +44,23 @@ require.cache[supabasePath] = {
           gte(column, value) { filters.push((r) => r[column] === undefined || r[column] >= value); return chain; },
           lte(column, value) { filters.push((r) => r[column] === undefined || r[column] <= value); return chain; },
           lt(column, value) { filters.push((r) => r[column] === undefined || r[column] < value); return chain; },
-          order(column, opts) { sort = { column, ascending: opts?.ascending !== false }; return chain; },
+          order(column, opts) { sorts.push({ column, ascending: opts?.ascending !== false }); return chain; },
           limit() { return chain; },
-          range(lo, hi) { range = [lo, hi]; state.pageRequests.push({ table, lo, hi }); return chain; },
+          range(lo, hi) {
+            range = [lo, hi];
+            state.pageRequests.push({ table, lo, hi, sorts: sorts.map((o) => o.column) });
+            return chain;
+          },
           then(resolve) {
             let rows = (state.tables[table] || []).filter((row) => filters.every((f) => f(row)));
-            if (sort) {
+            if (sorts.length) {
               rows = rows.slice().sort((a, b) => {
-                const av = a[sort.column]; const bv = b[sort.column];
-                if (av === bv) return 0;
-                return (av < bv ? -1 : 1) * (sort.ascending ? 1 : -1);
+                for (const o of sorts) {
+                  const av = a[o.column]; const bv = b[o.column];
+                  if (av === bv) continue;
+                  return (av < bv ? -1 : 1) * (o.ascending ? 1 : -1);
+                }
+                return 0;
               });
             }
             if (range) rows = rows.slice(range[0], range[1] + 1);
@@ -136,6 +143,9 @@ test('a coach with no clients returns an empty shape, not an error', async () =>
   assert.deepEqual(body.attention, []);
   assert.equal(body.personal_records_30d, 0);
   assert.equal(body.previous.sessions.completed, 0);
+  // Shape parity: a consumer must not have to special-case the empty response.
+  assert.ok(body.previous.range, 'previous.range present even with no clients');
+  assert.equal(body.previous.range.to, body.range.from);
   resetTables();
 });
 
@@ -224,20 +234,93 @@ test('previous equal window is returned for tile deltas', async () => {
   resetTables();
 });
 
-test('day windows follow America/Denver, not UTC', async () => {
+test('day windows follow America/Denver, not UTC', async (t) => {
   resetTables();
-  // The Denver date is behind UTC in the evening. An assignment dated to
-  // "today in Denver" must be inside the fixed 30-day window whichever side
-  // of the UTC midnight the server clock sits on.
-  const { DEFAULT_TZ } = require('../src/utils/time');
-  assert.equal(DEFAULT_TZ, 'America/Denver');
-  const denverToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date());
-  const utcToday = new Date().toISOString().slice(0, 10);
-  state.tables.check_ins = [{ client_id: 'c1', check_in_date: denverToday, archived: false }];
-  const { body } = await get(`?from=${iso(7)}&to=${iso(-1)}`);
-  // Counted regardless of whether Denver and UTC agree on the date today.
-  assert.equal(body.check_ins.clients_measured, 1, `denver=${denverToday} utc=${utcToday}`);
+  // Pinned: 2026-08-01T04:30:00Z is 2026-07-31 22:30 in Denver, so the two
+  // zones disagree on the date. Without pinning, this test would only
+  // exercise the boundary when CI happened to run in the right hours.
+  const PINNED = new Date('2026-08-01T04:30:00.000Z').getTime();
+  t.mock.timers.enable({ apis: ['Date'], now: PINNED });
+
+  const denverToday = '2026-07-31';
+  const utcToday = '2026-08-01';
+  assert.notEqual(denverToday, utcToday, 'the pinned instant must straddle midnight');
+
+  // A check-in on the Denver date must land inside the fixed window. Under
+  // UTC-based bucketing the 30-day floor shifts a day and the freshness
+  // arithmetic reads a day early.
+  state.tables.check_ins = [{ id: 'k1', client_id: 'c1', check_in_date: denverToday, archived: false }];
+  // Assignment dated "today in Denver" is not yet past-due, so it must not
+  // count against adherence.
+  state.tables.workout_assignments = [
+    { id: 'a1', client_id: 'c1', assigned_for: denverToday, assignment_mode: 'dated', archived: false },
+  ];
+
+  const from = new Date(PINNED - 7 * 86400000).toISOString();
+  const to = new Date(PINNED + 86400000).toISOString();
+  const { body } = await get(`?from=${from}&to=${to}`);
+
+  assert.equal(body.check_ins.clients_measured, 1);
   const row = body.attention.find((r) => r.client_id === 'c1');
-  assert.equal(Boolean(row?.reasons.some((r) => r.code === 'no_check_in')), false);
+  assert.equal(Boolean(row?.reasons.some((r) => r.code === 'no_check_in')), false,
+    'a check-in dated today in Denver must count as current');
+  assert.equal(body.adherence.assigned, 0, "today's assignment is not yet missable");
+
+  t.mock.timers.reset();
+  resetTables();
+});
+
+test('adherence windows are disjoint — the boundary date counts once', async (t) => {
+  resetTables();
+  const PINNED = new Date('2026-08-01T18:00:00.000Z').getTime(); // Denver 2026-08-01 12:00
+  t.mock.timers.enable({ apis: ['Date'], now: PINNED });
+
+  // A 7-day range whose Denver start date is 2026-07-26.
+  const from = new Date('2026-07-26T18:00:00.000Z').toISOString();
+  const to = new Date('2026-08-01T18:00:00.000Z').toISOString();
+
+  state.tables.workout_assignments = [
+    // Exactly on the boundary between the previous and current windows.
+    { id: 'boundary', client_id: 'c1', assigned_for: '2026-07-26', assignment_mode: 'dated', archived: false },
+    // Clearly inside the previous window.
+    { id: 'prev', client_id: 'c1', assigned_for: '2026-07-22', assignment_mode: 'dated', archived: false },
+    // Clearly inside the current window.
+    { id: 'curr', client_id: 'c1', assigned_for: '2026-07-30', assignment_mode: 'dated', archived: false },
+  ];
+
+  const { body } = await get(`?from=${from}&to=${to}`);
+  // Half-open [from, to): boundary belongs to the current window only.
+  assert.equal(body.adherence.assigned, 2, 'boundary + curr');
+  assert.equal(body.previous.adherence.assigned, 1, 'prev only — boundary must not be double counted');
+  // The two windows together must not exceed the number of distinct rows.
+  assert.equal(body.adherence.assigned + body.previous.adherence.assigned, 3);
+
+  t.mock.timers.reset();
+  resetTables();
+});
+
+test('every paged read carries a unique tie-breaker', async () => {
+  resetTables();
+  state.tables.check_ins = [{ id: 'k1', client_id: 'c1', check_in_date: day(1), archived: false }];
+  state.tables.metrics = [{ id: 'm1', client_id: 'c1', improvement_direction: 'higher', archived: false }];
+  state.tables.metric_entries = [
+    { id: 'e1', metric_id: 'm1', value: 100, recorded_on: day(10), created_at: iso(10), archived: false },
+  ];
+  await get(`?from=${iso(30)}&to=${iso(0)}`);
+
+  // Paging by a non-unique column alone can skip or duplicate rows across
+  // page boundaries — group sessions share scheduled_at, assignments share
+  // assigned_for. Every paged query must end on a unique column.
+  const offenders = state.pageRequests.filter((p) => !p.sorts.includes('id'));
+  assert.deepEqual(offenders.map((p) => p.table), [],
+    `these paged reads lack an id tie-breaker: ${offenders.map((p) => p.table).join(', ')}`);
+
+  // Metric entries additionally need created_at, so two entries recorded on
+  // the same date have a deterministic chronology for the PR walk.
+  const entryPages = state.pageRequests.filter((p) => p.table === 'metric_entries');
+  assert.ok(entryPages.length > 0, 'metric_entries was queried');
+  for (const page of entryPages) {
+    assert.deepEqual(page.sorts, ['recorded_on', 'created_at', 'id']);
+  }
   resetTables();
 });
