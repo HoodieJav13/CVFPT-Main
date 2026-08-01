@@ -139,6 +139,7 @@ module.exports = {
   validateOptionalText,
   validatePackagePayload,
   validateSchedulePayload,
+  validateTimestamp,
   validateSessionListQuery,
   validateSessionNotePayload,
   validateUuid,

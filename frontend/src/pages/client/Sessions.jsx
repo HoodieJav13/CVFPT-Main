@@ -142,6 +142,9 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
   const [slots, setSlots] = useState(null);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [slotDay, setSlotDay] = useState(null);
+  // Coach's instant-booking setting — drives the drawer copy and the
+  // submit label so the UI never promises the wrong outcome.
+  const [coachAutoBook, setCoachAutoBook] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -156,7 +159,11 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
     setSlotsLoading(true);
     setForm((current) => ({ ...current, requested_time: '' }));
     api.get(`/availability/slots?duration=${form.duration_minutes}`)
-      .then(({ data }) => { if (!cancelled) setSlots(data.slots.length ? data.slots : null); })
+      .then(({ data }) => {
+        if (cancelled) return;
+        setSlots(data.slots.length ? data.slots : null);
+        setCoachAutoBook(Boolean(data.auto_book));
+      })
       .catch(() => { if (!cancelled) setSlots(null); })
       .finally(() => { if (!cancelled) setSlotsLoading(false); });
     return () => { cancelled = true; };
@@ -189,13 +196,15 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
     }
     setSaving(true);
     try {
-      await api.post('/bookings', {
+      const { data } = await api.post('/bookings', {
         requested_time: new Date(form.requested_time).toISOString(),
         duration_minutes: Number(form.duration_minutes),
         location: form.location,
         note: form.note,
       });
-      toast.success('Request sent - your coach will confirm');
+      toast.success(data?.auto_booked
+        ? "Booked — you're on the calendar"
+        : 'Request sent - your coach will confirm');
       onSaved();
     } catch (err) {
       toast.error(errMsg(err));
@@ -211,7 +220,11 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
           <DrawerHeader className="px-0">
             <DrawerTitle>Request a session</DrawerTitle>
           </DrawerHeader>
-          <p className="text-xs text-muted-foreground -mt-2 mb-4">Your coach must confirm before it's booked.</p>
+          <p className="text-xs text-muted-foreground -mt-2 mb-4" data-testid="booking-drawer-copy">
+            {coachAutoBook && slots
+              ? 'Open times book instantly — pick one and it goes straight on the calendar.'
+              : "Your coach must confirm before it's booked."}
+          </p>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Duration</Label>
@@ -285,7 +298,7 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
             </div>
             <DrawerFooter className="px-0">
               <Button type="submit" disabled={saving} className="rounded-xl h-11 font-semibold" data-testid="booking-submit-button">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send request'}
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : (coachAutoBook && slots ? 'Book session' : 'Send request')}
               </Button>
             </DrawerFooter>
           </form>

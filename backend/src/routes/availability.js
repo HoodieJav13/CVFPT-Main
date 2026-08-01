@@ -56,17 +56,40 @@ router.get('/impact', requireCoach, async (req, res) => {
 router.get('/mine', requireCoach, async (req, res) => {
   try {
     const coachId = req.user.coach.id;
-    const [windows, overrides, timeOff] = await Promise.all([
+    const [windows, overrides, timeOff, coachRow] = await Promise.all([
       supabaseAdmin.from('coach_availability').select('*').eq('coach_id', coachId).eq('archived', false).order('weekday').order('start_time'),
       supabaseAdmin.from('coach_availability_overrides').select('*').eq('coach_id', coachId).eq('archived', false).order('on_date').order('start_time'),
       supabaseAdmin.from('coach_time_off').select('*').eq('coach_id', coachId).eq('archived', false).order('span'),
+      supabaseAdmin.from('coaches').select('auto_book').eq('id', coachId).maybeSingle(),
     ]);
-    const failed = [windows, overrides, timeOff].find((r) => r.error);
+    const failed = [windows, overrides, timeOff, coachRow].find((r) => r.error);
     if (failed) throw failed.error;
-    return res.json({ windows: windows.data, overrides: overrides.data, time_off: timeOff.data });
+    return res.json({
+      windows: windows.data,
+      overrides: overrides.data,
+      time_off: timeOff.data,
+      auto_book: Boolean(coachRow.data?.auto_book),
+    });
   } catch (e) {
     logError('availability mine error', e);
     return res.status(500).json({ error: 'Failed to load availability' });
+  }
+});
+
+// PATCH /api/availability/auto-book { enabled } (coach, own flag only).
+// D3: each coach controls their own toggle; the UI confirms before
+// enabling because published hours become instantly bookable.
+router.patch('/auto-book', requireCoach, async (req, res) => {
+  try {
+    const enabled = req.body?.enabled;
+    if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false' });
+    const { data, error } = await supabaseAdmin.from('coaches')
+      .update({ auto_book: enabled }).eq('id', req.user.coach.id).select('auto_book').single();
+    if (error) throw error;
+    return res.json({ auto_book: data.auto_book });
+  } catch (e) {
+    logError('auto-book toggle error', e);
+    return res.status(500).json({ error: 'Failed to update instant booking' });
   }
 });
 
@@ -170,20 +193,25 @@ router.get('/slots', requireClient, async (req, res) => {
     const queryValidation = validateSlotQuery(req.query || {});
     if (!queryValidation.ok) return res.status(400).json({ error: queryValidation.error });
     const { duration, from, to } = queryValidation.value;
-    const { data, error } = await supabaseAdmin.rpc('get_open_slots', {
-      p_coach_id: req.user.client.coach_id,
-      p_duration_minutes: duration,
-      p_from: from,
-      p_to: to,
-    });
-    if (error) throw error;
+    const [slotsResult, coachRow] = await Promise.all([
+      supabaseAdmin.rpc('get_open_slots', {
+        p_coach_id: req.user.client.coach_id,
+        p_duration_minutes: duration,
+        p_from: from,
+        p_to: to,
+      }),
+      supabaseAdmin.from('coaches').select('auto_book').eq('id', req.user.client.coach_id).maybeSingle(),
+    ]);
+    if (slotsResult.error) throw slotsResult.error;
+    if (coachRow.error) throw coachRow.error;
     const seen = new Set();
-    const slots = (data || []).filter((slot) => {
+    const slots = (slotsResult.data || []).filter((slot) => {
       if (seen.has(slot.starts_at)) return false;
       seen.add(slot.starts_at);
       return true;
     });
-    return res.json({ slots });
+    // The picker's copy depends on this: instant booking vs request.
+    return res.json({ slots, auto_book: Boolean(coachRow.data?.auto_book) });
   } catch (e) {
     logError('open slots error', e);
     return res.status(500).json({ error: 'Failed to load open times' });

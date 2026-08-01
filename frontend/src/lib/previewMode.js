@@ -59,6 +59,9 @@ const state = {
     { id: 'session_next', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(3, 10), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-18), updated_at: iso(-1) },
     { id: 'session_done', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(-3, 9), duration_minutes: 60, location: 'CVF Studio', status: 'completed', credit_deducted: true, archived: false, created_at: iso(-30), updated_at: iso(-3) },
     { id: 'session_david', client_id: 'client_david', coach_id: 'coach_marcus', scheduled_at: iso(1, 13), duration_minutes: 45, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-12), updated_at: iso(-1) },
+    // Jordan's client — renders as a masked busy block on Marcus's
+    // studio calendar (roadmap-v3 D1).
+    { id: 'session_emily', client_id: 'client_emily', coach_id: 'coach_jordan', scheduled_at: iso(1, 9), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-8), updated_at: iso(-1) },
   ],
   sessionNotes: [
     { id: 'note_1', session_id: 'session_done', coach_id: 'coach_marcus', content: 'Great pacing today. Keep squats controlled and pain-free.', shared_with_client: true, archived: false, created_at: iso(-3, 11), updated_at: iso(-3, 11) },
@@ -1281,6 +1284,37 @@ export function installPreviewApi(api) {
       return ok(shapeClient(row), config);
     }
 
+    // Mirrors GET /api/sessions/studio: every coach's schedule with
+    // roadmap-v3 D1 masking — foreign clients arrive as anonymous busy
+    // blocks; the name never reaches the page. Deliberate divergence:
+    // the real API exempts admins, but fixture Marcus IS admin, so
+    // preview masks by coach match regardless — otherwise D1 masking
+    // could never be reviewed here.
+    if (path === '/sessions/studio') {
+      const viewerCoachId = currentCoach().id;
+      // Parity with the API: the range is required and only the
+      // requested window is returned.
+      const fromMs = new Date(search.get('from') || '').getTime();
+      const toMs = new Date(search.get('to') || '').getTime();
+      if (Number.isNaN(fromMs) || Number.isNaN(toMs)) return fail(config, 400, 'from and to date-times are required');
+      const rows = state.sessions.filter((s) => !s.archived)
+        .filter((s) => {
+          const ts = new Date(s.scheduled_at).getTime();
+          return ts >= fromMs && ts < toMs;
+        })
+        .map((s) => {
+          const own = clientById(s.client_id)?.coach_id === viewerCoachId;
+          return {
+            id: s.id, coach_id: s.coach_id, scheduled_at: s.scheduled_at,
+            duration_minutes: s.duration_minutes, location: s.location, status: s.status,
+            coach: coachById(s.coach_id),
+            client: own ? { id: s.client_id, name: clientById(s.client_id).name } : null,
+            masked: !own,
+          };
+        })
+        .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+      return ok(rows, config);
+    }
     if (path === '/sessions' && method === 'get') {
       let rows = state.sessions.filter((s) => !s.archived);
       if (search.get('client_id')) rows = rows.filter((s) => s.client_id === search.get('client_id'));
@@ -1366,7 +1400,13 @@ export function installPreviewApi(api) {
         overrides: state.coachAvailabilityOverrides.filter((o) => o.coach_id === coachId),
         time_off: state.coachTimeOff.filter((t) => t.coach_id === coachId)
           .map((t) => ({ ...t, span: `["${t.starts_at}","${t.ends_at}")` })),
+        auto_book: Boolean(currentCoach().auto_book),
       }, config);
+    }
+    if (path === '/availability/auto-book' && method === 'patch') {
+      const coach = currentCoach();
+      coach.auto_book = Boolean(payload.enabled);
+      return ok({ auto_book: coach.auto_book }, config);
     }
     if (path === '/availability/windows' && method === 'put') {
       const coachId = currentCoach().id;
@@ -1395,7 +1435,10 @@ export function installPreviewApi(api) {
       return ok({ ok: true }, config);
     }
     if (path === '/availability/slots') {
-      return ok({ slots: previewOpenSlots(client.coach_id, Number(search.get('duration')) || 60) }, config);
+      return ok({
+        slots: previewOpenSlots(client.coach_id, Number(search.get('duration')) || 60),
+        auto_book: Boolean(coachById(client.coach_id)?.auto_book),
+      }, config);
     }
 
     if (path === '/bookings/mine') return ok(state.bookingRequests.filter((b) => b.client_id === client.id && !b.archived).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)), config);
@@ -1417,6 +1460,14 @@ export function installPreviewApi(api) {
       }
       const row = { id: id('booking'), client_id: client.id, coach_id: client.coach_id, requested_time: payload.requested_time, duration_minutes: payload.duration_minutes || 60, location: payload.location || null, note: payload.note || null, status: 'pending', archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       state.bookingRequests.push(row);
+      // D3 auto-book mirror: an opted-in coach's offered slot approves
+      // itself immediately (the slot check above already ran).
+      if (hasHours && coachById(client.coach_id)?.auto_book) {
+        row.status = 'approved';
+        const session = { id: id('session'), client_id: client.id, coach_id: client.coach_id, scheduled_at: row.requested_time, duration_minutes: row.duration_minutes, location: row.location, status: 'scheduled', credit_deducted: false, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+        state.sessions.push(session);
+        return ok({ ...row, auto_booked: true, session }, config, 201);
+      }
       return ok(row, config, 201);
     }
     const bookingAction = path.match(/^\/bookings\/([^/]+)\/(approve|decline)$/);
