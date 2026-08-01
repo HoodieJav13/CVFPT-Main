@@ -24,4 +24,16 @@ function todayRangeInTz(tz = DEFAULT_TZ) {
   return [startUtc.toISOString(), endUtc.toISOString()];
 }
 
-module.exports = { todayRangeInTz, todayDateInTz };
+/** Shifts a YYYY-MM-DD date string by whole days. Pure date arithmetic. */
+function shiftDate(dateStr, days) {
+  const base = new Date(`${dateStr}T00:00:00.000Z`).getTime();
+  return new Date(base + days * 86400000).toISOString().slice(0, 10);
+}
+
+/** Returns YYYY-MM-DD for an instant, as seen in the given timezone. */
+function dateInTz(instant, tz = DEFAULT_TZ) {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+  return fmt.format(instant instanceof Date ? instant : new Date(instant));
+}
+
+module.exports = { todayRangeInTz, todayDateInTz, shiftDate, dateInTz, DEFAULT_TZ };
