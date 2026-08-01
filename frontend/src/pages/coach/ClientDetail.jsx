@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { initials, fmtDate, fmtDateTime, fmtTime, fmtDay } from '@/lib/format';
 import { toast } from 'sonner';
+import { trackProductEvent } from '@/lib/telemetry';
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -442,9 +443,11 @@ function CheckInsTab({ clientId }) {
     try {
       if (editing) {
         await api.put(`/check-ins/${editing.id}`, payload);
+        if (payload.review_status === 'reviewed') trackProductEvent('check_in_reviewed', { source: 'client_detail' });
         toast.success('Check-in updated');
       } else {
         await api.post(`/check-ins/clients/${clientId}`, payload);
+        if (payload.review_status === 'reviewed') trackProductEvent('check_in_reviewed', { source: 'client_detail' });
         toast.success('Check-in saved');
       }
       setOpen(false);

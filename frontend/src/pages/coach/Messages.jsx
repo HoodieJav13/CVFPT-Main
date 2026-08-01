@@ -9,6 +9,7 @@ import { MessageSquare, ArrowLeft, UserRound } from 'lucide-react';
 import { initials, fmtDay } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { trackProductEvent } from '@/lib/telemetry';
 
 function ThreadRow({ thread, active, onSelect }) {
   return (
@@ -107,6 +108,7 @@ export default function CoachMessages() {
     setSending(true);
     try {
       await api.post(`/messages/with/${clientId}`, { content });
+      trackProductEvent('message_replied', { source: 'coach_messages' });
       await loadConversation();
       loadThreads();
       return true;

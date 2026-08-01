@@ -3,6 +3,7 @@ import { api, errMsg } from '@/lib/api';
 import { PageHeader, ListSkeleton, LoadErrorState } from '@/components/common';
 import { ChatThread } from '@/components/Chat';
 import { toast } from 'sonner';
+import { trackProductEvent } from '@/lib/telemetry';
 
 export default function ClientMessages() {
   const [data, setData] = useState(null);
@@ -31,6 +32,7 @@ export default function ClientMessages() {
     setSending(true);
     try {
       await api.post('/messages/mine', { content });
+      trackProductEvent('message_replied', { source: 'client_messages' });
       await load();
       return true;
     } catch (e) {

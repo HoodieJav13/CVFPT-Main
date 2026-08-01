@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, SessionsSkeleton, LoadErrorState, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,15 @@ import { Plus, CalendarDays, MapPin, Loader2, StickyNote } from 'lucide-react';
 import DateTimePicker from '@/components/DateTimePicker';
 import { fmtTime, fmtDay, fmtDateTime, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
+import { trackProductEvent } from '@/lib/telemetry';
 
 export default function ClientSessions() {
   const [sessions, setSessions] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [requests, setRequests] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const seenOutcomes = useRef(null);
+  if (seenOutcomes.current === null) seenOutcomes.current = new Set();
 
   const load = useCallback(async () => {
     try {
@@ -30,6 +33,11 @@ export default function ClientSessions() {
       ]);
       setSessions(s.data);
       setRequests(r.data);
+      for (const request of r.data || []) {
+        if (!['approved', 'declined'].includes(request.status) || seenOutcomes.current.has(request.id)) continue;
+        seenOutcomes.current.add(request.id);
+        trackProductEvent('booking_outcome_viewed', { outcome: request.status, route: '/client/sessions' });
+      }
       setLoadError(null);
     } catch (e) {
       const message = errMsg(e, 'Failed to load sessions');
@@ -202,6 +210,7 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
         location: form.location,
         note: form.note,
       });
+      trackProductEvent('booking_requested', { outcome: data?.auto_booked ? 'auto_booked' : 'pending', source: slots ? 'offered_slot' : 'free_picker' });
       toast.success(data?.auto_booked
         ? "Booked — you're on the calendar"
         : 'Request sent - your coach will confirm');
