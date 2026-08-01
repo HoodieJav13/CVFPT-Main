@@ -347,7 +347,7 @@ function UserMenu({ user, logout, compact }) {
     <Dialog open={iosHelpOpen} onOpenChange={setIosHelpOpen}>
       <DialogContent className="max-w-sm" data-testid="ios-install-help">
         <DialogHeader>
-          <DialogTitle>Add CVF PT to your Home Screen</DialogTitle>
+          <DialogTitle className="pr-6">Add CVF PT to your Home Screen</DialogTitle>
           <DialogDescription>
             iPhones and iPads install web apps from Safari's share menu.
           </DialogDescription>
