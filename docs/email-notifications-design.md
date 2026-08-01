@@ -1,9 +1,9 @@
 # Email notifications — design note (v3 item 7)
 
-Status: **draft for owner review** — implements D2 (decided: email first).
-This note is the "design note before build" the roadmap requires. Nothing
-here is code yet; the build starts only after the owner signs off on the
-recommendations and completes the provider setup.
+Status: **owner-reviewed 2026-08-01** — the four review corrections are
+applied below and the four open decisions are resolved (recorded at the
+end). The build is unblocked once the owner completes the provider setup
+steps. One migration ⚠ (digest opt-out) ships with the build.
 
 ## Scope (per D2)
 
@@ -24,12 +24,9 @@ flow is ever built, it gets its own template then. No extra work now.
 **Daily digest** (one email per person, only when there is something to say)
 | Content | Recipient |
 |---------|-----------|
-| Unread messages count (since last digest, still unread at send time) | Clients and coaches |
-| New assignments — programs / dated workouts added in the last day | Clients |
-
-Recommendation to confirm: add **pending booking requests older than 24 h**
-to the coach digest. It matches the digest's purpose (things waiting on
-you), costs one query, and prevents requests from silently going stale.
+| Unread messages — counted as `messages.read_by_recipient = false` at send time with `created_at` inside the window (the schema has no `read_at` column; unread is a boolean flag) | Clients and coaches |
+| New assignments — programs / dated workouts created inside the window | Clients |
+| Booking requests still `pending` more than 24 h after `created_at` | Coaches |
 
 **Out of scope**: SMS, push (roadmap: follows email + PWA), marketing or
 broadcast email of any kind, message *content* in emails (counts and deep
@@ -37,53 +34,76 @@ links only — inboxes are often shared, chat content stays in the app).
 
 ## Architecture
 
-**Instant sends are fire-and-forget from Express.** The route completes its
-existing work first; the email is sent after the response logic succeeds,
-wrapped so a provider failure is logged and never breaks a booking flow.
-No queue, no new table. At CVF's volume (3 coaches, tens of clients) a lost
-email during a rare provider outage is acceptable — the in-app state is
-always the source of truth.
+**Instant sends must outlive the response, safely.** Firing a promise
+after `res.json()` and not awaiting it is unsafe on Vercel: the function
+can be frozen before the send completes, which also loses the error log.
+The send wrapper therefore hands the promise to `waitUntil()` (from
+`@vercel/functions`), which keeps the invocation alive until it settles
+without delaying the response. Where `waitUntil` is unavailable (local
+dev, tests), the wrapper awaits the send before responding. Either way a
+provider failure is logged via the existing `logError` and never fails the
+API request — in-app state remains the source of truth. No queue, no new
+table.
 
 **The digest is a scheduled job, not a table.** A Vercel Cron entry on the
-backend project hits `POST /api/internal/digest` once daily; the endpoint is
-protected by a shared secret header (`CRON_SECRET`, owner-set env var, same
-handling rule as all keys). It computes each person's digest from existing
-data — `messages.read_at`, assignment `created_at` within the window — so
-**no migration is needed for the core feature**.
+backend project invokes **`GET /api/internal/digest`** once daily. Vercel
+Cron issues **GET** requests and authenticates with
+`Authorization: Bearer ${CRON_SECRET}` (owner-set env var, same handling
+rule as all keys); the endpoint rejects any request whose bearer token
+doesn't match, and is registered before any `/:id`-style route. It computes
+each person's digest from existing data, so the digest itself needs no
+migration.
 
-**Preferences.** Instant emails are operational/transactional and launch
-always-on. For the digest, people should be able to opt out; that is one
-small migration ⚠ adding `digest_opt_out boolean not null default false` to
-`clients` and `coaches`, surfaced as a toggle in the app (and honored via an
-opt-out link in the digest footer). Options:
+**Duplicate and missed-run posture (explicit trade-off).** The digest keeps
+**no durable delivery checkpoints**, and the consequences are accepted
+deliberately:
 
-- **A (recommended):** include the tiny preferences migration in the build —
-  it's two `alter table add column` lines, follows the one-migration-in-
-  flight rule, and avoids shipping email with no off switch.
-- B: launch with no opt-out, add it if anyone asks. Zero migration.
+- *Duplicates are prevented at the provider.* Every send — instant and
+  digest — carries a deterministic Resend **idempotency key**:
+  `digest/{recipientId}/{YYYY-MM-DD}` for digests (date computed in
+  America/Denver so a UTC-boundary double-fire still collides), and
+  `{event}/{recordId}` for instant emails (e.g.
+  `booking-approved/{bookingId}`). A double-fired cron, a retry, or a
+  duplicate webhook re-sends the same key and Resend drops it.
+- *Missed runs are not recovered.* The digest queries a fixed 24-hour
+  window; if a day's cron never fires, that day's digest is skipped with
+  no catch-up. This is acceptable because everything time-critical
+  (requests, approvals, cancellations) already went out as an instant
+  email, and unread messages still appear in the next day's count while
+  they remain unread. Only "new assignments" from the missed day are
+  genuinely lost, and those are visible in-app.
+- If that ever proves insufficient, the upgrade path is a small
+  `digest_sends` checkpoint table (recipient, digest date, sent_at) that
+  lets the job backfill skipped days. Not planned now; noted so the choice
+  is reversible.
 
-If A, the roadmap's "⚠?" on item 7 resolves to ⚠ (one small migration,
-applied by the owner before merge, as always).
+**Preferences (owner decision: Option A).** Instant emails are
+operational/transactional and launch always-on. The digest ships with an
+off switch: one small migration ⚠ adding
+`digest_opt_out boolean not null default false` to `clients` and
+`coaches`, surfaced as a toggle in the app and honored via an opt-out link
+in the digest footer. Applied by the owner before merge, one migration in
+flight, exactly as always. This resolves the roadmap's "⚠?" on item 7 to ⚠.
 
-## Provider recommendation
+## Provider (decided)
 
-**Resend** — free tier covers 3,000 emails/month and 100/day, which is an
-order of magnitude above CVF's realistic volume; setup is a domain
-verification (DNS records) plus one API key; the Node SDK is a single
-dependency. Alternatives considered: Postmark (excellent deliverability,
-$15/mo, overkill at this volume) and Amazon SES (cheapest at scale, most
-setup friction). Nothing in the integration is Resend-specific beyond one
-small send wrapper, so switching later is cheap.
+**Resend** — the free tier covers 3,000 emails/month and 100/day, an order
+of magnitude above CVF's realistic volume; it supports the idempotency
+keys the duplicate posture above depends on; setup is a domain
+verification plus one API key; the Node SDK is a single dependency.
+Alternatives considered: Postmark (excellent deliverability, $15/mo,
+overkill at this volume) and Amazon SES (cheapest at scale, most setup
+friction). Nothing in the integration is Resend-specific beyond one small
+send wrapper, so switching later is cheap.
 
 **Owner-only setup steps** (same rule as Supabase keys — I never handle
 keys):
-1. Create the Resend account and verify the sending domain, e.g.
-   `corevaluefitness.com`, sending as `CVF PT <notifications@corevaluefitness.com>`.
+1. Create the Resend account and verify `corevaluefitness.com`, sending as
+   `CVF PT <notifications@corevaluefitness.com>`.
 2. Add `RESEND_API_KEY` and `CRON_SECRET` env vars to the Vercel backend
-   project.
-3. Confirm the digest send time — recommendation: **6:00 AM America/Denver**
-   (cron stored in UTC; DST shift of an hour either way is acceptable for a
-   digest).
+   project, plus the monitored studio inbox as `NOTIFY_REPLY_TO`.
+3. Digest cron: **13:00 UTC** — 6:00 AM in Denver during winter, 7:00 AM
+   during summer, so it never lands at 5 AM.
 
 ## Templates and copy
 
@@ -94,24 +114,26 @@ keys):
   ("Thu Aug 6, 11:00 AM"), matching the in-app convention.
 - Instant session emails carry date/time, duration, location, and the other
   party's first name. Digests carry counts and links, never message bodies.
-- From-name "CVF PT"; `reply-to` set to the studio's real inbox so a reply
-  reaches a human (owner to confirm which address).
+- From-name "CVF PT"; `reply-to` is the monitored studio inbox so a reply
+  reaches a human.
 
 ## Failure and abuse posture
 
-- Provider errors: logged via the existing `logError`, request still
-  succeeds. No retries in v1 (volume doesn't justify a retry queue).
-- The digest endpoint rejects calls without the secret header and is
-  idempotent per day per recipient (computing "since last 24 h" from the
-  clock, not from stored send state — a double-fire sends a duplicate
-  digest, which is harmless; a missed fire is caught the next day).
+- Provider errors are logged and the API request still succeeds; because
+  the send rides `waitUntil`, the log lands before the function freezes.
+  No retry queue in v1 — the idempotency keys make ad-hoc retries safe if
+  one is ever added.
+- The digest endpoint rejects any request without the matching bearer
+  secret.
 - Email addresses come from the existing auth/profile records only; there
   is no address entry surface in this feature.
 
-## Owner decisions needed before build
+## Owner decisions (resolved 2026-08-01)
 
-1. Preferences option **A** (tiny opt-out migration ⚠, recommended) or B
-   (no migration)?
-2. Include pending-requests-older-than-24 h in the coach digest?
-3. Sending domain + reply-to address; then the provider setup steps above.
-4. Digest send time (6:00 AM MT recommended).
+1. Preferences: **Option A** — digest opt-out column migration ⚠ ships
+   with the build.
+2. Coach digest **includes** booking requests pending more than 24 h.
+3. Sending domain `corevaluefitness.com`, from
+   `notifications@corevaluefitness.com`; reply-to is the monitored studio
+   inbox.
+4. Digest cron at **13:00 UTC** (6 AM MST / 7 AM MDT).
