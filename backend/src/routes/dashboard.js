@@ -24,6 +24,11 @@ router.get('/coach', requireCoach, async (req, res) => {
       .order('scheduled_at').limit(5);
     if (!isAdmin) upcomingQ = upcomingQ.eq('coach_id', coachId);
 
+    let staleQ = supabaseAdmin.from('sessions').select('*, client:clients(id, name)')
+      .eq('archived', false).eq('status', 'scheduled').lt('scheduled_at', new Date().toISOString())
+      .order('scheduled_at', { ascending: true }).limit(10);
+    if (!isAdmin) staleQ = staleQ.eq('coach_id', coachId);
+
     let bookingsQ = supabaseAdmin.from('booking_requests').select('*, client:clients(id, name)')
       .eq('archived', false).eq('status', 'pending').order('created_at', { ascending: false });
     if (!isAdmin) bookingsQ = bookingsQ.eq('coach_id', coachId);
@@ -31,8 +36,11 @@ router.get('/coach', requireCoach, async (req, res) => {
     let clientsQ = supabaseAdmin.from('clients').select('id', { count: 'exact', head: true }).eq('archived', false);
     if (!isAdmin) clientsQ = clientsQ.eq('coach_id', coachId);
 
-    const [{ data: todaySessions }, { data: upcoming }, { data: pendingBookings }, { count: clientCount }] = await Promise.all([
-      sessionsQ, upcomingQ, bookingsQ, clientsQ,
+    const [
+      { data: todaySessions }, { data: upcoming }, { data: staleSessions },
+      { data: pendingBookings }, { count: clientCount },
+    ] = await Promise.all([
+      sessionsQ, upcomingQ, staleQ, bookingsQ, clientsQ,
     ]);
 
     // unread messages from clients
@@ -60,6 +68,7 @@ router.get('/coach', requireCoach, async (req, res) => {
     return res.json({
       today_sessions: todaySessions || [],
       upcoming_sessions: upcoming || [],
+      stale_sessions: staleSessions || [],
       pending_bookings: pendingBookings || [],
       client_count: clientCount || 0,
       unread_messages: unread,
