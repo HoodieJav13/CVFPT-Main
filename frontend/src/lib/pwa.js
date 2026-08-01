@@ -5,6 +5,7 @@
 // to "iOS browser, not already installed" and the UI shows the
 // Add-to-Home-Screen steps instead.
 import { useSyncExternalStore } from 'react';
+import { trackProductEvent } from '@/lib/telemetry';
 
 const DISMISS_KEY = 'cvf_install_dismissed';
 
@@ -65,6 +66,7 @@ export function useInstallMode() {
 
 export async function promptInstall() {
   if (!deferredPrompt) return false;
+  trackProductEvent('pwa_install_requested', { source: 'native_prompt' });
   const prompt = deferredPrompt;
   deferredPrompt = null;
   notify();
@@ -82,6 +84,7 @@ export function initPwa() {
     notify();
   });
   window.addEventListener('appinstalled', () => {
+    trackProductEvent('pwa_install_accepted', { source: 'appinstalled' });
     installed = true;
     deferredPrompt = null;
     notify();

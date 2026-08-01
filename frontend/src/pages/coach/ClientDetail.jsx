@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { initials, fmtDate, fmtDateTime, fmtTime, fmtDay } from '@/lib/format';
 import { toast } from 'sonner';
+import { trackProductEvent } from '@/lib/telemetry';
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -153,13 +154,14 @@ export default function ClientDetail() {
 
         <div className="min-w-0">
       <Tabs key={client.id} defaultValue={initialTab}>
-        <TabsList className="w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade">
-          <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
-          <TabsTrigger value="check-ins" data-testid="tab-check-ins">Check-ins</TabsTrigger>
-          <TabsTrigger value="progress" data-testid="tab-progress">Progress</TabsTrigger>
-          <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
-          <TabsTrigger value="programs" data-testid="tab-programs">Programs</TabsTrigger>
+        <TabsList className="h-auto min-h-[52px] w-full snap-x justify-start overflow-x-auto rounded-xl tab-overflow-fade" aria-label="Client detail sections" data-testid="client-detail-tabs">
+          <TabsTrigger value="overview" className="min-h-11" data-testid="tab-overview">Overview</TabsTrigger>
+          <TabsTrigger value="check-ins" className="min-h-11" data-testid="tab-check-ins">Check-ins</TabsTrigger>
+          <TabsTrigger value="progress" className="min-h-11" data-testid="tab-progress">Progress</TabsTrigger>
+          <TabsTrigger value="sessions" className="min-h-11" data-testid="tab-sessions">Sessions</TabsTrigger>
+          <TabsTrigger value="programs" className="min-h-11 snap-start" data-testid="tab-programs">Programs</TabsTrigger>
         </TabsList>
+        <p className="mt-1 text-right text-[11px] text-muted-foreground sm:hidden" data-testid="client-tabs-overflow-hint">Swipe tabs for more</p>
 
         <TabsContent value="overview">
           <OverviewTab client={client} waiver={waiver} reload={load} user={user} />
@@ -441,9 +443,11 @@ function CheckInsTab({ clientId }) {
     try {
       if (editing) {
         await api.put(`/check-ins/${editing.id}`, payload);
+        if (payload.review_status === 'reviewed') trackProductEvent('check_in_reviewed', { source: 'client_detail' });
         toast.success('Check-in updated');
       } else {
         await api.post(`/check-ins/clients/${clientId}`, payload);
+        if (payload.review_status === 'reviewed') trackProductEvent('check_in_reviewed', { source: 'client_detail' });
         toast.success('Check-in saved');
       }
       setOpen(false);

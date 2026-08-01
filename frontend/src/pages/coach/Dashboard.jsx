@@ -7,9 +7,10 @@ import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, Users, Inbox, MessageSquare, Check, Plus, ChevronRight, ClipboardCheck } from 'lucide-react';
-import { fmtTime, fmtDay, fmtDateTime, fmtDate } from '@/lib/format';
+import { CalendarDays, Users, Inbox, MessageSquare, Check, Plus, ChevronRight } from 'lucide-react';
+import { fmtTime, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
+import { buildCoachActionQueue } from '@/lib/coachActionQueue';
 
 export default function CoachDashboard() {
   const { user } = useAuth();
@@ -17,11 +18,26 @@ export default function CoachDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [attention, setAttention] = useState([]);
+  const [attentionUnavailable, setAttentionUnavailable] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/dashboard/coach');
-      setData(data);
+      const to = new Date();
+      const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const [dashboardResult, analyticsResult] = await Promise.allSettled([
+        api.get('/dashboard/coach'),
+        api.get(`/analytics/coach?from=${from.toISOString()}&to=${to.toISOString()}`),
+      ]);
+      if (dashboardResult.status === 'rejected') throw dashboardResult.reason;
+      setData(dashboardResult.value.data);
+      if (analyticsResult.status === 'fulfilled' && analyticsResult.value.data?.coverage?.complete !== false) {
+        setAttention(analyticsResult.value.data?.attention || []);
+        setAttentionUnavailable(false);
+      } else {
+        setAttention([]);
+        setAttentionUnavailable(true);
+      }
       setLoadError(null);
     } catch (e) {
       const message = errMsg(e, 'Failed to load dashboard');
@@ -44,11 +60,22 @@ export default function CoachDashboard() {
     }
   };
 
+  const handleSessionComplete = async (id) => {
+    try {
+      await api.patch(`/sessions/${id}/complete`);
+      toast.success('Session completed');
+      load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not complete session'));
+    }
+  };
+
   if (loading) return <DashboardSkeleton />;
   if (!data && loadError) return <LoadErrorState message={loadError} scope="coach-dashboard" onRetry={() => { setLoading(true); load(); }} />;
   if (!data) return <DashboardSkeleton />;
 
   const firstName = (user.profile?.name || '').split(' ')[0];
+  const actionQueue = buildCoachActionQueue(data, attention);
 
   return (
     <DashboardChoreography pageKey={`coach-dashboard-${user.id || user.profile?.id || user.role}`}>
@@ -99,87 +126,60 @@ export default function CoachDashboard() {
         </CardContent>
       </Card>
 
-      <Card className="mt-4" data-testid="pending-bookings-card">
-        <CardHeader className="pb-3">
-          <SectionLabel>Booking requests</SectionLabel>
+      <Card className="mt-4" data-testid="coach-action-queue">
+        <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+          <div>
+            <SectionLabel>Today&apos;s priorities</SectionLabel>
+            <p className="mt-1 text-sm text-muted-foreground">Resolve the work that is waiting on you.</p>
+          </div>
+          <Link to="/coach/analytics" className="flex min-h-11 shrink-0 items-center text-xs font-medium text-primary">
+            Analytics <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
         </CardHeader>
         <CardContent className="space-y-2.5">
-          {data.pending_bookings.length === 0 && (
-            <p className="text-sm text-muted-foreground py-2">No pending requests.</p>
+          {attentionUnavailable && (
+            <p className="rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-xs" role="status" data-testid="coach-queue-partial-note">
+              Longer-range client signals could not be loaded. Current requests, messages, check-ins, and open sessions are still shown.
+            </p>
           )}
-          {data.pending_bookings.map((b) => (
-            <div key={b.id} className="rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="booking-request-row">
+          {actionQueue.length === 0 && (
+            <p className="text-sm text-muted-foreground py-2" data-testid="coach-action-queue-empty">Nothing needs your attention right now.</p>
+          )}
+          {actionQueue.map((item) => (
+            <div key={item.key} className="rounded-xl border border-border bg-card/60 px-4 py-3" data-testid={`coach-action-${item.kind}`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <p className="font-medium truncate" data-testid="booking-client-name">{b.client?.name}</p>
-                  <p className="text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
-                  {b.note && <p className="text-xs text-muted-foreground mt-1 italic truncate" data-testid="booking-request-note">"{b.note}"</p>}
+                  <p className="font-medium">
+                    {item.kind === 'booking'
+                      ? <><span data-testid="booking-client-name">{item.detail.client?.name || 'Client'}</span> is waiting for a booking decision</>
+                      : item.title}
+                  </p>
+                  {item.kind === 'stale_session' && <p className="mt-0.5 text-xs text-muted-foreground">{fmtDateTime(item.detail.scheduled_at)} · {item.detail.duration_minutes}m</p>}
+                  {item.kind === 'booking' && <>
+                    <p className="mt-0.5 text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(item.detail.requested_time)} · {item.detail.duration_minutes}m</p>
+                    {item.detail.note && <p className="mt-1 truncate text-xs italic text-muted-foreground" data-testid="booking-request-note">&quot;{item.detail.note}&quot;</p>}
+                  </>}
+                  {item.kind === 'message' && <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.detail.content}</p>}
+                  {item.kind === 'check_in' && <CheckInStats className="mt-1" stats={[["Energy", item.detail.energy || '-'], ["Sleep", item.detail.sleep_quality || '-']]} />}
+                  {item.kind === 'attention' && <p className="mt-0.5 text-xs text-muted-foreground">{item.reasons.map((reason) => reason.label).join(' · ')}</p>}
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  <Button size="sm" className="rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button">
-                    <Check className="h-3.5 w-3.5 mr-1" /> Approve
-                  </Button>
-                  <Button size="sm" variant="ghost" className="rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button">
-                    Decline
-                  </Button>
+                  {item.kind === 'booking' ? (
+                    <>
+                      <Button size="sm" className="min-h-11 rounded-lg" onClick={() => handleBooking(item.detail.id, 'approve')} data-testid="booking-approve-button"><Check className="mr-1 h-3.5 w-3.5" />Approve</Button>
+                      <Button size="sm" variant="outline" className="min-h-11 rounded-lg text-destructive" onClick={() => handleBooking(item.detail.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
+                    </>
+                  ) : item.kind === 'stale_session' ? (
+                    <>
+                      <Button size="sm" className="min-h-11 rounded-lg" onClick={() => handleSessionComplete(item.detail.id)}><Check className="mr-1 h-3.5 w-3.5" />Complete</Button>
+                      <Button asChild size="sm" variant="outline" className="min-h-11 rounded-lg"><Link to="/coach/sessions?view=past">Review</Link></Button>
+                    </>
+                  ) : (
+                    <Button asChild size="sm" variant="outline" className="min-h-11 rounded-lg"><Link to={item.href}>{item.action}</Link></Button>
+                  )}
                 </div>
               </div>
             </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card className="mt-4" data-testid="recent-check-ins-card">
-        <CardHeader className="pb-3">
-          <SectionLabel>Check-ins to review</SectionLabel>
-        </CardHeader>
-        <CardContent className="space-y-2.5">
-          {data.recent_check_ins.length === 0 && (
-            <p className="text-sm text-muted-foreground py-2">No check-ins waiting for review.</p>
-          )}
-          {data.recent_check_ins.map((checkIn) => (
-            <Link key={checkIn.id} to={`/coach/clients/${checkIn.client_id}`} className="block rounded-xl border border-border bg-card/60 px-4 py-3 hover:bg-card transition-colors" data-testid="dashboard-check-in-row">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <ClipboardCheck className="h-4 w-4 text-primary shrink-0" />
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{checkIn.client?.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{fmtDate(checkIn.check_in_date)}</p>
-                    <CheckInStats
-                      className="mt-1"
-                      stats={[
-                        ['Energy', checkIn.energy || '-'],
-                        ['Sleep', checkIn.sleep_quality || '-'],
-                      ]}
-                    />
-                  </div>
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-              </div>
-            </Link>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card className="mt-4" data-testid="recent-messages-card">
-        <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-          <SectionLabel>Recent messages</SectionLabel>
-          <Link to="/coach/messages" className="text-xs text-primary font-medium flex items-center">
-            Inbox <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {data.recent_messages.length === 0 && <p className="text-sm text-muted-foreground py-2">No messages yet.</p>}
-          {data.recent_messages.map((m) => (
-            <Link key={m.id} to={`/coach/messages/${m.client_id}`} className="block rounded-xl border border-border bg-card/60 px-4 py-2.5 hover:bg-card transition-colors" data-testid="recent-message-row">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">{m.client?.name}</p>
-                <p className="text-[10px] text-muted-foreground">{fmtDay(m.created_at)}</p>
-              </div>
-              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                {m.sender_role === 'coach' ? 'You: ' : ''}{m.content}
-              </p>
-            </Link>
           ))}
         </CardContent>
       </Card>

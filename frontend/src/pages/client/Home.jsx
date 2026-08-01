@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { DashboardSkeleton, LoadErrorState, StatTile, SectionLabel, CheckInStats } from '@/components/common';
@@ -12,24 +12,41 @@ import {
 } from '@/components/ui/dialog';
 import {
   CalendarDays, Dumbbell, ChevronRight, MapPin,
-  MessageSquare, AlertTriangle, ClipboardCheck, Activity,
+  MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2,
 } from 'lucide-react';
 import { fmtDay, fmtTime, fmtDateTime, fmtDate } from '@/lib/format';
 import { toast } from 'sonner';
 import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
+import { chooseClientTodayPlan } from '@/lib/clientTodayPlan';
+import { trackProductEvent } from '@/lib/telemetry';
 
 export default function ClientHome() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [training, setTraining] = useState({ assignments: null, activeLog: null, history: [], complete: false });
+  const [startingWorkout, setStartingWorkout] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/dashboard/client');
-      setData(data);
+      const [dashboardResult, assignedResult, activeResult, historyResult] = await Promise.allSettled([
+        api.get('/dashboard/client'),
+        api.get('/programs/client/assigned'),
+        api.get('/workout-logs/active'),
+        api.get('/workout-logs/mine'),
+      ]);
+      if (dashboardResult.status === 'rejected') throw dashboardResult.reason;
+      setData(dashboardResult.value.data);
+      setTraining({
+        assignments: assignedResult.status === 'fulfilled' ? assignedResult.value.data : null,
+        activeLog: activeResult.status === 'fulfilled' ? activeResult.value.data : null,
+        history: historyResult.status === 'fulfilled' ? historyResult.value.data : [],
+        complete: assignedResult.status === 'fulfilled' && activeResult.status === 'fulfilled' && historyResult.status === 'fulfilled',
+      });
       setLoadError(null);
     } catch (e) {
       const message = errMsg(e, 'Failed to load');
@@ -44,6 +61,7 @@ export default function ClientHome() {
     setSaving(true);
     try {
       await api.post('/check-ins/mine', payload);
+      trackProductEvent('check_in_submitted', { source: 'client_home' });
       toast.success(data?.today_check_in ? 'Check-in updated' : 'Check-in saved');
       setCheckInOpen(false);
       load();
@@ -54,11 +72,34 @@ export default function ClientHome() {
     }
   };
 
+  const startWorkout = async (source) => {
+    setStartingWorkout(true);
+    try {
+      const { data: started } = await api.post('/workout-logs/start', source);
+      trackProductEvent('workout_started', { source: 'client_home', assignment_kind: source.workout_assignment_id ? 'standalone' : 'program' });
+      navigate(`/client/workouts/${started.workout_log.id}/track`);
+    } catch (error) {
+      const active = error.response?.data?.active_workout;
+      if (error.response?.status === 409 && active?.id) {
+        navigate(`/client/workouts/${active.id}/track`);
+      } else {
+        toast.error(errMsg(error, 'Could not start workout'));
+      }
+    } finally {
+      setStartingWorkout(false);
+    }
+  };
+
   if (!data && loadError) return <LoadErrorState message={loadError} scope="client-home" onRetry={() => { setLoadError(null); load(); }} />;
   if (!data) return <DashboardSkeleton tiles={2} />;
 
   const firstName = (user.profile?.name || '').split(' ')[0];
   const todayCheckIn = data.today_check_in;
+  const todayPlan = chooseClientTodayPlan({
+    ...training,
+    unreadMessages: data.unread_messages,
+    todayCheckIn,
+  });
 
   return (
     <div>
@@ -83,6 +124,32 @@ export default function ClientHome() {
           </div>
         </Link>
       )}
+
+      <Card className="mb-4 overflow-hidden border-primary/30" data-testid="client-today-plan">
+        <CardContent className="p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">{todayPlan.eyebrow}</p>
+          <div className="mt-1 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="font-display text-2xl font-semibold" data-testid="client-today-plan-title">{todayPlan.title}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{todayPlan.description}</p>
+            </div>
+            <Dumbbell className="h-6 w-6 shrink-0 text-primary" aria-hidden />
+          </div>
+          {todayPlan.source ? (
+            <Button className="mt-4 min-h-11 rounded-xl" disabled={startingWorkout} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
+              {startingWorkout ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
+            </Button>
+          ) : todayPlan.kind === 'check_in' ? (
+            <Button className="mt-4 min-h-11 rounded-xl" onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
+              <ClipboardCheck className="mr-1.5 h-4 w-4" />{todayPlan.action}
+            </Button>
+          ) : (
+            <Button asChild className="mt-4 min-h-11 rounded-xl" data-testid="client-today-primary-action">
+              <Link to={todayPlan.href}>{todayPlan.action}<ChevronRight className="ml-1 h-4 w-4" /></Link>
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="border-primary/25" data-testid="daily-check-in-card">
         <CardContent className="p-5">

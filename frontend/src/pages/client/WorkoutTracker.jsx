@@ -17,6 +17,7 @@ import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import { formatRestSeconds } from '@/lib/rest';
+import { trackProductEvent } from '@/lib/telemetry';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
 // database parses and backfills. The old runtime text parser is gone; text
@@ -369,6 +370,7 @@ export default function WorkoutTracker() {
         },
       });
       const flushed = await outbox.flush();
+      trackProductEvent('workout_completed', { source: isCoach ? 'coach_tracker' : 'client_tracker', offline: !flushed });
       localStorage.removeItem(restStorageKey);
       navigate(`${basePath}/workouts/${id}`, {
         replace: true,
@@ -383,6 +385,7 @@ export default function WorkoutTracker() {
     if (!window.confirm('Abandon this workout? Saved progress will remain out of the completed history.')) return;
     try {
       await api.post(`/workout-logs/${id}/abandon`);
+      trackProductEvent('workout_abandoned', { source: isCoach ? 'coach_tracker' : 'client_tracker' });
       localStorage.removeItem(`cvf_workout_outbox_${id}`);
       localStorage.removeItem(restStorageKey);
       navigate(isCoach ? `/coach/clients/${log.client_id}` : '/client/programs', { replace: true });

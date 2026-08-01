@@ -43,13 +43,13 @@ export function LoadErrorState({ message = 'Please try again.', onRetry, scope =
 
 export function PageHeader({ title, subtitle, action, testId }) {
   return (
-    <div className="flex items-start justify-between gap-3 mb-5" data-testid={testId}>
-      <div>
+    <div className="mb-5 flex min-w-0 flex-col items-start justify-between gap-3 sm:flex-row" data-testid={testId}>
+      <div className="min-w-0">
         <div className="h-[3px] w-7 rounded-full bg-primary mb-2" aria-hidden />
         <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight">{title}</h1>
         {subtitle ? <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p> : null}
       </div>
-      {action}
+      {action ? <div className="w-full min-w-0 sm:w-auto">{action}</div> : null}
     </div>
   );
 }

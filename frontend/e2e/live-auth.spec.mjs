@@ -208,7 +208,7 @@ test('real coach auth covers ownership surfaces and archives created test data',
   await login(page, accounts.coach, '/coach');
   await expect(page.getByTestId('coach-dashboard-today-sessions-card')).toBeVisible();
 
-  const pending = page.getByTestId('booking-request-row').filter({ hasText: clientFlowMarker });
+  const pending = page.getByTestId('coach-action-booking').filter({ hasText: clientFlowMarker });
   if (await pending.count()) {
     await pending.first().getByTestId('booking-decline-button').click();
     await expect(pending.first()).toBeHidden();
@@ -656,8 +656,8 @@ test('real session, progress, booking, and messaging controls complete end to en
 
   try {
     await login(page, accounts.coach, '/coach');
-    const approveRequest = page.getByTestId('booking-request-row').filter({ hasText: approveNote });
-    const declineRequest = page.getByTestId('booking-request-row').filter({ hasText: declineNote });
+    const approveRequest = page.getByTestId('coach-action-booking').filter({ hasText: approveNote });
+    const declineRequest = page.getByTestId('coach-action-booking').filter({ hasText: declineNote });
     await approveRequest.getByTestId('booking-approve-button').click();
     await expect(page.getByText('Approved - session created')).toBeVisible();
     await expect(approveRequest).toBeHidden();

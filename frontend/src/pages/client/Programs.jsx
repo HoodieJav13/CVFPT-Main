@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, LoadingScreen, LoadErrorState, EmptyState } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,14 +10,19 @@ import { CalendarDays, ChevronRight, Dumbbell, Loader2, Play, StickyNote } from 
 import { fmtDate, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
 import { hasQueuedCompleteFor } from '@/lib/workoutOutbox';
+import { trackProductEvent } from '@/lib/telemetry';
 
 export default function ClientPrograms() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [assignments, setAssignments] = useState(null);
   const [activeLog, setActiveLog] = useState(null);
   const [history, setHistory] = useState(null);
   const [starting, setStarting] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const viewTracked = useRef(false);
+  const requestedView = searchParams.get('view');
+  const view = ['current', 'other', 'history'].includes(requestedView) ? requestedView : 'current';
 
   const load = useCallback(async () => {
     try {
@@ -39,10 +44,17 @@ export default function ClientPrograms() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!assignments || history === null || viewTracked.current) return;
+    viewTracked.current = true;
+    trackProductEvent('training_plan_viewed', { route: '/client/programs' });
+  }, [assignments, history]);
+
   const startWorkout = async (key, source) => {
     setStarting(key);
     try {
       const { data } = await api.post('/workout-logs/start', source);
+      trackProductEvent('workout_started', { source: 'training_page', assignment_kind: source.workout_assignment_id ? 'standalone' : 'program' });
       navigate(`/client/workouts/${data.workout_log.id}/track`);
     } catch (error) {
       const active = error.response?.data?.active_workout;
@@ -67,10 +79,11 @@ export default function ClientPrograms() {
     .filter((assignment) => assignment.assignment_mode === 'dated')
     .sort((a, b) => String(a.assigned_for || '').localeCompare(String(b.assigned_for || '')));
   const isEmpty = programAssignments.length === 0 && workoutAssignments.length === 0;
+  const hasTrainingContent = !isEmpty || history.length > 0;
 
   return (
     <div>
-      <PageHeader title="My programs" subtitle="Assigned training and workout history" />
+      <PageHeader title="My training" subtitle="Your current plan, other workouts, and history" />
       {activeLog && (
         <Card className="mb-5 border-primary/30 bg-primary/5" data-testid="active-workout-banner">
           <CardContent className="flex items-center justify-between gap-3 p-4">
@@ -79,27 +92,53 @@ export default function ClientPrograms() {
           </CardContent>
         </Card>
       )}
-      {isEmpty && <EmptyState icon={Dumbbell} title="No programs yet" subtitle="Your coach will assign workout programs here." testId="client-programs-empty" />}
+      {!hasTrainingContent && <EmptyState icon={Dumbbell} title="No programs yet" subtitle="Your coach will assign workout programs here." testId="client-programs-empty" />}
+      {hasTrainingContent && (
+        <div className="mb-5 grid grid-cols-3 gap-1 rounded-xl border border-border bg-secondary/40 p-1" role="tablist" aria-label="Training sections" data-testid="client-training-sections">
+          {[
+            ['current', 'Current'],
+            ['other', 'Other'],
+            ['history', 'History'],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={view === key}
+              onClick={() => setSearchParams(key === 'current' ? {} : { view: key })}
+              className={`min-h-11 rounded-lg px-2 text-sm font-medium transition-colors ${view === key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              data-testid={`client-training-tab-${key}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="space-y-5">
-        {programAssignments.map((assignment) => (
-          <ProgramAssignmentCard key={assignment.id} assignment={assignment} starting={starting} onStart={startWorkout} />
-        ))}
-
-        {(activeWorkouts.length > 0 || datedWorkouts.length > 0) && (
-          <section className="space-y-3">
-            <div><h2 className="font-display text-lg font-semibold">Standalone workouts</h2><p className="text-sm text-muted-foreground">Active templates and one-off dated workouts.</p></div>
-            {[...activeWorkouts, ...datedWorkouts].map((assignment) => (
-              <WorkoutAssignmentCard key={assignment.id} assignment={assignment} starting={starting} onStart={startWorkout} />
-            ))}
+        {view === 'current' && (
+          <section className="space-y-3" role="tabpanel" data-testid="client-training-current">
+            <div><h2 className="font-display text-lg font-semibold">Current program</h2><p className="text-sm text-muted-foreground">Your primary coach-built training plan.</p></div>
+            {programAssignments.length === 0
+              ? <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No current program assigned.</div>
+              : programAssignments.map((assignment) => <ProgramAssignmentCard key={assignment.id} assignment={assignment} starting={starting} onStart={startWorkout} />)}
           </section>
         )}
 
-        <section className="space-y-3" data-testid="client-workout-history">
+        {view === 'other' && (
+          <section className="space-y-3" role="tabpanel" data-testid="client-training-other">
+            <div><h2 className="font-display text-lg font-semibold">Other workouts</h2><p className="text-sm text-muted-foreground">Dated assignments and reusable standalone workouts.</p></div>
+            {(activeWorkouts.length > 0 || datedWorkouts.length > 0)
+              ? [...activeWorkouts, ...datedWorkouts].map((assignment) => <WorkoutAssignmentCard key={assignment.id} assignment={assignment} starting={starting} onStart={startWorkout} />)
+              : <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No other workouts assigned.</div>}
+          </section>
+        )}
+
+        {view === 'history' && <section className="space-y-3" role="tabpanel" data-testid="client-workout-history">
           <div><h2 className="font-display text-lg font-semibold">Workout history</h2><p className="text-sm text-muted-foreground">Completed self-guided workouts.</p></div>
           {history.length === 0 ? (
             <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No completed workouts yet.</div>
           ) : history.slice(0, 12).map((log) => <HistoryRow key={log.id} log={log} />)}
-        </section>
+        </section>}
       </div>
     </div>
   );

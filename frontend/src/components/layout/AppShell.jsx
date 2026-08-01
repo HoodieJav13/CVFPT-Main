@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate, Link } from 'react-router';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
   TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search, BarChart3,
   Download, Share,
+  Mail,
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
 import ClientJump from '@/components/ClientJump';
@@ -20,6 +21,9 @@ import {
 import { useInstallMode, promptInstall, dismissInstall } from '@/lib/pwa';
 import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { api, errMsg } from '@/lib/api';
+import { Switch } from '@/components/ui/switch';
+import { toast } from 'sonner';
 import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 
@@ -299,9 +303,41 @@ export default function AppShell() {
 
 function UserMenu({ user, logout, compact }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const isClient = user.role === 'client';
   const installMode = useInstallMode();
   const [iosHelpOpen, setIosHelpOpen] = useState(false);
+  const [emailHelpOpen, setEmailHelpOpen] = useState(false);
+  const [digestOptOut, setDigestOptOut] = useState(false);
+  const [emailPreferenceLoading, setEmailPreferenceLoading] = useState(false);
+
+  const openEmailPreferences = useCallback(() => {
+    setEmailHelpOpen(true);
+    setEmailPreferenceLoading(true);
+    api.get('/email-preferences')
+      .then(({ data }) => setDigestOptOut(Boolean(data.digest_opt_out)))
+      .catch((error) => toast.error(errMsg(error, 'Could not load email settings')))
+      .finally(() => setEmailPreferenceLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('email-settings') === '1') openEmailPreferences();
+  }, [location.search, openEmailPreferences]);
+
+  const updateDigestPreference = async (checked) => {
+    const previous = digestOptOut;
+    setDigestOptOut(checked);
+    setEmailPreferenceLoading(true);
+    try {
+      await api.patch('/email-preferences', { digest_opt_out: checked });
+      toast.success(checked ? 'Daily digest turned off' : 'Daily digest turned on');
+    } catch (error) {
+      setDigestOptOut(previous);
+      toast.error(errMsg(error, 'Could not save email settings'));
+    } finally {
+      setEmailPreferenceLoading(false);
+    }
+  };
   return (
     <>
     <DropdownMenu>
@@ -357,6 +393,10 @@ function UserMenu({ user, logout, compact }) {
             <DropdownMenuSeparator />
           </>
         )}
+        <DropdownMenuItem onClick={openEmailPreferences} data-testid="email-preferences-item">
+          <Mail className="h-4 w-4 mr-2" /> Email notifications
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={logout} data-testid="logout-button">
           <LogOut className="h-4 w-4 mr-2" /> Log out
         </DropdownMenuItem>
@@ -396,6 +436,27 @@ function UserMenu({ user, logout, compact }) {
             Got it
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={emailHelpOpen} onOpenChange={setEmailHelpOpen}>
+      <DialogContent className="max-w-sm" data-testid="email-preferences-dialog">
+        <DialogHeader>
+          <DialogTitle>Email notifications</DialogTitle>
+          <DialogDescription>Booking and session emails stay on. You can turn the non-urgent daily summary on or off.</DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-border p-4">
+          <div>
+            <p className="text-sm font-medium">Turn off daily digest</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Unread messages and new assignments remain visible in the app.</p>
+          </div>
+          <Switch
+            checked={digestOptOut}
+            disabled={emailPreferenceLoading}
+            onCheckedChange={updateDigestPreference}
+            aria-label="Turn off daily email digest"
+            data-testid="digest-opt-out-switch"
+          />
+        </div>
       </DialogContent>
     </Dialog>
     </>

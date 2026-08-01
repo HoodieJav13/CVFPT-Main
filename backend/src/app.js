@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { corsConfiguration, createCorsOriginCheck } = require('./config/cors');
+const { requestObservability } = require('./middleware/requestObservability');
 
 const app = express();
 const corsConfig = corsConfiguration(process.env);
@@ -18,10 +19,15 @@ app.use(express.json({
   limit: '2mb',
   verify: (req, _res, buf) => { req.rawBody = buf; },
 }));
+app.use(requestObservability);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'cvf-pt-api' });
 });
+
+// Cron authentication lives inside this router. It must be mounted before
+// authenticated or parameterized application routes.
+app.use('/api/internal', require('./routes/internal').router);
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/clients', require('./routes/clients'));
@@ -38,7 +44,9 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/workout-logs', require('./routes/workoutLogs'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/email-preferences', require('./routes/emailPreferences'));
 app.use('/api/availability', require('./routes/availability'));
 app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/telemetry', require('./routes/telemetry').router);
 
 module.exports = app;
