@@ -62,6 +62,41 @@ router.get('/', requireCoach, async (req, res) => {
   }
 });
 
+// GET /api/sessions/studio (coach): every coach's schedule for the
+// shared studio calendar, privacy-scoped per roadmap-v3 D1 — coach,
+// time, duration, location, and status are visible to all coaches;
+// client identity is stripped server-side unless the viewer is that
+// client's coach or an admin. Registered before any '/:id' routes.
+router.get('/studio', requireCoach, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('sessions')
+      .select('id, coach_id, scheduled_at, duration_minutes, location, status, coach:coaches(id, name), client:clients(id, name, coach_id)')
+      .eq('archived', false)
+      .order('scheduled_at', { ascending: true });
+    if (error) throw error;
+    const viewerCoachId = req.user.coach.id;
+    const isAdmin = req.user.role === 'admin';
+    const sessions = (data || []).map((session) => {
+      const own = isAdmin || session.client?.coach_id === viewerCoachId;
+      return {
+        id: session.id,
+        coach_id: session.coach_id,
+        scheduled_at: session.scheduled_at,
+        duration_minutes: session.duration_minutes,
+        location: session.location,
+        status: session.status,
+        coach: session.coach ? { id: session.coach.id, name: session.coach.name } : null,
+        client: own && session.client ? { id: session.client.id, name: session.client.name } : null,
+        masked: !own,
+      };
+    });
+    return res.json(sessions);
+  } catch (e) {
+    logError('studio sessions error', e);
+    return res.status(500).json({ error: 'Failed to load the studio calendar' });
+  }
+});
+
 // POST /api/sessions  (coach)
 router.post('/', requireCoach, async (req, res) => {
   try {
