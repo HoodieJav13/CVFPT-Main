@@ -73,6 +73,22 @@ test('routes scope writes to the calling coach and slots to the client\'s own co
   assert.match(routes, /router\.get\('\/slots', requireClient/);
 });
 
+test('impact UI: failed checks show error+retry, expired spans skip, jump link exists', () => {
+  const editor = fs.readFileSync(
+    path.join(root, 'frontend', 'src', 'components', 'AvailabilityEditor.jsx'),
+    'utf8',
+  );
+  // A failed check must never render as "no affected sessions".
+  assert.match(editor, /availability-timeoff-impact-error/);
+  assert.match(editor, /availability-timeoff-impact-retry/);
+  assert.match(editor, /setFailed\(true\)/);
+  // Historical rows don't fire requests: fully-past spans are skipped.
+  assert.match(editor, /const expired = endsAt && new Date\(endsAt\) <= new Date\(\);/);
+  // The promised jump link: Open Sessions closes the drawer onto Sessions.
+  assert.match(editor, /availability-timeoff-open-sessions/);
+  assert.match(editor, /onOpenSessions=\{\(\) => onOpenChange\(false\)\}/);
+});
+
 test('time-off impact lists own-coach overlapping sessions and never cancels them', () => {
   // Coach-only, scoped to the caller; cancelled/archived excluded.
   assert.match(routes, /router\.get\('\/impact', requireCoach/);

@@ -26,24 +26,41 @@ const trimSeconds = (value) => (value || '').slice(0, 5);
 
 // Booked sessions overlapping a time-off span (A2: they stay booked —
 // this list makes resolving them explicit). Used for the add form
-// preview and for each existing row.
-function TimeOffImpact({ startsAt, endsAt }) {
+// preview and for each existing row. A failed check must never read as
+// "no conflicts", so errors render with a retry. Spans fully in the
+// past are skipped — nothing there is resolvable anymore.
+function TimeOffImpact({ startsAt, endsAt, onOpenSessions }) {
   const [sessions, setSessions] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  const expired = endsAt && new Date(endsAt) <= new Date();
 
   useEffect(() => {
-    if (!startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt)) {
+    if (!startsAt || !endsAt || expired || new Date(endsAt) <= new Date(startsAt)) {
       setSessions(null);
+      setFailed(false);
       return undefined;
     }
     let cancelled = false;
     const timer = setTimeout(() => {
       api.get(`/availability/impact?starts_at=${encodeURIComponent(new Date(startsAt).toISOString())}&ends_at=${encodeURIComponent(new Date(endsAt).toISOString())}`)
-        .then(({ data }) => { if (!cancelled) setSessions(data.sessions); })
-        .catch(() => { if (!cancelled) setSessions(null); });
+        .then(({ data }) => { if (!cancelled) { setSessions(data.sessions); setFailed(false); } })
+        .catch(() => { if (!cancelled) { setSessions(null); setFailed(true); } });
     }, 350);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [startsAt, endsAt]);
+  }, [startsAt, endsAt, expired, attempt]);
 
+  if (failed) {
+    return (
+      <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2" data-testid="availability-timeoff-impact-error">
+        <p className="text-xs text-destructive">Couldn't check for affected sessions.</p>
+        <Button variant="ghost" size="sm" className="h-8 rounded-lg text-xs" onClick={() => setAttempt((n) => n + 1)} data-testid="availability-timeoff-impact-retry">
+          Retry
+        </Button>
+      </div>
+    );
+  }
   if (!sessions?.length) return null;
   return (
     <div className="mt-2 rounded-xl border border-gold/30 bg-gold/5 px-3 py-2.5" data-testid="availability-timeoff-impact">
@@ -58,7 +75,14 @@ function TimeOffImpact({ startsAt, endsAt }) {
         ))}
         {sessions.length > 4 && <p className="text-xs text-muted-foreground">…and {sessions.length - 4} more</p>}
       </div>
-      <p className="mt-1.5 text-[11px] text-muted-foreground">They stay on the calendar — cancel or move them from Sessions if needed.</p>
+      <div className="mt-1.5 flex items-center justify-between gap-3">
+        <p className="text-[11px] text-muted-foreground">They stay on the calendar — cancel or move them if needed.</p>
+        {onOpenSessions && (
+          <Button variant="ghost" size="sm" className="h-8 shrink-0 rounded-lg text-xs" onClick={onOpenSessions} data-testid="availability-timeoff-open-sessions">
+            Open Sessions
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -232,7 +256,7 @@ export function AvailabilityDrawer({ open, onOpenChange }) {
                             <Trash2 className="h-3.5 w-3.5" />
                           </IconButton>
                         </div>
-                        {span && <TimeOffImpact startsAt={span.starts_at} endsAt={span.ends_at} />}
+                        {span && <TimeOffImpact startsAt={span.starts_at} endsAt={span.ends_at} onOpenSessions={() => onOpenChange(false)} />}
                       </div>
                     );
                   })}
@@ -244,7 +268,7 @@ export function AvailabilityDrawer({ open, onOpenChange }) {
                     <div className="space-y-1"><Label className="text-xs">To</Label>
                       <Input type="datetime-local" value={timeOff.ends_at} onChange={(e) => setTimeOff({ ...timeOff, ends_at: e.target.value })} className="h-11 rounded-xl" data-testid="availability-timeoff-end" /></div>
                   </div>
-                  <TimeOffImpact startsAt={timeOff.starts_at} endsAt={timeOff.ends_at} />
+                  <TimeOffImpact startsAt={timeOff.starts_at} endsAt={timeOff.ends_at} onOpenSessions={() => onOpenChange(false)} />
                   <div className="flex items-end gap-2">
                     <div className="flex-1 space-y-1"><Label className="text-xs">Reason (private)</Label>
                       <Input value={timeOff.reason} onChange={(e) => setTimeOff({ ...timeOff, reason: e.target.value })} placeholder="Vacation, appointment..." className="h-11 rounded-xl" data-testid="availability-timeoff-reason" /></div>
