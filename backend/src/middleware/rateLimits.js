@@ -76,6 +76,12 @@ const programCommitLimiter = createRateLimiter({
   limit: 20,
 });
 
+const clientImportLimiter = createRateLimiter({
+  identifier: 'client-roster-import',
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+});
+
 const libraryImportLimiter = createRateLimiter({
   identifier: 'exercise-library-import',
   windowMs: 15 * 60 * 1000,
@@ -103,6 +109,7 @@ const telemetryLimiter = createRateLimiter({
 module.exports = {
   RATE_LIMIT_MESSAGE,
   changePasswordLimiter,
+  clientImportLimiter,
   createRateLimiter,
   csvImportLimiter,
   forgotPasswordLimiter,

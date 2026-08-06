@@ -200,4 +200,30 @@ router.patch('/:id/decline', requireCoach, async (req, res) => {
   }
 });
 
+// PATCH /api/bookings/:id/withdraw  (client, own pending request)
+// D1b (2026-08-06): a client can take back a request the coach hasn't
+// handled yet; 'withdrawn' stays distinct from 'declined' in history.
+router.patch('/:id/withdraw', requireClient, async (req, res) => {
+  try {
+    const idValidation = validateUuid(req.params.id, 'Request ID');
+    if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
+    const { data: booking } = await supabaseAdmin.from('booking_requests').select('*')
+      .eq('id', idValidation.value).eq('client_id', req.user.client.id)
+      .eq('archived', false).maybeSingle();
+    if (!booking) return res.status(404).json({ error: 'Request not found' });
+    if (booking.status !== 'pending') return res.status(400).json({ error: 'This request was already handled' });
+    const { data, error } = await supabaseAdmin.from('booking_requests')
+      .update({ status: 'withdrawn', updated_at: new Date().toISOString() })
+      .eq('id', booking.id).eq('status', 'pending').eq('archived', false)
+      .select().maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(400).json({ error: 'This request was already handled' });
+    await dispatchEmail(() => notifyBookingEvent('booking-withdrawn', { booking: data, session: null }));
+    return res.json(data);
+  } catch (e) {
+    logError('withdraw booking error', e);
+    return res.status(500).json({ error: 'Failed to withdraw the request' });
+  }
+});
+
 module.exports = router;

@@ -31,24 +31,31 @@ function sessionTotals(sessions = [], nowMs = Date.now()) {
   let upcoming = 0;
   let stale = 0;
   let cancelled = 0;
+  let noShow = 0;
   for (const session of sessions) {
     if (session.status === 'completed') completed += 1;
     else if (session.status === 'cancelled') cancelled += 1;
+    else if (session.status === 'no_show') noShow += 1;
     else if (session.status === 'scheduled') {
       if (new Date(session.scheduled_at).getTime() >= nowMs) upcoming += 1;
       else stale += 1;
     }
   }
-  const settled = completed + cancelled;
+  // D2a (2026-08-06): no-shows are settled sessions that count against
+  // adherence — they widen the cancellation denominator and get their own
+  // rate rather than hiding inside completed or cancelled.
+  const settled = completed + cancelled + noShow;
   return {
     completed,
     scheduled: upcoming + stale,
     upcoming,
     stale,
     cancelled,
+    no_show: noShow,
     // Denominator excludes still-scheduled sessions so the rate doesn't
     // swing as the future fills in.
     cancellation_rate: settled > 0 ? cancelled / settled : null,
+    no_show_rate: settled > 0 ? noShow / settled : null,
   };
 }
 

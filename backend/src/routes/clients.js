@@ -4,6 +4,7 @@ const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, canAccessClient } = require('../middleware/auth');
 const { configured, dispatchEmail } = require('../services/email');
 const { sendInviteEmail, sendPasswordResetEmail } = require('../services/accountRecovery');
+const { clientImportLimiter } = require('../middleware/rateLimits');
 
 const router = express.Router();
 router.use(requireAuth, requireCoach);
@@ -54,6 +55,71 @@ router.post('/', async (req, res) => {
   } catch (e) {
     logError('create client error', e);
     return res.status(500).json({ error: 'Failed to create client' });
+  }
+});
+
+// POST /api/clients/import { rows: [{ name, email, phone, goals }] }
+// D5 (2026-08-06): roster-only CSV import to soften My PT Hub re-entry.
+// History import stays out of scope. Rows import under the calling coach.
+router.post('/import', clientImportLimiter, async (req, res) => {
+  try {
+    const rows = req.body?.rows;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'Provide at least one row to import' });
+    }
+    if (rows.length > 200) return res.status(400).json({ error: 'Import at most 200 clients at a time' });
+
+    const skipped = [];
+    const seenEmails = new Set();
+    const candidates = [];
+    for (const [index, row] of rows.entries()) {
+      const name = String(row?.name || '').trim();
+      const email = row?.email ? String(row.email).trim().toLowerCase() : null;
+      if (!name) {
+        skipped.push({ row: index + 1, name: name || null, email, reason: 'Name is required' });
+        continue;
+      }
+      if (email && seenEmails.has(email)) {
+        skipped.push({ row: index + 1, name, email, reason: 'Duplicate email in this file' });
+        continue;
+      }
+      if (email) seenEmails.add(email);
+      candidates.push({
+        name,
+        email,
+        phone: row?.phone ? String(row.phone).trim() : null,
+        goals: row?.goals ? String(row.goals).trim() : null,
+      });
+    }
+
+    const emails = candidates.map((c) => c.email).filter(Boolean);
+    const existing = new Set();
+    if (emails.length) {
+      const { data: existingRows, error: existingErr } = await supabaseAdmin
+        .from('clients').select('email').in('email', emails).eq('archived', false);
+      if (existingErr) throw existingErr;
+      for (const rowFound of existingRows || []) existing.add(rowFound.email);
+    }
+
+    const toInsert = [];
+    for (const candidate of candidates) {
+      if (candidate.email && existing.has(candidate.email)) {
+        skipped.push({ name: candidate.name, email: candidate.email, reason: 'A client with this email already exists' });
+      } else {
+        toInsert.push({ ...candidate, coach_id: req.user.coach.id });
+      }
+    }
+
+    let imported = [];
+    if (toInsert.length) {
+      const { data, error } = await supabaseAdmin.from('clients').insert(toInsert).select('id, name, email');
+      if (error) throw error;
+      imported = data || [];
+    }
+    return res.status(201).json({ imported: imported.length, clients: imported, skipped });
+  } catch (e) {
+    logError('import clients error', e);
+    return res.status(500).json({ error: 'Failed to import clients' });
   }
 });
 
