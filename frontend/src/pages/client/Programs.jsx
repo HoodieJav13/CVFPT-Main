@@ -11,6 +11,7 @@ import { fmtDate, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
 import { hasQueuedCompleteFor } from '@/lib/workoutOutbox';
 import { trackProductEvent } from '@/lib/telemetry';
+import { safeHttpUrl } from '@/lib/safeUrl';
 
 export default function ClientPrograms() {
   const navigate = useNavigate();
@@ -267,5 +268,5 @@ function AssignmentNote({ children }) {
 }
 
 function exerciseName(exercise) { return exercise.library_exercise?.name || exercise.custom_name || exercise.name || 'Exercise'; }
-function exerciseVideo(exercise) { return exercise.video_url || exercise.library_exercise?.video_url || ''; }
+function exerciseVideo(exercise) { return safeHttpUrl(exercise.video_url || exercise.library_exercise?.video_url); }
 function clientExerciseNotes(exercise) { return exercise.client_notes || exercise.notes || ''; }
