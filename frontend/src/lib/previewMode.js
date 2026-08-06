@@ -14,12 +14,10 @@ const PREVIEW_ROLE_KEY = 'cvf_preview_role';
 const PREVIEW_CLIENT_KEY = 'cvf_preview_client_id';
 const CHANGE_EVENT = 'cvf-preview-change';
 
-// Local dev opt-in, or the hosted-demo flag that vite.config defines only
-// for Vercel preview builds (and force-defines off for production).
-export const isPreviewMode = Boolean(
-  (import.meta.env.DEV || import.meta.env.REACT_APP_HOSTED_DEMO === 'true')
-  && import.meta.env.REACT_APP_PREVIEW_MODE === 'true',
-);
+// The gate lives in previewFlag.js so consumers can check it without
+// pulling this whole fixture module into the production bundle.
+export { isPreviewMode } from './previewFlag';
+import { isPreviewMode } from './previewFlag';
 
 const now = new Date();
 const iso = (days = 0, hours = 9) => {

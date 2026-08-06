@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { domAnimation, LazyMotion } from 'framer-motion';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -5,21 +6,11 @@ import { NotificationsProvider } from '@/context/NotificationsContext';
 import { Toaster } from '@/components/ui/sonner';
 import { LoadingScreen } from '@/components/common';
 import AppShell from '@/components/layout/AppShell';
-import PreviewToolbar from '@/components/PreviewToolbar';
+import { isPreviewMode } from '@/lib/previewFlag';
 import Login from '@/pages/Login';
 import Signup from '@/pages/Signup';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
-import CoachDashboard from '@/pages/coach/Dashboard';
-import Clients from '@/pages/coach/Clients';
-import ClientDetail from '@/pages/coach/ClientDetail';
-import CoachSessions from '@/pages/coach/Sessions';
-import CoachCalendar from '@/pages/coach/Calendar';
-import Programs from '@/pages/coach/Programs';
-import CoachResources from '@/pages/coach/Resources';
-import CoachMessages from '@/pages/coach/Messages';
-import CoachNotifications from '@/pages/coach/Notifications';
-import CoachAnalytics from '@/pages/coach/Analytics';
 import ClientHome from '@/pages/client/Home';
 import ClientSessions from '@/pages/client/Sessions';
 import ClientProgress from '@/pages/client/Progress';
@@ -29,8 +20,25 @@ import ClientMessages from '@/pages/client/Messages';
 import ClientWaiver from '@/pages/client/Waiver';
 import WorkoutLogDetail from '@/pages/WorkoutLogDetail';
 import WorkoutTracker from '@/pages/client/WorkoutTracker';
-import AdminPage from '@/pages/admin/Admin';
 import '@/App.css';
+
+// The coach/admin tree (including the large Training Builder) loads on
+// demand — phone-first clients no longer download it. Client pages stay
+// eager: they are the perf-sensitive persona and avoid chunk waterfalls
+// on gym Wi-Fi.
+const CoachDashboard = lazy(() => import('@/pages/coach/Dashboard'));
+const Clients = lazy(() => import('@/pages/coach/Clients'));
+const ClientDetail = lazy(() => import('@/pages/coach/ClientDetail'));
+const CoachSessions = lazy(() => import('@/pages/coach/Sessions'));
+const CoachCalendar = lazy(() => import('@/pages/coach/Calendar'));
+const Programs = lazy(() => import('@/pages/coach/Programs'));
+const CoachResources = lazy(() => import('@/pages/coach/Resources'));
+const CoachMessages = lazy(() => import('@/pages/coach/Messages'));
+const CoachNotifications = lazy(() => import('@/pages/coach/Notifications'));
+const CoachAnalytics = lazy(() => import('@/pages/coach/Analytics'));
+const AdminPage = lazy(() => import('@/pages/admin/Admin'));
+// Dev/preview only: never even fetched in production builds.
+const PreviewToolbar = isPreviewMode ? lazy(() => import('@/components/PreviewToolbar')) : () => null;
 
 function RoleRedirect() {
   const { user, loading } = useAuth();
@@ -55,6 +63,7 @@ export default function App() {
       <AuthProvider>
         <NotificationsProvider>
         <BrowserRouter>
+          <Suspense fallback={<LoadingScreen />}>
           <Routes>
             <Route path="/" element={<RoleRedirect />} />
             <Route path="/login" element={<Login />} />
@@ -119,6 +128,7 @@ export default function App() {
             <Route path="*" element={<RoleRedirect />} />
           </Routes>
           <PreviewToolbar />
+          </Suspense>
         </BrowserRouter>
         </NotificationsProvider>
         <Toaster position="top-center" richColors />

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { installPreviewApi } from '@/lib/previewMode';
+import { isPreviewMode } from '@/lib/previewFlag';
 
 const BACKEND_URL = import.meta.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_BACKEND_URL || '';
 
@@ -7,7 +7,13 @@ const BACKEND_URL = import.meta.env.REACT_APP_BACKEND_URL || process.env.REACT_A
 // endless spinner; 60s leaves room for large uploads on slow gym Wi-Fi.
 export const api = axios.create({ baseURL: `${BACKEND_URL}/api`, timeout: 60000 });
 
-installPreviewApi(api);
+// Preview fixtures load via dynamic import so the ~2k-line mock module
+// stays out of the production bundle. main.jsx blocks the first render on
+// previewReady in preview mode, so no request can escape to the network
+// before the mock adapter is installed.
+export const previewReady = isPreviewMode
+  ? import('@/lib/previewMode').then((mod) => { mod.installPreviewApi(api); return mod; })
+  : Promise.resolve(null);
 
 const TOKEN_KEY = 'cvf_access_token';
 const REFRESH_KEY = 'cvf_refresh_token';
