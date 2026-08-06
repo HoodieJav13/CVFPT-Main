@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { trackProductEvent } from '@/lib/telemetry';
+import { reportError } from '@/lib/errorReporting';
 
 export default class AppErrorBoundary extends React.Component {
   constructor(props) {
@@ -12,8 +13,9 @@ export default class AppErrorBoundary extends React.Component {
     return { failed: true };
   }
 
-  componentDidCatch() {
+  componentDidCatch(error) {
     trackProductEvent('frontend_error', { route: window.location.pathname });
+    reportError(error);
   }
 
   render() {
