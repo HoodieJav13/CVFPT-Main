@@ -19,15 +19,26 @@ to claim the existing profile; it does not create a second source of client trut
 
 ## Product capabilities
 
-- Client profiles, invitations, ownership, and soft archival
+- Client profiles, invitations (with emailed claim links), ownership, and soft
+  archival
+- Account recovery: forgot/reset password, in-app password change, and
+  coach-triggered reset emails for locked-out clients
 - Scheduling, booking requests, session notes, and completion
+- Coach availability templates, date overrides, and time off, with published
+  open slots and optional instant auto-booking
+- A privacy-scoped shared studio calendar across coaches
 - Progress metrics, daily check-ins, and coach/client review workflows
 - Training programs, assigned workouts, in-workout tracking, performed-exercise
   history, coach feedback, exercise libraries, assignments, and exports
 - In-app coach notifications for completed client workouts
+- Transactional email notifications (booking lifecycle, session scheduled/
+  rescheduled/cancelled) and an opt-out daily digest with next-24h session
+  reminders
+- Coach analytics (adherence and activity views)
 - Coach-managed PDF resources with public or client-assigned access
 - Coach/client messaging
 - Append-only digital and paper waiver records
+- Installable PWA experience and privacy-safe product telemetry
 
 ## Product rules
 
@@ -43,7 +54,8 @@ to claim the existing profile; it does not create a second source of client trut
 ## Current exclusions
 
 - Public or coach self-signup
-- Automated email, push notification, or marketing campaigns
+- Push notifications, SMS, and marketing/broadcast email campaigns
+  (transactional email and the daily digest are in scope — see capabilities)
 - Full nutrition or habit-tracking programs
 - Native iOS or Android applications
 - In-app packages, credits, checkout, charges, invoicing, subscriptions, or
