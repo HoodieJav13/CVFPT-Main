@@ -109,6 +109,8 @@ const SESSION_BADGES = {
   scheduled: 'bg-primary/15 text-primary border border-primary/25',
   completed: 'bg-success/15 text-success-foreground border border-success/25',
   cancelled: 'bg-destructive/15 text-destructive border border-destructive/25',
+  no_show: 'bg-destructive/15 text-destructive border border-destructive/25',
+  withdrawn: 'text-muted-foreground border border-border',
   pending: 'bg-gold/15 text-gold border border-gold/25',
   needs_review: 'bg-gold/15 text-gold border border-gold/25',
   reviewed: 'bg-success/15 text-success-foreground border border-success/25',
@@ -119,7 +121,7 @@ const SESSION_BADGES = {
 export function StatusBadge({ status, testId }) {
   return (
     <Badge variant="outline" className={cn('capitalize', SESSION_BADGES[status] || '')} data-testid={testId}>
-      {status}
+      {String(status || '').replace('_', '-')}
     </Badge>
   );
 }

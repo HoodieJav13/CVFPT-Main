@@ -11,8 +11,13 @@ const {
   validateUuid,
 } = require('../validation/business');
 const {
-  dispatchEmail, notifySessionCancelled, notifySessionRescheduled, notifySessionScheduled,
+  dispatchEmail, notifySessionCancelled, notifySessionCancelledByClient,
+  notifySessionRescheduled, notifySessionScheduled,
 } = require('../services/email');
+const { buildSessionIcs } = require('../lib/ics');
+
+// D1b (2026-08-06): clients may self-cancel up to this long before start.
+const CLIENT_CANCEL_CUTOFF_MS = 24 * 60 * 60 * 1000;
 
 const router = express.Router();
 router.use(requireAuth);
@@ -209,6 +214,81 @@ router.patch('/:id/cancel', requireCoach, async (req, res) => {
   } catch (e) {
     logError('cancel session error', e);
     return res.status(500).json({ error: 'Failed to cancel session' });
+  }
+});
+
+// PATCH /api/sessions/:id/no-show  (coach) — D2a: honest status for a
+// session that started and the client never came; analytics counts it
+// against adherence instead of corrupting completed/cancelled.
+router.patch('/:id/no-show', requireCoach, async (req, res) => {
+  try {
+    const session = await loadSessionForCoach(req, res);
+    if (!session) return;
+    if (session.status !== 'scheduled') {
+      return res.status(400).json({ error: 'Only scheduled sessions can be marked as a no-show' });
+    }
+    if (new Date(session.scheduled_at).getTime() > Date.now()) {
+      return res.status(400).json({ error: 'This session has not started yet' });
+    }
+    const { data, error } = await supabaseAdmin.from('sessions')
+      .update({ status: 'no_show', updated_at: new Date().toISOString() })
+      .eq('id', session.id).select('*, client:clients(id, name)').single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    logError('no-show session error', e);
+    return res.status(500).json({ error: 'Failed to update session' });
+  }
+});
+
+// PATCH /api/sessions/:id/client-cancel  (client, own session, >=24h out)
+router.patch('/:id/client-cancel', requireClient, async (req, res) => {
+  try {
+    const idValidation = validateUuid(req.params.id, 'Session ID');
+    if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
+    const { data: session } = await supabaseAdmin.from('sessions').select('*')
+      .eq('id', idValidation.value).eq('client_id', req.user.client.id)
+      .eq('archived', false).maybeSingle();
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.status !== 'scheduled') {
+      return res.status(400).json({ error: 'Only scheduled sessions can be cancelled' });
+    }
+    if (new Date(session.scheduled_at).getTime() - Date.now() < CLIENT_CANCEL_CUTOFF_MS) {
+      return res.status(400).json({
+        error: 'Sessions can be cancelled up to 24 hours before they start. Message your coach instead.',
+      });
+    }
+    const { data, error } = await supabaseAdmin.from('sessions')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', session.id).select('*, coach:coaches(id, name)').single();
+    if (error) throw error;
+    await dispatchEmail(() => notifySessionCancelledByClient(data));
+    return res.json(data);
+  } catch (e) {
+    logError('client cancel session error', e);
+    return res.status(500).json({ error: 'Failed to cancel the session' });
+  }
+});
+
+// GET /api/sessions/:id/ics — calendar file for a scheduled session.
+router.get('/:id/ics', async (req, res) => {
+  try {
+    const idValidation = validateUuid(req.params.id, 'Session ID');
+    if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
+    const { data: session } = await supabaseAdmin.from('sessions')
+      .select('*, coach:coaches(id, name), client:clients(id, name)')
+      .eq('id', idValidation.value).eq('archived', false).maybeSingle();
+    const ownClient = req.user.role === 'client' && session?.client_id === req.user.client.id;
+    const ownCoach = (req.user.role === 'coach' && session?.coach_id === req.user.coach?.id) || req.user.role === 'admin';
+    if (!session || (!ownClient && !ownCoach)) return res.status(404).json({ error: 'Session not found' });
+    if (session.status !== 'scheduled') return res.status(400).json({ error: 'Only scheduled sessions can be added to a calendar' });
+    const otherName = req.user.role === 'client' ? session.coach?.name : session.client?.name;
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="cvf-session-${session.id.slice(0, 8)}.ics"`);
+    return res.send(buildSessionIcs(session, { otherName }));
+  } catch (e) {
+    logError('session ics error', e);
+    return res.status(500).json({ error: 'Failed to build the calendar file' });
   }
 });
 

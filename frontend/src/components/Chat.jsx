@@ -41,12 +41,15 @@ function annotate(messages) {
  */
 export function ChatThread({ messages = [], myRole, onSend, sending, className }) {
   const [text, setText] = useState('');
+  // Optimistic sends: the bubble appears and the input clears immediately;
+  // a failed delivery stays visible with a retry instead of blocking typing.
+  const [pendingSends, setPendingSends] = useState([]);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+  }, [messages.length, pendingSends.length]);
 
   const autogrow = () => {
     const el = textareaRef.current;
@@ -55,15 +58,30 @@ export function ChatThread({ messages = [], myRole, onSend, sending, className }
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   };
 
+  const deliver = async (entry) => {
+    setPendingSends((current) => [
+      ...current.filter((pending) => pending.key !== entry.key),
+      { ...entry, failed: false },
+    ]);
+    const ok = await onSend(entry.content);
+    if (ok === false) {
+      setPendingSends((current) => current.map((pending) => (
+        pending.key === entry.key ? { ...pending, failed: true } : pending
+      )));
+    } else {
+      // The parent reloads before resolving, so the real message is already
+      // in `messages` when the optimistic copy disappears.
+      setPendingSends((current) => current.filter((pending) => pending.key !== entry.key));
+    }
+  };
+
   const submit = async (e) => {
     e?.preventDefault();
     const content = text.trim();
-    if (!content || sending) return;
-    const ok = await onSend(content);
-    if (ok !== false) {
-      setText('');
-      requestAnimationFrame(autogrow);
-    }
+    if (!content) return;
+    setText('');
+    requestAnimationFrame(autogrow);
+    await deliver({ key: `send-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, content });
   };
 
   const onKeyDown = (e) => {
@@ -110,6 +128,25 @@ export function ChatThread({ messages = [], myRole, onSend, sending, className }
             </div>
           );
         })}
+        {pendingSends.map((pending) => (
+          <div key={pending.key} className="mt-1 flex justify-end" data-testid="chat-pending-bubble">
+            <div className={cn(
+              'max-w-[80%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm border',
+              pending.failed ? 'border-destructive/40 bg-destructive/10' : 'border-primary/20 bg-primary/15 opacity-70',
+            )}>
+              <p className="whitespace-pre-wrap break-words">{pending.content}</p>
+              {pending.failed ? (
+                <p className="mt-1 flex items-center gap-2 text-[10px] text-destructive">
+                  Not delivered
+                  <button type="button" className="font-semibold underline" onClick={() => deliver(pending)} data-testid="chat-retry-button">Retry</button>
+                  <button type="button" className="underline" onClick={() => setPendingSends((current) => current.filter((entry) => entry.key !== pending.key))}>Discard</button>
+                </p>
+              ) : (
+                <p className="mt-1 text-[10px] text-muted-foreground">Sending…</p>
+              )}
+            </div>
+          </div>
+        ))}
         <div ref={bottomRef} />
       </div>
       <form onSubmit={submit} className="mt-3 flex items-end gap-2 border-t border-border/70 pt-3">

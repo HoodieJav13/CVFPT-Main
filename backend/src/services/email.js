@@ -101,6 +101,7 @@ async function notifyBookingEvent(event, { booking, session }, env = process.env
     'booking-auto-coach': [{ person: coach, headline: 'A client booked instantly', intro: `${client.name} booked an open time.`, path: '/coach/sessions', action: 'View calendar', other: client.name }],
     'booking-approved': [{ person: client, headline: 'Your request was approved', intro: 'Your session is confirmed.', path: '/client/sessions', action: 'View session', other: coach.name }],
     'booking-declined': [{ person: client, headline: 'Your booking request was declined', intro: 'Open Sessions to choose another time or message your coach.', path: '/client/sessions', action: 'Choose another time', other: coach.name }],
+    'booking-withdrawn': [{ person: coach, headline: `${client.name} withdrew a booking request`, intro: 'The request is no longer waiting for your review.', path: '/coach/sessions', action: 'View requests', other: client.name }],
   }[event] || [];
   return Promise.all(definitions.filter(({ person }) => person.email).map(({ person, headline, intro, path, action, other }) => {
     const rendered = renderEmail({ headline, intro, facts: sessionFacts(slot, other), actionLabel: action, actionUrl: `${frontend}${path}` });
@@ -157,6 +158,21 @@ async function notifySessionRescheduled(session, previous, env = process.env) {
   // updated_at keys the send so a second reschedule of the same session
   // is a fresh email, while provider retries of one reschedule dedupe.
   return sendEmail({ to: [client.email], subject: headline, ...rendered }, `session-rescheduled/${session.id}/${session.updated_at || session.scheduled_at}`, env);
+}
+
+async function notifySessionCancelledByClient(session, env = process.env) {
+  if (!session?.id) return { skipped: 'missing-session' };
+  const { client, coach } = await loadPeople(session.client_id, session.coach_id);
+  if (!coach?.email || !client) return { skipped: 'missing-recipient' };
+  const headline = `${client.name} cancelled a session`;
+  const rendered = renderEmail({
+    headline,
+    intro: 'The slot is open again on your calendar.',
+    facts: sessionFacts(session, client.name),
+    actionLabel: 'View calendar',
+    actionUrl: `${env.FRONTEND_URL || ''}/coach/sessions`,
+  });
+  return sendEmail({ to: [coach.email], subject: headline, ...rendered }, `session-client-cancelled/${session.id}`, env);
 }
 
 async function sendDailyDigests(now = new Date(), env = process.env) {
@@ -239,6 +255,6 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
 
 module.exports = {
   configured, dispatchEmail, formatDenver, notifyBookingEvent, notifySessionCancelled,
-  notifySessionRescheduled, notifySessionScheduled,
+  notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
   renderEmail, sendDailyDigests, sendEmail, sessionFacts,
 };

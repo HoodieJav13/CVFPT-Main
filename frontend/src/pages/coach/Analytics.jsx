@@ -209,7 +209,7 @@ export default function CoachAnalytics() {
         <Tile
           label={`Cancelled · ${rangeLabel}`}
           value={pct(data.sessions.cancellation_rate)}
-          sub={`${data.sessions.cancelled} of ${data.sessions.completed + data.sessions.cancelled} settled`}
+          sub={`${data.sessions.cancelled} cancelled · ${data.sessions.no_show || 0} no-${(data.sessions.no_show || 0) === 1 ? 'show' : 'shows'} of ${data.sessions.completed + data.sessions.cancelled + (data.sessions.no_show || 0)} settled`}
           testId="analytics-tile-cancellation"
         >
           <Delta
