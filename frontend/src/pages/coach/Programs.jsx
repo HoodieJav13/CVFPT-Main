@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
+import { safeHttpUrl } from '@/lib/safeUrl';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const {
@@ -216,7 +217,7 @@ function ExerciseLibraryTab({ library, reload }) {
                   <p className="text-xs text-muted-foreground mt-1">
                     {[exercise.category, exercise.equipment, exercise.primary_muscle].filter(Boolean).join(' - ') || 'No tags'}
                   </p>
-                  {exercise.video_url && <a href={exercise.video_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">Video</a>}
+                  {safeHttpUrl(exercise.video_url) && <a href={safeHttpUrl(exercise.video_url)} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">Video</a>}
                 </div>
                 <div className="flex gap-1.5">
                   <IconButton label={`Edit ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(exercise)} data-testid="exercise-library-edit-button"><Pencil className="h-3.5 w-3.5" /></IconButton>
