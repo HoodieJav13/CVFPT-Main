@@ -89,7 +89,12 @@ router.put('/:id', async (req, res) => {
     const updates = {};
     for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k];
     if (updates.email) updates.email = String(updates.email).trim().toLowerCase();
-    if (req.user.role === 'admin' && req.body.coach_id) updates.coach_id = req.body.coach_id;
+    if (req.user.role === 'admin' && req.body.coach_id) {
+      const { data: targetCoach } = await supabaseAdmin.from('coaches').select('id')
+        .eq('id', req.body.coach_id).eq('archived', false).maybeSingle();
+      if (!targetCoach) return res.status(404).json({ error: 'Coach not found' });
+      updates.coach_id = req.body.coach_id;
+    }
     updates.updated_at = new Date().toISOString();
     const { data, error } = await supabaseAdmin.from('clients').update(updates).eq('id', clientRow.id).select().single();
     if (error) throw error;

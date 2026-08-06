@@ -28,6 +28,7 @@ import {
 import { initials, fmtDate, fmtDateTime, fmtTime, fmtDay } from '@/lib/format';
 import { toast } from 'sonner';
 import { trackProductEvent } from '@/lib/telemetry';
+import { safeHttpUrl } from '@/lib/safeUrl';
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -1290,8 +1291,8 @@ function CoachExerciseRows({ exercises }) {
               <span className="text-muted-foreground mr-2 tabular-nums">{index + 1}.</span>{coachExerciseName(exercise)}
             </p>
             <span className="flex items-center gap-2 shrink-0">
-              {(exercise.video_url || exercise.library_exercise?.video_url) && (
-                <a href={exercise.video_url || exercise.library_exercise?.video_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/15">
+              {safeHttpUrl(exercise.video_url || exercise.library_exercise?.video_url) && (
+                <a href={safeHttpUrl(exercise.video_url || exercise.library_exercise?.video_url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/15">
                   <Play className="h-3 w-3" /> Video
                 </a>
               )}
