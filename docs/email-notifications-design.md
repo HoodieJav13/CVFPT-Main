@@ -15,11 +15,13 @@ steps. One migration ⚠ (digest opt-out) ships with the build.
 | Request approved | Client | `PATCH /api/bookings/:id/approve` on success |
 | Request declined | Client | `PATCH /api/bookings/:id/decline` |
 | Session cancelled | Client | `PATCH /api/sessions/:id/cancel` |
+| Session scheduled by coach | Client | `POST /api/sessions` on success |
+| Session rescheduled | Client | `PUT /api/sessions/:id` when the time, duration, or location actually changed and the session is still `scheduled` (a no-op resave stays silent). The email shows the previous time and the new details. |
 
-D2 also lists "rescheduled". The app has no reschedule primitive today — a
-change of time is a cancel plus a new booking — so a reschedule email would
-be the cancel email followed by the new confirmation. If a true reschedule
-flow is ever built, it gets its own template then. No extra work now.
+> Correction (2026-08-06): an earlier revision of this note claimed the app
+> had no reschedule primitive. That was wrong — the coach session edit
+> drawer calls `PUT /api/sessions/:id` — and the flow was silent until the
+> two triggers above shipped (phase 4 of the pre-launch hardening plan).
 
 **Daily digest** (one email per person, only when there is something to say)
 | Content | Recipient |
@@ -27,6 +29,7 @@ flow is ever built, it gets its own template then. No extra work now.
 | Unread messages — **all** messages with `messages.read_by_recipient = false` at send time, with no `created_at` filter (the schema has no `read_at` column; unread is a boolean flag). Deliberately not windowed: a message that goes unread for three days should keep appearing until it is read, and this is what makes a skipped digest day self-healing | Clients and coaches |
 | New assignments — programs / dated workouts created inside the window | Clients |
 | Booking requests still `pending` more than 24 h after `created_at` | Coaches |
+| Sessions `scheduled` in the next 24 h — listed per session in Denver time for clients, a calendar count for coaches (added 2026-08-06, phase 4) | Clients and coaches |
 
 **Out of scope**: SMS, push (roadmap: follows email + PWA), marketing or
 broadcast email of any kind, message *content* in emails (counts and deep
