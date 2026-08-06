@@ -4,6 +4,7 @@ const { logError } = require('../utils/logger');
 const { requireAuth } = require('../middleware/auth');
 const { loginLimiter, refreshLimiter, signupLimiter } = require('../middleware/rateLimits');
 const { linkInvitedClient } = require('../services/clientClaims');
+const { escapeLikePattern } = require('../utils/like');
 
 const router = express.Router();
 
@@ -56,7 +57,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
     const { data: matches, error: findErr } = await supabaseAdmin
       .from('clients')
       .select('*')
-      .ilike('email', normalized)
+      .ilike('email', escapeLikePattern(normalized))
       .eq('invited', true)
       .is('auth_user_id', null)
       .eq('archived', false)
