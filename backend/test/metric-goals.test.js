@@ -10,7 +10,9 @@ const migration = fs.readFileSync(
   'utf8',
 );
 const routes = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'progress.js'), 'utf8');
-const chart = fs.readFileSync(path.join(root, 'frontend', 'src', 'components', 'common.jsx'), 'utf8');
+// MetricChart moved to its own lazily-loaded module in the phase-6
+// code-splitting pass; common.jsx keeps only the Suspense wrapper.
+const chart = fs.readFileSync(path.join(root, 'frontend', 'src', 'components', 'MetricChart.jsx'), 'utf8');
 const coachPage = fs.readFileSync(path.join(root, 'frontend', 'src', 'pages', 'coach', 'ClientDetail.jsx'), 'utf8');
 const clientPage = fs.readFileSync(path.join(root, 'frontend', 'src', 'pages', 'client', 'Progress.jsx'), 'utf8');
 const preview = fs.readFileSync(path.join(root, 'frontend', 'src', 'lib', 'previewMode.js'), 'utf8');
