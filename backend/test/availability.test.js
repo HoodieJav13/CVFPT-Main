@@ -46,6 +46,10 @@ test('window validation: weekday bounds, time order, capacity clamp', () => {
   assert.equal(validateWindow({ weekday: 1, start_time: '11:00', end_time: '06:00' }).ok, false);
   assert.equal(validateWindow({ weekday: 1, start_time: '6:00', end_time: '11:00' }).ok, false);
   assert.equal(validateWindow({ weekday: 1, start_time: '06:00', end_time: '11:00', capacity: 11 }).ok, false);
+  // Group slots are deferred (A8): every session row is capacity-1, so a
+  // >1 window would be offerable by get_open_slots but never bookable.
+  assert.equal(validateWindow({ weekday: 1, start_time: '06:00', end_time: '11:00', capacity: 2 }).ok, false);
+  assert.equal(validateWindow({ weekday: 1, start_time: '06:00', end_time: '11:00', capacity: 1 }).ok, true);
   assert.equal(validateWindow({ on_date: '2026-08-07', start_time: '06:00', end_time: '14:00' }, { requireDate: true }).ok, true);
   assert.equal(validateWindow({ on_date: 'friday', start_time: '06:00', end_time: '14:00' }, { requireDate: true }).ok, false);
 });

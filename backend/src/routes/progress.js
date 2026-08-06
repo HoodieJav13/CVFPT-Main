@@ -2,6 +2,7 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
+const { todayDateInTz } = require('../utils/time');
 const {
   IMPROVEMENT_DIRECTIONS,
   normalizeImprovementDirection,
@@ -12,6 +13,8 @@ const {
 
 const router = express.Router();
 router.use(requireAuth);
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 async function metricsWithEntries(clientId) {
   const { data: metrics, error } = await supabaseAdmin.from('metrics').select('*')
@@ -135,11 +138,15 @@ router.post('/metrics/:metricId/entries', async (req, res) => {
     if (value === undefined || value === null || value === '' || isNaN(Number(value))) {
       return res.status(400).json({ error: 'A numeric value is required' });
     }
+    if (recorded_on && !DATE_RE.test(String(recorded_on))) {
+      return res.status(400).json({ error: 'recorded_on must be a YYYY-MM-DD date' });
+    }
     const { data, error } = await supabaseAdmin.from('metric_entries').insert({
       metric_id: metric.id,
       value: Number(value),
       notes: notes || null,
-      recorded_on: recorded_on || new Date().toISOString().slice(0, 10),
+      // Denver-local, not UTC: evening entries must not bucket to tomorrow.
+      recorded_on: recorded_on || todayDateInTz(),
     }).select().single();
     if (error) throw error;
     const { data: comparisonEntries, error: comparisonError } = await supabaseAdmin
@@ -181,7 +188,13 @@ router.put('/entries/:entryId', async (req, res) => {
       updates.value = Number(value);
     }
     if ('notes' in (req.body || {})) updates.notes = req.body.notes || null;
-    if ('recorded_on' in (req.body || {})) updates.recorded_on = req.body.recorded_on || new Date().toISOString().slice(0, 10);
+    if ('recorded_on' in (req.body || {})) {
+      const { recorded_on } = req.body;
+      if (recorded_on && !DATE_RE.test(String(recorded_on))) {
+        return res.status(400).json({ error: 'recorded_on must be a YYYY-MM-DD date' });
+      }
+      updates.recorded_on = recorded_on || todayDateInTz();
+    }
     const { data, error } = await supabaseAdmin.from('metric_entries').update(updates).eq('id', entry.id).select().single();
     if (error) throw error;
     return res.json(data);
