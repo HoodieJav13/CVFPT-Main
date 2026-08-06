@@ -19,8 +19,10 @@ function validateWindow(row = {}, { requireDate = false } = {}) {
     return { ok: false, error: 'End time must be after start time' };
   }
   const capacity = row.capacity === undefined || row.capacity === null ? 1 : Number(row.capacity);
-  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 10) {
-    return { ok: false, error: 'Capacity must be between 1 and 10' };
+  // Group slots are deferred (A8): every session row is capacity-1, so a
+  // >1 window would be offerable by get_open_slots but never bookable.
+  if (capacity !== 1) {
+    return { ok: false, error: 'Group capacity is not available yet — capacity must be 1' };
   }
   const value = { start_time: row.start_time, end_time: row.end_time, capacity };
   if (requireDate) value.on_date = row.on_date;
