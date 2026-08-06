@@ -13,9 +13,16 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Users, CalendarDays, Inbox, ShieldCheck, Plus, Loader2, FileText } from 'lucide-react';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Users, CalendarDays, Inbox, ShieldCheck, Plus, Loader2, FileText,
+  MoreVertical, Pencil, KeyRound, Archive, ArchiveRestore, Shield,
+} from 'lucide-react';
 import { fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
 
 export default function AdminPage() {
   const [overview, setOverview] = useState(null);
@@ -61,15 +68,19 @@ export default function AdminPage() {
 }
 
 function CoachesTab() {
+  const { user } = useAuth();
   const [coaches, setCoaches] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', is_admin: false });
   const [saving, setSaving] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [acting, setActing] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/admin/coaches');
+      const { data } = await api.get(`/admin/coaches?include_archived=${showArchived}`);
       setCoaches(data);
       setLoadError(null);
     } catch (e) {
@@ -77,7 +88,21 @@ function CoachesTab() {
       setLoadError(message);
       toast.error(message);
     }
-  }, []);
+  }, [showArchived]);
+
+  const coachAction = async (coach, label, request) => {
+    if (acting) return;
+    setActing(coach.id);
+    try {
+      await request();
+      toast.success(label);
+      await load();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setActing(null);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -138,16 +163,111 @@ function CoachesTab() {
           </DialogContent>
         </Dialog>
       </div>
+      <label className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+        <Switch checked={showArchived} onCheckedChange={setShowArchived} data-testid="admin-coach-archive-toggle" />
+        Show deactivated
+      </label>
       {coaches.map((c) => (
         <div key={c.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="admin-coach-row">
-          <div>
+          <div className="min-w-0">
             <p className="font-medium text-sm">{c.name}</p>
-            <p className="text-xs text-muted-foreground">{c.email}{c.phone ? ` - ${c.phone}` : ''}</p>
+            <p className="text-xs text-muted-foreground truncate">{c.email}{c.phone ? ` - ${c.phone}` : ''}</p>
           </div>
-          {c.is_admin && <Badge variant="outline" className="bg-primary/10 text-primary border-primary/25">Admin</Badge>}
+          <div className="flex items-center gap-2 shrink-0">
+            {c.archived && <Badge variant="outline" className="text-muted-foreground">Deactivated</Badge>}
+            {c.is_admin && <Badge variant="outline" className="bg-primary/10 text-primary border-primary/25">Admin</Badge>}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" aria-label={`Manage ${c.name}`} disabled={acting === c.id} data-testid="admin-coach-menu-button">
+                  {acting === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {!c.archived && (
+                  <>
+                    <DropdownMenuItem onClick={() => setEditing(c)} data-testid="admin-coach-edit-action">
+                      <Pencil className="h-4 w-4 mr-2" /> Edit details
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => coachAction(c, c.is_admin ? 'Admin access removed' : 'Admin access granted', () => api.patch(`/admin/coaches/${c.id}/admin`, { is_admin: !c.is_admin }))}
+                      data-testid="admin-coach-admin-action"
+                    >
+                      <Shield className="h-4 w-4 mr-2" /> {c.is_admin ? 'Remove admin access' : 'Make admin'}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => coachAction(c, 'Password reset email sent', () => api.post(`/admin/coaches/${c.id}/send-password-reset`))}
+                      data-testid="admin-coach-reset-action"
+                    >
+                      <KeyRound className="h-4 w-4 mr-2" /> Send password reset
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {c.archived ? (
+                  <DropdownMenuItem
+                    onClick={() => coachAction(c, `${c.name} reactivated`, () => api.patch(`/admin/coaches/${c.id}/archive`, { archived: false }))}
+                    data-testid="admin-coach-restore-action"
+                  >
+                    <ArchiveRestore className="h-4 w-4 mr-2" /> Reactivate
+                  </DropdownMenuItem>
+                ) : c.id !== user?.profile?.id && (
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => coachAction(c, `${c.name} deactivated`, () => api.patch(`/admin/coaches/${c.id}/archive`, { archived: true }))}
+                    data-testid="admin-coach-archive-action"
+                  >
+                    <Archive className="h-4 w-4 mr-2" /> Deactivate
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       ))}
+      {editing && <EditCoachDialog coach={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
     </div>
+  );
+}
+
+function EditCoachDialog({ coach, onClose, onSaved }) {
+  const [form, setForm] = useState({ name: coach.name || '', email: coach.email || '', phone: coach.phone || '' });
+  const [saving, setSaving] = useState(false);
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.patch(`/admin/coaches/${coach.id}`, form);
+      toast.success('Coach updated');
+      onSaved();
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(value) => { if (!value) onClose(); }}>
+      <DialogContent className="max-w-sm" data-testid="admin-coach-edit-dialog">
+        <DialogHeader>
+          <DialogTitle>Edit {coach.name}</DialogTitle>
+          <DialogDescription>Changing the email also changes the login email for this coach.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={save} className="space-y-3.5">
+          <div className="space-y-1.5"><Label>Name *</Label>
+            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="coach-edit-name-input" /></div>
+          <div className="space-y-1.5"><Label>Email *</Label>
+            <Input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="coach-edit-email-input" /></div>
+          <div className="space-y-1.5"><Label>Phone</Label>
+            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} data-testid="coach-edit-phone-input" /></div>
+          <DialogFooter>
+            <Button type="submit" disabled={saving} className="rounded-xl w-full sm:w-auto" data-testid="coach-edit-save-button">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

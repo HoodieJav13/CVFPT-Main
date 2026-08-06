@@ -25,10 +25,12 @@ async function otherActiveAdminExists(excludeCoachId) {
   return (count || 0) > 0;
 }
 
-// GET /api/admin/coaches
-router.get('/coaches', async (_req, res) => {
+// GET /api/admin/coaches?include_archived=true
+router.get('/coaches', async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin.from('coaches').select('*').eq('archived', false).order('name');
+    let q = supabaseAdmin.from('coaches').select('*').order('name');
+    if (req.query.include_archived !== 'true') q = q.eq('archived', false);
+    const { data, error } = await q;
     if (error) throw error;
     return res.json(data);
   } catch (e) {

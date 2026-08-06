@@ -21,7 +21,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Plus, CalendarDays, MoreVertical, Check, X, Pencil, StickyNote, Loader2, Inbox, Dumbbell,
+  Plus, CalendarDays, MoreVertical, Check, X, Pencil, StickyNote, Loader2, Inbox, Dumbbell, UserX,
 } from 'lucide-react';
 import DateTimePicker from '@/components/DateTimePicker';
 import { AvailabilityDrawer } from '@/components/AvailabilityEditor';
@@ -118,6 +118,20 @@ export default function CoachSessions() {
     try {
       await api.patch(`/sessions/${s.id}/complete`);
       toast.success('Session completed');
+      await load();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const markNoShow = async (s) => {
+    if (acting) return;
+    setActing(s.id);
+    try {
+      await api.patch(`/sessions/${s.id}/no-show`);
+      toast.success('Marked as a no-show');
       await load();
     } catch (e) {
       toast.error(errMsg(e));
@@ -272,6 +286,11 @@ export default function CoachSessions() {
                         {s.status === 'scheduled' && (
                           <DropdownMenuItem onClick={() => complete(s)} data-testid="session-complete-action">
                             <Check className="h-4 w-4 mr-2" /> Mark complete
+                          </DropdownMenuItem>
+                        )}
+                        {s.status === 'scheduled' && new Date(s.scheduled_at).getTime() <= Date.now() && (
+                          <DropdownMenuItem onClick={() => markNoShow(s)} data-testid="session-no-show-action">
+                            <UserX className="h-4 w-4 mr-2" /> Mark no-show
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem onClick={() => setNotesFor(s)} data-testid="session-notes-action">

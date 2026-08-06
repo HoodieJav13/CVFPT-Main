@@ -11,7 +11,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Plus, CalendarDays, MapPin, Loader2, StickyNote } from 'lucide-react';
+import { Plus, CalendarDays, CalendarPlus, MapPin, Loader2, StickyNote } from 'lucide-react';
 import DateTimePicker from '@/components/DateTimePicker';
 import { fmtTime, fmtDay, fmtDateTime, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
@@ -22,6 +22,9 @@ export default function ClientSessions() {
   const [loadError, setLoadError] = useState(null);
   const [requests, setRequests] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Two-tap confirmation for cancel/withdraw: first tap arms, second commits.
+  const [confirmingId, setConfirmingId] = useState(null);
+  const [acting, setActing] = useState(null);
   const seenOutcomes = useRef(null);
   if (seenOutcomes.current === null) seenOutcomes.current = new Set();
 
@@ -47,6 +50,61 @@ export default function ClientSessions() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const cancelSession = async (session) => {
+    if (confirmingId !== `cancel-${session.id}`) {
+      setConfirmingId(`cancel-${session.id}`);
+      return;
+    }
+    setActing(session.id);
+    try {
+      await api.patch(`/sessions/${session.id}/client-cancel`);
+      toast.success('Session cancelled — your coach has been notified');
+      await load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not cancel the session'));
+    } finally {
+      setActing(null);
+      setConfirmingId(null);
+    }
+  };
+
+  const withdrawRequest = async (request) => {
+    if (confirmingId !== `withdraw-${request.id}`) {
+      setConfirmingId(`withdraw-${request.id}`);
+      return;
+    }
+    setActing(request.id);
+    try {
+      await api.patch(`/bookings/${request.id}/withdraw`);
+      toast.success('Request withdrawn');
+      await load();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not withdraw the request'));
+    } finally {
+      setActing(null);
+      setConfirmingId(null);
+    }
+  };
+
+  const downloadIcs = async (session) => {
+    try {
+      const { data } = await api.get(`/sessions/${session.id}/ics`, { responseType: 'blob' });
+      const url = URL.createObjectURL(data);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'cvf-session.ics';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not build the calendar file'));
+    }
+  };
+
+  // Server enforces the same cutoff; this only decides which button to show.
+  const cancellableUntil = (session) => new Date(session.scheduled_at).getTime() - Date.now() >= 24 * 60 * 60 * 1000;
 
   const { upcoming, past } = useMemo(() => {
     if (!sessions) return { upcoming: [], past: [] };
@@ -82,7 +140,13 @@ export default function ClientSessions() {
                   <p className="text-sm font-medium">{fmtDateTime(r.requested_time)}</p>
                   <p className="text-xs text-muted-foreground">{r.duration_minutes}m{r.note ? ` - "${r.note}"` : ''}</p>
                 </div>
-                <StatusBadge status={r.status} />
+                <span className="flex items-center gap-2 shrink-0">
+                  <StatusBadge status={r.status} />
+                  <Button size="sm" variant="ghost" className="min-h-9 rounded-lg text-muted-foreground hover:text-destructive"
+                    disabled={acting === r.id} onClick={() => withdrawRequest(r)} data-testid="booking-withdraw-button">
+                    {acting === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingId === `withdraw-${r.id}` ? 'Tap to confirm' : 'Withdraw')}
+                  </Button>
+                </span>
               </div>
             ))}
           </div>
@@ -104,10 +168,30 @@ export default function ClientSessions() {
                 <span>{s.duration_minutes} min with {s.coach?.name}</span>
                 {s.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {s.location}</span>}
               </p>
+              {s.status === 'scheduled' && (
+                <div className="mt-2 flex items-center gap-2">
+                  <Button size="sm" variant="outline" className="min-h-9 rounded-lg" onClick={() => downloadIcs(s)} data-testid="session-ics-button">
+                    <CalendarPlus className="h-3.5 w-3.5 mr-1" /> Add to calendar
+                  </Button>
+                  {cancellableUntil(s) ? (
+                    <Button size="sm" variant="ghost" className="min-h-9 rounded-lg text-muted-foreground hover:text-destructive"
+                      disabled={acting === s.id} onClick={() => cancelSession(s)} data-testid="session-client-cancel-button">
+                      {acting === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingId === `cancel-${s.id}` ? 'Tap to confirm' : 'Cancel')}
+                    </Button>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">Starts within 24h — message your coach to change it.</p>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
+      <p className="mt-3 text-xs text-muted-foreground" data-testid="cancellation-policy-text">
+        <span className="font-medium">Cancellations:</span> You can cancel or rebook a session up to 24 hours before it
+        starts. Inside 24 hours, message your coach directly — late cancellations and no-shows may be handled per your
+        coaching agreement.
+      </p>
 
       <SectionLabel className="mb-2 mt-6">Past</SectionLabel>
       {past.length === 0 ? (
@@ -229,10 +313,14 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
           <DrawerHeader className="px-0">
             <DrawerTitle>Request a session</DrawerTitle>
           </DrawerHeader>
-          <p className="text-xs text-muted-foreground -mt-2 mb-4" data-testid="booking-drawer-copy">
+          <p className="text-xs text-muted-foreground -mt-2 mb-1" data-testid="booking-drawer-copy">
             {coachAutoBook && slots
               ? 'Open times book instantly — pick one and it goes straight on the calendar.'
               : "Your coach must confirm before it's booked."}
+          </p>
+          <p className="text-[11px] text-muted-foreground mb-4" data-testid="booking-drawer-policy">
+            Cancellations: cancel or rebook up to 24 hours before a session starts; inside 24 hours, message your coach —
+            late cancellations and no-shows may be handled per your coaching agreement.
           </p>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">

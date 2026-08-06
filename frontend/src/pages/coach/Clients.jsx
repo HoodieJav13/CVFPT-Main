@@ -13,9 +13,12 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
-import { Plus, Search, Users, ChevronRight, Loader2 } from 'lucide-react';
+import { Plus, Search, Users, ChevronRight, FileUp, Loader2 } from 'lucide-react';
 import { initials } from '@/lib/format';
 import { toast } from 'sonner';
+import draftTools from '@/lib/programDraft.js';
+
+const { parseCsv } = draftTools;
 
 export default function Clients() {
   const { user } = useAuth();
@@ -73,6 +76,8 @@ export default function Clients() {
         title="Clients"
         subtitle={`${clients.filter((c) => !c.archived).length} active`}
         action={
+          <div className="flex gap-2">
+          <ImportClientsDialog onImported={load} />
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button className="rounded-xl" data-testid="add-client-button">
@@ -115,6 +120,7 @@ export default function Clients() {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         }
       />
 
@@ -165,5 +171,122 @@ export default function Clients() {
         </div>
       )}
     </div>
+  );
+}
+
+// D5 (2026-08-06): roster-only CSV import to soften My PT Hub re-entry —
+// parse client-side, preview, then commit; the server dedupes and reports
+// per-row skip reasons. CSV columns: name, email, phone, goals.
+function ImportClientsDialog({ onImported }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const reset = () => { setRows(null); setResult(null); };
+
+  const parseFile = async (file, inputElement) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const { headers, rows: parsed } = parseCsv(text);
+      if (!headers.includes('name')) {
+        toast.error('The CSV needs at least a "name" column');
+        return;
+      }
+      const cleaned = parsed
+        .map((row) => ({
+          name: String(row.name || '').trim(),
+          email: String(row.email || '').trim(),
+          phone: String(row.phone || '').trim(),
+          goals: String(row.goals || '').trim(),
+        }))
+        .filter((row) => row.name || row.email);
+      if (!cleaned.length) {
+        toast.error('No client rows found in this file');
+        return;
+      }
+      setResult(null);
+      setRows(cleaned);
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not read that CSV'));
+    } finally {
+      if (inputElement) inputElement.value = '';
+    }
+  };
+
+  const commit = async () => {
+    setImporting(true);
+    try {
+      const { data } = await api.post('/clients/import', { rows });
+      setResult(data);
+      setRows(null);
+      toast.success(`Imported ${data.imported} ${data.imported === 1 ? 'client' : 'clients'}`);
+      onImported();
+    } catch (e) {
+      toast.error(errMsg(e, 'Import failed'));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) reset(); }}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="rounded-xl" data-testid="import-clients-button">
+          <FileUp className="h-4 w-4 mr-1.5" /> Import CSV
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Import clients</DialogTitle>
+          <DialogDescription>
+            CSV columns: name, email, phone, goals. Existing emails are skipped — nothing is overwritten.
+          </DialogDescription>
+        </DialogHeader>
+        {!rows && !result && (
+          <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground hover:bg-accent">
+            <FileUp className="h-5 w-5" />
+            Choose a CSV file
+            <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => parseFile(e.target.files?.[0], e.target)} data-testid="import-clients-file-input" />
+          </label>
+        )}
+        {rows && (
+          <div className="space-y-3">
+            <p className="text-sm font-medium">{rows.length} {rows.length === 1 ? 'client' : 'clients'} ready to import</p>
+            <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-border p-2" data-testid="import-clients-preview">
+              {rows.map((row, index) => (
+                <div key={`${row.email || row.name}-${index}`} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm odd:bg-secondary/40">
+                  <span className="truncate font-medium">{row.name || <span className="text-destructive">Missing name</span>}</span>
+                  <span className="truncate text-xs text-muted-foreground">{row.email || 'no email'}</span>
+                </div>
+              ))}
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="ghost" onClick={reset} disabled={importing}>Choose another file</Button>
+              <Button onClick={commit} disabled={importing} className="rounded-xl" data-testid="import-clients-commit-button">
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : `Import ${rows.length}`}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+        {result && (
+          <div className="space-y-3" data-testid="import-clients-result">
+            <p className="text-sm font-medium">Imported {result.imported} {result.imported === 1 ? 'client' : 'clients'}.</p>
+            {result.skipped?.length > 0 && (
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-border p-2 text-xs">
+                <p className="font-medium text-muted-foreground">{result.skipped.length} skipped:</p>
+                {result.skipped.map((skip, index) => (
+                  <p key={index} className="text-muted-foreground">{skip.name || skip.email || `Row ${skip.row}`} — {skip.reason}</p>
+                ))}
+              </div>
+            )}
+            <DialogFooter>
+              <Button className="rounded-xl" onClick={() => { setOpen(false); reset(); }}>Done</Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
