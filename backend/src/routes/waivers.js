@@ -12,9 +12,10 @@ async function latestVersion() {
   return data?.[0] || null;
 }
 
+// req.ip is derived via Express `trust proxy` (set to 1 for Vercel) and
+// cannot be overridden by a caller-supplied X-Forwarded-For header —
+// signature IPs are an evidentiary field on a legal record.
 function clientIp(req) {
-  const fwd = req.headers['x-forwarded-for'];
-  if (fwd) return String(fwd).split(',')[0].trim();
   return req.ip || null;
 }
 
