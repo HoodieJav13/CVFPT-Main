@@ -70,6 +70,39 @@ Vercel project root: `backend/`.
 - `FRONTEND_URL` remains the canonical frontend origin for backend-generated
   links/redirects. Active payment routes are retired and do not use it.
 
+### Email and cron variables (required for notifications)
+
+| Variable | Purpose |
+|---|---|
+| `RESEND_API_KEY` | Resend API key. Without it (or the other two rows) every email — invites, password resets, booking/session notifications, daily digest — silently no-ops; production logs a startup warning |
+| `NOTIFY_REPLY_TO` | Reply-to address on all outgoing email |
+| `CRON_SECRET` | Bearer secret for the Vercel cron hitting `POST /api/internal/digest`; the digest fails closed without it |
+
+`FRONTEND_URL` (above) is also part of the email gate — links in emails are
+built from it.
+
+### Observability variables (optional but strongly recommended for Production)
+
+| Variable | Project | Purpose |
+|---|---|---|
+| `SENTRY_DSN` | backend | Error tracking via Sentry; inert when unset. Events are PII-scrubbed (no bodies, headers, or user values) |
+| `REACT_APP_SENTRY_DSN` | frontend | Browser error tracking; the SDK is not even loaded when unset |
+
+### Security headers
+
+The backend sets baseline headers via `helmet`; the frontend sets
+nosniff/frame/referrer/permissions/HSTS headers via `frontend/vercel.json`.
+A Content-Security-Policy for the SPA is deliberately deferred until an
+inline-script/style inventory exists — do not add one ad hoc.
+
+### Migration guard
+
+`.github/workflows/migration-guard.yml` fails any PR that touches
+`supabase/migrations/` unless it carries the `migration-applied` label —
+add the label only after `supabase db push` has been run against the hosted
+project and `supabase migration list --linked` shows no drift. The label
+must exist in the repository (Settings → Labels → create `migration-applied`).
+
 ### Optional integrations
 
 - `OPENAI_API_KEY` and `PROGRAM_IMPORT_MODEL` are intentionally absent while

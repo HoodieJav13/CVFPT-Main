@@ -3,7 +3,9 @@ import { installPreviewApi } from '@/lib/previewMode';
 
 const BACKEND_URL = import.meta.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_BACKEND_URL || '';
 
-export const api = axios.create({ baseURL: `${BACKEND_URL}/api` });
+// A hard cap so a hung request surfaces as a retryable error instead of an
+// endless spinner; 60s leaves room for large uploads on slow gym Wi-Fi.
+export const api = axios.create({ baseURL: `${BACKEND_URL}/api`, timeout: 60000 });
 
 installPreviewApi(api);
 

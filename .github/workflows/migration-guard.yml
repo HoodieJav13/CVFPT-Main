@@ -1,0 +1,40 @@
+# Machine enforcement of the migration-first rule from
+# docs/hardening/2026-07-22-pr5-hosted-release.md: merging auto-deploys both
+# Vercel projects, so a PR that adds migrations must not merge until the
+# owner has applied them to hosted Supabase and says so with the
+# `migration-applied` label. Label events re-run only this cheap job.
+name: Migration guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  migration-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require migration-applied label on migration PRs
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF" --depth=1
+          changed=$(git diff --name-only "origin/$BASE_REF"...HEAD -- supabase/migrations/)
+          if [ -z "$changed" ]; then
+            echo "No migration changes — nothing to guard."
+            exit 0
+          fi
+          echo "Migration files changed:"
+          echo "$changed"
+          if echo "$LABELS" | grep -q '"migration-applied"'; then
+            echo "Label present — owner confirmed the hosted database is migrated."
+            exit 0
+          fi
+          echo "::error::This PR changes supabase/migrations/ but does not carry the 'migration-applied' label. Apply the migration to hosted Supabase first (supabase db push, then verify supabase migration list --linked), then add the label to this PR."
+          exit 1
