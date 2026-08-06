@@ -18,11 +18,15 @@ function escapeHtml(value) {
     .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 }
 
-function sessionFacts(session, otherName) {
-  const when = new Intl.DateTimeFormat('en-US', {
+function formatDenver(timestamp) {
+  return new Intl.DateTimeFormat('en-US', {
     timeZone: DENVER, weekday: 'short', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
-  }).format(new Date(session.scheduled_at));
+  }).format(new Date(timestamp));
+}
+
+function sessionFacts(session, otherName) {
+  const when = formatDenver(session.scheduled_at);
   return [
     when,
     `${session.duration_minutes} minutes`,
@@ -120,18 +124,55 @@ async function notifySessionCancelled(session, env = process.env) {
   return sendEmail({ to: [client.email], subject: headline, ...rendered }, `session-cancelled/${session.id}/${client.id}`, env);
 }
 
+async function notifySessionScheduled(session, env = process.env) {
+  if (!session?.id) return { skipped: 'missing-session' };
+  const { client, coach } = await loadPeople(session.client_id, session.coach_id);
+  if (!client?.email || !coach) return { skipped: 'missing-recipient' };
+  const headline = 'Your coach scheduled a session';
+  const rendered = renderEmail({
+    headline,
+    intro: 'A new session is on your calendar.',
+    facts: sessionFacts(session, coach.name),
+    actionLabel: 'View session',
+    actionUrl: `${env.FRONTEND_URL || ''}/client/sessions`,
+  });
+  return sendEmail({ to: [client.email], subject: headline, ...rendered }, `session-scheduled/${session.id}/${client.id}`, env);
+}
+
+async function notifySessionRescheduled(session, previous, env = process.env) {
+  if (!session?.id) return { skipped: 'missing-session' };
+  const { client, coach } = await loadPeople(session.client_id, session.coach_id);
+  if (!client?.email || !coach) return { skipped: 'missing-recipient' };
+  const headline = 'Your session changed';
+  const previousWhen = previous?.scheduled_at ? formatDenver(previous.scheduled_at) : null;
+  const rendered = renderEmail({
+    headline,
+    intro: previousWhen
+      ? `Your session originally set for ${previousWhen} was updated. Here are the new details.`
+      : 'Your session details were updated.',
+    facts: sessionFacts(session, coach.name),
+    actionLabel: 'View session',
+    actionUrl: `${env.FRONTEND_URL || ''}/client/sessions`,
+  });
+  // updated_at keys the send so a second reschedule of the same session
+  // is a fresh email, while provider retries of one reschedule dedupe.
+  return sendEmail({ to: [client.email], subject: headline, ...rendered }, `session-rescheduled/${session.id}/${session.updated_at || session.scheduled_at}`, env);
+}
+
 async function sendDailyDigests(now = new Date(), env = process.env) {
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const pendingBefore = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-  const [coachesResult, clientsResult, messagesResult, programsResult, workoutsResult, bookingsResult] = await Promise.all([
+  const upcomingUntil = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const [coachesResult, clientsResult, messagesResult, programsResult, workoutsResult, bookingsResult, sessionsResult] = await Promise.all([
     fetchAllRows((from, to) => supabaseAdmin.from('coaches').select('id, name, email').eq('archived', false).eq('digest_opt_out', false).order('id').range(from, to)),
     fetchAllRows((from, to) => supabaseAdmin.from('clients').select('id, name, email, coach_id').eq('archived', false).eq('digest_opt_out', false).order('id').range(from, to)),
     fetchAllRows((from, to) => supabaseAdmin.from('messages').select('id, client_id, coach_id, sender_role').eq('archived', false).eq('read_by_recipient', false).order('id').range(from, to)),
     fetchAllRows((from, to) => supabaseAdmin.from('program_assignments').select('id, client_id').eq('archived', false).gte('created_at', since).order('id').range(from, to)),
     fetchAllRows((from, to) => supabaseAdmin.from('workout_assignments').select('id, client_id').eq('archived', false).gte('created_at', since).order('id').range(from, to)),
     fetchAllRows((from, to) => supabaseAdmin.from('booking_requests').select('id, coach_id').eq('archived', false).eq('status', 'pending').lt('created_at', pendingBefore).order('id').range(from, to)),
+    fetchAllRows((from, to) => supabaseAdmin.from('sessions').select('id, client_id, coach_id, scheduled_at, duration_minutes').eq('archived', false).eq('status', 'scheduled').gte('scheduled_at', now.toISOString()).lt('scheduled_at', upcomingUntil).order('id').range(from, to)),
   ]);
-  for (const result of [coachesResult, clientsResult, messagesResult, programsResult, workoutsResult, bookingsResult]) {
+  for (const result of [coachesResult, clientsResult, messagesResult, programsResult, workoutsResult, bookingsResult, sessionsResult]) {
     if (!result.complete) throw new Error('daily digest source exceeded the safe paging ceiling');
   }
   const coaches = coachesResult.rows;
@@ -140,11 +181,12 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
   const programs = programsResult.rows;
   const workouts = workoutsResult.rows;
   const bookings = bookingsResult.rows;
+  const upcomingSessions = sessionsResult.rows;
 
   const clientCounts = new Map();
   const coachCounts = new Map();
   const bump = (map, id, key) => {
-    const row = map.get(id) || { unread: 0, assignments: 0, pending: 0 };
+    const row = map.get(id) || { unread: 0, assignments: 0, pending: 0, sessions: [] };
     row[key] += 1;
     map.set(id, row);
   };
@@ -153,15 +195,31 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
   }
   for (const assignment of [...programs, ...workouts]) bump(clientCounts, assignment.client_id, 'assignments');
   for (const booking of bookings) bump(coachCounts, booking.coach_id, 'pending');
+  for (const session of upcomingSessions) {
+    for (const [map, id] of [[clientCounts, session.client_id], [coachCounts, session.coach_id]]) {
+      const row = map.get(id) || { unread: 0, assignments: 0, pending: 0, sessions: [] };
+      row.sessions.push(session);
+      map.set(id, row);
+    }
+  }
 
   const recipients = [
     ...clients.map((person) => ({ person, counts: clientCounts.get(person.id), path: '/client', type: 'client' })),
     ...coaches.map((person) => ({ person, counts: coachCounts.get(person.id), path: '/coach', type: 'coach' })),
-  ].filter(({ person, counts }) => person.email && counts && Object.values(counts).some(Boolean));
+  ].filter(({ person, counts }) => person.email && counts
+    && (counts.unread || counts.assignments || counts.pending || counts.sessions.length));
 
   const digestDate = dateInTz(now.getTime());
   await Promise.all(recipients.map(({ person, counts, path, type }) => {
     const facts = [];
+    if (type === 'client') {
+      for (const session of counts.sessions) {
+        facts.push(`Session ${formatDenver(session.scheduled_at)} (${session.duration_minutes} minutes)`);
+      }
+    }
+    if (type === 'coach' && counts.sessions.length) {
+      facts.push(`${counts.sessions.length} ${counts.sessions.length === 1 ? 'session' : 'sessions'} on your calendar in the next 24 hours`);
+    }
     if (counts.unread) facts.push(`${counts.unread} unread ${counts.unread === 1 ? 'message' : 'messages'}`);
     if (type === 'client' && counts.assignments) facts.push(`${counts.assignments} new training ${counts.assignments === 1 ? 'assignment' : 'assignments'}`);
     if (type === 'coach' && counts.pending) facts.push(`${counts.pending} booking ${counts.pending === 1 ? 'request has' : 'requests have'} waited more than 24 hours`);
@@ -180,6 +238,7 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
 }
 
 module.exports = {
-  configured, dispatchEmail, notifyBookingEvent, notifySessionCancelled,
+  configured, dispatchEmail, formatDenver, notifyBookingEvent, notifySessionCancelled,
+  notifySessionRescheduled, notifySessionScheduled,
   renderEmail, sendDailyDigests, sendEmail, sessionFacts,
 };

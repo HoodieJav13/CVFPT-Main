@@ -10,7 +10,9 @@ const {
   validateTimestamp,
   validateUuid,
 } = require('../validation/business');
-const { dispatchEmail, notifySessionCancelled } = require('../services/email');
+const {
+  dispatchEmail, notifySessionCancelled, notifySessionRescheduled, notifySessionScheduled,
+} = require('../services/email');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -141,6 +143,7 @@ router.post('/', requireCoach, async (req, res) => {
     const { data: created, error: readError } = await supabaseAdmin.from('sessions')
       .select('*, client:clients(id, name)').eq('id', data.session.id).single();
     if (readError) throw readError;
+    await dispatchEmail(() => notifySessionScheduled(created));
     return res.status(201).json({ ...created, location_overlaps: data.location_overlaps || 0 });
   } catch (e) {
     logError('create session error', e);
@@ -176,6 +179,14 @@ router.put('/:id', requireCoach, async (req, res) => {
     const { data: updated, error: readError } = await supabaseAdmin.from('sessions')
       .select('*, client:clients(id, name)').eq('id', session.id).single();
     if (readError) throw readError;
+    // Only a real change to when/how-long/where warrants an email — a
+    // no-op resave must not tell the client their session moved.
+    const meaningfullyChanged = new Date(updated.scheduled_at).getTime() !== new Date(session.scheduled_at).getTime()
+      || updated.duration_minutes !== session.duration_minutes
+      || (updated.location || null) !== (session.location || null);
+    if (meaningfullyChanged && updated.status === 'scheduled') {
+      await dispatchEmail(() => notifySessionRescheduled(updated, session));
+    }
     return res.json({ ...updated, location_overlaps: data.location_overlaps || 0 });
   } catch (e) {
     logError('update session error', e);
