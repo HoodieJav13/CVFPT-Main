@@ -2,6 +2,8 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, canAccessClient } = require('../middleware/auth');
+const { configured, dispatchEmail } = require('../services/email');
+const { sendInviteEmail, sendPasswordResetEmail } = require('../services/accountRecovery');
 
 const router = express.Router();
 router.use(requireAuth, requireCoach);
@@ -89,6 +91,20 @@ router.put('/:id', async (req, res) => {
     const updates = {};
     for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k];
     if (updates.email) updates.email = String(updates.email).trim().toLowerCase();
+    // A claimed client's login email must follow the profile email, or the
+    // two silently diverge and password recovery stops working.
+    if (updates.email && clientRow.auth_user_id && updates.email !== clientRow.email) {
+      const { error: authEmailErr } = await supabaseAdmin.auth.admin.updateUserById(
+        clientRow.auth_user_id,
+        { email: updates.email, email_confirm: true },
+      );
+      if (authEmailErr) {
+        if (String(authEmailErr.message || '').toLowerCase().includes('already')) {
+          return res.status(409).json({ error: 'That email is already used by another account' });
+        }
+        throw authEmailErr;
+      }
+    }
     if (req.user.role === 'admin' && req.body.coach_id) {
       const { data: targetCoach } = await supabaseAdmin.from('coaches').select('id')
         .eq('id', req.body.coach_id).eq('archived', false).maybeSingle();
@@ -122,10 +138,41 @@ router.patch('/:id/invite', async (req, res) => {
       .select()
       .single();
     if (error) throw error;
-    return res.json(data);
+    let inviteEmail = null;
+    if (invited && data.email) {
+      if (configured()) {
+        const coachName = req.user.coach?.name || 'Your coach';
+        await dispatchEmail(() => sendInviteEmail({ client: data, coachName }));
+        inviteEmail = 'sent';
+      } else {
+        inviteEmail = 'unconfigured';
+      }
+    }
+    return res.json({ ...data, invite_email: inviteEmail });
   } catch (e) {
     logError('invite client error', e);
     return res.status(500).json({ error: 'Failed to update invite status' });
+  }
+});
+
+// POST /api/clients/:id/send-password-reset
+// Rescue path for a claimed client who is locked out.
+router.post('/:id/send-password-reset', async (req, res) => {
+  try {
+    const clientRow = await loadClientOr404(req, res);
+    if (!clientRow) return;
+    if (!clientRow.auth_user_id) {
+      return res.status(400).json({ error: 'This client has not claimed their account yet — use the invite instead' });
+    }
+    if (!clientRow.email) return res.status(400).json({ error: 'Add an email to this client profile first' });
+    if (!configured()) {
+      return res.status(503).json({ error: 'Email delivery is not set up yet' });
+    }
+    await sendPasswordResetEmail({ email: clientRow.email, name: clientRow.name });
+    return res.json({ ok: true });
+  } catch (e) {
+    logError('client password reset error', e);
+    return res.status(500).json({ error: 'Could not send the reset email. Please try again.' });
   }
 });
 

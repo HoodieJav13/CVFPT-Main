@@ -2,9 +2,14 @@ const express = require('express');
 const { supabaseAdmin, anonClient } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth } = require('../middleware/auth');
-const { loginLimiter, refreshLimiter, signupLimiter } = require('../middleware/rateLimits');
+const {
+  changePasswordLimiter, forgotPasswordLimiter, loginLimiter,
+  refreshLimiter, resetPasswordLimiter, signupLimiter,
+} = require('../middleware/rateLimits');
 const { linkInvitedClient } = require('../services/clientClaims');
 const { escapeLikePattern } = require('../utils/like');
+const { configured } = require('../services/email');
+const { sendPasswordResetEmail } = require('../services/accountRecovery');
 
 const router = express.Router();
 
@@ -113,6 +118,97 @@ router.post('/signup', signupLimiter, async (req, res) => {
   } catch (e) {
     logError('signup error', e);
     return res.status(500).json({ error: 'Signup failed. Please try again or contact your coach.' });
+  }
+});
+
+// POST /api/auth/forgot-password { email }
+// Known and unknown emails both answer 200 — the response never reveals
+// whether an account exists. 503/502 reflect server config/provider state.
+router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    if (!configured()) {
+      return res.status(503).json({ error: 'Email delivery is not set up yet. Please contact your coach directly.' });
+    }
+    const normalized = String(email).trim().toLowerCase();
+    const pattern = escapeLikePattern(normalized);
+
+    const { data: coach, error: coachErr } = await supabaseAdmin
+      .from('coaches').select('id, name, email')
+      .ilike('email', pattern).eq('archived', false).maybeSingle();
+    if (coachErr) throw coachErr;
+    let person = coach;
+    if (!person) {
+      const { data: client, error: clientErr } = await supabaseAdmin
+        .from('clients').select('id, name, email, auth_user_id')
+        .ilike('email', pattern).eq('archived', false)
+        .not('auth_user_id', 'is', null).maybeSingle();
+      if (clientErr) throw clientErr;
+      person = client;
+    }
+
+    if (person) {
+      try {
+        await sendPasswordResetEmail({ email: normalized, name: person.name });
+      } catch (sendErr) {
+        logError('password reset send error', sendErr);
+        return res.status(502).json({ error: 'Could not send the email right now. Please try again shortly.' });
+      }
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    logError('forgot password error', e);
+    return res.status(500).json({ error: 'Could not process the request. Please try again.' });
+  }
+});
+
+// POST /api/auth/reset-password { token, password }
+router.post('/reset-password', resetPasswordLimiter, async (req, res) => {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || !password) return res.status(400).json({ error: 'Token and password are required' });
+    if (String(password).length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const sb = anonClient();
+    const { data, error } = await sb.auth.verifyOtp({ type: 'recovery', token_hash: String(token) });
+    if (error || !data?.user) {
+      return res.status(400).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
+    }
+
+    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, { password });
+    if (updateErr) throw updateErr;
+    return res.json({ ok: true });
+  } catch (e) {
+    logError('reset password error', e);
+    return res.status(500).json({ error: 'Could not reset the password. Please try again.' });
+  }
+});
+
+// POST /api/auth/change-password { current_password, new_password }
+router.post('/change-password', requireAuth, changePasswordLimiter, async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body || {};
+    if (!current_password || !new_password) {
+      return res.status(400).json({ error: 'Current and new passwords are required' });
+    }
+    if (String(new_password).length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
+
+    const sb = anonClient();
+    const { error: verifyErr } = await sb.auth.signInWithPassword({
+      email: req.user.email,
+      password: current_password,
+    });
+    if (verifyErr) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(req.user.authUserId, { password: new_password });
+    if (updateErr) throw updateErr;
+    return res.json({ ok: true });
+  } catch (e) {
+    logError('change password error', e);
+    return res.status(500).json({ error: 'Could not change the password. Please try again.' });
   }
 });
 
