@@ -33,9 +33,17 @@ import { safeHttpUrl } from '@/lib/safeUrl';
 export default function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const initialTab = ['overview', 'check-ins', 'progress', 'sessions', 'programs'].includes(searchParams.get('tab'))
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = ['overview', 'check-ins', 'progress', 'sessions', 'programs'].includes(searchParams.get('tab'))
     ? searchParams.get('tab') : 'overview';
+  const selectTab = (tab) => {
+    setSearchParams((params) => {
+      const next = new URLSearchParams(params);
+      if (tab === 'overview') next.delete('tab');
+      else next.set('tab', tab);
+      return next;
+    }, { replace: true });
+  };
   const sessionContextId = searchParams.get('session') || null;
   const { user } = useAuth();
   const [client, setClient] = useState(null);
@@ -154,7 +162,9 @@ export default function ClientDetail() {
         </aside>
 
         <div className="min-w-0">
-      <Tabs key={client.id} defaultValue={initialTab}>
+      {/* Controlled: navigating to the same client with a different ?tab=
+          (e.g. a dashboard action-queue link) must switch the visible tab. */}
+      <Tabs key={client.id} value={activeTab} onValueChange={selectTab}>
         <TabsList className="h-auto min-h-[52px] w-full snap-x justify-start overflow-x-auto rounded-xl tab-overflow-fade" aria-label="Client detail sections" data-testid="client-detail-tabs">
           <TabsTrigger value="overview" className="min-h-11" data-testid="tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="check-ins" className="min-h-11" data-testid="tab-check-ins">Check-ins</TabsTrigger>

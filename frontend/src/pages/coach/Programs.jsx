@@ -168,8 +168,11 @@ function ExerciseLibraryTab({ library, reload }) {
     }
   };
 
-  const importCsv = async (file) => {
-    if (!file) return;
+  const [importing, setImporting] = useState(false);
+
+  const importCsv = async (file, inputElement) => {
+    if (!file || importing) return;
+    setImporting(true);
     try {
       const text = await file.text();
       const { rows } = parseCsv(text);
@@ -178,6 +181,11 @@ function ExerciseLibraryTab({ library, reload }) {
       reload();
     } catch (e) {
       toast.error(errMsg(e, 'Could not import CSV'));
+    } finally {
+      setImporting(false);
+      // Without a reset, re-selecting the same file (a natural retry after
+      // a failure) fires no change event and the import silently no-ops.
+      if (inputElement) inputElement.value = '';
     }
   };
 
@@ -197,8 +205,8 @@ function ExerciseLibraryTab({ library, reload }) {
               }
             }}
           >
-            <FileUp className="h-4 w-4 mr-1.5" /> Import CSV
-            <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => importCsv(e.target.files?.[0])} data-testid="exercise-library-import-input" />
+            {importing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileUp className="h-4 w-4 mr-1.5" />} Import CSV
+            <input type="file" accept=".csv,text/csv" className="hidden" disabled={importing} onChange={(e) => importCsv(e.target.files?.[0], e.target)} data-testid="exercise-library-import-input" />
           </label>
           <Button className="rounded-xl" onClick={openCreate} data-testid="exercise-library-create-button">
             <Plus className="h-4 w-4 mr-1.5" /> Add exercise

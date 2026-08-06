@@ -110,27 +110,39 @@ export default function CoachSessions() {
     return groups;
   }, [filtered]);
 
+  const [acting, setActing] = useState(null);
+
   const complete = async (s) => {
+    if (acting) return;
+    setActing(s.id);
     try {
       await api.patch(`/sessions/${s.id}/complete`);
       toast.success('Session completed');
-      load();
+      await load();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      setActing(null);
     }
   };
 
   const cancel = async (s) => {
+    if (acting) return;
+    setActing(s.id);
     try {
       await api.patch(`/sessions/${s.id}/cancel`);
       toast.success('Session cancelled');
-      load();
+      await load();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      setActing(null);
     }
   };
 
   const handleBooking = async (id, action) => {
+    if (acting) return;
+    setActing(id);
     try {
       await api.patch(`/bookings/${id}/${action}`);
       toast.success(action === 'approve' ? 'Approved - session created' : 'Request declined');
@@ -152,6 +164,8 @@ export default function CoachSessions() {
       } else {
         toast.error(errMsg(e));
       }
+    } finally {
+      setActing(null);
     }
   };
 
@@ -192,8 +206,8 @@ export default function CoachSessions() {
                     <p className="text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(b.requested_time)} - {b.duration_minutes}m</p>
                   </div>
                   <div className="flex gap-1.5 shrink-0">
-                    <Button size="sm" className="min-h-11 rounded-lg" onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button"><Check className="h-3.5 w-3.5 mr-1" /> Approve</Button>
-                    <Button size="sm" variant="ghost" className="min-h-11 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
+                    <Button size="sm" className="min-h-11 rounded-lg" disabled={acting === b.id} onClick={() => handleBooking(b.id, 'approve')} data-testid="booking-approve-button"><Check className="h-3.5 w-3.5 mr-1" /> Approve</Button>
+                    <Button size="sm" variant="ghost" className="min-h-11 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={acting === b.id} onClick={() => handleBooking(b.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
                   </div>
                 </div>
                 {bookingConflicts[b.id] && (

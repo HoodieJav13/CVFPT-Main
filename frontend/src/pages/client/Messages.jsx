@@ -10,7 +10,7 @@ export default function ClientMessages() {
   const [loadError, setLoadError] = useState(null);
   const [sending, setSending] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ background = false } = {}) => {
     try {
       const { data } = await api.get('/messages/mine');
       setData(data);
@@ -18,14 +18,21 @@ export default function ClientMessages() {
     } catch (e) {
       const message = errMsg(e, 'Failed to load messages');
       setLoadError(message);
-      toast.error(message);
+      // Background polls fail silently (the next poll may recover) — a toast
+      // every 12s during a signal drop buries the conversation.
+      if (!background) toast.error(message);
     }
   }, []);
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 12000);
-    return () => clearInterval(t);
+    const t = setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      load({ background: true });
+    }, 12000);
+    const onVisible = () => { if (document.visibilityState === 'visible') load({ background: true }); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, [load]);
 
   const send = async (content) => {

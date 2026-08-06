@@ -119,15 +119,18 @@ export default function CheckInForm({ initial, saving, onSubmit, submitLabel = '
 function RatingField({ label, value, onChange, testId }) {
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
-      <div className="grid grid-cols-5 gap-1" data-testid={testId}>
+      <Label id={`${testId}-label`}>{label}</Label>
+      <div className="grid grid-cols-5 gap-1" role="radiogroup" aria-labelledby={`${testId}-label`} data-testid={testId}>
         {[1, 2, 3, 4, 5].map((n) => (
           <button
             key={n}
             type="button"
+            role="radio"
+            aria-checked={value === String(n)}
+            aria-label={`${n} of 5`}
             onClick={() => onChange(value === String(n) ? '' : String(n))}
             className={cn(
-              'h-9 rounded-lg border border-border text-sm font-semibold tabular-nums transition-colors',
+              'min-h-11 rounded-lg border border-border text-sm font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               value === String(n) ? 'border-primary bg-primary text-primary-foreground' : 'bg-card/60 text-muted-foreground hover:text-foreground'
             )}
           >

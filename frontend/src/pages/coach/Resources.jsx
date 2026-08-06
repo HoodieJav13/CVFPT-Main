@@ -296,7 +296,10 @@ function AssignDialog({ resource, clients, onClose, onSaved }) {
       toast.success('Resource assignments updated');
       onSaved();
     } catch (error) {
-      toast.error(errMsg(error, 'Could not update assignments'));
+      toast.error(errMsg(error, 'Some assignments could not be updated'));
+      // The parallel requests may have partially succeeded — close and
+      // reload so the checkboxes never show a state the server doesn't have.
+      onSaved();
     } finally {
       setSaving(false);
     }

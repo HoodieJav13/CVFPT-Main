@@ -62,7 +62,7 @@ export default function CoachMessages() {
   const [sending, setSending] = useState(false);
   const loadSequence = useRef(0);
 
-  const loadThreads = useCallback(async () => {
+  const loadThreads = useCallback(async ({ background = false } = {}) => {
     try {
       const { data } = await api.get('/messages/threads');
       setThreads(data);
@@ -70,17 +70,21 @@ export default function CoachMessages() {
     } catch (e) {
       const message = errMsg(e, 'Failed to load messages');
       setThreadsError(message);
-      if (!clientId) toast.error(message);
+      // Background polls fail silently — the inline error states cover it.
+      if (!clientId && !background) toast.error(message);
     }
   }, [clientId]);
 
   useEffect(() => {
     loadThreads();
-    const t = setInterval(loadThreads, 30000);
+    const t = setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      loadThreads({ background: true });
+    }, 30000);
     return () => clearInterval(t);
   }, [loadThreads]);
 
-  const loadConversation = useCallback(async () => {
+  const loadConversation = useCallback(async ({ background = false } = {}) => {
     if (!clientId) return;
     const sequence = ++loadSequence.current;
     try {
@@ -93,15 +97,20 @@ export default function CoachMessages() {
       if (sequence !== loadSequence.current) return;
       const message = errMsg(e, 'Failed to load conversation');
       setConversationError({ clientId, message });
-      toast.error(message);
+      if (!background) toast.error(message);
     }
   }, [clientId]);
 
   useEffect(() => {
     if (!clientId) return undefined;
     loadConversation();
-    const t = setInterval(loadConversation, 12000);
-    return () => clearInterval(t);
+    const t = setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      loadConversation({ background: true });
+    }, 12000);
+    const onVisible = () => { if (document.visibilityState === 'visible') loadConversation({ background: true }); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, [clientId, loadConversation]);
 
   const send = async (content) => {
@@ -159,7 +168,7 @@ export default function CoachMessages() {
       {/* Mobile conversation header (back + name). */}
       {clientId && (
         <div className="mb-4 flex items-center gap-3 lg:hidden">
-          <button onClick={() => navigate('/coach/messages')} className="text-muted-foreground hover:text-foreground" data-testid="back-to-threads-button">
+          <button onClick={() => navigate('/coach/messages')} aria-label="Back to conversations" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="back-to-threads-button">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <h1 className="font-display text-xl font-semibold" data-testid="conversation-client-name">{conversation?.client?.name || '...'}</h1>

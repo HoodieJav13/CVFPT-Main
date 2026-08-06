@@ -208,7 +208,16 @@ export default function WorkoutLogDetail() {
 
   return (
     <div>
-      <button type="button" onClick={() => navigate(-1)} className="mb-3 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:text-foreground">
+      <button
+        type="button"
+        // Deep links (e.g. from a notification email) have no in-app history —
+        // navigate(-1) would exit the app, so fall back to a role-aware home.
+        onClick={() => {
+          if (window.history.state?.idx > 0) navigate(-1);
+          else navigate(user?.role === 'client' ? '/client/programs?view=history' : '/coach');
+        }}
+        className="mb-3 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:text-foreground"
+      >
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
       {queueStillWaiting && (

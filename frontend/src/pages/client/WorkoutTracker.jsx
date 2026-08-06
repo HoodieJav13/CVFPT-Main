@@ -208,10 +208,9 @@ export default function WorkoutTracker() {
   }, [restIsComplete, restAlerts]);
 
   const toggleRestAlerts = () => {
-    setRestAlerts((current) => {
-      localStorage.setItem('cvf_rest_alerts', current ? 'off' : 'on');
-      return !current;
-    });
+    const next = !restAlerts;
+    localStorage.setItem('cvf_rest_alerts', next ? 'on' : 'off');
+    setRestAlerts(next);
   };
 
   if (!log && loadError) return <LoadErrorState message={loadError} scope="workout-tracker" onRetry={load} />;
@@ -250,12 +249,19 @@ export default function WorkoutTracker() {
 
   const toggleSet = (exercise, set) => {
     const status = set.status === 'completed' ? 'pending' : 'completed';
+    // Load fields normalized exactly like saveSet — an empty string with a
+    // stale unit is a backend 400 that would revert the completion.
+    const blank = set.actual_load_value === '' || set.actual_load_value === null;
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
-      data: { status, actual_load_value: set.actual_load_value, actual_load_unit: set.actual_load_unit,
+      data: {
+        status,
+        actual_load_value: blank ? null : Number(set.actual_load_value),
+        actual_load_unit: blank ? null : (set.actual_load_unit || 'lb'),
         actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
-        actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe) },
+        actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
+      },
     });
     if (status === 'completed' && exercise.prescribed_rest_seconds > 0) {
       startRest(exercise.prescribed_rest_seconds);
