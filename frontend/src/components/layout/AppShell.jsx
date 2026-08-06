@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
   TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search, BarChart3,
   Download, Share,
-  Mail,
+  Mail, KeyRound, Loader2,
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
 import ClientJump from '@/components/ClientJump';
@@ -23,6 +23,8 @@ import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { api, errMsg } from '@/lib/api';
 import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
@@ -310,6 +312,29 @@ function UserMenu({ user, logout, compact }) {
   const [emailHelpOpen, setEmailHelpOpen] = useState(false);
   const [digestOptOut, setDigestOptOut] = useState(false);
   const [emailPreferenceLoading, setEmailPreferenceLoading] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+
+  const submitPasswordChange = async (e) => {
+    e.preventDefault();
+    if (passwordForm.next.length < 8) { toast.error('New password must be at least 8 characters'); return; }
+    if (passwordForm.next !== passwordForm.confirm) { toast.error('New passwords do not match'); return; }
+    setPasswordSaving(true);
+    try {
+      await api.post('/auth/change-password', {
+        current_password: passwordForm.current,
+        new_password: passwordForm.next,
+      });
+      toast.success('Password updated');
+      setPasswordOpen(false);
+      setPasswordForm({ current: '', next: '', confirm: '' });
+    } catch (error) {
+      toast.error(errMsg(error, 'Could not change the password'));
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
 
   const openEmailPreferences = useCallback(() => {
     setEmailHelpOpen(true);
@@ -397,6 +422,10 @@ function UserMenu({ user, logout, compact }) {
           <Mail className="h-4 w-4 mr-2" /> Email notifications
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => setPasswordOpen(true)} data-testid="change-password-item">
+          <KeyRound className="h-4 w-4 mr-2" /> Change password
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={logout} data-testid="logout-button">
           <LogOut className="h-4 w-4 mr-2" /> Log out
         </DropdownMenuItem>
@@ -457,6 +486,39 @@ function UserMenu({ user, logout, compact }) {
             data-testid="digest-opt-out-switch"
           />
         </div>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={passwordOpen} onOpenChange={(open) => { setPasswordOpen(open); if (!open) setPasswordForm({ current: '', next: '', confirm: '' }); }}>
+      <DialogContent className="max-w-sm" data-testid="change-password-dialog">
+        <DialogHeader>
+          <DialogTitle>Change password</DialogTitle>
+          <DialogDescription>Confirm your current password, then choose a new one.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submitPasswordChange} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="current-password">Current password</Label>
+            <Input id="current-password" type="password" required autoComplete="current-password" value={passwordForm.current}
+              onChange={(e) => setPasswordForm((f) => ({ ...f, current: e.target.value }))}
+              className="h-11 rounded-xl" data-testid="change-password-current-input" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-password">New password</Label>
+            <Input id="new-password" type="password" required minLength={8} autoComplete="new-password" value={passwordForm.next}
+              onChange={(e) => setPasswordForm((f) => ({ ...f, next: e.target.value }))}
+              placeholder="At least 8 characters" className="h-11 rounded-xl" data-testid="change-password-new-input" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm-password">Confirm new password</Label>
+            <Input id="confirm-password" type="password" required minLength={8} autoComplete="new-password" value={passwordForm.confirm}
+              onChange={(e) => setPasswordForm((f) => ({ ...f, confirm: e.target.value }))}
+              className="h-11 rounded-xl" data-testid="change-password-confirm-input" />
+          </div>
+          <DialogFooter>
+            <Button type="submit" className="h-11 w-full rounded-xl font-semibold" disabled={passwordSaving} data-testid="change-password-submit-button">
+              {passwordSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Update password'}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
     </>

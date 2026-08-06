@@ -233,11 +233,26 @@ function OverviewTab({ client, waiver, reload, user }) {
 
   const toggleInvite = async (invited) => {
     try {
-      await api.patch(`/clients/${client.id}/invite`, { invited });
-      toast.success(invited ? 'Client invited - they can now sign up with their email' : 'Invitation removed');
+      const { data } = await api.patch(`/clients/${client.id}/invite`, { invited });
+      if (!invited) toast.success('Invitation removed');
+      else if (data.invite_email === 'sent') toast.success('Invite email sent - they can claim their account from the link');
+      else toast.success('Client invited - tell them to sign up with their email');
       reload();
     } catch (err) {
       toast.error(errMsg(err));
+    }
+  };
+
+  const [sendingReset, setSendingReset] = useState(false);
+  const sendPasswordReset = async () => {
+    setSendingReset(true);
+    try {
+      await api.post(`/clients/${client.id}/send-password-reset`);
+      toast.success('Password reset email sent');
+    } catch (err) {
+      toast.error(errMsg(err, 'Could not send the reset email'));
+    } finally {
+      setSendingReset(false);
     }
   };
 
@@ -319,23 +334,34 @@ function OverviewTab({ client, waiver, reload, user }) {
       </Card>
 
       <Card>
-        <CardContent className="p-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="font-medium text-sm">Client portal invitation</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {client.auth_user_id
-                ? 'This client has claimed their account.'
-                : client.invited
-                  ? `Invited - tell them to sign up at this site with ${client.email || 'their email'}.`
-                  : 'Toggle on, then tell the client to sign up using their email.'}
-            </p>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-medium text-sm">Client portal invitation</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {client.auth_user_id
+                  ? 'This client has claimed their account.'
+                  : client.invited
+                    ? `Invited - they can sign up from the invite email using ${client.email || 'their email'}.`
+                    : 'Toggle on to email the client a signup link.'}
+              </p>
+            </div>
+            <Switch
+              checked={client.invited || Boolean(client.auth_user_id)}
+              disabled={Boolean(client.auth_user_id)}
+              onCheckedChange={toggleInvite}
+              data-testid="client-invite-switch"
+            />
           </div>
-          <Switch
-            checked={client.invited || Boolean(client.auth_user_id)}
-            disabled={Boolean(client.auth_user_id)}
-            onCheckedChange={toggleInvite}
-            data-testid="client-invite-switch"
-          />
+          {Boolean(client.auth_user_id) && client.email && (
+            <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+              <p className="text-xs text-muted-foreground">Locked out? Email them a password reset link.</p>
+              <Button variant="outline" size="sm" className="min-h-9 rounded-lg shrink-0" disabled={sendingReset}
+                onClick={sendPasswordReset} data-testid="client-send-password-reset-button">
+                {sendingReset ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send password reset'}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
