@@ -33,6 +33,24 @@ const signupLimiter = createRateLimiter({
   limit: 10,
 });
 
+const forgotPasswordLimiter = createRateLimiter({
+  identifier: 'auth-forgot-password',
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+});
+
+const resetPasswordLimiter = createRateLimiter({
+  identifier: 'auth-reset-password',
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+});
+
+const changePasswordLimiter = createRateLimiter({
+  identifier: 'auth-change-password',
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+});
+
 const refreshLimiter = createRateLimiter({
   identifier: 'auth-refresh',
   windowMs: 5 * 60 * 1000,
@@ -84,8 +102,11 @@ const telemetryLimiter = createRateLimiter({
 
 module.exports = {
   RATE_LIMIT_MESSAGE,
+  changePasswordLimiter,
   createRateLimiter,
   csvImportLimiter,
+  forgotPasswordLimiter,
+  resetPasswordLimiter,
   libraryImportLimiter,
   loginLimiter,
   pdfExportLimiter,
