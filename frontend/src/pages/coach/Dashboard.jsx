@@ -50,23 +50,33 @@ export default function CoachDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
+  const [acting, setActing] = useState(null);
+
   const handleBooking = async (id, action) => {
+    if (acting) return;
+    setActing(`booking-${id}`);
     try {
       await api.patch(`/bookings/${id}/${action}`);
       toast.success(action === 'approve' ? 'Request approved - session created' : 'Request declined');
-      load();
+      await load();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      setActing(null);
     }
   };
 
   const handleSessionComplete = async (id) => {
+    if (acting) return;
+    setActing(`session-${id}`);
     try {
       await api.patch(`/sessions/${id}/complete`);
       toast.success('Session completed');
-      load();
+      await load();
     } catch (e) {
       toast.error(errMsg(e, 'Could not complete session'));
+    } finally {
+      setActing(null);
     }
   };
 
@@ -166,12 +176,12 @@ export default function CoachDashboard() {
                 <div className="flex shrink-0 gap-2">
                   {item.kind === 'booking' ? (
                     <>
-                      <Button size="sm" className="min-h-11 rounded-lg" onClick={() => handleBooking(item.detail.id, 'approve')} data-testid="booking-approve-button"><Check className="mr-1 h-3.5 w-3.5" />Approve</Button>
-                      <Button size="sm" variant="outline" className="min-h-11 rounded-lg text-destructive" onClick={() => handleBooking(item.detail.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
+                      <Button size="sm" className="min-h-11 rounded-lg" disabled={acting === `booking-${item.detail.id}`} onClick={() => handleBooking(item.detail.id, 'approve')} data-testid="booking-approve-button"><Check className="mr-1 h-3.5 w-3.5" />Approve</Button>
+                      <Button size="sm" variant="outline" className="min-h-11 rounded-lg text-destructive" disabled={acting === `booking-${item.detail.id}`} onClick={() => handleBooking(item.detail.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
                     </>
                   ) : item.kind === 'stale_session' ? (
                     <>
-                      <Button size="sm" className="min-h-11 rounded-lg" onClick={() => handleSessionComplete(item.detail.id)}><Check className="mr-1 h-3.5 w-3.5" />Complete</Button>
+                      <Button size="sm" className="min-h-11 rounded-lg" disabled={acting === `session-${item.detail.id}`} onClick={() => handleSessionComplete(item.detail.id)}><Check className="mr-1 h-3.5 w-3.5" />Complete</Button>
                       <Button asChild size="sm" variant="outline" className="min-h-11 rounded-lg"><Link to="/coach/sessions?view=past">Review</Link></Button>
                     </>
                   ) : (

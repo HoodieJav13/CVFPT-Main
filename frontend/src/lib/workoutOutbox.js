@@ -87,7 +87,7 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
     try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch { return []; }
   }, [storageKey]);
   const queueRef = useRef(initial);
-  const processingRef = useRef(false);
+  const inFlightRef = useRef(null);
   const retryRef = useRef(null);
   const syncedRef = useRef(onCompleteSynced);
   const rejectedRef = useRef(onCompleteRejected);
@@ -104,13 +104,17 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
     setQueuedComplete(queue.some((operation) => operation.kind === 'complete'));
   }, [storageKey]);
 
-  const flush = useCallback(async () => {
-    if (processingRef.current || !navigator.onLine) {
+  const flush = useCallback(() => {
+    // A caller awaiting flush() during an in-progress run (e.g. finish()
+    // right after a blur save) joins that run instead of getting a false
+    // "offline" verdict while fully online.
+    if (inFlightRef.current) return inFlightRef.current;
+    if (!navigator.onLine) {
       setSaveState('not_saved');
-      return false;
+      return Promise.resolve(false);
     }
-    processingRef.current = true;
     window.clearTimeout(retryRef.current);
+    const run = (async () => {
     try {
       while (queueRef.current.length) {
         setSaveState('saving');
@@ -172,8 +176,11 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
       setSaveState('saved');
       return true;
     } finally {
-      processingRef.current = false;
+      inFlightRef.current = null;
     }
+    })();
+    inFlightRef.current = run;
+    return run;
   }, [logId, persist, setLog]);
 
   const enqueue = useCallback((operation) => {

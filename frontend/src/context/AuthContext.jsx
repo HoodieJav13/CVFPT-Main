@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { api, tokenStore } from '@/lib/api';
-import { getPreviewUser, isPreviewMode, onPreviewChange } from '@/lib/previewMode';
+import { api, previewReady, tokenStore } from '@/lib/api';
+import { isPreviewMode } from '@/lib/previewFlag';
 
 const AuthContext = createContext(null);
 
@@ -8,9 +8,10 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const loadMe = useCallback(async () => {
+  const loadMe = useCallback(async (attempt = 0) => {
     if (isPreviewMode) {
-      setUser(getPreviewUser());
+      const preview = await previewReady;
+      setUser(preview.getPreviewUser());
       setLoading(false);
       return;
     }
@@ -22,23 +23,35 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get('/auth/me');
       setUser({ role: data.role, email: data.email, profile: data.profile });
-    } catch {
-      setUser(null);
-    } finally {
       setLoading(false);
+    } catch (error) {
+      // Only a real server verdict (401/403/…) clears the session. A network
+      // failure or backend cold start keeps the stored tokens and retries —
+      // previously any blip dumped a still-authenticated user at /login.
+      if (error?.response || attempt >= 3) {
+        setUser(null);
+        setLoading(false);
+      } else {
+        window.setTimeout(() => loadMe(attempt + 1), 1500 * (attempt + 1));
+      }
     }
   }, []);
 
   useEffect(() => {
     loadMe();
-    if (isPreviewMode) {
-      return onPreviewChange(() => setUser(getPreviewUser()));
-    }
+    if (!isPreviewMode) return undefined;
+    let cancelled = false;
+    let unsubscribe = () => {};
+    previewReady.then((preview) => {
+      if (!cancelled && preview) unsubscribe = preview.onPreviewChange(() => setUser(preview.getPreviewUser()));
+    });
+    return () => { cancelled = true; unsubscribe(); };
   }, [loadMe]);
 
   const login = useCallback(async (email, password) => {
     if (isPreviewMode) {
-      const previewUser = getPreviewUser();
+      const preview = await previewReady;
+      const previewUser = preview.getPreviewUser();
       setUser(previewUser);
       return previewUser;
     }
@@ -50,7 +63,8 @@ export function AuthProvider({ children }) {
 
   const signup = useCallback(async (email, password) => {
     if (isPreviewMode) {
-      const previewUser = getPreviewUser();
+      const preview = await previewReady;
+      const previewUser = preview.getPreviewUser();
       setUser(previewUser);
       return previewUser;
     }
@@ -62,7 +76,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     if (isPreviewMode) {
-      setUser(getPreviewUser());
+      previewReady.then((preview) => setUser(preview.getPreviewUser()));
       return;
     }
     tokenStore.clear();
