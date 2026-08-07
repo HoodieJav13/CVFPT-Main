@@ -67,12 +67,12 @@ export default function MetricChart({ entries = [], unit, highlightLatest = fals
             <ReferenceLine
               y={goal}
               ifOverflow="extendDomain"
-              stroke="hsl(var(--gold) / 0.6)"
+              stroke="hsl(var(--achievement-gold) / 0.6)"
               strokeDasharray="6 5"
               label={{
                 value: `Goal ${goal}${unit ? ` ${unit}` : ''}`,
                 position: 'insideTopRight',
-                fill: 'hsl(var(--gold))',
+                fill: 'hsl(var(--achievement-gold))',
                 fontSize: 10,
               }}
             />
@@ -96,7 +96,7 @@ export default function MetricChart({ entries = [], unit, highlightLatest = fals
                     <m.circle
                       cx={cx}
                       cy={cy}
-                      fill="hsl(var(--gold))"
+                      fill="hsl(var(--achievement-gold))"
                       initial={{ r: 5, opacity: 0.65 }}
                       animate={{ r: 18, opacity: 0 }}
                       transition={{
@@ -108,7 +108,7 @@ export default function MetricChart({ entries = [], unit, highlightLatest = fals
                     <m.circle
                       cx={cx}
                       cy={cy}
-                      fill="hsl(var(--gold))"
+                      fill="hsl(var(--achievement-gold))"
                       stroke="hsl(var(--card))"
                       strokeWidth={2}
                       initial={{ r: 2 }}
@@ -123,7 +123,7 @@ export default function MetricChart({ entries = [], unit, highlightLatest = fals
                 );
               }
               return (
-                <circle key={key} cx={cx} cy={cy} r={latest ? 5.5 : 4} fill={latest ? 'hsl(var(--gold))' : 'hsl(var(--chart-1))'} stroke="hsl(var(--card))" strokeWidth={2} />
+                <circle key={key} cx={cx} cy={cy} r={latest ? 5.5 : 4} fill={latest ? 'hsl(var(--achievement-gold))' : 'hsl(var(--chart-1))'} stroke="hsl(var(--card))" strokeWidth={2} />
               );
             }}
             activeDot={{ r: 6, stroke: 'hsl(var(--card))', strokeWidth: 2 }}

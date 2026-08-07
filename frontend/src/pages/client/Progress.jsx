@@ -49,7 +49,7 @@ function AchievementMoment({ achievement }) {
       {achievement ? (
         <m.section
           key={`${achievement.metricId}-${achievement.value}`}
-          className="signature-glass signature-surface relative isolate mb-4 min-h-40 overflow-hidden rounded-2xl border-gold/85 px-4 py-4 shadow-[0_18px_58px_hsl(var(--gold)/0.28)] sm:px-7 sm:py-7"
+          className="signature-glass signature-surface relative isolate mb-4 min-h-40 overflow-hidden rounded-2xl border-achievement/85 px-4 py-4 shadow-[0_18px_58px_hsl(var(--achievement-gold)/0.28)] sm:px-7 sm:py-7"
           initial={reducedMotion ? false : { opacity: 0, y: recipe.distance, scale: recipe.initialScale }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -recipe.distance / 2, scale: 0.99 }}
@@ -201,7 +201,7 @@ export default function ClientProgress() {
           return (
             <Card
               key={m.id}
-              className={cn(isAchievementMetric && 'border-gold/35')}
+              className={cn(isAchievementMetric && 'border-achievement/35')}
               data-testid="client-metric-card"
               data-achievement={isAchievementMetric ? 'true' : undefined}
             >
@@ -217,19 +217,19 @@ export default function ClientProgress() {
                       <p className="text-xs text-muted-foreground mt-0.5">No entries yet</p>
                     )}
                     {m.target_value != null && (
-                      <p className="text-xs text-gold mt-0.5" data-testid="client-metric-goal">
+                      <p className="text-xs text-achievement mt-0.5" data-testid="client-metric-goal">
                         Goal: <span className="font-semibold tabular-nums">{m.target_value}{m.unit ? ` ${m.unit}` : ''}</span>
                       </p>
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {m.latest_is_personal_best && (
-                      <span className="rounded-md border border-gold/25 bg-gold/10 px-2 py-0.5 font-display text-xs font-semibold text-gold" data-testid="personal-best-badge">
+                      <span className="rounded-md bg-achievement px-2 py-0.5 font-display text-xs font-semibold text-achievement-foreground" data-testid="personal-best-badge">
                         PR
                       </span>
                     )}
                     {delta !== null && m.entries.length > 1 && (
-                      <span className={`rounded-md border px-2 py-0.5 font-display text-sm font-semibold tabular-nums ${m.latest_is_personal_best ? 'border-gold/25 bg-gold/15 text-gold' : 'border-border bg-secondary text-muted-foreground'}`}>
+                      <span className={`rounded-md border px-2 py-0.5 font-display text-sm font-semibold tabular-nums ${m.latest_is_personal_best ? 'border-achievement/40 bg-achievement/15 text-achievement' : 'border-border bg-secondary text-muted-foreground'}`}>
                         {delta > 0 ? '+' : ''}{delta}{m.unit ? ` ${m.unit}` : ''}
                       </span>
                     )}
@@ -277,12 +277,10 @@ export default function ClientProgress() {
                     )}
                     <div className="mt-3 space-y-2">
                       {entriesInRange(m.entries, ranges[m.id] || 'all').slice().reverse().slice(0, 4).map((entry) => (
-                        <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2" data-testid="client-progress-entry-row">
-                          <div>
-                            <p className="text-sm font-medium tabular-nums">{entry.value}{m.unit ? ` ${m.unit}` : ''}</p>
-                            <p className="text-xs text-muted-foreground">{fmtDate(entry.recorded_on)}{entry.notes ? ` - ${entry.notes}` : ''}</p>
-                          </div>
-                          <IconButton label={`Edit ${m.name} entry from ${fmtDate(entry.recorded_on)}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="client-edit-entry-button">
+                        <div key={entry.id} className="flex items-center gap-3 rounded-lg border border-border bg-card/60 px-3 py-1" data-testid="client-progress-entry-row">
+                          <p className="shrink-0 text-sm font-semibold tabular-nums">{entry.value}{m.unit ? ` ${m.unit}` : ''}</p>
+                          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{fmtDate(entry.recorded_on)}{entry.notes ? ` - ${entry.notes}` : ''}</p>
+                          <IconButton label={`Edit ${m.name} entry from ${fmtDate(entry.recorded_on)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="client-edit-entry-button">
                             <Pencil className="h-3.5 w-3.5" />
                           </IconButton>
                         </div>

@@ -33,6 +33,13 @@
     --destructive-foreground: 210 25% 97%;
     --gold: 58 97% 62%;
     --gold-foreground: 215 28% 8%;
+    /* Product-local achievement family (design-plans/010 §8): evaluates the
+       true-gold hue on PRs and positive achievements without touching the
+       Leagues-synced --gold brand token or the PDF-export hex. Pending /
+       attention surfaces stay on --gold. Promoting this hue to the shared
+       brand token is a separate owner decision. */
+    --achievement-gold: 45 85% 58%;
+    --achievement-gold-foreground: 216 30% 10%;
     --success: 160 84% 39%;
     --success-foreground: 152 76% 80%;
     --signature-primary: 188 72% 74%;
@@ -140,7 +147,9 @@
   }
 
   .signature-gold-text {
-    color: hsl(var(--signature-gold));
+    /* Achievement-family display text (PR celebration) rides the local
+       achievement hue evaluation; lightened for legibility over glass. */
+    color: hsl(45 92% 68%);
   }
 
   .signature-glass {

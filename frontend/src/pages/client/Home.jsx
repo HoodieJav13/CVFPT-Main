@@ -14,7 +14,7 @@ import {
   CalendarDays, Dumbbell, ChevronRight, MapPin,
   MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2,
 } from 'lucide-react';
-import { fmtDay, fmtTime, fmtDateTime, fmtDate } from '@/lib/format';
+import { fmtDay, fmtTime, fmtDateTime, fmtDate, initials } from '@/lib/format';
 import { toast } from 'sonner';
 import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
@@ -207,7 +207,16 @@ export default function ClientHome() {
                 {fmtDay(data.next_session.scheduled_at)} <span className="text-primary">{fmtTime(data.next_session.scheduled_at)}</span>
               </p>
               <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
-                <span>{data.next_session.duration_minutes} min with {data.next_session.coach?.name}</span>
+                {data.next_session.coach?.name ? (
+                  <span className="flex items-center gap-1.5" data-testid="next-session-coach-identity">
+                    <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary">
+                      {initials(data.next_session.coach.name)}
+                    </span>
+                    {data.next_session.duration_minutes} min with {data.next_session.coach.name.split(' ')[0]}
+                  </span>
+                ) : (
+                  <span>{data.next_session.duration_minutes} min</span>
+                )}
                 {data.next_session.location && (
                   <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {data.next_session.location}</span>
                 )}

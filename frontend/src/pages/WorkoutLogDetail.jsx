@@ -4,7 +4,7 @@ import { m, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, Check, CircleSlash2, Clock3, MessageSquare, ShieldCheck, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { fmtDateTime } from '@/lib/format';
+import { fmtDateTime, initials } from '@/lib/format';
 import { LoadingScreen, LoadErrorState, PageHeader } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -360,7 +360,12 @@ export default function WorkoutLogDetail() {
           ) : (log.coach_responses || []).map((response) => (
             <article key={response.id} className="rounded-md border border-border bg-card/60 p-3" data-testid="coach-response">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium">{response.author_name_snapshot}</p>
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary">
+                    {initials(response.author_name_snapshot)}
+                  </span>
+                  {response.author_name_snapshot}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {fmtDateTime(response.created_at)}
                   {response.edited_at && <span className="ml-2" data-testid="coach-response-edited">Edited</span>}

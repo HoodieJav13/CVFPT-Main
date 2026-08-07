@@ -47,6 +47,10 @@ module.exports = {
           DEFAULT: 'hsl(var(--gold))',
           foreground: 'hsl(var(--gold-foreground))'
         },
+        achievement: {
+          DEFAULT: 'hsl(var(--achievement-gold))',
+          foreground: 'hsl(var(--achievement-gold-foreground))'
+        },
         success: {
           DEFAULT: 'hsl(var(--success))',
           foreground: 'hsl(var(--success-foreground))'
