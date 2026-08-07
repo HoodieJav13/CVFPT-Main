@@ -159,8 +159,16 @@ export default function ClientSessions() {
         <EmptyState icon={CalendarDays} title="No upcoming sessions" subtitle="Request a session and your coach will confirm it." testId="upcoming-empty-state" />
       ) : (
         <div className="space-y-2">
-          {upcoming.map((s) => (
-            <div key={s.id} className="rounded-xl border border-primary/25 bg-card/60 px-4 py-3" data-testid="client-upcoming-session-row">
+          {upcoming.map((s, index) => (
+            <div
+              key={s.id}
+              // Surface roles (010 §6): the next session is the raised
+              // surface; later ones stay standard so raised means something.
+              className={index === 0
+                ? 'rounded-xl border border-primary/40 bg-gradient-to-b from-[hsl(202_35%_12%)] to-[hsl(214_28%_7%)] px-4 py-3 shadow-[var(--app-elev-soft)]'
+                : 'rounded-xl border border-border bg-card/60 px-4 py-3'}
+              data-testid="client-upcoming-session-row"
+            >
               <div className="flex items-center justify-between gap-2">
                 <p className="font-medium text-sm">{fmtDay(s.scheduled_at)} - <span className="text-primary">{fmtTime(s.scheduled_at)}</span></p>
                 <StatusBadge status={s.status} />
