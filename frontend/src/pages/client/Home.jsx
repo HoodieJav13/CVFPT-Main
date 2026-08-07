@@ -15,8 +15,6 @@ import {
   MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2,
 } from 'lucide-react';
 import { fmtDay, fmtTime, fmtDateTime, fmtDate, initials } from '@/lib/format';
-import { cn } from '@/lib/utils';
-import { isBold } from '@/lib/protoVariant';
 import { toast } from 'sonner';
 import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
@@ -127,45 +125,40 @@ export default function ClientHome() {
         </Link>
       )}
 
-      {/* PROTO (design-plans/010 L2): raised surface role on the dominant-
-          purpose card; bold probe pushes type scale and action mass. */}
+      {/* The dominant-purpose card is the one raised, loud surface on this
+          screen (design-plans/010: bold direction, owner pick 2026-08-07). */}
       <Card
-        className={cn(
-          'mb-4 overflow-hidden',
-          isBold
-            ? 'border-primary/40 bg-gradient-to-b from-[hsl(202_35%_13%)] to-[hsl(214_28%_7%)] shadow-[var(--app-elev)]'
-            : 'border-primary/30 bg-gradient-to-b from-[hsl(214_28%_10%)] to-[hsl(214_28%_7%)] shadow-[var(--app-elev-soft)]',
-        )}
+        className="mb-4 overflow-hidden border-primary/40 bg-gradient-to-b from-[hsl(202_35%_13%)] to-[hsl(214_28%_7%)] shadow-[var(--app-elev)]"
         data-testid="client-today-plan"
       >
-        <CardContent className={isBold ? 'p-6' : 'p-5'}>
+        <CardContent className="p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-primary">{todayPlan.eyebrow}</p>
           <div className="mt-1 flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h2 className={cn('font-display font-semibold', isBold ? 'text-4xl tracking-tight' : 'text-3xl')} data-testid="client-today-plan-title">{todayPlan.title}</h2>
+              <h2 className="font-display text-4xl font-semibold tracking-tight" data-testid="client-today-plan-title">{todayPlan.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{todayPlan.description}</p>
             </div>
-            {!isBold && <Dumbbell className="h-6 w-6 shrink-0 text-primary" aria-hidden />}
+            
           </div>
           {todayPlan.source ? (
-            <Button className={cn('mt-4 w-full rounded-xl font-semibold', isBold ? 'min-h-14 text-base' : 'min-h-12')} disabled={startingWorkout} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
+            <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" disabled={startingWorkout} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
               {startingWorkout ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
             </Button>
           ) : todayPlan.kind === 'check_in' ? (
-            <Button className={cn('mt-4 w-full rounded-xl font-semibold', isBold ? 'min-h-14 text-base' : 'min-h-12')} onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
+            <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
               <ClipboardCheck className="mr-1.5 h-4 w-4" />{todayPlan.action}
             </Button>
           ) : (
-            <Button asChild className={cn('mt-4 w-full rounded-xl font-semibold', isBold ? 'min-h-14 text-base' : 'min-h-12')} data-testid="client-today-primary-action">
+            <Button asChild className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" data-testid="client-today-primary-action">
               <Link to={todayPlan.href}>{todayPlan.action}<ChevronRight className="ml-1 h-4 w-4" /></Link>
             </Button>
           )}
         </CardContent>
       </Card>
 
-      {/* PROTO bold: a completed check-in demotes to a quiet strip so the
-          dominant-purpose card stays the only loud thing on the screen. */}
-      {isBold && todayCheckIn ? (
+      {/* A completed check-in demotes to a quiet strip so the dominant-
+          purpose card stays the only loud thing on the screen. */}
+      {todayCheckIn ? (
         <Card data-testid="daily-check-in-card">
           <CardContent className="flex items-center justify-between gap-3 p-4">
             <div className="min-w-0">
