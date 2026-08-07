@@ -277,12 +277,10 @@ export default function ClientProgress() {
                     )}
                     <div className="mt-3 space-y-2">
                       {entriesInRange(m.entries, ranges[m.id] || 'all').slice().reverse().slice(0, 4).map((entry) => (
-                        <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2" data-testid="client-progress-entry-row">
-                          <div>
-                            <p className="text-sm font-medium tabular-nums">{entry.value}{m.unit ? ` ${m.unit}` : ''}</p>
-                            <p className="text-xs text-muted-foreground">{fmtDate(entry.recorded_on)}{entry.notes ? ` - ${entry.notes}` : ''}</p>
-                          </div>
-                          <IconButton label={`Edit ${m.name} entry from ${fmtDate(entry.recorded_on)}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="client-edit-entry-button">
+                        <div key={entry.id} className="flex items-center gap-3 rounded-lg border border-border bg-card/60 px-3 py-1" data-testid="client-progress-entry-row">
+                          <p className="shrink-0 text-sm font-semibold tabular-nums">{entry.value}{m.unit ? ` ${m.unit}` : ''}</p>
+                          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{fmtDate(entry.recorded_on)}{entry.notes ? ` - ${entry.notes}` : ''}</p>
+                          <IconButton label={`Edit ${m.name} entry from ${fmtDate(entry.recorded_on)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="client-edit-entry-button">
                             <Pencil className="h-3.5 w-3.5" />
                           </IconButton>
                         </div>

@@ -40,11 +40,13 @@ export function LoadErrorState({ message = 'Please try again.', onRetry, scope =
 }
 
 export function PageHeader({ title, subtitle, action, testId }) {
+  // Mobile header block tightened (design-plans/010 L1): daily surfaces
+  // spend ~140px on the header instead of ~200px before content starts.
   return (
-    <div className="mb-5 flex min-w-0 flex-col items-start justify-between gap-3 sm:flex-row" data-testid={testId}>
+    <div className="mb-4 flex min-w-0 flex-col items-start justify-between gap-3 sm:mb-5 sm:flex-row" data-testid={testId}>
       <div className="min-w-0">
-        <div className="h-[3px] w-7 rounded-full bg-primary mb-2" aria-hidden />
-        <h1 className="font-display text-3xl lg:text-4xl font-semibold tracking-tight">{title}</h1>
+        <div className="h-[3px] w-7 rounded-full bg-primary mb-1.5" aria-hidden />
+        <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight">{title}</h1>
         {subtitle ? <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p> : null}
       </div>
       {action ? <div className="w-full min-w-0 sm:w-auto">{action}</div> : null}
@@ -80,15 +82,18 @@ export function SectionLabel({ children, action, className, testId }) {
 }
 
 export function StatTile({ label, value, icon: Icon, accent = false, testId }) {
+  // Zero-count tiles go quiet so non-zero tiles carry the attention
+  // (design-plans/010 §6: raised/loud must mean something).
+  const isZero = value === 0 || value === '0';
   return (
     <Card className={cn('relative overflow-hidden', accent && 'border-primary/30')} data-testid={testId}>
-      <div className="absolute left-0 top-3 bottom-3 w-[3px] rounded-full bg-primary/70" aria-hidden />
+      <div className={cn('absolute left-0 top-3 bottom-3 w-[3px] rounded-full', isZero ? 'bg-border' : 'bg-primary/70')} aria-hidden />
       <CardContent className="p-4 pl-5">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-          {Icon ? <Icon className="h-4 w-4 text-primary" /> : null}
+          {Icon ? <Icon className={cn('h-4 w-4', isZero ? 'text-muted-foreground/60' : 'text-primary')} /> : null}
         </div>
-        <p className="mt-2 font-display text-4xl font-bold leading-none tabular-nums lg:text-5xl">{value}</p>
+        <p className={cn('mt-2 font-display text-4xl font-bold leading-none tabular-nums lg:text-5xl', isZero && 'text-muted-foreground/60')}>{value}</p>
       </CardContent>
     </Card>
   );
