@@ -209,18 +209,7 @@ export default function ClientProgress() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <CardTitle className="text-base font-display">{m.name}</CardTitle>
-                    {latest ? (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Latest: <span className="text-primary font-semibold tabular-nums">{latest.value}{m.unit ? ` ${m.unit}` : ''}</span> on {fmtDate(latest.recorded_on)}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground mt-0.5">No entries yet</p>
-                    )}
-                    {m.target_value != null && (
-                      <p className="text-xs text-achievement mt-0.5" data-testid="client-metric-goal">
-                        Goal: <span className="font-semibold tabular-nums">{m.target_value}{m.unit ? ` ${m.unit}` : ''}</span>
-                      </p>
-                    )}
+                    {!latest && <p className="text-xs text-muted-foreground mt-0.5">No entries yet</p>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {m.latest_is_personal_best && (
@@ -241,6 +230,24 @@ export default function ClientProgress() {
               </CardHeader>
               <CardContent>
                 <AchievementMoment achievement={isAchievementMetric ? achievement : null} />
+                {latest && (
+                  <div className="mb-3 flex items-end justify-between gap-3">
+                    <div>
+                      <p className={'font-display text-6xl font-bold leading-none tabular-nums'} data-testid="metric-latest-value">
+                        {latest.value}
+                        {m.unit ? <span className={'ml-1.5 text-xl font-semibold text-muted-foreground'}>{m.unit}</span> : null}
+                      </p>
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        {fmtDate(latest.recorded_on)}
+                        {m.target_value != null && (
+                          <span className="text-achievement" data-testid="client-metric-goal">
+                            {' '}· Goal <span className="font-semibold tabular-nums">{m.target_value}{m.unit ? ` ${m.unit}` : ''}</span>
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {m.entries.length > 0 ? (
                   <>
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -275,17 +282,24 @@ export default function ClientProgress() {
                         No entries in this range.
                       </p>
                     )}
-                    <div className="mt-3 space-y-2">
-                      {entriesInRange(m.entries, ranges[m.id] || 'all').slice().reverse().slice(0, 4).map((entry) => (
-                        <div key={entry.id} className="flex items-center gap-3 rounded-lg border border-border bg-card/60 px-3 py-1" data-testid="client-progress-entry-row">
-                          <p className="shrink-0 text-sm font-semibold tabular-nums">{entry.value}{m.unit ? ` ${m.unit}` : ''}</p>
-                          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{fmtDate(entry.recorded_on)}{entry.notes ? ` - ${entry.notes}` : ''}</p>
-                          <IconButton label={`Edit ${m.name} entry from ${fmtDate(entry.recorded_on)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="client-edit-entry-button">
-                            <Pencil className="h-3.5 w-3.5" />
-                          </IconButton>
-                        </div>
-                      ))}
-                    </div>
+                    {/* Latest value + chart own the card; the entry list sits
+                        behind a disclosure (010 L2 bold pick). */}
+                    <details className="mt-3">
+                      <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground hover:text-foreground">
+                        Recent entries ({entriesInRange(m.entries, ranges[m.id] || 'all').length})
+                      </summary>
+                      <div className="mt-2 space-y-2">
+                        {entriesInRange(m.entries, ranges[m.id] || 'all').slice().reverse().slice(0, 4).map((entry) => (
+                          <div key={entry.id} className="flex items-center gap-3 rounded-lg border border-border bg-card/60 px-3 py-1" data-testid="client-progress-entry-row">
+                            <p className="shrink-0 text-sm font-semibold tabular-nums">{entry.value}{m.unit ? ` ${m.unit}` : ''}</p>
+                            <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{fmtDate(entry.recorded_on)}{entry.notes ? ` - ${entry.notes}` : ''}</p>
+                            <IconButton label={`Edit ${m.name} entry from ${fmtDate(entry.recorded_on)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg" onClick={() => openEditEntry(m, entry)} data-testid="client-edit-entry-button">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </IconButton>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground py-3 text-center">Log your first value to start the chart.</p>

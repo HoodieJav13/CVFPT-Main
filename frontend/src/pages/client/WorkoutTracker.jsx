@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Plus, Save, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingScreen, LoadErrorState, PageHeader } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
@@ -218,6 +219,16 @@ export default function WorkoutTracker() {
 
   const allSets = log.exercises.flatMap((exercise) => exercise.sets);
   const completedCount = allSets.filter((set) => set.status === 'completed').length;
+  // Previous / current / upcoming set states (design-plans/010, bold
+  // direction): the first pending set is "current"; completed sets go quiet.
+  const activeExerciseId = log.exercises.find((ex) => ex.sets.some((s) => s.status !== 'completed'))?.id;
+  const isActiveSet = (exercise, set) => !sealed && set.status !== 'completed'
+    && set.id === exercise.sets.find((s) => s.status !== 'completed')?.id;
+  const setRowClass = (exercise, set) => {
+    if (set.status === 'completed') return 'bg-success/5 opacity-55';
+    if (isActiveSet(exercise, set)) return 'bg-primary/15 ring-1 ring-primary/40';
+    return 'bg-secondary/30';
+  };
   const remainingCount = allSets.filter((set) => set.status === 'pending').length;
   const restSeconds = restEndsAt ? Math.max(0, Math.ceil((restEndsAt - timerNow) / 1000)) : 0;
   const restComplete = Boolean(restEndsAt && timerNow >= restEndsAt);
@@ -445,7 +456,11 @@ export default function WorkoutTracker() {
 
       <div className="space-y-4">
         {log.exercises.map((exercise) => (
-          <Card key={exercise.id} data-testid="tracker-exercise-card">
+          <Card
+            key={exercise.id}
+            className={cn(exercise.id === activeExerciseId && !sealed && 'border-primary/35 shadow-[var(--app-elev-soft)]')}
+            data-testid="tracker-exercise-card"
+          >
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-2">
                 <CardTitle className="font-display text-lg">{exercise.exercise_name}</CardTitle>
@@ -473,11 +488,12 @@ export default function WorkoutTracker() {
                 <span>Set</span><span>Weight</span><span>Reps</span><span>RPE</span><span className="sr-only">Complete</span>
               </div>
               {exercise.sets.map((set) => (
-                <div key={set.id} className={`grid min-h-12 grid-cols-[1.75rem_minmax(5.5rem,1fr)_3.5rem_3.5rem_2.75rem] items-center gap-1 rounded-md px-1 ${set.status === 'completed' ? 'bg-success/10' : 'bg-secondary/50'}`}>
-                  <span className="text-center text-sm tabular-nums">{set.set_number}</span>
+                <div key={set.id} className={`grid min-h-12 grid-cols-[1.75rem_minmax(5.5rem,1fr)_3.5rem_3.5rem_2.75rem] items-center gap-1 rounded-md px-1 ${setRowClass(exercise, set)}`}>
+                  <span className={cn('text-center text-sm tabular-nums', isActiveSet(exercise, set) && 'font-semibold text-primary')}>{set.set_number}</span>
                   <div className="flex min-w-0 gap-1">
                     <Input
-                      type="number" min="0" step="0.5" inputMode="decimal" className="h-10 min-w-0 px-2 text-sm tabular-nums"
+                      type="number" min="0" step="0.5" inputMode="decimal"
+                      className={cn('h-10 min-w-0 px-2 text-sm tabular-nums', isActiveSet(exercise, set) && 'h-12 border-primary/40 font-display text-lg font-semibold')}
                       value={set.actual_load_value ?? ''}
                       placeholder={exercise.prescribed_load_value != null ? String(exercise.prescribed_load_value) : undefined}
                       onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
