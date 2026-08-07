@@ -155,8 +155,16 @@ export default function CoachDashboard() {
           {actionQueue.length === 0 && (
             <p className="text-sm text-muted-foreground py-2" data-testid="coach-action-queue-empty">Nothing needs your attention right now.</p>
           )}
-          {actionQueue.map((item) => (
-            <div key={item.key} className="rounded-xl border border-border bg-card/60 px-4 py-3" data-testid={`coach-action-${item.kind}`}>
+          {actionQueue.map((item, index) => (
+            <div
+              key={item.key}
+              // Surface roles (010 §6): the queue's first item — the thing to
+              // do next — is the raised surface; the rest stay standard.
+              className={index === 0
+                ? 'rounded-xl border border-primary/35 bg-gradient-to-b from-[hsl(202_35%_12%)] to-[hsl(214_28%_7%)] px-4 py-3 shadow-[var(--app-elev-soft)]'
+                : 'rounded-xl border border-border bg-card/60 px-4 py-3'}
+              data-testid={`coach-action-${item.kind}`}
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="font-medium">

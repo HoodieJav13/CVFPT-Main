@@ -195,7 +195,11 @@ function ExerciseLibraryTab({ library, reload }) {
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search exercises..." className="h-11 rounded-xl sm:max-w-sm" data-testid="exercise-library-search-input" />
         <div className="flex gap-2">
           <label
-            className="inline-flex h-11 cursor-pointer items-center rounded-xl border border-border px-3 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            aria-disabled={importing || undefined}
+            className={cn(
+              'inline-flex h-11 cursor-pointer items-center rounded-xl border border-border px-3 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+              importing && 'pointer-events-none opacity-50',
+            )}
             role="button"
             tabIndex={0}
             onKeyDown={(event) => {
