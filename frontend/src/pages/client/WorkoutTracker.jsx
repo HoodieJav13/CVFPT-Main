@@ -405,7 +405,16 @@ export default function WorkoutTracker() {
       <PageHeader
         title={log.workout_name}
         subtitle={`${completedCount} of ${allSets.length} sets complete${isCoach && log.client?.name ? ` — logging for ${log.client.name}` : ''}`}
-        action={<Button variant="ghost" size="sm" onClick={abandon}>Abandon</Button>}
+        action={(
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={abandon}
+            className="min-h-9 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          >
+            Abandon
+          </Button>
+        )}
       />
       {outbox.queuedComplete && (
         <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="finished-locally-banner">

@@ -135,18 +135,19 @@ export default function ClientSessions() {
           <SectionLabel className="mb-2">Pending requests</SectionLabel>
           <div className="space-y-2">
             {requests.filter((r) => r.status === 'pending').map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="my-booking-request-row">
-                <div>
-                  <p className="text-sm font-medium">{fmtDateTime(r.requested_time)}</p>
-                  <p className="text-xs text-muted-foreground">{r.duration_minutes}m{r.note ? ` - "${r.note}"` : ''}</p>
-                </div>
-                <span className="flex items-center gap-2 shrink-0">
+              <div key={r.id} className="rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="my-booking-request-row">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium tabular-nums">{fmtDateTime(r.requested_time)}</p>
                   <StatusBadge status={r.status} />
-                  <Button size="sm" variant="ghost" className="min-h-9 rounded-lg text-muted-foreground hover:text-destructive"
+                </div>
+                <div className="mt-0.5 flex items-center justify-between gap-3">
+                  <p className="min-w-0 truncate text-xs text-muted-foreground">{r.duration_minutes}m{r.note ? ` - "${r.note}"` : ''}</p>
+                  <Button size="sm" variant="ghost"
+                    className={`min-h-9 shrink-0 rounded-lg ${confirmingId === `withdraw-${r.id}` ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
                     disabled={acting === r.id} onClick={() => withdrawRequest(r)} data-testid="booking-withdraw-button">
                     {acting === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingId === `withdraw-${r.id}` ? 'Tap to confirm' : 'Withdraw')}
                   </Button>
-                </span>
+                </div>
               </div>
             ))}
           </div>
@@ -174,7 +175,8 @@ export default function ClientSessions() {
                     <CalendarPlus className="h-3.5 w-3.5 mr-1" /> Add to calendar
                   </Button>
                   {cancellableUntil(s) ? (
-                    <Button size="sm" variant="ghost" className="min-h-9 rounded-lg text-muted-foreground hover:text-destructive"
+                    <Button size="sm" variant="ghost"
+                      className={`min-h-9 rounded-lg ${confirmingId === `cancel-${s.id}` ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
                       disabled={acting === s.id} onClick={() => cancelSession(s)} data-testid="session-client-cancel-button">
                       {acting === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingId === `cancel-${s.id}` ? 'Tap to confirm' : 'Cancel')}
                     </Button>
@@ -187,11 +189,15 @@ export default function ClientSessions() {
           ))}
         </div>
       )}
-      <p className="mt-3 text-xs text-muted-foreground" data-testid="cancellation-policy-text">
-        <span className="font-medium">Cancellations:</span> You can cancel or rebook a session up to 24 hours before it
-        starts. Inside 24 hours, message your coach directly — late cancellations and no-shows may be handled per your
-        coaching agreement.
-      </p>
+      <details className="mt-3 text-xs text-muted-foreground">
+        <summary className="cursor-pointer select-none font-medium hover:text-foreground" data-testid="cancellation-policy-summary">
+          Cancellation policy
+        </summary>
+        <p className="mt-1.5 leading-relaxed" data-testid="cancellation-policy-text">
+          You can cancel or rebook a session up to 24 hours before it starts. Inside 24 hours, message your coach
+          directly — late cancellations and no-shows may be handled per your coaching agreement.
+        </p>
+      </details>
 
       <SectionLabel className="mb-2 mt-6">Past</SectionLabel>
       {past.length === 0 ? (
