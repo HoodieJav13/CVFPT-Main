@@ -15,6 +15,8 @@ import {
   MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2,
 } from 'lucide-react';
 import { fmtDay, fmtTime, fmtDateTime, fmtDate, initials } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { isBold } from '@/lib/protoVariant';
 import { toast } from 'sonner';
 import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
@@ -125,32 +127,69 @@ export default function ClientHome() {
         </Link>
       )}
 
-      <Card className="mb-4 overflow-hidden border-primary/30" data-testid="client-today-plan">
-        <CardContent className="p-5">
+      {/* PROTO (design-plans/010 L2): raised surface role on the dominant-
+          purpose card; bold probe pushes type scale and action mass. */}
+      <Card
+        className={cn(
+          'mb-4 overflow-hidden',
+          isBold
+            ? 'border-primary/40 bg-gradient-to-b from-[hsl(202_35%_13%)] to-[hsl(214_28%_7%)] shadow-[var(--app-elev)]'
+            : 'border-primary/30 bg-gradient-to-b from-[hsl(214_28%_10%)] to-[hsl(214_28%_7%)] shadow-[var(--app-elev-soft)]',
+        )}
+        data-testid="client-today-plan"
+      >
+        <CardContent className={isBold ? 'p-6' : 'p-5'}>
           <p className="text-xs font-semibold uppercase tracking-wide text-primary">{todayPlan.eyebrow}</p>
           <div className="mt-1 flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h2 className="font-display text-2xl font-semibold" data-testid="client-today-plan-title">{todayPlan.title}</h2>
+              <h2 className={cn('font-display font-semibold', isBold ? 'text-4xl tracking-tight' : 'text-3xl')} data-testid="client-today-plan-title">{todayPlan.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{todayPlan.description}</p>
             </div>
-            <Dumbbell className="h-6 w-6 shrink-0 text-primary" aria-hidden />
+            {!isBold && <Dumbbell className="h-6 w-6 shrink-0 text-primary" aria-hidden />}
           </div>
           {todayPlan.source ? (
-            <Button className="mt-4 min-h-11 rounded-xl" disabled={startingWorkout} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
+            <Button className={cn('mt-4 w-full rounded-xl font-semibold', isBold ? 'min-h-14 text-base' : 'min-h-12')} disabled={startingWorkout} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
               {startingWorkout ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
             </Button>
           ) : todayPlan.kind === 'check_in' ? (
-            <Button className="mt-4 min-h-11 rounded-xl" onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
+            <Button className={cn('mt-4 w-full rounded-xl font-semibold', isBold ? 'min-h-14 text-base' : 'min-h-12')} onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
               <ClipboardCheck className="mr-1.5 h-4 w-4" />{todayPlan.action}
             </Button>
           ) : (
-            <Button asChild className="mt-4 min-h-11 rounded-xl" data-testid="client-today-primary-action">
+            <Button asChild className={cn('mt-4 w-full rounded-xl font-semibold', isBold ? 'min-h-14 text-base' : 'min-h-12')} data-testid="client-today-primary-action">
               <Link to={todayPlan.href}>{todayPlan.action}<ChevronRight className="ml-1 h-4 w-4" /></Link>
             </Button>
           )}
         </CardContent>
       </Card>
 
+      {/* PROTO bold: a completed check-in demotes to a quiet strip so the
+          dominant-purpose card stays the only loud thing on the screen. */}
+      {isBold && todayCheckIn ? (
+        <Card data-testid="daily-check-in-card">
+          <CardContent className="flex items-center justify-between gap-3 p-4">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                Checked in today
+                <Badge variant="outline" className="bg-success/15 text-success-foreground border-success/25">
+                  {todayCheckIn.review_status === 'reviewed' ? 'Reviewed' : 'Sent'}
+                </Badge>
+              </p>
+              <CheckInStats
+                className="mt-1.5"
+                stats={[
+                  ['Energy', todayCheckIn.energy || '-'],
+                  ['Sleep', todayCheckIn.sleep_quality || '-'],
+                  ['Stress', todayCheckIn.stress || '-'],
+                ]}
+              />
+            </div>
+            <Button variant="ghost" size="sm" className="min-h-9 shrink-0 rounded-lg" onClick={() => setCheckInOpen(true)} data-testid="open-check-in-button">
+              Edit
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
       <Card className="border-primary/25" data-testid="daily-check-in-card">
         <CardContent className="p-5">
           <div className="flex items-start justify-between gap-3">
@@ -187,6 +226,7 @@ export default function ClientHome() {
           </Button>
         </CardContent>
       </Card>
+      )}
 
       <div className="grid grid-cols-2 gap-3 mt-4">
         <StatTile label="Programs" value={data.program_count} icon={Dumbbell} testId="program-count-tile" />
