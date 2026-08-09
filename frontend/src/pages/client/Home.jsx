@@ -19,6 +19,8 @@ import { toast } from 'sonner';
 import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
 import { chooseClientTodayPlan } from '@/lib/clientTodayPlan';
+import { WeekStrip, StreakPill } from '@/components/WeekRhythm';
+import { isBold } from '@/lib/protoVariant';
 import { trackProductEvent } from '@/lib/telemetry';
 
 export default function ClientHome() {
@@ -28,20 +30,23 @@ export default function ClientHome() {
   const [training, setTraining] = useState({ assignments: null, activeLog: null, history: [], complete: false });
   const [startingWorkout, setStartingWorkout] = useState(false);
   const [quickCompleting, setQuickCompleting] = useState(false);
+  const [rhythm, setRhythm] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [dashboardResult, assignedResult, activeResult, historyResult] = await Promise.allSettled([
+      const [dashboardResult, assignedResult, activeResult, historyResult, rhythmResult] = await Promise.allSettled([
         api.get('/dashboard/client'),
         api.get('/programs/client/assigned'),
         api.get('/workout-logs/active'),
         api.get('/workout-logs/mine'),
+        api.get('/workout-logs/week-rhythm'),
       ]);
       if (dashboardResult.status === 'rejected') throw dashboardResult.reason;
       setData(dashboardResult.value.data);
+      setRhythm(rhythmResult.status === 'fulfilled' ? rhythmResult.value.data : null);
       setTraining({
         assignments: assignedResult.status === 'fulfilled' ? assignedResult.value.data : null,
         activeLog: activeResult.status === 'fulfilled' ? activeResult.value.data : null,
@@ -150,6 +155,25 @@ export default function ClientHome() {
         </Link>
       )}
 
+      {/* Next-day catch-up (011 A): yesterday's unlogged workout gets one
+          gentle, opportunity-framed chance to be rectified — same one-tap. */}
+      {rhythm?.yesterday_missed?.length > 0 && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-achievement/35 bg-achievement/10 px-4 py-3.5" data-testid="catch-up-card">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Forget to log yesterday?</p>
+            <p className="truncate text-xs text-muted-foreground">{rhythm.yesterday_missed[0].workout_name || 'Assigned workout'} is still open — it counts for this week.</p>
+          </div>
+          <Button
+            size="sm" variant="outline" className="min-h-11 shrink-0 rounded-xl border-achievement/40"
+            disabled={quickCompleting}
+            onClick={() => quickComplete({ workout_assignment_id: rhythm.yesterday_missed[0].id })}
+            data-testid="catch-up-quick-complete"
+          >
+            {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
+          </Button>
+        </div>
+      )}
+
       {/* The dominant-purpose card is the one raised, loud surface on this
           screen (design-plans/010: bold direction, owner pick 2026-08-07). */}
       <Card
@@ -157,7 +181,10 @@ export default function ClientHome() {
         data-testid="client-today-plan"
       >
         <CardContent className="p-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">{todayPlan.eyebrow}</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">{todayPlan.eyebrow}</p>
+            {isBold && <StreakPill count={rhythm?.week_streak} />}
+          </div>
           <div className="mt-1 flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 className="font-display text-4xl font-semibold tracking-tight" data-testid="client-today-plan-title">{todayPlan.title}</h2>
@@ -190,8 +217,28 @@ export default function ClientHome() {
               <Link to={todayPlan.href}>{todayPlan.action}<ChevronRight className="ml-1 h-4 w-4" /></Link>
             </Button>
           )}
+          {/* Bold probe: the week lives inside the dominant card. */}
+          {isBold && rhythm && rhythm.week_total > 0 && (
+            <WeekStrip rhythm={rhythm} className="mt-5 border-t border-primary/15 pt-4" />
+          )}
         </CardContent>
       </Card>
+
+      {/* Baseline: the week is its own quiet card under the dominant one. */}
+      {!isBold && rhythm && rhythm.week_total > 0 && (
+        <Card className="mb-4" data-testid="client-week-card">
+          <CardContent className="p-4">
+            <div className="mb-2.5 flex items-center justify-between gap-2">
+              <SectionLabel>This week</SectionLabel>
+              <div className="flex items-center gap-2">
+                <p className="text-xs tabular-nums text-muted-foreground">{rhythm.week_done} of {rhythm.week_total} done</p>
+                <StreakPill count={rhythm.week_streak} />
+              </div>
+            </div>
+            <WeekStrip rhythm={rhythm} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* A completed check-in demotes to a quiet strip so the dominant-
           purpose card stays the only loud thing on the screen. */}

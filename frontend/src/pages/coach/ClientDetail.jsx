@@ -29,6 +29,7 @@ import { initials, fmtDate, fmtDateTime, fmtTime, fmtDay } from '@/lib/format';
 import { toast } from 'sonner';
 import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
+import { CoachClientWeek } from '@/components/WeekRhythm';
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -342,6 +343,8 @@ function OverviewTab({ client, waiver, reload, user }) {
           <Row label="Client since" value={fmtDate(client.created_at)} />
         </CardContent>
       </Card>
+
+      <CoachClientWeek clientId={client.id} />
 
       <Card>
         <CardContent className="p-4 space-y-3">

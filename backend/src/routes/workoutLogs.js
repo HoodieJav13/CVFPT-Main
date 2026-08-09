@@ -2,6 +2,8 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
+const { todayDateInTz } = require('../utils/time');
+const { addDays, buildWeekRhythm } = require('../lib/rhythm');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -458,6 +460,56 @@ router.get('/mine/completed-dates', requireClient, async (req, res) => {
   } catch (error) {
     logError('client workout completed-dates error', error);
     return res.status(500).json({ error: 'Failed to load workout dates' });
+  }
+});
+
+// Program 011 A: dated-assignment week at a glance + catch-up + streak.
+async function weekRhythmForClient(clientId) {
+  const today = todayDateInTz();
+  const since = addDays(today, -186);
+  const { data: assignments, error } = await supabaseAdmin.from('workout_assignments')
+    .select('id, assigned_for, workout:workouts(name)')
+    .eq('client_id', clientId).eq('assignment_mode', 'dated').eq('archived', false)
+    .gte('assigned_for', since);
+  if (error) throw error;
+  const ids = (assignments || []).map((a) => a.id);
+  let completedIds = new Set();
+  if (ids.length) {
+    const { data: logs, error: logErr } = await supabaseAdmin.from('workout_logs')
+      .select('workout_assignment_id').eq('client_id', clientId)
+      .eq('status', 'completed').eq('archived', false)
+      .in('workout_assignment_id', ids);
+    if (logErr) throw logErr;
+    completedIds = new Set((logs || []).map((l) => l.workout_assignment_id));
+  }
+  return buildWeekRhythm({
+    assignments: (assignments || []).map((a) => ({
+      id: a.id, assigned_for: a.assigned_for, workout_name: a.workout?.name || null,
+    })),
+    completedIds,
+    today,
+  });
+}
+
+router.get('/week-rhythm', requireClient, async (req, res) => {
+  try {
+    return res.json(await weekRhythmForClient(req.user.client.id));
+  } catch (error) {
+    logError('client week rhythm error', error);
+    return res.status(500).json({ error: 'Failed to load your week' });
+  }
+});
+
+router.get('/clients/:clientId/week-rhythm', requireCoach, async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'Invalid client' });
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
+    if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
+    return res.json(await weekRhythmForClient(clientRow.id));
+  } catch (error) {
+    logError('coach week rhythm error', error);
+    return res.status(500).json({ error: 'Failed to load the client week' });
   }
 });
 
