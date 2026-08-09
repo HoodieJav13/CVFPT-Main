@@ -102,6 +102,31 @@ function actorStamp(user) {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// Program 011 A: one in-app notification per workout event to the owning
+// coach and every admin (mirrors the completion trigger's recipient set).
+// Idempotent via the (recipient, event_type, workout_log_id) unique key.
+async function notifyCoachesOfWorkoutEvent(eventType, log) {
+  const { data: coaches, error } = await supabaseAdmin.from('coaches')
+    .select('id').eq('archived', false)
+    .or(`id.eq.${log.coach_id},is_admin.eq.true`);
+  if (error) throw error;
+  const rows = (coaches || []).map((coach) => ({
+    recipient_coach_id: coach.id, event_type: eventType, workout_log_id: log.id,
+  }));
+  if (!rows.length) return;
+  const { error: insertErr } = await supabaseAdmin.from('notifications')
+    .upsert(rows, { onConflict: 'recipient_coach_id,event_type,workout_log_id', ignoreDuplicates: true });
+  if (insertErr) throw insertErr;
+}
+
+// When a workout is finished, its "started" notifications become stale —
+// mark them read so a coach never sees a started/finished pair one tap apart.
+async function markStartedNotificationsRead(logId) {
+  await supabaseAdmin.from('notifications')
+    .update({ read_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('event_type', 'workout_started').eq('workout_log_id', logId).is('read_at', null);
+}
+
 function canAuthorCoachResponse(user, log) {
   return Boolean(
     (user?.role === 'coach' || user?.role === 'admin')
@@ -383,6 +408,12 @@ router.post('/start', async (req, res) => {
     if (data.outcome === 'already_completed') {
       return res.status(409).json({ error: 'This dated workout has already been completed', workout_log: log });
     }
+    // Client-started, fully-tracked workouts tell the coach "in the gym now".
+    // One-tap quick-complete suppresses this (see /quick-complete) so the
+    // coach never gets a started/finished pair a second apart.
+    if (data.outcome === 'started' && req.user.role === 'client' && !body.suppress_start_notification) {
+      try { await notifyCoachesOfWorkoutEvent('workout_started', log); } catch (e) { logError('workout started notify error', e); }
+    }
     return res.status(data.outcome === 'started' ? 201 : 200).json({ outcome: data.outcome, workout_log: log });
   } catch (error) {
     logError('start workout log error', error);
@@ -633,6 +664,65 @@ router.post('/:id/complete-all', async (req, res) => {
   }
 });
 
+// Program 011 A: one-tap "I did it" for clients who won't track sets.
+// Open app → tap → done. Starts the assigned workout, marks every set
+// completed WITHOUT set detail (actual load/reps stay null so exercise
+// history is never polluted with phantom prescribed weights), flags the
+// log quick_completed, and finishes it — counting toward adherence and
+// notifying the coach with a single "completed (not tracked)" signal.
+router.post('/quick-complete', requireClient, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const programAssignmentId = body.program_assignment_id || null;
+    const programDayId = body.program_day_id || null;
+    const workoutAssignmentId = body.workout_assignment_id || null;
+    const programSource = Boolean(programAssignmentId || programDayId);
+    if ((programSource && (!programAssignmentId || !programDayId || workoutAssignmentId))
+      || (!programSource && !workoutAssignmentId)) {
+      return res.status(400).json({ error: 'Choose one assigned workout' });
+    }
+    const clientId = req.user.client.id;
+
+    const { data: started, error: startErr } = await supabaseAdmin.rpc('start_workout_log_v2', {
+      p_client_id: clientId,
+      p_program_assignment_id: programAssignmentId,
+      p_program_day_id: programDayId,
+      p_workout_assignment_id: workoutAssignmentId,
+      p_started_by: 'client',
+      p_started_by_coach_id: null,
+      p_session_id: null,
+    });
+    if (startErr) throw startErr;
+    if (started.outcome === 'conflict') {
+      const active = await workoutLogWithDetails(started.workout_log_id);
+      return res.status(409).json({ error: 'Finish or abandon your active workout first', active_workout: active });
+    }
+    if (started.outcome === 'already_completed') {
+      return res.status(409).json({ error: 'This workout is already done for today' });
+    }
+    const logId = started.workout_log_id;
+
+    // Sets → completed with values left null (honest "not tracked").
+    const { error: allErr } = await supabaseAdmin.rpc('complete_all_workout_sets_v2', {
+      p_workout_log_id: logId, p_client_id: clientId, p_entered_by: 'client', p_entered_by_coach_id: null,
+    });
+    if (allErr) throw allErr;
+    // Flag while still active — the immutability trigger guards child sets,
+    // not the parent log row.
+    await supabaseAdmin.from('workout_logs').update({ quick_completed: true }).eq('id', logId);
+    const { error: completeErr } = await supabaseAdmin.rpc('complete_workout_log_v2', {
+      p_workout_log_id: logId, p_client_id: clientId, p_notes: '', p_feedback: '', p_completed_at: null,
+    });
+    if (completeErr) throw completeErr;
+
+    return res.status(201).json(await workoutLogWithDetails(logId));
+  } catch (error) {
+    logError('quick complete workout error', error);
+    const status = workoutRpcStatus(error);
+    return res.status(status).json({ error: status === 500 ? 'Could not mark the workout done' : error.message });
+  }
+});
+
 router.post('/:id/abandon', async (req, res) => {
   try {
     const log = await requireWritableActiveLog(req, res);
@@ -671,6 +761,7 @@ router.post('/:id/complete', async (req, res) => {
       if (/Complete at least one set/i.test(error.message || '')) return res.status(400).json({ error: 'Complete at least one set' });
       throw error;
     }
+    await markStartedNotificationsRead(log.id);
     return res.json(await workoutLogWithDetails(log.id));
   } catch (error) {
     logError('complete workout error', error);

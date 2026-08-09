@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   CalendarDays, Dumbbell, ChevronRight, MapPin,
-  MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2,
+  MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2, CheckCircle2,
 } from 'lucide-react';
 import { fmtDay, fmtTime, fmtDateTime, fmtDate, initials } from '@/lib/format';
 import { toast } from 'sonner';
@@ -27,6 +27,7 @@ export default function ClientHome() {
   const [data, setData] = useState(null);
   const [training, setTraining] = useState({ assignments: null, activeLog: null, history: [], complete: false });
   const [startingWorkout, setStartingWorkout] = useState(false);
+  const [quickCompleting, setQuickCompleting] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -90,6 +91,30 @@ export default function ClientHome() {
     }
   };
 
+  // One-tap "I did it" (design-plans/011 A): for clients who won't track sets.
+  // Records the assigned workout done without set detail, then offers — never
+  // forces — the daily check-in as the "how did it go?" handoff.
+  const quickComplete = async (source) => {
+    setQuickCompleting(true);
+    try {
+      await api.post('/workout-logs/quick-complete', source);
+      trackProductEvent('workout_quick_completed', { source: 'client_home' });
+      toast.success('Nice work — your coach has been notified');
+      await load();
+      setCheckInOpen(true);
+    } catch (error) {
+      const active = error.response?.data?.active_workout;
+      if (error.response?.status === 409 && active?.id) {
+        toast.error('You have a workout in progress — finish that one first.');
+        navigate(`/client/workouts/${active.id}/track`);
+      } else {
+        toast.error(errMsg(error, 'Could not mark the workout done'));
+      }
+    } finally {
+      setQuickCompleting(false);
+    }
+  };
+
   if (!data && loadError) return <LoadErrorState message={loadError} scope="client-home" onRetry={() => { setLoadError(null); load(); }} />;
   if (!data) return <DashboardSkeleton tiles={2} />;
 
@@ -141,9 +166,21 @@ export default function ClientHome() {
             
           </div>
           {todayPlan.source ? (
-            <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" disabled={startingWorkout} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
-              {startingWorkout ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
-            </Button>
+            <>
+              <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" disabled={startingWorkout || quickCompleting} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
+                {startingWorkout ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
+              </Button>
+              {/* One-tap for clients who won't track sets: open app, tap, close. */}
+              <Button
+                variant="outline"
+                className="mt-2 min-h-11 w-full rounded-xl"
+                disabled={startingWorkout || quickCompleting}
+                onClick={() => quickComplete(todayPlan.source)}
+                data-testid="client-today-quick-complete"
+              >
+                {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
+              </Button>
+            </>
           ) : todayPlan.kind === 'check_in' ? (
             <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
               <ClipboardCheck className="mr-1.5 h-4 w-4" />{todayPlan.action}

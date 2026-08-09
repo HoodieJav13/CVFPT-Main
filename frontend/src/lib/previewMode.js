@@ -904,6 +904,18 @@ export function installPreviewApi(api) {
       emitChange();
       return ok(result, config, result.outcome === 'started' ? 201 : 200);
     }
+    if (path === '/workout-logs/quick-complete' && method === 'post') {
+      if (role !== 'client') return fail(config, 403, 'Client access required');
+      const existingActive = state.workoutLogs.find((row) => row.client_id === client.id && row.status === 'active' && !row.archived);
+      if (existingActive) return Promise.reject({ response: { data: { error: 'Finish or abandon your active workout first', active_workout: workoutLogDetails(existingActive.id) }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
+      const result = startPreviewWorkout(client.id, payload);
+      if (!result) return fail(config, 404, 'Assigned workout not found');
+      if (result.outcome !== 'started') return fail(config, 409, 'This workout is already done for today');
+      const log = state.workoutLogs.find((row) => row.id === result.workout_log.id);
+      if (log) { log.status = 'completed'; log.quick_completed = true; log.completed_at = iso(0, 12); }
+      emitChange();
+      return ok(workoutLogDetails(result.workout_log.id), config, 201);
+    }
     if (path === '/workout-logs/active' && method === 'get') {
       const active = state.workoutLogs.find((row) => row.client_id === client.id && row.status === 'active' && !row.archived);
       return ok(active ? workoutLogDetails(active.id) : null, config);
