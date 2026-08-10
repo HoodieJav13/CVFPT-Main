@@ -20,7 +20,6 @@ import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
 import { chooseClientTodayPlan } from '@/lib/clientTodayPlan';
 import { WeekStrip, StreakPill } from '@/components/WeekRhythm';
-import { isBold } from '@/lib/protoVariant';
 import { trackProductEvent } from '@/lib/telemetry';
 
 export default function ClientHome() {
@@ -183,7 +182,7 @@ export default function ClientHome() {
         <CardContent className="p-6">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">{todayPlan.eyebrow}</p>
-            {isBold && <StreakPill count={rhythm?.week_streak} />}
+            <StreakPill count={rhythm?.week_streak} />
           </div>
           <div className="mt-1 flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -217,28 +216,14 @@ export default function ClientHome() {
               <Link to={todayPlan.href}>{todayPlan.action}<ChevronRight className="ml-1 h-4 w-4" /></Link>
             </Button>
           )}
-          {/* Bold probe: the week lives inside the dominant card. */}
-          {isBold && rhythm && rhythm.week_total > 0 && (
+          {/* The week lives inside the dominant card (011 A bold pick,
+              owner 2026-08-10): today's work, the week, and the streak are
+              one object. */}
+          {rhythm && rhythm.week_total > 0 && (
             <WeekStrip rhythm={rhythm} className="mt-5 border-t border-primary/15 pt-4" />
           )}
         </CardContent>
       </Card>
-
-      {/* Baseline: the week is its own quiet card under the dominant one. */}
-      {!isBold && rhythm && rhythm.week_total > 0 && (
-        <Card className="mb-4" data-testid="client-week-card">
-          <CardContent className="p-4">
-            <div className="mb-2.5 flex items-center justify-between gap-2">
-              <SectionLabel>This week</SectionLabel>
-              <div className="flex items-center gap-2">
-                <p className="text-xs tabular-nums text-muted-foreground">{rhythm.week_done} of {rhythm.week_total} done</p>
-                <StreakPill count={rhythm.week_streak} />
-              </div>
-            </div>
-            <WeekStrip rhythm={rhythm} />
-          </CardContent>
-        </Card>
-      )}
 
       {/* A completed check-in demotes to a quiet strip so the dominant-
           purpose card stays the only loud thing on the screen. */}
