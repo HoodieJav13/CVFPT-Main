@@ -904,6 +904,48 @@ export function installPreviewApi(api) {
       emitChange();
       return ok(result, config, result.outcome === 'started' ? 201 : 200);
     }
+    if ((path === '/workout-logs/week-rhythm' || /^\/workout-logs\/clients\/[^/]+\/week-rhythm$/.test(path)) && method === 'get') {
+      // Deterministic demo week: Mon/Tue done, yesterday open to make up,
+      // today assigned, Friday upcoming — and a 3-week streak.
+      const now2 = new Date();
+      const mondayOffset = -(((now2.getDay() + 6) % 7));
+      const day = (offset, state, assignments) => ({ date: dateOnly(mondayOffset + offset), state, assignments });
+      const doneA = [{ id: 'rhythm_done_a', workout_name: 'Upper Strength A', completed: true }];
+      const doneB = [{ id: 'rhythm_done_b', workout_name: 'Tempo Run Prep', completed: true }];
+      const makeUp = [{ id: 'work_assign_sarah_dated', workout_name: 'Upper Body A', completed: false }];
+      const todayRow = [{ id: 'work_assign_sarah_active', workout_name: 'Run Prep Mobility', completed: false }];
+      const upcoming = [{ id: 'rhythm_upcoming', workout_name: 'Lower Strength A', completed: false }];
+      const todayIndex = ((now2.getDay() + 6) % 7);
+      const days = Array.from({ length: 7 }, (_, index) => {
+        if (index === todayIndex) return day(index, 'today', todayRow);
+        if (index === todayIndex - 1 && index >= 0) return day(index, 'to_make_up', makeUp);
+        if (index === 0 && todayIndex !== 0) return day(0, 'done', doneA);
+        if (index === 1 && todayIndex > 1) return day(1, 'done', doneB);
+        if (index > todayIndex && index === 4) return day(index, 'upcoming', upcoming);
+        return day(index, 'rest', []);
+      });
+      const flat = days.flatMap((d) => d.assignments);
+      return ok({
+        week_start: dateOnly(mondayOffset),
+        days,
+        yesterday_missed: todayIndex > 0 ? makeUp.map(({ id, workout_name }) => ({ id, workout_name })) : [],
+        week_streak: 3,
+        week_done: flat.filter((a) => a.completed).length,
+        week_total: flat.length,
+      }, config);
+    }
+    if (path === '/workout-logs/quick-complete' && method === 'post') {
+      if (role !== 'client') return fail(config, 403, 'Client access required');
+      const existingActive = state.workoutLogs.find((row) => row.client_id === client.id && row.status === 'active' && !row.archived);
+      if (existingActive) return Promise.reject({ response: { data: { error: 'Finish or abandon your active workout first', active_workout: workoutLogDetails(existingActive.id) }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
+      const result = startPreviewWorkout(client.id, payload);
+      if (!result) return fail(config, 404, 'Assigned workout not found');
+      if (result.outcome !== 'started') return fail(config, 409, 'This workout is already done for today');
+      const log = state.workoutLogs.find((row) => row.id === result.workout_log.id);
+      if (log) { log.status = 'completed'; log.quick_completed = true; log.completed_at = iso(0, 12); }
+      emitChange();
+      return ok(workoutLogDetails(result.workout_log.id), config, 201);
+    }
     if (path === '/workout-logs/active' && method === 'get') {
       const active = state.workoutLogs.find((row) => row.client_id === client.id && row.status === 'active' && !row.archived);
       return ok(active ? workoutLogDetails(active.id) : null, config);
