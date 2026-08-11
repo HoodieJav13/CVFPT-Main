@@ -30,22 +30,38 @@ export default function ClientHome() {
   const [startingWorkout, setStartingWorkout] = useState(false);
   const [quickCompleting, setQuickCompleting] = useState(false);
   const [rhythm, setRhythm] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
+  const [acknowledging, setAcknowledging] = useState(false);
+
+  const acknowledgeAnnouncement = async (announcement) => {
+    setAcknowledging(true);
+    try {
+      await api.patch(`/announcements/${announcement.id}/read`);
+      setAnnouncements((current) => current.map((row) => (row.id === announcement.id ? { ...row, read: true } : row)));
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not mark as seen'));
+    } finally {
+      setAcknowledging(false);
+    }
+  };
   const [loadError, setLoadError] = useState(null);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [dashboardResult, assignedResult, activeResult, historyResult, rhythmResult] = await Promise.allSettled([
+      const [dashboardResult, assignedResult, activeResult, historyResult, rhythmResult, announcementsResult] = await Promise.allSettled([
         api.get('/dashboard/client'),
         api.get('/programs/client/assigned'),
         api.get('/workout-logs/active'),
         api.get('/workout-logs/mine'),
         api.get('/workout-logs/week-rhythm'),
+        api.get('/announcements/mine'),
       ]);
       if (dashboardResult.status === 'rejected') throw dashboardResult.reason;
       setData(dashboardResult.value.data);
       setRhythm(rhythmResult.status === 'fulfilled' ? rhythmResult.value.data : null);
+      setAnnouncements(announcementsResult.status === 'fulfilled' ? announcementsResult.value.data : []);
       setTraining({
         assignments: assignedResult.status === 'fulfilled' ? assignedResult.value.data : null,
         activeLog: activeResult.status === 'fulfilled' ? activeResult.value.data : null,
@@ -224,6 +240,38 @@ export default function ClientHome() {
           )}
         </CardContent>
       </Card>
+
+      {/* One-way coach announcements (011 C): only unread ones surface, and
+          "Got it" is the read receipt behind the coach's seen-count. */}
+      {(() => {
+        const unread = announcements.filter((row) => !row.read);
+        if (!unread.length) return null;
+        const latest = unread[0];
+        return (
+          <Card className="mb-4 border-primary/25" data-testid="client-announcement-card">
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                    <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[9px] text-primary">
+                      {initials(latest.coach?.name || 'C')}
+                    </span>
+                    {latest.studio_wide ? 'Studio announcement' : `From ${latest.coach?.name?.split(' ')[0] || 'your coach'}`}
+                  </p>
+                  <p className="mt-1.5 whitespace-pre-wrap text-sm">{latest.content}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {fmtDateTime(latest.created_at)}{unread.length > 1 ? ` · +${unread.length - 1} more after this` : ''}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" className="min-h-9 shrink-0 rounded-lg" disabled={acknowledging}
+                  onClick={() => acknowledgeAnnouncement(latest)} data-testid="announcement-got-it">
+                  {acknowledging ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Got it'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* A completed check-in demotes to a quiet strip so the dominant-
           purpose card stays the only loud thing on the screen. */}
