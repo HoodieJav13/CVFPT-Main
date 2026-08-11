@@ -8,12 +8,13 @@ router.use(requireAuth, requireCoach);
 
 async function visibleNotifications(user) {
   const { data, error } = await supabaseAdmin.from('notifications')
-    .select('*, workout_log:workout_logs(*, client:clients(id, name, coach_id, archived))')
+    .select('*, workout_log:workout_logs(*, client:clients(id, name, coach_id, archived)), session:sessions(id, scheduled_at, duration_minutes, status, client:clients(id, name, coach_id, archived))')
     .eq('recipient_coach_id', user.coach.id).eq('archived', false)
     .order('created_at', { ascending: false }).limit(100);
   if (error) throw error;
   return (data || []).filter((notification) => (
-    notification.workout_log && canAccessClient(user, notification.workout_log.client)
+    (notification.workout_log && canAccessClient(user, notification.workout_log.client))
+    || (notification.session && canAccessClient(user, notification.session.client))
   ));
 }
 

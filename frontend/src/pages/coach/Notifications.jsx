@@ -44,7 +44,9 @@ export default function CoachNotifications() {
     try {
       if (!notification.read_at) await api.patch(`/notifications/${notification.id}/read`);
       refresh();
-      navigate(`/coach/workouts/${notification.workout_log_id}`);
+      // Cancel requests resolve on the Sessions page; workout events open the log.
+      if (notification.event_type === 'cancel_requested') navigate('/coach/sessions');
+      else navigate(`/coach/workouts/${notification.workout_log_id}`);
     } catch (error) {
       toast.error(errMsg(error));
     }
@@ -79,7 +81,8 @@ export default function CoachNotifications() {
         <div className="divide-y divide-border" data-testid="notifications-list">
           {rows.map((notification) => {
             const log = notification.workout_log;
-            const client = log?.client;
+            const isCancelRequest = notification.event_type === 'cancel_requested';
+            const client = isCancelRequest ? notification.session?.client : log?.client;
             return (
               <button
                 key={notification.id}
@@ -93,7 +96,11 @@ export default function CoachNotifications() {
                 </Avatar>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium leading-snug">
-                    {client?.name} completed {log?.workout_name || 'a workout'}{log?.feedback ? ' and left feedback' : ''}.
+                    {isCancelRequest
+                      ? `${client?.name} asked to cancel the ${fmtDateTime(notification.session?.scheduled_at)} session.`
+                      : notification.event_type === 'workout_started'
+                        ? `${client?.name} started ${log?.workout_name || 'a workout'}.`
+                        : `${client?.name} completed ${log?.workout_name || 'a workout'}${log?.feedback ? ' and left feedback' : ''}${log?.quick_completed ? ' (not tracked)' : ''}.`}
                   </span>
                   <span className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                     {relativeTime(notification.created_at)}

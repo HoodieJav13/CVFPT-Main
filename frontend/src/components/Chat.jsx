@@ -39,7 +39,7 @@ function annotate(messages) {
  * Shared conversation UI. `myRole` is 'coach' or 'client'.
  * `className` lets a parent (the desktop two-pane shell) own the height.
  */
-export function ChatThread({ messages = [], myRole, onSend, sending, className }) {
+export function ChatThread({ messages = [], myRole, onSend, sending, className, composerNote }) {
   const [text, setText] = useState('');
   // Optimistic sends: the bubble appears and the input clears immediately;
   // a failed delivery stays visible with a retry instead of blocking typing.
@@ -149,6 +149,11 @@ export function ChatThread({ messages = [], myRole, onSend, sending, className }
         ))}
         <div ref={bottomRef} />
       </div>
+      {composerNote ? (
+        <p className="mt-3 rounded-xl border border-border bg-card/60 px-4 py-3 text-sm text-muted-foreground" data-testid="chat-composer-note">
+          {composerNote}
+        </p>
+      ) : (
       <form onSubmit={submit} className="mt-3 flex items-end gap-2 border-t border-border/70 pt-3">
         <textarea
           ref={textareaRef}
@@ -164,6 +169,7 @@ export function ChatThread({ messages = [], myRole, onSend, sending, className }
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
       </form>
+      )}
     </div>
   );
 }

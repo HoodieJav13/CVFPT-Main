@@ -11,8 +11,8 @@ const {
   validateUuid,
 } = require('../validation/business');
 const {
-  dispatchEmail, notifySessionCancelled, notifySessionCancelledByClient,
-  notifySessionRescheduled, notifySessionScheduled,
+  dispatchEmail, notifySessionCancelRequested, notifySessionCancelled,
+  notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
 } = require('../services/email');
 const { buildSessionIcs } = require('../lib/ics');
 
@@ -297,6 +297,41 @@ router.patch('/:id/client-cancel', requireClient, async (req, res) => {
   } catch (e) {
     logError('client cancel session error', e);
     return res.status(500).json({ error: 'Failed to cancel the session' });
+  }
+});
+
+// PATCH /api/sessions/:id/ask-cancel  (client) — 011 D: inside the 24h
+// cutoff a client can't self-cancel, but the request must not dead-end.
+// It becomes an in-app notification for the coach (+ admins) and an email;
+// the coach cancels from it. Idempotent per recipient via the partial
+// unique index — asking twice is one signal.
+router.patch('/:id/ask-cancel', requireClient, async (req, res) => {
+  try {
+    const idValidation = validateUuid(req.params.id, 'Session ID');
+    if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
+    const { data: session } = await supabaseAdmin.from('sessions').select('*')
+      .eq('id', idValidation.value).eq('client_id', req.user.client.id)
+      .eq('archived', false).maybeSingle();
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.status !== 'scheduled') {
+      return res.status(400).json({ error: 'Only scheduled sessions can be cancelled' });
+    }
+    const { data: coaches, error: coachErr } = await supabaseAdmin.from('coaches')
+      .select('id').eq('archived', false)
+      .or(`id.eq.${session.coach_id},is_admin.eq.true`);
+    if (coachErr) throw coachErr;
+    for (const coach of coaches || []) {
+      const { error: insertErr } = await supabaseAdmin.from('notifications').insert({
+        recipient_coach_id: coach.id, event_type: 'cancel_requested', session_id: session.id,
+      });
+      // 23505 = already asked — idempotent by design.
+      if (insertErr && insertErr.code !== '23505') throw insertErr;
+    }
+    await dispatchEmail(() => notifySessionCancelRequested(session));
+    return res.json({ ok: true });
+  } catch (e) {
+    logError('ask cancel session error', e);
+    return res.status(500).json({ error: 'Could not send the request. Please try again.' });
   }
 });
 
