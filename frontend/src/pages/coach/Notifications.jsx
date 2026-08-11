@@ -44,9 +44,10 @@ export default function CoachNotifications() {
     try {
       if (!notification.read_at) await api.patch(`/notifications/${notification.id}/read`);
       refresh();
-      // Cancel requests resolve on the Sessions page; workout events open the log.
-      if (notification.event_type === 'cancel_requested') navigate('/coach/sessions');
-      else navigate(`/coach/workouts/${notification.workout_log_id}`);
+      // Cancel requests resolve on the session itself; workout events open the log.
+      if (notification.event_type === 'cancel_requested') {
+        navigate(notification.session?.id ? `/coach/sessions/${notification.session.id}` : '/coach/sessions');
+      } else navigate(`/coach/workouts/${notification.workout_log_id}`);
     } catch (error) {
       toast.error(errMsg(error));
     }
