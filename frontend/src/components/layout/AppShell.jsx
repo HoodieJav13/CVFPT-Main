@@ -19,6 +19,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { useInstallMode, promptInstall, dismissInstall } from '@/lib/pwa';
+import { pushSupport, pushPermission, currentSubscription, enablePush, disablePush } from '@/lib/push';
 import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { api, errMsg } from '@/lib/api';
@@ -338,6 +339,39 @@ function UserMenu({ user, logout, compact }) {
 
   const [messagesPaused, setMessagesPaused] = useState(false);
   const [messagesPausedLoading, setMessagesPausedLoading] = useState(false);
+  // Program 012: lock-screen notifications. Deliberate-tap enrollment only.
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const pushState = pushSupport();
+
+  const refreshPushState = useCallback(() => {
+    if (pushState !== 'supported') return;
+    currentSubscription()
+      .then((subscription) => setPushEnabled(Boolean(subscription) && pushPermission() === 'granted'))
+      .catch(() => {});
+  }, [pushState]);
+
+  const togglePush = async (checked) => {
+    setPushBusy(true);
+    try {
+      if (checked) {
+        await enablePush();
+        setPushEnabled(true);
+        toast.success('Lock-screen notifications on');
+      } else {
+        await disablePush();
+        setPushEnabled(false);
+        toast.success('Lock-screen notifications off');
+      }
+    } catch (error) {
+      toast.error(error?.code === 'unconfigured' || error?.code === 'denied'
+        ? error.message
+        : errMsg(error, 'Could not update notifications'));
+      refreshPushState();
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const openEmailPreferences = useCallback(() => {
     setEmailHelpOpen(true);
@@ -353,7 +387,8 @@ function UserMenu({ user, logout, compact }) {
         .catch(() => {})
         .finally(() => setMessagesPausedLoading(false));
     }
-  }, [isClient]);
+    refreshPushState();
+  }, [isClient, refreshPushState]);
 
   const updateMessagesPaused = async (checked) => {
     const previous = messagesPaused;
@@ -510,6 +545,29 @@ function UserMenu({ user, logout, compact }) {
             aria-label="Turn off daily email digest"
             data-testid="digest-opt-out-switch"
           />
+        </div>
+        {/* 012: lock-screen notifications for the signals the app already
+            sends. Honest iOS story: install to home screen first. */}
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-border p-4">
+          <div>
+            <p className="text-sm font-medium">Lock-screen notifications</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {pushState === 'ios_needs_install'
+                ? 'On iPhone, install CVF PT to your Home Screen first — then this switch appears.'
+                : pushState === 'unsupported'
+                  ? "This browser can't show push notifications."
+                  : 'Session changes, announcements, and client activity reach your phone even when the app is closed.'}
+            </p>
+          </div>
+          {pushState === 'supported' && (
+            <Switch
+              checked={pushEnabled}
+              disabled={pushBusy}
+              onCheckedChange={togglePush}
+              aria-label="Lock-screen notifications"
+              data-testid="push-toggle-switch"
+            />
+          )}
         </div>
         {/* 011 D: coaches can pause incoming client messages. Announcements
             and the ask-to-cancel flow keep working while paused. */}

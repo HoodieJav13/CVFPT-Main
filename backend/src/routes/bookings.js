@@ -9,6 +9,7 @@ const {
   validateUuid,
 } = require('../validation/business');
 const { dispatchEmail, notifyBookingEvent } = require('../services/email');
+const { dispatchPush, sendToClient, sendToCoaches } = require('../services/push');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -97,6 +98,11 @@ router.post('/', requireClient, async (req, res) => {
     }
     if (result?.outcome === 'pending') {
       await dispatchEmail(() => notifyBookingEvent('booking-pending', { booking: result.request, session: null }));
+      dispatchPush(() => sendToCoaches([result.request.coach_id], {
+        title: 'New booking request',
+        body: 'A client requested a session — review it when you can.',
+        url: '/coach/sessions',
+      }));
       return res.status(201).json({ ...result.request, auto_booked: false });
     }
     throw new Error(`unexpected request_booking outcome: ${result?.outcome ?? 'null'}`);
@@ -173,6 +179,11 @@ router.patch('/:id/approve', requireCoach, async (req, res) => {
       });
     }
     await dispatchEmail(() => notifyBookingEvent('booking-approved', { booking, session: data.session || null }));
+    dispatchPush(() => sendToClient(booking.client_id, {
+      title: 'Session confirmed',
+      body: 'Your booking request was approved.',
+      url: '/client/sessions',
+    }));
     return res.json(data);
   } catch (e) {
     logError('approve booking error', e);
@@ -193,6 +204,11 @@ router.patch('/:id/decline', requireCoach, async (req, res) => {
     if (error) throw error;
     if (!data) return res.status(400).json({ error: 'This request was already handled' });
     await dispatchEmail(() => notifyBookingEvent('booking-declined', { booking: data, session: null }));
+    dispatchPush(() => sendToClient(data.client_id, {
+      title: 'Booking declined',
+      body: 'Pick another time or message your coach.',
+      url: '/client/sessions',
+    }));
     return res.json(data);
   } catch (e) {
     logError('decline booking error', e);

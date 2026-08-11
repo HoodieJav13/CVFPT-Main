@@ -15,6 +15,8 @@ const {
   notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
 } = require('../services/email');
 const { buildSessionIcs } = require('../lib/ics');
+const { dispatchPush, sendToClient, sendToCoaches } = require('../services/push');
+const { formatDenver } = require('../services/email');
 
 // D1b (2026-08-06): clients may self-cancel up to this long before start.
 const CLIENT_CANCEL_CUTOFF_MS = 24 * 60 * 60 * 1000;
@@ -174,6 +176,11 @@ router.post('/', requireCoach, async (req, res) => {
       .select('*, client:clients(id, name), workout:workouts(id, name)').eq('id', data.session.id).single();
     if (readError) throw readError;
     await dispatchEmail(() => notifySessionScheduled(created));
+    dispatchPush(() => sendToClient(created.client_id, {
+      title: 'New session scheduled',
+      body: `${formatDenver(created.scheduled_at)} with your coach.`,
+      url: `/client/sessions/${created.id}`,
+    }));
     return res.status(201).json({ ...created, location_overlaps: data.location_overlaps || 0 });
   } catch (e) {
     logError('create session error', e);
@@ -221,6 +228,11 @@ router.put('/:id', requireCoach, async (req, res) => {
       || (updated.location || null) !== (session.location || null);
     if (meaningfullyChanged && updated.status === 'scheduled') {
       await dispatchEmail(() => notifySessionRescheduled(updated, session));
+      dispatchPush(() => sendToClient(updated.client_id, {
+        title: 'Your session changed',
+        body: `Now ${formatDenver(updated.scheduled_at)}.`,
+        url: `/client/sessions/${updated.id}`,
+      }));
     }
     return res.json({ ...updated, location_overlaps: data.location_overlaps || 0 });
   } catch (e) {
@@ -240,6 +252,11 @@ router.patch('/:id/cancel', requireCoach, async (req, res) => {
       .eq('id', session.id).select('*, client:clients(id, name)').single();
     if (error) throw error;
     await dispatchEmail(() => notifySessionCancelled(data));
+    dispatchPush(() => sendToClient(data.client_id, {
+      title: 'Session cancelled',
+      body: `${formatDenver(data.scheduled_at)} is off the calendar.`,
+      url: '/client/sessions',
+    }));
     return res.json(data);
   } catch (e) {
     logError('cancel session error', e);
@@ -328,6 +345,11 @@ router.patch('/:id/ask-cancel', requireClient, async (req, res) => {
       if (insertErr && insertErr.code !== '23505') throw insertErr;
     }
     await dispatchEmail(() => notifySessionCancelRequested(session));
+    dispatchPush(() => sendToCoaches((coaches || []).map((coach) => coach.id), {
+      title: 'Cancel request',
+      body: `A client asked to cancel the ${formatDenver(session.scheduled_at)} session.`,
+      url: '/coach/notifications',
+    }));
     return res.json({ ok: true });
   } catch (e) {
     logError('ask cancel session error', e);

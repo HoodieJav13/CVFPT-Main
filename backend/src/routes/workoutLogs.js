@@ -4,6 +4,7 @@ const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
 const { todayDateInTz } = require('../utils/time');
 const { addDays, buildWeekRhythm } = require('../lib/rhythm');
+const { dispatchPush, sendToCoaches } = require('../services/push');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -119,6 +120,30 @@ async function notifyCoachesOfWorkoutEvent(eventType, log) {
   const { error: insertErr } = await supabaseAdmin.from('notifications')
     .upsert(rows, { onConflict: 'recipient_coach_id,event_type,workout_log_id', ignoreDuplicates: true });
   if (insertErr) throw insertErr;
+  const clientName = log.client?.name || 'A client';
+  dispatchPush(() => sendToCoaches(rows.map((row) => row.recipient_coach_id), {
+    title: eventType === 'workout_started' ? 'In the gym now' : 'Workout completed',
+    body: eventType === 'workout_started'
+      ? `${clientName} started ${log.workout_name || 'a workout'}.`
+      : `${clientName} completed ${log.workout_name || 'a workout'}.`,
+    url: '/coach/notifications',
+  }));
+}
+
+// Completed-workout notification rows come from the completion RPC; this
+// only adds the matching lock-screen push to the same recipient set.
+function completedWorkoutPush(log) {
+  dispatchPush(async () => {
+    const { data: coaches, error } = await supabaseAdmin.from('coaches')
+      .select('id').eq('archived', false)
+      .or(`id.eq.${log.coach_id},is_admin.eq.true`);
+    if (error) throw error;
+    await sendToCoaches((coaches || []).map((coach) => coach.id), {
+      title: 'Workout completed',
+      body: `${log.client?.name || 'A client'} completed ${log.workout_name || 'a workout'}${log.quick_completed ? ' (not tracked)' : ''}.`,
+      url: '/coach/notifications',
+    });
+  });
 }
 
 // When a workout is finished, its "started" notifications become stale —
@@ -767,7 +792,9 @@ router.post('/quick-complete', requireClient, async (req, res) => {
     });
     if (completeErr) throw completeErr;
 
-    return res.status(201).json(await workoutLogWithDetails(logId));
+    const completed = await workoutLogWithDetails(logId);
+    completedWorkoutPush(completed);
+    return res.status(201).json(completed);
   } catch (error) {
     logError('quick complete workout error', error);
     const status = workoutRpcStatus(error);
@@ -814,7 +841,9 @@ router.post('/:id/complete', async (req, res) => {
       throw error;
     }
     await markStartedNotificationsRead(log.id);
-    return res.json(await workoutLogWithDetails(log.id));
+    const completed = await workoutLogWithDetails(log.id);
+    completedWorkoutPush(completed);
+    return res.json(completed);
   } catch (error) {
     logError('complete workout error', error);
     const status = workoutRpcStatus(error);

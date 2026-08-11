@@ -1179,6 +1179,10 @@ export function installPreviewApi(api) {
       .filter((row) => row.recipient_coach_id === currentCoach().id && !row.archived)
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .map((row) => ({ ...row, workout_log: workoutLogDetails(row.workout_log_id) }));
+    if (path === '/push/public-key' && method === 'get') {
+      // The demo never sends real pushes — the toggle reports "not set up".
+      return ok({ public_key: null }, config);
+    }
     if (path.startsWith('/announcements')) {
       if (path === '/announcements' && method === 'post') {
         const row = {

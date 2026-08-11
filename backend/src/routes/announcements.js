@@ -6,6 +6,7 @@ const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
 const { validateUuid } = require('../validation/business');
+const { dispatchPush, sendToClient } = require('../services/push');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -25,6 +26,17 @@ router.post('/', requireCoach, async (req, res) => {
       studio_wide: studioWide,
     }).select().single();
     if (error) throw error;
+    dispatchPush(async () => {
+      let audience = supabaseAdmin.from('clients').select('id').eq('archived', false);
+      if (!studioWide) audience = audience.eq('coach_id', req.user.coach.id);
+      const { data: clients, error: audienceErr } = await audience;
+      if (audienceErr) throw audienceErr;
+      await Promise.all((clients || []).map((clientRow) => sendToClient(clientRow.id, {
+        title: studioWide ? 'Studio announcement' : 'From your coach',
+        body: content.slice(0, 140),
+        url: '/client',
+      })));
+    });
     return res.status(201).json(data);
   } catch (e) {
     logError('create announcement error', e);
