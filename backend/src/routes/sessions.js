@@ -17,6 +17,7 @@ const {
 const { buildSessionIcs } = require('../lib/ics');
 const { dispatchPush, sendToClient, sendToCoaches } = require('../services/push');
 const { formatDenver } = require('../services/email');
+const { dateInTz } = require('../utils/time');
 
 // D1b (2026-08-06): clients may self-cancel up to this long before start.
 const CLIENT_CANCEL_CUTOFF_MS = 24 * 60 * 60 * 1000;
@@ -32,6 +33,51 @@ async function validateWorkoutAttachment(workoutId, coachId) {
     .eq('id', idValidation.value).eq('archived', false).maybeSingle();
   if (!workout || workout.coach_id !== coachId) return { ok: false, error: 'Workout not found' };
   return { ok: true, value: workout.id };
+}
+
+// Program 013: coaches shouldn't have to hunt in notifications to see that
+// a client trained. Annotate session rows with that client's workout for
+// the same day — an explicitly linked log wins, then an in-progress one,
+// then the most recent completed one.
+async function annotateWorkoutActivity(sessions) {
+  const rows = sessions || [];
+  if (!rows.length) return rows;
+  const clientIds = [...new Set(rows.map((s) => s.client_id))];
+  const times = rows.map((s) => new Date(s.scheduled_at).getTime()).filter((t) => !Number.isNaN(t));
+  if (!times.length) return rows;
+  const from = new Date(Math.min(...times) - 86400000).toISOString();
+  const to = new Date(Math.max(...times) + 86400000).toISOString();
+  const { data: logs, error } = await supabaseAdmin.from('workout_logs')
+    .select('id, client_id, session_id, workout_name, status, quick_completed, started_at')
+    .in('client_id', clientIds).eq('archived', false)
+    .gte('started_at', from).lte('started_at', to)
+    .order('started_at', { ascending: false });
+  if (error) throw error;
+  const candidates = logs || [];
+  const rank = (log, session) => {
+    if (log.session_id === session.id) return 0;
+    if (log.client_id !== session.client_id) return 99;
+    const sameDay = dateInTz(new Date(log.started_at).getTime())
+      === dateInTz(new Date(session.scheduled_at).getTime());
+    if (!sameDay) return 99;
+    return log.status === 'active' ? 1 : log.status === 'completed' ? 2 : 3;
+  };
+  for (const session of rows) {
+    let best = null;
+    let bestRank = 99;
+    for (const log of candidates) {
+      const value = rank(log, session);
+      if (value < bestRank) { best = log; bestRank = value; }
+    }
+    session.workout_activity = best ? {
+      workout_log_id: best.id,
+      workout_name: best.workout_name,
+      status: best.status,
+      quick_completed: Boolean(best.quick_completed),
+      linked: best.session_id === session.id,
+    } : null;
+  }
+  return rows;
 }
 
 async function attachWorkout(sessionId, workoutId) {
@@ -76,7 +122,7 @@ router.get('/', requireCoach, async (req, res) => {
     const validation = validateSessionListQuery(req.query);
     if (!validation.ok) return res.status(400).json({ error: validation.error });
     let q = supabaseAdmin.from('sessions')
-      .select('*, client:clients(id, name), coach:coaches(id, name)')
+      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name)')
       .eq('archived', false)
       .order('scheduled_at', { ascending: true });
     if (req.user.role !== 'admin') q = q.eq('coach_id', req.user.coach.id);
@@ -86,7 +132,7 @@ router.get('/', requireCoach, async (req, res) => {
     if (validation.value.to) q = q.lt('scheduled_at', validation.value.to);
     const { data, error } = await q;
     if (error) throw error;
-    return res.json(data);
+    return res.json(await annotateWorkoutActivity(data));
   } catch (e) {
     logError('list sessions error', e);
     return res.status(500).json({ error: 'Failed to load sessions' });
@@ -453,6 +499,45 @@ router.put('/notes/:noteId', requireCoach, async (req, res) => {
   } catch (e) {
     logError('update note error', e);
     return res.status(500).json({ error: 'Failed to update note' });
+  }
+});
+
+// GET /api/sessions/:id/coach-detail — one session with everything the
+// coach needs on its own page: client, the attached plan, every note
+// (not just shared ones), and that day's workout activity.
+router.get('/:id/coach-detail', requireCoach, async (req, res) => {
+  try {
+    const owned = await loadSessionForCoach(req, res);
+    if (!owned) return;
+    const { data: session, error } = await supabaseAdmin.from('sessions')
+      .select('*, client:clients(id, name, email), coach:coaches(id, name), workout:workouts(id, name, description, goal)')
+      .eq('id', owned.id).single();
+    if (error) throw error;
+    const { data: notes } = await supabaseAdmin.from('session_notes').select('*')
+      .eq('session_id', session.id).eq('archived', false).order('created_at');
+    let workoutExercises = [];
+    if (session.workout_id) {
+      const { data: exercises } = await supabaseAdmin.from('workout_exercises')
+        .select('id, custom_name, sets, reps, rest, coach_notes, position, library_exercise:exercise_library(name)')
+        .eq('workout_id', session.workout_id).eq('archived', false).order('position');
+      workoutExercises = (exercises || []).map((exercise) => ({
+        id: exercise.id,
+        name: exercise.library_exercise?.name || exercise.custom_name || 'Exercise',
+        sets: exercise.sets,
+        reps: exercise.reps,
+        rest: exercise.rest,
+        coach_notes: exercise.coach_notes,
+      }));
+    }
+    const [annotated] = await annotateWorkoutActivity([session]);
+    return res.json({
+      ...annotated,
+      notes: notes || [],
+      workout: session.workout ? { ...session.workout, exercises: workoutExercises } : null,
+    });
+  } catch (e) {
+    logError('coach session detail error', e);
+    return res.status(500).json({ error: 'Failed to load the session' });
   }
 });
 

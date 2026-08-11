@@ -149,6 +149,10 @@ const state = {
   ],
   workoutLogs: [
     { id: 'log_preview_complete', client_id: 'client_sarah', program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_2', workout_assignment_id: null, dated_workout_assignment_id: null, workout_name: 'Upper Strength A', status: 'completed', notes: 'Shoulder felt strong today.', feedback: 'Good session. The last rows were challenging.', started_at: iso(-2, 17), completed_at: iso(-2, 18), archived: false, created_at: iso(-2, 17), updated_at: iso(-2, 18) },
+    // Demos the one-tap check-in AND the coach-side activity indicator:
+    // Sarah logged today's work without tracking sets, so today's session
+    // row reads "Workout logged · not tracked".
+    { id: 'log_today_quick', client_id: 'client_sarah', program_assignment_id: null, program_day_id: null, workout_assignment_id: null, dated_workout_assignment_id: null, workout_name: 'Run Prep Mobility', status: 'completed', quick_completed: true, notes: null, feedback: null, started_at: iso(0, 7), completed_at: iso(0, 7), archived: false, created_at: iso(0, 7), updated_at: iso(0, 7) },
     ...Array.from({ length: 12 }, (_, index) => ({
       id: `log_history_squat_${index + 1}`, client_id: 'client_sarah', program_assignment_id: 'assign_sarah',
       program_day_id: 'day_foundation_1', workout_assignment_id: null, dated_workout_assignment_id: null,
@@ -884,6 +888,28 @@ function saveCheckIn(clientId, payload, actorRole) {
   return existing;
 }
 
+// Mirrors the backend's annotateWorkoutActivity: an explicitly linked log
+// wins, then an active one that day, then the most recent completed one.
+function previewWorkoutActivity(session) {
+  const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+  const candidates = state.workoutLogs.filter((log) => !log.archived && (
+    log.session_id === session.id
+    || (log.client_id === session.client_id && sameDay(log.started_at || log.created_at, session.scheduled_at))
+  ));
+  if (!candidates.length) return null;
+  const best = candidates.find((log) => log.session_id === session.id)
+    || candidates.find((log) => log.status === 'active')
+    || candidates.find((log) => log.status === 'completed')
+    || candidates[0];
+  return {
+    workout_log_id: best.id,
+    workout_name: best.workout_name,
+    status: best.status,
+    quick_completed: Boolean(best.quick_completed),
+    linked: best.session_id === session.id,
+  };
+}
+
 export function installPreviewApi(api) {
   if (!isPreviewMode) return;
   api.defaults.adapter = async (config) => {
@@ -1533,8 +1559,36 @@ export function installPreviewApi(api) {
       let rows = state.sessions.filter((s) => !s.archived);
       if (search.get('client_id')) rows = rows.filter((s) => s.client_id === search.get('client_id'));
       if (search.get('status')) rows = rows.filter((s) => s.status === search.get('status'));
-      rows = rows.map((s) => ({ ...s, client: { id: s.client_id, name: clientById(s.client_id).name }, coach: coachById(s.coach_id) })).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+      rows = rows.map((s) => ({
+        ...s,
+        client: { id: s.client_id, name: clientById(s.client_id).name },
+        coach: coachById(s.coach_id),
+        workout: s.workout_id ? (state.workouts.find((w) => w.id === s.workout_id) || null) : null,
+        workout_activity: previewWorkoutActivity(s),
+      })).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
       return ok(rows, config);
+    }
+    const coachSessionDetail = path.match(/^\/sessions\/([^/]+)\/coach-detail$/);
+    if (coachSessionDetail && method === 'get') {
+      const row = state.sessions.find((s) => s.id === coachSessionDetail[1] && !s.archived);
+      if (!row) return fail(config, 404, 'Session not found');
+      const workout = row.workout_id ? state.workouts.find((w) => w.id === row.workout_id) : null;
+      const exercises = workout ? state.workoutExercises
+        .filter((exercise) => exercise.workout_id === workout.id && !exercise.archived)
+        .sort((a, b) => a.position - b.position)
+        .map((exercise) => ({
+          id: exercise.id,
+          name: state.exerciseLibrary.find((lib) => lib.id === exercise.exercise_library_id)?.name || exercise.custom_name || 'Exercise',
+          sets: exercise.sets, reps: exercise.reps, rest: exercise.rest, coach_notes: exercise.notes || null,
+        })) : [];
+      return ok({
+        ...row,
+        client: clientById(row.client_id),
+        coach: coachById(row.coach_id),
+        notes: state.sessionNotes.filter((n) => n.session_id === row.id && !n.archived),
+        workout: workout ? { ...workout, exercises } : null,
+        workout_activity: previewWorkoutActivity(row),
+      }, config);
     }
     if (path === '/sessions' && method === 'post') {
       const target = clientById(payload.client_id);
