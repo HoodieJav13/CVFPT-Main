@@ -86,3 +86,33 @@ self.addEventListener('fetch', (event) => {
   }
   event.respondWith(staleWhileRevalidate(request));
 });
+
+// Program 012: web push. Payloads are {title, body, url} only — no chat
+// content ever rides a push (same privacy rule as the digest).
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
+  const title = payload.title || 'CVF PT';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: payload.body || '',
+    icon: '/logo.png',
+    badge: '/logo.png',
+    data: { url: payload.url || '/' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/';
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of windows) {
+      if ('focus' in client) {
+        await client.focus();
+        if ('navigate' in client) await client.navigate(url);
+        return;
+      }
+    }
+    await self.clients.openWindow(url);
+  })());
+});
