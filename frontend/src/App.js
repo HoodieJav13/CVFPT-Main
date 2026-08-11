@@ -13,6 +13,7 @@ import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
 import ClientHome from '@/pages/client/Home';
 import ClientSessions from '@/pages/client/Sessions';
+import ClientSessionDetail from '@/pages/client/SessionDetail';
 import ClientProgress from '@/pages/client/Progress';
 import ClientPrograms from '@/pages/client/Programs';
 import ClientResources from '@/pages/client/Resources';
@@ -104,6 +105,7 @@ export default function App() {
           >
             <Route index element={<ClientHome />} />
             <Route path="sessions" element={<ClientSessions />} />
+            <Route path="sessions/:id" element={<ClientSessionDetail />} />
             <Route path="progress" element={<ClientProgress />} />
             <Route path="programs" element={<ClientPrograms />} />
             <Route path="resources" element={<ClientResources />} />

@@ -337,9 +337,11 @@ export default function CoachSessions() {
 }
 
 function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onSaved }) {
-  const [form, setForm] = useState({ client_id: '', scheduled_at: '', duration_minutes: '60', location: '' });
+  const [form, setForm] = useState({ client_id: '', scheduled_at: '', duration_minutes: '60', location: '', workout_id: 'none' });
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(null);
+  // 011 B: optional planned-workout attachment, fetched once per drawer open.
+  const [workouts, setWorkouts] = useState(null);
 
   useEffect(() => {
     if (open) {
@@ -350,11 +352,18 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
           scheduled_at: toLocalInputValue(editing.scheduled_at),
           duration_minutes: String(editing.duration_minutes),
           location: editing.location || '',
+          workout_id: editing.workout_id || 'none',
         });
       } else {
-        setForm({ client_id: presetClient || '', scheduled_at: '', duration_minutes: '60', location: '' });
+        setForm({ client_id: presetClient || '', scheduled_at: '', duration_minutes: '60', location: '', workout_id: 'none' });
+      }
+      if (workouts === null) {
+        api.get('/programs/workouts')
+          .then(({ data }) => setWorkouts(data))
+          .catch(() => setWorkouts([]));
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing, presetClient]);
 
   // A shown conflict is about a specific client + time + duration; changing
@@ -377,6 +386,7 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
         scheduled_at: new Date(form.scheduled_at).toISOString(),
         duration_minutes: Number(form.duration_minutes),
         location: form.location,
+        workout_id: form.workout_id === 'none' ? null : form.workout_id,
       };
       const { data } = editing
         ? await api.put(`/sessions/${editing.id}`, payload)
@@ -461,6 +471,21 @@ function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onS
                 <Label>Location</Label>
                 <Input value={form.location} onChange={(e) => setField({ location: e.target.value })} placeholder="CVF Studio" className="rounded-xl h-11" data-testid="session-location-input" />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Planned workout</Label>
+              <Select value={form.workout_id} onValueChange={(v) => setForm((current) => ({ ...current, workout_id: v }))}>
+                <SelectTrigger className="rounded-xl h-11" data-testid="session-workout-select">
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No workout attached</SelectItem>
+                  {(workouts || []).map((workout) => (
+                    <SelectItem key={workout.id} value={workout.id}>{workout.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">The client sees the plan on their session page.</p>
             </div>
             <DrawerFooter className="px-0">
               <Button type="submit" disabled={saving} className="rounded-xl h-11 font-semibold" data-testid="session-save-button">
