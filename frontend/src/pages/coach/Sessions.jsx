@@ -91,7 +91,9 @@ export default function CoachSessions() {
     let list = sessions;
     if (filter === 'upcoming') list = sessions.filter((s) => s.status === 'scheduled' && !isBeforeToday(s.scheduled_at));
     if (filter === 'today') list = sessions.filter((s) => new Date(s.scheduled_at).toDateString() === todayStr && s.status !== 'cancelled');
-    if (filter === 'past') list = sessions.filter((s) => s.status === 'completed' || (s.status === 'scheduled' && isBeforeToday(s.scheduled_at))).slice().reverse();
+    // Past is every finished outcome (completed and no-show, like the
+    // Cancelled filter treats cancelled) plus stale scheduled sessions.
+    if (filter === 'past') list = sessions.filter((s) => s.status === 'completed' || s.status === 'no_show' || (s.status === 'scheduled' && isBeforeToday(s.scheduled_at))).slice().reverse();
     if (filter === 'cancelled') list = sessions.filter((s) => s.status === 'cancelled');
     return list;
   }, [sessions, filter]);
@@ -271,11 +273,32 @@ export default function CoachSessions() {
                     </div>
                     <div className="min-w-0">
                       <p className="font-medium truncate text-sm">{s.client?.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{s.location || 'No location'}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {s.location || 'No location'}
+                        {s.workout?.name ? ` · ${s.workout.name}` : ''}
+                      </p>
+                      {s.status === 'scheduled' && s.linked_workout_log?.status === 'active' && (
+                        <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-primary" data-testid="session-live-chip">
+                          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary motion-safe:animate-pulse" /> In the gym now
+                        </p>
+                      )}
+                      {s.status === 'scheduled' && s.linked_workout_log?.status === 'completed' && (
+                        <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-gold" data-testid="session-workout-done-chip">
+                          <Dumbbell className="h-3 w-3" /> Workout done{s.linked_workout_log.quick_completed ? ' (not tracked)' : ''}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <StatusBadge status={s.status} />
+                    {s.status === 'scheduled' && s.linked_workout_log?.status === 'completed' ? (
+                      // The workout is in — surface the approval right on the
+                      // row; the chip already says why.
+                      <Button size="sm" className="min-h-9 rounded-lg" disabled={acting === s.id} onClick={() => complete(s)} data-testid="session-confirm-complete-button">
+                        {acting === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Check className="h-3.5 w-3.5 mr-1" /> Complete</>}
+                      </Button>
+                    ) : (
+                      <StatusBadge status={s.status} />
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="icon" variant="ghost" className="h-11 w-11 rounded-lg" data-testid="session-actions-button">
