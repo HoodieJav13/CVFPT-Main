@@ -1996,9 +1996,25 @@ export function installPreviewApi(api) {
       return ok({ coach: coachById(client.coach_id), messages: state.messages.filter((m) => m.client_id === client.id && !m.archived).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) }, config);
     }
     if (path === '/messages/mine' && method === 'post') {
+      if (coachById(client.coach_id)?.messages_disabled) {
+        return fail(config, 403, "Your coach isn't taking messages right now. You'll still get announcements — and session changes go through Ask to cancel.");
+      }
       const row = { id: id('msg'), client_id: client.id, coach_id: client.coach_id, sender_role: 'client', content: payload.content, read_by_recipient: false, archived: false, created_at: new Date().toISOString() };
       state.messages.push(row);
       return ok(row, config, 201);
+    }
+    if (path === '/messages/availability' && method === 'get') {
+      return ok({ messages_disabled: Boolean(currentCoach().messages_disabled) }, config);
+    }
+    if (path === '/messages/availability' && method === 'patch') {
+      const me = state.coaches.find((c) => c.id === currentCoach().id);
+      if (me) me.messages_disabled = Boolean(payload?.messages_disabled);
+      emitChange();
+      return ok({ messages_disabled: Boolean(me?.messages_disabled) }, config);
+    }
+    const askCancelMatch = path.match(/^\/sessions\/([^/]+)\/ask-cancel$/);
+    if (askCancelMatch && method === 'patch') {
+      return ok({ ok: true }, config);
     }
     if (path === '/messages/threads') {
       const clients = activeClientsForCoach();

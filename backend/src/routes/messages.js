@@ -97,7 +97,7 @@ router.post('/with/:clientId', requireCoach, async (req, res) => {
 router.get('/mine', requireClient, async (req, res) => {
   try {
     const client = req.user.client;
-    const { data: coach } = await supabaseAdmin.from('coaches').select('id, name').eq('id', client.coach_id).maybeSingle();
+    const { data: coach } = await supabaseAdmin.from('coaches').select('id, name, messages_disabled').eq('id', client.coach_id).maybeSingle();
     const { data, error } = await supabaseAdmin.from('messages').select('*')
       .eq('client_id', client.id).eq('archived', false).order('created_at');
     if (error) throw error;
@@ -110,12 +110,47 @@ router.get('/mine', requireClient, async (req, res) => {
   }
 });
 
+// GET/PATCH /api/messages/availability (coach) — 011 D: pause client
+// messages. Announcements and ask-to-cancel keep working while paused.
+router.get('/availability', requireCoach, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('coaches')
+      .select('messages_disabled').eq('id', req.user.coach.id).single();
+    if (error) throw error;
+    return res.json({ messages_disabled: Boolean(data.messages_disabled) });
+  } catch (e) {
+    logError('message availability read error', e);
+    return res.status(500).json({ error: 'Failed to load message settings' });
+  }
+});
+
+router.patch('/availability', requireCoach, async (req, res) => {
+  try {
+    if (typeof req.body?.messages_disabled !== 'boolean') {
+      return res.status(400).json({ error: 'messages_disabled must be true or false' });
+    }
+    const { data, error } = await supabaseAdmin.from('coaches')
+      .update({ messages_disabled: req.body.messages_disabled, updated_at: new Date().toISOString() })
+      .eq('id', req.user.coach.id).select('messages_disabled').single();
+    if (error) throw error;
+    return res.json({ messages_disabled: Boolean(data.messages_disabled) });
+  } catch (e) {
+    logError('message availability update error', e);
+    return res.status(500).json({ error: 'Failed to update message settings' });
+  }
+});
+
 // POST /api/messages/mine (client)
 router.post('/mine', requireClient, async (req, res) => {
   try {
     const client = req.user.client;
     const content = (req.body?.content || '').trim();
     if (!content) return res.status(400).json({ error: 'Message cannot be empty' });
+    const { data: coachRow } = await supabaseAdmin.from('coaches')
+      .select('messages_disabled').eq('id', client.coach_id).maybeSingle();
+    if (coachRow?.messages_disabled) {
+      return res.status(403).json({ error: "Your coach isn't taking messages right now. You'll still get announcements — and session changes go through Ask to cancel." });
+    }
     const { data, error } = await supabaseAdmin.from('messages').insert({
       client_id: client.id,
       coach_id: client.coach_id,

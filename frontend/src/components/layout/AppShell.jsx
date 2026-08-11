@@ -336,6 +336,9 @@ function UserMenu({ user, logout, compact }) {
     }
   };
 
+  const [messagesPaused, setMessagesPaused] = useState(false);
+  const [messagesPausedLoading, setMessagesPausedLoading] = useState(false);
+
   const openEmailPreferences = useCallback(() => {
     setEmailHelpOpen(true);
     setEmailPreferenceLoading(true);
@@ -343,7 +346,29 @@ function UserMenu({ user, logout, compact }) {
       .then(({ data }) => setDigestOptOut(Boolean(data.digest_opt_out)))
       .catch((error) => toast.error(errMsg(error, 'Could not load email settings')))
       .finally(() => setEmailPreferenceLoading(false));
-  }, []);
+    if (!isClient) {
+      setMessagesPausedLoading(true);
+      api.get('/messages/availability')
+        .then(({ data }) => setMessagesPaused(Boolean(data.messages_disabled)))
+        .catch(() => {})
+        .finally(() => setMessagesPausedLoading(false));
+    }
+  }, [isClient]);
+
+  const updateMessagesPaused = async (checked) => {
+    const previous = messagesPaused;
+    setMessagesPaused(checked);
+    setMessagesPausedLoading(true);
+    try {
+      await api.patch('/messages/availability', { messages_disabled: checked });
+      toast.success(checked ? 'Client messages paused' : 'Client messages back on');
+    } catch (error) {
+      setMessagesPaused(previous);
+      toast.error(errMsg(error, 'Could not save message settings'));
+    } finally {
+      setMessagesPausedLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (new URLSearchParams(location.search).get('email-settings') === '1') openEmailPreferences();
@@ -486,6 +511,23 @@ function UserMenu({ user, logout, compact }) {
             data-testid="digest-opt-out-switch"
           />
         </div>
+        {/* 011 D: coaches can pause incoming client messages. Announcements
+            and the ask-to-cancel flow keep working while paused. */}
+        {!isClient && (
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border p-4">
+            <div>
+              <p className="text-sm font-medium">Pause client messages</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Clients can't message you while paused. Announcements and cancel requests still reach them and you.</p>
+            </div>
+            <Switch
+              checked={messagesPaused}
+              disabled={messagesPausedLoading}
+              onCheckedChange={updateMessagesPaused}
+              aria-label="Pause incoming client messages"
+              data-testid="messages-paused-switch"
+            />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
     <Dialog open={passwordOpen} onOpenChange={(open) => { setPasswordOpen(open); if (!open) setPasswordForm({ current: '', next: '', confirm: '' }); }}>

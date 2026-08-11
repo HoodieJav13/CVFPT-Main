@@ -56,7 +56,15 @@ export default function ClientMessages() {
   return (
     <div>
       <PageHeader title="Messages" subtitle={data.coach ? `Chat with ${data.coach.name}` : 'Chat with your coach'} />
-      <ChatThread messages={data.messages} myRole="client" onSend={send} sending={sending} />
+      <ChatThread
+        messages={data.messages}
+        myRole="client"
+        onSend={send}
+        sending={sending}
+        composerNote={data.coach?.messages_disabled
+          ? `${data.coach?.name?.split(' ')[0] || 'Your coach'} isn't taking messages right now. You'll still get announcements — and session changes go through Ask to cancel on the session page.`
+          : undefined}
+      />
     </div>
   );
 }

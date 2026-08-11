@@ -107,6 +107,27 @@ export default function ClientSessions() {
   // Server enforces the same cutoff; this only decides which button to show.
   const cancellableUntil = (session) => new Date(session.scheduled_at).getTime() - Date.now() >= 24 * 60 * 60 * 1000;
 
+  // 011 D: inside the cutoff the request goes to the coach instead of
+  // dead-ending — one tap, idempotent server-side.
+  const [askedIds, setAskedIds] = useState(() => new Set());
+  const askCancel = async (session) => {
+    if (confirmingId !== `ask-${session.id}`) {
+      setConfirmingId(`ask-${session.id}`);
+      return;
+    }
+    setActing(session.id);
+    try {
+      await api.patch(`/sessions/${session.id}/ask-cancel`);
+      setAskedIds((current) => new Set(current).add(session.id));
+      toast.success('Sent — your coach will take it from here');
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not send the request'));
+    } finally {
+      setActing(null);
+      setConfirmingId(null);
+    }
+  };
+
   const { upcoming, past } = useMemo(() => {
     if (!sessions) return { upcoming: [], past: [] };
     const isPast = (s) => s.status === 'completed' || s.status === 'cancelled' || isBeforeToday(s.scheduled_at);
@@ -192,8 +213,14 @@ export default function ClientSessions() {
                       disabled={acting === s.id} onClick={() => cancelSession(s)} data-testid="session-client-cancel-button">
                       {acting === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingId === `cancel-${s.id}` ? 'Tap to confirm' : 'Cancel')}
                     </Button>
+                  ) : askedIds.has(s.id) ? (
+                    <p className="text-[11px] text-muted-foreground" data-testid="ask-cancel-sent">Asked — your coach will confirm.</p>
                   ) : (
-                    <p className="text-[11px] text-muted-foreground">Starts within 24h — message your coach to change it.</p>
+                    <Button size="sm" variant="ghost"
+                      className={`min-h-9 rounded-lg ${confirmingId === `ask-${s.id}` ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
+                      disabled={acting === s.id} onClick={() => askCancel(s)} data-testid="session-ask-cancel-button">
+                      {acting === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingId === `ask-${s.id}` ? 'Tap to confirm' : 'Ask to cancel')}
+                    </Button>
                   )}
                 </div>
               )}

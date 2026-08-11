@@ -36,6 +36,23 @@ export default function ClientSessionDetail() {
   const cancellable = session
     && session.status === 'scheduled'
     && new Date(session.scheduled_at).getTime() - Date.now() >= 24 * 60 * 60 * 1000;
+  const [asked, setAsked] = useState(false);
+  const [confirmingAsk, setConfirmingAsk] = useState(false);
+
+  const askCancel = async () => {
+    if (!confirmingAsk) { setConfirmingAsk(true); return; }
+    setActing(true);
+    try {
+      await api.patch(`/sessions/${session.id}/ask-cancel`);
+      setAsked(true);
+      toast.success('Sent — your coach will take it from here');
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not send the request'));
+    } finally {
+      setActing(false);
+      setConfirmingAsk(false);
+    }
+  };
 
   const cancelSession = async () => {
     if (!confirmingCancel) { setConfirmingCancel(true); return; }
@@ -117,8 +134,18 @@ export default function ClientSessionDetail() {
                 >
                   {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingCancel ? 'Tap to confirm' : 'Cancel')}
                 </Button>
+              ) : asked ? (
+                <p className="text-[11px] text-muted-foreground" data-testid="ask-cancel-sent">Asked — your coach will confirm.</p>
               ) : (
-                <p className="text-[11px] text-muted-foreground">Starts within 24h — message your coach to change it.</p>
+                <Button
+                  variant="ghost"
+                  className={`min-h-11 rounded-xl ${confirmingAsk ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
+                  disabled={acting}
+                  onClick={askCancel}
+                  data-testid="session-detail-ask-cancel"
+                >
+                  {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingAsk ? 'Tap to confirm' : 'Ask to cancel')}
+                </Button>
               )}
             </div>
           )}

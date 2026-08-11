@@ -175,6 +175,21 @@ async function notifySessionCancelledByClient(session, env = process.env) {
   return sendEmail({ to: [coach.email], subject: headline, ...rendered }, `session-client-cancelled/${session.id}`, env);
 }
 
+async function notifySessionCancelRequested(session, env = process.env) {
+  if (!session?.id) return { skipped: 'missing-session' };
+  const { client, coach } = await loadPeople(session.client_id, session.coach_id);
+  if (!coach?.email || !client) return { skipped: 'missing-recipient' };
+  const headline = `${client.name} asked to cancel a session`;
+  const rendered = renderEmail({
+    headline,
+    intro: 'The session starts soon, so it needs your call — cancel it from the app or reach out to them.',
+    facts: sessionFacts(session, client.name),
+    actionLabel: 'Review in the app',
+    actionUrl: `${env.FRONTEND_URL || ''}/coach/notifications`,
+  });
+  return sendEmail({ to: [coach.email], subject: headline, ...rendered }, `cancel-request/${session.id}/${coach.id}`, env);
+}
+
 async function sendDailyDigests(now = new Date(), env = process.env) {
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const pendingBefore = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -273,7 +288,7 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
 }
 
 module.exports = {
-  configured, dispatchEmail, formatDenver, notifyBookingEvent, notifySessionCancelled,
-  notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
+  configured, dispatchEmail, formatDenver, notifyBookingEvent, notifySessionCancelRequested,
+  notifySessionCancelled, notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
   renderEmail, sendDailyDigests, sendEmail, sessionFacts,
 };
