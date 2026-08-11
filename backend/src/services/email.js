@@ -179,7 +179,7 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const pendingBefore = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const upcomingUntil = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
-  const [coachesResult, clientsResult, messagesResult, programsResult, workoutsResult, bookingsResult, sessionsResult] = await Promise.all([
+  const [coachesResult, clientsResult, messagesResult, programsResult, workoutsResult, bookingsResult, sessionsResult, announcementsResult, announcementReadsResult] = await Promise.all([
     fetchAllRows((from, to) => supabaseAdmin.from('coaches').select('id, name, email').eq('archived', false).eq('digest_opt_out', false).order('id').range(from, to)),
     fetchAllRows((from, to) => supabaseAdmin.from('clients').select('id, name, email, coach_id').eq('archived', false).eq('digest_opt_out', false).order('id').range(from, to)),
     fetchAllRows((from, to) => supabaseAdmin.from('messages').select('id, client_id, coach_id, sender_role').eq('archived', false).eq('read_by_recipient', false).order('id').range(from, to)),
@@ -187,8 +187,12 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
     fetchAllRows((from, to) => supabaseAdmin.from('workout_assignments').select('id, client_id').eq('archived', false).gte('created_at', since).order('id').range(from, to)),
     fetchAllRows((from, to) => supabaseAdmin.from('booking_requests').select('id, coach_id').eq('archived', false).eq('status', 'pending').lt('created_at', pendingBefore).order('id').range(from, to)),
     fetchAllRows((from, to) => supabaseAdmin.from('sessions').select('id, client_id, coach_id, scheduled_at, duration_minutes').eq('archived', false).eq('status', 'scheduled').gte('scheduled_at', now.toISOString()).lt('scheduled_at', upcomingUntil).order('id').range(from, to)),
+    // Announcements ride the digest, never a standalone email (011 C).
+    // Bounded to the last 30 days so long-forgotten posts stop nagging.
+    fetchAllRows((from, to) => supabaseAdmin.from('announcements').select('id, coach_id, studio_wide').eq('archived', false).gte('created_at', new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('id').range(from, to)),
+    fetchAllRows((from, to) => supabaseAdmin.from('announcement_reads').select('announcement_id, client_id').order('id').range(from, to)),
   ]);
-  for (const result of [coachesResult, clientsResult, messagesResult, programsResult, workoutsResult, bookingsResult, sessionsResult]) {
+  for (const result of [coachesResult, clientsResult, messagesResult, programsResult, workoutsResult, bookingsResult, sessionsResult, announcementsResult, announcementReadsResult]) {
     if (!result.complete) throw new Error('daily digest source exceeded the safe paging ceiling');
   }
   const coaches = coachesResult.rows;
@@ -198,6 +202,8 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
   const workouts = workoutsResult.rows;
   const bookings = bookingsResult.rows;
   const upcomingSessions = sessionsResult.rows;
+  const activeAnnouncements = announcementsResult.rows;
+  const announcementReads = announcementReadsResult.rows;
 
   const clientCounts = new Map();
   const coachCounts = new Map();
@@ -218,12 +224,24 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
       map.set(id, row);
     }
   }
+  const readPairs = new Set(announcementReads.map((read) => `${read.announcement_id}/${read.client_id}`));
+  for (const clientRow of clients) {
+    const unseen = activeAnnouncements.filter((announcement) => (
+      (announcement.studio_wide || announcement.coach_id === clientRow.coach_id)
+      && !readPairs.has(`${announcement.id}/${clientRow.id}`)
+    )).length;
+    if (unseen > 0) {
+      const row = clientCounts.get(clientRow.id) || { unread: 0, assignments: 0, pending: 0, sessions: [] };
+      row.announcements = unseen;
+      clientCounts.set(clientRow.id, row);
+    }
+  }
 
   const recipients = [
     ...clients.map((person) => ({ person, counts: clientCounts.get(person.id), path: '/client', type: 'client' })),
     ...coaches.map((person) => ({ person, counts: coachCounts.get(person.id), path: '/coach', type: 'coach' })),
   ].filter(({ person, counts }) => person.email && counts
-    && (counts.unread || counts.assignments || counts.pending || counts.sessions.length));
+    && (counts.unread || counts.assignments || counts.pending || counts.sessions.length || counts.announcements));
 
   const digestDate = dateInTz(now.getTime());
   await Promise.all(recipients.map(({ person, counts, path, type }) => {
@@ -237,6 +255,7 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
       facts.push(`${counts.sessions.length} ${counts.sessions.length === 1 ? 'session' : 'sessions'} on your calendar in the next 24 hours`);
     }
     if (counts.unread) facts.push(`${counts.unread} unread ${counts.unread === 1 ? 'message' : 'messages'}`);
+    if (type === 'client' && counts.announcements) facts.push(`${counts.announcements} ${counts.announcements === 1 ? 'announcement' : 'announcements'} from your coach`);
     if (type === 'client' && counts.assignments) facts.push(`${counts.assignments} new training ${counts.assignments === 1 ? 'assignment' : 'assignments'}`);
     if (type === 'coach' && counts.pending) facts.push(`${counts.pending} booking ${counts.pending === 1 ? 'request has' : 'requests have'} waited more than 24 hours`);
     const rendered = renderEmail({

@@ -5,11 +5,18 @@ import { PageHeader, ListSkeleton, LoadErrorState, EmptyState } from '@/componen
 import { ChatThread } from '@/components/Chat';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, ArrowLeft, UserRound } from 'lucide-react';
-import { initials, fmtDay } from '@/lib/format';
+import { MessageSquare, ArrowLeft, UserRound, Megaphone, Loader2, Archive } from 'lucide-react';
+import { initials, fmtDay, fmtDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { trackProductEvent } from '@/lib/telemetry';
+import { useAuth } from '@/context/AuthContext';
+import {
+  Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription,
+} from '@/components/ui/drawer';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 
 function ThreadRow({ thread, active, onSelect }) {
   return (
@@ -60,6 +67,7 @@ export default function CoachMessages() {
   const [loadedClientId, setLoadedClientId] = useState(null);
   const [conversationError, setConversationError] = useState(null);
   const [sending, setSending] = useState(false);
+  const [announcementsOpen, setAnnouncementsOpen] = useState(false);
   const loadSequence = useRef(0);
 
   const loadThreads = useCallback(async ({ background = false } = {}) => {
@@ -162,8 +170,17 @@ export default function CoachMessages() {
     <div className="lg:flex lg:h-[calc(100dvh-140px)] lg:flex-col">
       {/* Page header: always on desktop; on mobile only in list view. */}
       <div className={cn(clientId && 'hidden lg:block')}>
-        <PageHeader title="Messages" subtitle="Conversations with your clients" />
+        <PageHeader
+          title="Messages"
+          subtitle="Conversations with your clients"
+          action={(
+            <Button variant="outline" className="rounded-xl" onClick={() => setAnnouncementsOpen(true)} data-testid="open-announcements-button">
+              <Megaphone className="mr-1.5 h-4 w-4" /> Announce
+            </Button>
+          )}
+        />
       </div>
+      <AnnouncementsDrawer open={announcementsOpen} onOpenChange={setAnnouncementsOpen} />
 
       {/* Mobile conversation header (back + name). */}
       {clientId && (
@@ -214,5 +231,113 @@ export default function CoachMessages() {
         </section>
       </div>
     </div>
+  );
+}
+
+// Program 011 C: one-way announcements — compose, see reach, retract.
+// Replies are impossible by design; clients only get a "Got it".
+function AnnouncementsDrawer({ open, onOpenChange }) {
+  const { user } = useAuth();
+  const [content, setContent] = useState('');
+  const [studioWide, setStudioWide] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [rows, setRows] = useState(null);
+  const [archivingId, setArchivingId] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get('/announcements');
+      setRows(data);
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not load announcements'));
+    }
+  }, []);
+
+  useEffect(() => { if (open) load(); }, [open, load]);
+
+  const post = async (e) => {
+    e.preventDefault();
+    if (!content.trim()) return;
+    setPosting(true);
+    try {
+      await api.post('/announcements', { content: content.trim(), studio_wide: studioWide });
+      toast.success('Announcement posted — clients see it on their home screen');
+      setContent('');
+      setStudioWide(false);
+      load();
+    } catch (err) {
+      toast.error(errMsg(err, 'Could not post the announcement'));
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const archive = async (row) => {
+    setArchivingId(row.id);
+    try {
+      await api.patch(`/announcements/${row.id}/archive`);
+      toast.success('Announcement removed');
+      load();
+    } catch (err) {
+      toast.error(errMsg(err, 'Could not remove it'));
+    } finally {
+      setArchivingId(null);
+    }
+  };
+
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent data-testid="announcements-drawer">
+        <div className="mx-auto w-full max-w-md px-4 pb-6">
+          <DrawerHeader className="px-0">
+            <DrawerTitle>Announcements</DrawerTitle>
+            <DrawerDescription>One-way notes to your clients — they can't reply, only mark them seen. Announcements ride the daily digest, never their own email.</DrawerDescription>
+          </DrawerHeader>
+          <form onSubmit={post} className="space-y-3">
+            <Textarea
+              rows={3}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              maxLength={2000}
+              placeholder="Gym closes at 2pm this Friday…"
+              data-testid="announcement-content-input"
+            />
+            {user?.role === 'admin' && (
+              <label className="flex items-center gap-2 text-sm">
+                <Switch checked={studioWide} onCheckedChange={setStudioWide} data-testid="announcement-studio-wide-switch" />
+                Send to every client in the studio
+              </label>
+            )}
+            <Button type="submit" disabled={posting || !content.trim()} className="min-h-11 w-full rounded-xl font-semibold" data-testid="announcement-post-button">
+              {posting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Megaphone className="mr-1.5 h-4 w-4" /> Post announcement</>}
+            </Button>
+          </form>
+          <div className="mt-5 max-h-64 space-y-2 overflow-y-auto">
+            {rows === null && <ListSkeleton rows={2} header={false} />}
+            {rows?.length === 0 && <p className="py-2 text-center text-sm text-muted-foreground">Nothing posted yet.</p>}
+            {(rows || []).map((row) => (
+              <div key={row.id} className="rounded-xl border border-border bg-card/60 px-3 py-2.5" data-testid="announcement-row">
+                <p className="whitespace-pre-wrap text-sm">{row.content}</p>
+                <div className="mt-1.5 flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    {fmtDateTime(row.created_at)}
+                    {row.studio_wide && <Badge variant="outline" className="ml-2 text-[10px]">Studio-wide</Badge>}
+                  </p>
+                  <span className="flex items-center gap-2">
+                    <span className="text-[11px] tabular-nums text-muted-foreground" data-testid="announcement-seen-count">
+                      Seen by {row.seen_count} of {row.audience_count}
+                    </span>
+                    <Button size="sm" variant="ghost" className="h-8 rounded-lg px-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      disabled={archivingId === row.id} onClick={() => archive(row)} aria-label="Remove announcement" data-testid="announcement-archive-button">
+                      {archivingId === row.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                    </Button>
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </DrawerContent>
+    </Drawer>
   );
 }

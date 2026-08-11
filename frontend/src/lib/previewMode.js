@@ -40,6 +40,10 @@ const state = {
     { id: 'client_david', coach_id: 'coach_marcus', name: 'David Chen', email: 'david.chen@example.com', phone: '505-555-0202', goals: 'Lose 20 lbs, improve energy', health_notes: 'Hypertension, cleared by physician', invited: true, auth_user_id: null, archived: false, created_at: iso(-90), updated_at: iso(-4) },
     { id: 'client_emily', coach_id: 'coach_jordan', name: 'Emily Romero', email: 'emily.romero@example.com', phone: '505-555-0203', goals: 'Postpartum strength rebuild', health_notes: 'Core progressions only', invited: false, auth_user_id: null, archived: false, created_at: iso(-60), updated_at: iso(-6) },
   ],
+  announcements: [
+    { id: 'announcement_hours', coach_id: 'coach_marcus', content: 'Studio closes at 2pm this Friday for equipment maintenance — morning sessions unaffected.', studio_wide: true, archived: false, created_at: iso(-1, 8), updated_at: iso(-1, 8) },
+  ],
+  announcementReads: [],
   resourceCategories: [
     { id: 'resource_category_general', name: 'General Info', created_at: iso(-90) },
     { id: 'resource_category_recovery', name: 'Injury & Recovery', created_at: iso(-90) },
@@ -1175,6 +1179,52 @@ export function installPreviewApi(api) {
       .filter((row) => row.recipient_coach_id === currentCoach().id && !row.archived)
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .map((row) => ({ ...row, workout_log: workoutLogDetails(row.workout_log_id) }));
+    if (path.startsWith('/announcements')) {
+      if (path === '/announcements' && method === 'post') {
+        const row = {
+          id: id('announcement'), coach_id: currentCoach().id,
+          content: String(payload?.content || '').trim().slice(0, 2000),
+          studio_wide: Boolean(payload?.studio_wide), archived: false,
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        };
+        state.announcements.unshift(row);
+        emitChange();
+        return ok(row, config, 201);
+      }
+      if (path === '/announcements' && method === 'get') {
+        const me = currentCoach();
+        const audience = state.clients.filter((c) => !c.archived);
+        return ok(state.announcements.filter((row) => row.coach_id === me.id && !row.archived).map((row) => ({
+          ...row,
+          seen_count: state.announcementReads.filter((read) => read.announcement_id === row.id).length,
+          audience_count: row.studio_wide ? audience.length : audience.filter((c) => c.coach_id === me.id).length,
+        })), config);
+      }
+      if (path === '/announcements/mine' && method === 'get') {
+        return ok(state.announcements
+          .filter((row) => !row.archived && (row.studio_wide || row.coach_id === client.coach_id))
+          .map((row) => ({
+            ...row,
+            coach: coachById(row.coach_id),
+            read: state.announcementReads.some((read) => read.announcement_id === row.id && read.client_id === client.id),
+          })), config);
+      }
+      const readMatch = path.match(/^\/announcements\/([^/]+)\/read$/);
+      if (readMatch && method === 'patch') {
+        if (!state.announcementReads.some((read) => read.announcement_id === readMatch[1] && read.client_id === client.id)) {
+          state.announcementReads.push({ announcement_id: readMatch[1], client_id: client.id });
+        }
+        emitChange();
+        return ok({ ok: true }, config);
+      }
+      const archiveMatch = path.match(/^\/announcements\/([^/]+)\/archive$/);
+      if (archiveMatch && method === 'patch') {
+        const row = state.announcements.find((a) => a.id === archiveMatch[1]);
+        if (row) { row.archived = true; row.updated_at = new Date().toISOString(); }
+        emitChange();
+        return ok(row, config);
+      }
+    }
     if (path === '/notifications/unread-count' && method === 'get') return ok({ unread: visibleNotifications().filter((row) => !row.read_at).length }, config);
     if (path === '/notifications' && method === 'get') return ok(visibleNotifications(), config);
     if (path === '/notifications/read-all' && method === 'patch') {

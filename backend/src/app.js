@@ -79,6 +79,7 @@ app.use('/api/email-preferences', require('./routes/emailPreferences'));
 app.use('/api/availability', require('./routes/availability'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/telemetry', require('./routes/telemetry').router);
+app.use('/api/announcements', require('./routes/announcements'));
 
 // Unknown routes answer JSON, not Express's default HTML page.
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
