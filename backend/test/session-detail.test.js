@@ -40,6 +40,7 @@ require.cache[supabasePath] = {
           _eqs: {},
           select() { return chain; },
           eq(col, value) { chain._eqs[col] = value; return chain; },
+          in() { return chain; },
           order() { return chain; },
           update(values) { chain._update = values; if (table === 'sessions') state.sessionUpdates.push(values); return chain; },
           maybeSingle() {

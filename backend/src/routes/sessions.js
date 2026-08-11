@@ -17,6 +17,7 @@ const {
 const { buildSessionIcs } = require('../lib/ics');
 const { dispatchPush, sendToClient, sendToCoaches } = require('../services/push');
 const { formatDenver } = require('../services/email');
+const { dateInTz, todayDateInTz } = require('../utils/time');
 
 // D1b (2026-08-06): clients may self-cancel up to this long before start.
 const CLIENT_CANCEL_CUTOFF_MS = 24 * 60 * 60 * 1000;
@@ -39,6 +40,56 @@ async function attachWorkout(sessionId, workoutId) {
     .update({ workout_id: workoutId, updated_at: new Date().toISOString() })
     .eq('id', sessionId);
   if (error) throw error;
+}
+
+// Live workout state for scheduled sessions: the tracker links its log to
+// the session (see workout-logs /start), and the coach list surfaces that
+// state so "in the gym" / "workout done" is visible without opening the
+// notifications feed. Completed/cancelled sessions carry their own status.
+async function attachLinkedLogs(sessions) {
+  const scheduledIds = (sessions || []).filter((s) => s.status === 'scheduled').map((s) => s.id);
+  if (!scheduledIds.length) return (sessions || []).map((s) => ({ ...s, linked_workout_log: null }));
+  const { data: logs, error } = await supabaseAdmin.from('workout_logs')
+    .select('id, session_id, status, started_at, completed_at, quick_completed')
+    .in('session_id', scheduledIds).eq('archived', false)
+    .in('status', ['active', 'completed'])
+    .order('started_at', { ascending: false });
+  if (error) throw error;
+  const bySession = new Map();
+  for (const log of logs || []) {
+    const current = bySession.get(log.session_id);
+    // An active log (client mid-workout) beats any completed one; within a
+    // status the newest start wins because rows arrive newest-first.
+    if (!current || (log.status === 'active' && current.status !== 'active')) bySession.set(log.session_id, log);
+  }
+  return sessions.map((s) => ({ ...s, linked_workout_log: bySession.get(s.id) || null }));
+}
+
+// Shared plan expansion for the session detail surfaces (client + coach).
+async function workoutPlanExercises(workoutId) {
+  if (!workoutId) return [];
+  const { data: exercises } = await supabaseAdmin.from('workout_exercises')
+    .select('id, custom_name, sets, reps, rest, client_notes, position, library_exercise:exercise_library(name)')
+    .eq('workout_id', workoutId).eq('archived', false).order('position');
+  return (exercises || []).map((exercise) => ({
+    id: exercise.id,
+    name: exercise.library_exercise?.name || exercise.custom_name || 'Exercise',
+    sets: exercise.sets,
+    reps: exercise.reps,
+    rest: exercise.rest,
+    client_notes: exercise.client_notes,
+  }));
+}
+
+// Sessions a client has asked to cancel (011 D signal rows) — surfaced so
+// the "asked" state survives a reload instead of living in component state.
+async function cancelRequestedSessionIds(sessionIds) {
+  if (!sessionIds.length) return new Set();
+  const { data, error } = await supabaseAdmin.from('notifications')
+    .select('session_id').eq('event_type', 'cancel_requested')
+    .in('session_id', sessionIds).eq('archived', false);
+  if (error) throw error;
+  return new Set((data || []).map((row) => row.session_id));
 }
 
 const router = express.Router();
@@ -76,7 +127,7 @@ router.get('/', requireCoach, async (req, res) => {
     const validation = validateSessionListQuery(req.query);
     if (!validation.ok) return res.status(400).json({ error: validation.error });
     let q = supabaseAdmin.from('sessions')
-      .select('*, client:clients(id, name), coach:coaches(id, name)')
+      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name)')
       .eq('archived', false)
       .order('scheduled_at', { ascending: true });
     if (req.user.role !== 'admin') q = q.eq('coach_id', req.user.coach.id);
@@ -86,7 +137,7 @@ router.get('/', requireCoach, async (req, res) => {
     if (validation.value.to) q = q.lt('scheduled_at', validation.value.to);
     const { data, error } = await q;
     if (error) throw error;
-    return res.json(data);
+    return res.json(await attachLinkedLogs(data));
   } catch (e) {
     logError('list sessions error', e);
     return res.status(500).json({ error: 'Failed to load sessions' });
@@ -386,6 +437,11 @@ router.patch('/:id/complete', requireCoach, async (req, res) => {
     if (!session) return;
     if (session.status === 'completed') return res.status(400).json({ error: 'Session already completed' });
     if (session.status === 'cancelled') return res.status(400).json({ error: 'Cancelled sessions cannot be completed' });
+    // Same-day early completion is fine (a session can run ahead of the
+    // clock); completing a future day's session is always a mis-tap.
+    if (dateInTz(session.scheduled_at) > todayDateInTz()) {
+      return res.status(400).json({ error: 'This session is scheduled for a future day' });
+    }
 
     const { data, error } = await supabaseAdmin.rpc('complete_session', { p_session_id: session.id });
     if (error) throw error;
@@ -456,6 +512,41 @@ router.put('/notes/:noteId', requireCoach, async (req, res) => {
   }
 });
 
+// GET /api/sessions/:id/coach-detail — one session, everything the coach
+// works from: client and plan, every note (private and shared), and the
+// workout logs linked to this session (live or finished).
+router.get('/:id/coach-detail', requireCoach, async (req, res) => {
+  try {
+    const idValidation = validateUuid(req.params.id, 'Session ID');
+    if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
+    const { data: session } = await supabaseAdmin.from('sessions')
+      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name, description, goal)')
+      .eq('id', idValidation.value).eq('archived', false).maybeSingle();
+    if (!session || (req.user.role !== 'admin' && session.coach_id !== req.user.coach.id)) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    const { data: notes, error: notesError } = await supabaseAdmin.from('session_notes').select('*')
+      .eq('session_id', session.id).eq('archived', false).order('created_at');
+    if (notesError) throw notesError;
+    const { data: logs, error: logsError } = await supabaseAdmin.from('workout_logs')
+      .select('id, status, workout_name, started_at, completed_at, quick_completed')
+      .eq('session_id', session.id).eq('archived', false)
+      .in('status', ['active', 'completed'])
+      .order('started_at', { ascending: false });
+    if (logsError) throw logsError;
+    const workoutExercises = await workoutPlanExercises(session.workout_id);
+    return res.json({
+      ...session,
+      notes: notes || [],
+      linked_workout_logs: logs || [],
+      workout: session.workout ? { ...session.workout, exercises: workoutExercises } : null,
+    });
+  } catch (e) {
+    logError('coach session detail error', e);
+    return res.status(500).json({ error: 'Failed to load the session' });
+  }
+});
+
 // ---- Client-facing ----
 // GET /api/sessions/:id/client-detail — one session, everything a client
 // may see: coach identity, shared notes only, and the attached workout
@@ -472,23 +563,12 @@ router.get('/:id/client-detail', requireClient, async (req, res) => {
     const { data: notes } = await supabaseAdmin.from('session_notes').select('*')
       .eq('session_id', session.id).eq('shared_with_client', true).eq('archived', false)
       .order('created_at');
-    let workoutExercises = [];
-    if (session.workout_id) {
-      const { data: exercises } = await supabaseAdmin.from('workout_exercises')
-        .select('id, custom_name, sets, reps, rest, client_notes, position, library_exercise:exercise_library(name)')
-        .eq('workout_id', session.workout_id).eq('archived', false).order('position');
-      workoutExercises = (exercises || []).map((exercise) => ({
-        id: exercise.id,
-        name: exercise.library_exercise?.name || exercise.custom_name || 'Exercise',
-        sets: exercise.sets,
-        reps: exercise.reps,
-        rest: exercise.rest,
-        client_notes: exercise.client_notes,
-      }));
-    }
+    const workoutExercises = await workoutPlanExercises(session.workout_id);
+    const asked = await cancelRequestedSessionIds([session.id]);
     return res.json({
       ...session,
       shared_notes: notes || [],
+      cancel_requested: asked.has(session.id),
       workout: session.workout ? { ...session.workout, exercises: workoutExercises } : null,
     });
   } catch (e) {
@@ -516,7 +596,12 @@ router.get('/client/mine', requireClient, async (req, res) => {
         notesBySession[n.session_id].push(n);
       }
     }
-    return res.json((sessions || []).map((s) => ({ ...s, shared_notes: notesBySession[s.id] || [] })));
+    const asked = await cancelRequestedSessionIds(
+      (sessions || []).filter((s) => s.status === 'scheduled').map((s) => s.id),
+    );
+    return res.json((sessions || []).map((s) => ({
+      ...s, shared_notes: notesBySession[s.id] || [], cancel_requested: asked.has(s.id),
+    })));
   } catch (e) {
     logError('client sessions error', e);
     return res.status(500).json({ error: 'Failed to load your sessions' });
