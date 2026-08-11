@@ -31,6 +31,7 @@ const CoachDashboard = lazy(() => import('@/pages/coach/Dashboard'));
 const Clients = lazy(() => import('@/pages/coach/Clients'));
 const ClientDetail = lazy(() => import('@/pages/coach/ClientDetail'));
 const CoachSessions = lazy(() => import('@/pages/coach/Sessions'));
+const CoachSessionDetail = lazy(() => import('@/pages/coach/SessionDetail'));
 const CoachCalendar = lazy(() => import('@/pages/coach/Calendar'));
 const Programs = lazy(() => import('@/pages/coach/Programs'));
 const CoachResources = lazy(() => import('@/pages/coach/Resources'));
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="clients" element={<Clients />} />
             <Route path="clients/:id" element={<ClientDetail />} />
             <Route path="sessions" element={<CoachSessions />} />
+            <Route path="sessions/:id" element={<CoachSessionDetail />} />
             <Route path="calendar" element={<CoachCalendar />} />
             <Route path="analytics" element={<CoachAnalytics />} />
             <Route path="programs" element={<Programs />} />

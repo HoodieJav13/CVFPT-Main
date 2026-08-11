@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, SessionsSkeleton, LoadErrorState, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import {
   Plus, CalendarDays, MoreVertical, Check, X, Pencil, StickyNote, Loader2, Inbox, Dumbbell, UserX,
 } from 'lucide-react';
 import DateTimePicker from '@/components/DateTimePicker';
+import { WorkoutActivity } from '@/components/WorkoutActivity';
 import { AvailabilityDrawer } from '@/components/AvailabilityEditor';
 import { fmtTime, fmtDay, fmtDateTime, toLocalInputValue, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
@@ -91,7 +92,8 @@ export default function CoachSessions() {
     let list = sessions;
     if (filter === 'upcoming') list = sessions.filter((s) => s.status === 'scheduled' && !isBeforeToday(s.scheduled_at));
     if (filter === 'today') list = sessions.filter((s) => new Date(s.scheduled_at).toDateString() === todayStr && s.status !== 'cancelled');
-    if (filter === 'past') list = sessions.filter((s) => s.status === 'completed' || (s.status === 'scheduled' && isBeforeToday(s.scheduled_at))).slice().reverse();
+    // no-shows are settled sessions: they belong in Past, not nowhere.
+    if (filter === 'past') list = sessions.filter((s) => ['completed', 'no_show'].includes(s.status) || (s.status === 'scheduled' && isBeforeToday(s.scheduled_at))).slice().reverse();
     if (filter === 'cancelled') list = sessions.filter((s) => s.status === 'cancelled');
     return list;
   }, [sessions, filter]);
@@ -264,16 +266,23 @@ export default function CoachSessions() {
             <div className="space-y-2">
               {g.items.map((s) => (
                 <div key={s.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="session-row">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <Link
+                    to={`/coach/sessions/${s.id}`}
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    data-testid="coach-session-detail-link"
+                  >
                     <div className="text-center shrink-0 w-16">
                       <p className="font-display font-semibold text-primary tabular-nums text-sm">{fmtTime(s.scheduled_at)}</p>
                       <p className="text-[10px] text-muted-foreground">{s.duration_minutes}m</p>
                     </div>
                     <div className="min-w-0">
                       <p className="font-medium truncate text-sm">{s.client?.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{s.location || 'No location'}</p>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {s.location || 'No location'}{s.workout?.name ? ` · ${s.workout.name}` : ''}
+                      </p>
+                      <WorkoutActivity activity={s.workout_activity} />
                     </div>
-                  </div>
+                  </Link>
                   <div className="flex items-center gap-2 shrink-0">
                     <StatusBadge status={s.status} />
                     <DropdownMenu>
