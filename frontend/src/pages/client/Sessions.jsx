@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { Link } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, SessionsSkeleton, LoadErrorState, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Plus, CalendarDays, CalendarPlus, MapPin, Loader2, StickyNote } from 'lucide-react';
+import { Plus, CalendarDays, CalendarPlus, Dumbbell, MapPin, Loader2, StickyNote } from 'lucide-react';
 import DateTimePicker from '@/components/DateTimePicker';
 import { fmtTime, fmtDay, fmtDateTime, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
@@ -169,14 +170,17 @@ export default function ClientSessions() {
                 : 'rounded-xl border border-border bg-card/60 px-4 py-3'}
               data-testid="client-upcoming-session-row"
             >
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-medium text-sm">{fmtDay(s.scheduled_at)} - <span className="text-primary">{fmtTime(s.scheduled_at)}</span></p>
-                <StatusBadge status={s.status} />
-              </div>
-              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
-                <span>{s.duration_minutes} min with {s.coach?.name}</span>
-                {s.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {s.location}</span>}
-              </p>
+              <Link to={`/client/sessions/${s.id}`} className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="client-session-detail-link">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-sm">{fmtDay(s.scheduled_at)} - <span className="text-primary">{fmtTime(s.scheduled_at)}</span></p>
+                  <StatusBadge status={s.status} />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
+                  <span>{s.duration_minutes} min with {s.coach?.name}</span>
+                  {s.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {s.location}</span>}
+                  {s.workout?.name && <span className="flex items-center gap-1 text-primary"><Dumbbell className="h-3 w-3" /> {s.workout.name}</span>}
+                </p>
+              </Link>
               {s.status === 'scheduled' && (
                 <div className="mt-2 flex items-center gap-2">
                   <Button size="sm" variant="outline" className="min-h-9 rounded-lg" onClick={() => downloadIcs(s)} data-testid="session-ics-button">

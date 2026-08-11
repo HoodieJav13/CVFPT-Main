@@ -53,7 +53,7 @@ const state = {
     { id: 'resource_assignment_sarah', resource_id: 'resource_sarah_recovery', client_id: 'client_sarah', active: true, assigned_at: iso(-12) },
   ],
   sessions: [
-    { id: 'session_today', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(0, 15), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-20), updated_at: iso(-1) },
+    { id: 'session_today', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(0, 15), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, workout_id: 'workout_upper_a', archived: false, created_at: iso(-20), updated_at: iso(-1) },
     { id: 'session_next', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(3, 10), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-18), updated_at: iso(-1) },
     { id: 'session_done', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(-3, 9), duration_minutes: 60, location: 'CVF Studio', status: 'completed', credit_deducted: true, archived: false, created_at: iso(-30), updated_at: iso(-3) },
     { id: 'session_david', client_id: 'client_david', coach_id: 'coach_marcus', scheduled_at: iso(1, 13), duration_minutes: 45, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-12), updated_at: iso(-1) },
@@ -1494,8 +1494,28 @@ export function installPreviewApi(api) {
       return ok({ ...row, location_overlaps: previewLocationOverlaps(row) }, config, 201);
     }
     if (path === '/sessions/client/mine') {
-      const rows = state.sessions.filter((s) => s.client_id === client.id && !s.archived).map((s) => ({ ...s, coach: coachById(s.coach_id), shared_notes: state.sessionNotes.filter((n) => n.session_id === s.id && n.shared_with_client && !n.archived) })).sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
+      const rows = state.sessions.filter((s) => s.client_id === client.id && !s.archived).map((s) => ({ ...s, coach: coachById(s.coach_id), workout: s.workout_id ? (state.workouts.find((w) => w.id === s.workout_id) || null) : null, shared_notes: state.sessionNotes.filter((n) => n.session_id === s.id && n.shared_with_client && !n.archived) })).sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
       return ok(rows, config);
+    }
+    const sessionClientDetail = path.match(/^\/sessions\/([^/]+)\/client-detail$/);
+    if (sessionClientDetail && method === 'get') {
+      const row = state.sessions.find((s) => s.id === sessionClientDetail[1] && s.client_id === client.id && !s.archived);
+      if (!row) return fail(config, 404, 'Session not found');
+      const workout = row.workout_id ? state.workouts.find((w) => w.id === row.workout_id) : null;
+      const exercises = workout ? state.workoutExercises
+        .filter((exercise) => exercise.workout_id === workout.id && !exercise.archived)
+        .sort((a, b) => a.position - b.position)
+        .map((exercise) => ({
+          id: exercise.id,
+          name: state.exerciseLibrary.find((lib) => lib.id === exercise.exercise_library_id)?.name || exercise.custom_name || 'Exercise',
+          sets: exercise.sets, reps: exercise.reps, rest: exercise.rest, client_notes: exercise.notes || null,
+        })) : [];
+      return ok({
+        ...row,
+        coach: coachById(row.coach_id),
+        shared_notes: state.sessionNotes.filter((n) => n.session_id === row.id && n.shared_with_client && !n.archived),
+        workout: workout ? { id: workout.id, name: workout.name, description: workout.description, goal: workout.goal, exercises } : null,
+      }, config);
     }
     const sessionMatch = path.match(/^\/sessions\/([^/]+)$/);
     if (sessionMatch && method === 'put') {
