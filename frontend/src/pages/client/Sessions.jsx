@@ -213,7 +213,7 @@ export default function ClientSessions() {
                       disabled={acting === s.id} onClick={() => cancelSession(s)} data-testid="session-client-cancel-button">
                       {acting === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingId === `cancel-${s.id}` ? 'Tap to confirm' : 'Cancel')}
                     </Button>
-                  ) : askedIds.has(s.id) ? (
+                  ) : (askedIds.has(s.id) || s.cancel_requested) ? (
                     <p className="text-[11px] text-muted-foreground" data-testid="ask-cancel-sent">Asked — your coach will confirm.</p>
                   ) : (
                     <Button size="sm" variant="ghost"
@@ -245,11 +245,13 @@ export default function ClientSessions() {
         <div className="space-y-2">
           {past.map((s) => (
             <div key={s.id} className="rounded-xl border border-border bg-card/40 px-4 py-3" data-testid="client-past-session-row">
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-medium text-sm">{fmtDay(s.scheduled_at)} - {fmtTime(s.scheduled_at)}</p>
-                <StatusBadge status={s.status} />
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">{s.duration_minutes} min with {s.coach?.name}</p>
+              <Link to={`/client/sessions/${s.id}`} className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="client-past-session-detail-link">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-sm">{fmtDay(s.scheduled_at)} - {fmtTime(s.scheduled_at)}</p>
+                  <StatusBadge status={s.status} />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{s.duration_minutes} min with {s.coach?.name}</p>
+              </Link>
               {s.shared_notes?.length > 0 && (
                 <div className="mt-2 space-y-1.5">
                   {s.shared_notes.map((n) => (
