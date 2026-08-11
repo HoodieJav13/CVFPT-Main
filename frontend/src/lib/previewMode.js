@@ -148,7 +148,9 @@ const state = {
     { id: 'waload_bench', workout_assignment_id: 'work_assign_sarah_dated', workout_exercise_id: 'wex_4', load_value: 25, load_unit: 'lb', archived: false, created_at: iso(-2), updated_at: iso(-2) },
   ],
   workoutLogs: [
-    { id: 'log_preview_complete', client_id: 'client_sarah', program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_2', workout_assignment_id: null, dated_workout_assignment_id: null, workout_name: 'Upper Strength A', status: 'completed', notes: 'Shoulder felt strong today.', feedback: 'Good session. The last rows were challenging.', started_at: iso(-2, 17), completed_at: iso(-2, 18), archived: false, created_at: iso(-2, 17), updated_at: iso(-2, 18) },
+    // session_id links this finished workout to today's scheduled session so
+    // the coach surfaces show the "Workout done" chip and confirm flow.
+    { id: 'log_preview_complete', client_id: 'client_sarah', program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_2', workout_assignment_id: null, dated_workout_assignment_id: null, session_id: 'session_today', workout_name: 'Upper Strength A', status: 'completed', notes: 'Shoulder felt strong today.', feedback: 'Good session. The last rows were challenging.', started_at: iso(-2, 17), completed_at: iso(-2, 18), archived: false, created_at: iso(-2, 17), updated_at: iso(-2, 18) },
     ...Array.from({ length: 12 }, (_, index) => ({
       id: `log_history_squat_${index + 1}`, client_id: 'client_sarah', program_assignment_id: 'assign_sarah',
       program_day_id: 'day_foundation_1', workout_assignment_id: null, dated_workout_assignment_id: null,
@@ -642,6 +644,21 @@ function previewLocationOverlaps(session) {
     && row.location && String(row.location).trim().toLowerCase() === String(session.location).trim().toLowerCase()
     && new Date(row.scheduled_at).getTime() < end
     && start < (new Date(row.scheduled_at).getTime() + (row.duration_minutes * 60000))).length;
+}
+
+// Newest linked workout log for a session, an active log beating a
+// completed one — mirrors attachLinkedLogs in backend/src/routes/sessions.js.
+function previewLinkedLog(sessionId) {
+  const logs = state.workoutLogs
+    .filter((log) => log.session_id === sessionId && !log.archived && ['active', 'completed'].includes(log.status))
+    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
+  return logs.find((log) => log.status === 'active') || logs[0] || null;
+}
+
+// Sessions the preview client has asked to cancel (011 D), so the "asked"
+// state survives reloads like the real cancel_requested flag does.
+function previewCancelRequested(sessionId) {
+  return (state.cancelRequestedSessions || []).includes(sessionId);
 }
 
 function scheduleConflictReject(config, conflict, { approving = false } = {}) {
@@ -1533,7 +1550,13 @@ export function installPreviewApi(api) {
       let rows = state.sessions.filter((s) => !s.archived);
       if (search.get('client_id')) rows = rows.filter((s) => s.client_id === search.get('client_id'));
       if (search.get('status')) rows = rows.filter((s) => s.status === search.get('status'));
-      rows = rows.map((s) => ({ ...s, client: { id: s.client_id, name: clientById(s.client_id).name }, coach: coachById(s.coach_id) })).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+      rows = rows.map((s) => ({
+        ...s,
+        client: { id: s.client_id, name: clientById(s.client_id).name },
+        coach: coachById(s.coach_id),
+        workout: s.workout_id ? (state.workouts.find((w) => w.id === s.workout_id) || null) : null,
+        linked_workout_log: s.status === 'scheduled' ? previewLinkedLog(s.id) : null,
+      })).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
       return ok(rows, config);
     }
     if (path === '/sessions' && method === 'post') {
@@ -1548,7 +1571,7 @@ export function installPreviewApi(api) {
       return ok({ ...row, location_overlaps: previewLocationOverlaps(row) }, config, 201);
     }
     if (path === '/sessions/client/mine') {
-      const rows = state.sessions.filter((s) => s.client_id === client.id && !s.archived).map((s) => ({ ...s, coach: coachById(s.coach_id), workout: s.workout_id ? (state.workouts.find((w) => w.id === s.workout_id) || null) : null, shared_notes: state.sessionNotes.filter((n) => n.session_id === s.id && n.shared_with_client && !n.archived) })).sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
+      const rows = state.sessions.filter((s) => s.client_id === client.id && !s.archived).map((s) => ({ ...s, coach: coachById(s.coach_id), workout: s.workout_id ? (state.workouts.find((w) => w.id === s.workout_id) || null) : null, shared_notes: state.sessionNotes.filter((n) => n.session_id === s.id && n.shared_with_client && !n.archived), cancel_requested: previewCancelRequested(s.id) })).sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
       return ok(rows, config);
     }
     const sessionClientDetail = path.match(/^\/sessions\/([^/]+)\/client-detail$/);
@@ -1568,6 +1591,39 @@ export function installPreviewApi(api) {
         ...row,
         coach: coachById(row.coach_id),
         shared_notes: state.sessionNotes.filter((n) => n.session_id === row.id && n.shared_with_client && !n.archived),
+        cancel_requested: previewCancelRequested(row.id),
+        workout: workout ? { id: workout.id, name: workout.name, description: workout.description, goal: workout.goal, exercises } : null,
+      }, config);
+    }
+    // Mirrors GET /api/sessions/:id/coach-detail: client, plan, every note,
+    // and the workout logs linked to this session.
+    const sessionCoachDetail = path.match(/^\/sessions\/([^/]+)\/coach-detail$/);
+    if (sessionCoachDetail && method === 'get') {
+      const row = state.sessions.find((s) => s.id === sessionCoachDetail[1] && !s.archived);
+      if (!row) return fail(config, 404, 'Session not found');
+      const workout = row.workout_id ? state.workouts.find((w) => w.id === row.workout_id) : null;
+      const exercises = workout ? state.workoutExercises
+        .filter((exercise) => exercise.workout_id === workout.id && !exercise.archived)
+        .sort((a, b) => a.position - b.position)
+        .map((exercise) => ({
+          id: exercise.id,
+          name: state.exerciseLibrary.find((lib) => lib.id === exercise.exercise_library_id)?.name || exercise.custom_name || 'Exercise',
+          sets: exercise.sets, reps: exercise.reps, rest: exercise.rest, client_notes: exercise.notes || null,
+        })) : [];
+      const linkedLogs = state.workoutLogs
+        .filter((log) => log.session_id === row.id && !log.archived && ['active', 'completed'].includes(log.status))
+        .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+        .map((log) => ({
+          id: log.id, status: log.status, workout_name: log.workout_name,
+          started_at: log.started_at, completed_at: log.completed_at,
+          quick_completed: Boolean(log.quick_completed),
+        }));
+      return ok({
+        ...row,
+        client: { id: row.client_id, name: clientById(row.client_id).name },
+        coach: coachById(row.coach_id),
+        notes: state.sessionNotes.filter((n) => n.session_id === row.id && !n.archived),
+        linked_workout_logs: linkedLogs,
         workout: workout ? { id: workout.id, name: workout.name, description: workout.description, goal: workout.goal, exercises } : null,
       }, config);
     }
@@ -2018,6 +2074,8 @@ export function installPreviewApi(api) {
     }
     const askCancelMatch = path.match(/^\/sessions\/([^/]+)\/ask-cancel$/);
     if (askCancelMatch && method === 'patch') {
+      state.cancelRequestedSessions = state.cancelRequestedSessions || [];
+      if (!state.cancelRequestedSessions.includes(askCancelMatch[1])) state.cancelRequestedSessions.push(askCancelMatch[1]);
       return ok({ ok: true }, config);
     }
     if (path === '/messages/threads') {
