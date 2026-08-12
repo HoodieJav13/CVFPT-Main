@@ -1,31 +1,18 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, SessionsSkeleton, LoadErrorState, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import {
-  Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter,
-} from '@/components/ui/drawer';
-import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
   Plus, CalendarDays, MoreVertical, Check, X, Pencil, StickyNote, Loader2, Inbox, Dumbbell, UserX,
 } from 'lucide-react';
-import DateTimePicker from '@/components/DateTimePicker';
 import { AvailabilityDrawer } from '@/components/AvailabilityEditor';
-import { fmtTime, fmtDay, fmtDateTime, toLocalInputValue, isBeforeToday } from '@/lib/format';
+import { SessionEditorDrawer } from '@/components/SessionEditorDrawer';
+import { SessionNotesDialog } from '@/components/SessionNotesDialog';
+import { fmtTime, fmtDay, fmtDateTime, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
 
 const FILTERS = [
@@ -91,7 +78,9 @@ export default function CoachSessions() {
     let list = sessions;
     if (filter === 'upcoming') list = sessions.filter((s) => s.status === 'scheduled' && !isBeforeToday(s.scheduled_at));
     if (filter === 'today') list = sessions.filter((s) => new Date(s.scheduled_at).toDateString() === todayStr && s.status !== 'cancelled');
-    if (filter === 'past') list = sessions.filter((s) => s.status === 'completed' || (s.status === 'scheduled' && isBeforeToday(s.scheduled_at))).slice().reverse();
+    // Past is every finished outcome (completed and no-show, like the
+    // Cancelled filter treats cancelled) plus stale scheduled sessions.
+    if (filter === 'past') list = sessions.filter((s) => s.status === 'completed' || s.status === 'no_show' || (s.status === 'scheduled' && isBeforeToday(s.scheduled_at))).slice().reverse();
     if (filter === 'cancelled') list = sessions.filter((s) => s.status === 'cancelled');
     return list;
   }, [sessions, filter]);
@@ -264,18 +253,43 @@ export default function CoachSessions() {
             <div className="space-y-2">
               {g.items.map((s) => (
                 <div key={s.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="session-row">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <Link
+                    to={`/coach/sessions/${s.id}`}
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    data-testid="coach-session-detail-link"
+                  >
                     <div className="text-center shrink-0 w-16">
                       <p className="font-display font-semibold text-primary tabular-nums text-sm">{fmtTime(s.scheduled_at)}</p>
                       <p className="text-[10px] text-muted-foreground">{s.duration_minutes}m</p>
                     </div>
                     <div className="min-w-0">
                       <p className="font-medium truncate text-sm">{s.client?.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{s.location || 'No location'}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {s.location || 'No location'}
+                        {s.workout?.name ? ` · ${s.workout.name}` : ''}
+                      </p>
+                      {s.status === 'scheduled' && s.linked_workout_log?.status === 'active' && (
+                        <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-primary" data-testid="session-live-chip">
+                          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary motion-safe:animate-pulse" /> In the gym now
+                        </p>
+                      )}
+                      {s.status === 'scheduled' && s.linked_workout_log?.status === 'completed' && (
+                        <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-gold" data-testid="session-workout-done-chip">
+                          <Dumbbell className="h-3 w-3" /> Workout done{s.linked_workout_log.quick_completed ? ' (not tracked)' : ''}
+                        </p>
+                      )}
                     </div>
-                  </div>
+                  </Link>
                   <div className="flex items-center gap-2 shrink-0">
-                    <StatusBadge status={s.status} />
+                    {s.status === 'scheduled' && s.linked_workout_log?.status === 'completed' ? (
+                      // The workout is in — surface the approval right on the
+                      // row; the chip already says why.
+                      <Button size="sm" className="min-h-9 rounded-lg" disabled={acting === s.id} onClick={() => complete(s)} data-testid="session-confirm-complete-button">
+                        {acting === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Check className="h-3.5 w-3.5 mr-1" /> Complete</>}
+                      </Button>
+                    ) : (
+                      <StatusBadge status={s.status} />
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="icon" variant="ghost" className="h-11 w-11 rounded-lg" data-testid="session-actions-button">
@@ -321,7 +335,7 @@ export default function CoachSessions() {
         ))}
       </div>
 
-      <SessionDrawer
+      <SessionEditorDrawer
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         clients={clients}
@@ -330,263 +344,8 @@ export default function CoachSessions() {
         onSaved={() => { setDrawerOpen(false); load(); }}
       />
 
-      <NotesDialog session={notesFor} onClose={() => setNotesFor(null)} />
+      <SessionNotesDialog session={notesFor} onClose={() => setNotesFor(null)} />
       <AvailabilityDrawer open={hoursOpen} onOpenChange={setHoursOpen} />
     </div>
-  );
-}
-
-function SessionDrawer({ open, onOpenChange, clients, editing, presetClient, onSaved }) {
-  const [form, setForm] = useState({ client_id: '', scheduled_at: '', duration_minutes: '60', location: '', workout_id: 'none' });
-  const [saving, setSaving] = useState(false);
-  const [conflict, setConflict] = useState(null);
-  // 011 B: optional planned-workout attachment, fetched once per drawer open.
-  const [workouts, setWorkouts] = useState(null);
-
-  useEffect(() => {
-    if (open) {
-      setConflict(null);
-      if (editing) {
-        setForm({
-          client_id: editing.client_id,
-          scheduled_at: toLocalInputValue(editing.scheduled_at),
-          duration_minutes: String(editing.duration_minutes),
-          location: editing.location || '',
-          workout_id: editing.workout_id || 'none',
-        });
-      } else {
-        setForm({ client_id: presetClient || '', scheduled_at: '', duration_minutes: '60', location: '', workout_id: 'none' });
-      }
-      if (workouts === null) {
-        api.get('/programs/workouts')
-          .then(({ data }) => setWorkouts(data))
-          .catch(() => setWorkouts([]));
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editing, presetClient]);
-
-  // A shown conflict is about a specific client + time + duration; changing
-  // any of those restarts the attempt, so the panel clears.
-  const setField = (patch) => {
-    setForm((current) => ({ ...current, ...patch }));
-    if (Object.keys(patch).some((key) => key !== 'location')) setConflict(null);
-  };
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.client_id || !form.scheduled_at) {
-      toast.error('Client and date/time are required');
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        client_id: form.client_id,
-        scheduled_at: new Date(form.scheduled_at).toISOString(),
-        duration_minutes: Number(form.duration_minutes),
-        location: form.location,
-        workout_id: form.workout_id === 'none' ? null : form.workout_id,
-      };
-      const { data } = editing
-        ? await api.put(`/sessions/${editing.id}`, payload)
-        : await api.post('/sessions', payload);
-      // Location overlap is advisory only (S1): the session is saved either way.
-      if (data?.location_overlaps > 0) {
-        toast.warning(`Scheduled — heads up: ${data.location_overlaps} other session${data.location_overlaps === 1 ? '' : 's'} at ${form.location.trim()} in that window.`);
-      } else {
-        toast.success(editing ? 'Session updated' : 'Session scheduled');
-      }
-      onSaved();
-    } catch (err) {
-      const conflictData = err?.response?.status === 409 && err?.response?.data?.conflict;
-      if (conflictData) {
-        setConflict(err.response.data.conflict);
-      } else {
-        toast.error(errMsg(err));
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent data-testid="session-editor-drawer">
-        <div className="mx-auto w-full max-w-md px-4 pb-6">
-          <DrawerHeader className="px-0">
-            <DrawerTitle>{editing ? 'Edit session' : 'New session'}</DrawerTitle>
-          </DrawerHeader>
-          <form onSubmit={submit} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Client *</Label>
-              <Select value={form.client_id} onValueChange={(v) => setField({ client_id: v })} disabled={Boolean(editing)}>
-                <SelectTrigger className="rounded-xl h-11" data-testid="session-client-select">
-                  <SelectValue placeholder="Choose client..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Date & time *</Label>
-              <DateTimePicker
-                value={form.scheduled_at}
-                onChange={(scheduled_at) => setField({ scheduled_at })}
-                data-testid="session-datetime-input"
-              />
-              {conflict && (
-                <div
-                  className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm"
-                  role="alert"
-                  data-testid="session-conflict-panel"
-                  data-conflict-scope={conflict.scope}
-                >
-                  <p className="font-medium">
-                    {conflict.scope === 'client' ? 'This client is already booked then' : 'You already have a session then'}
-                  </p>
-                  {conflict.session?.scheduled_at && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {fmtDateTime(conflict.session.scheduled_at)} · {conflict.session.duration_minutes} min{conflict.session.location ? ` · ${conflict.session.location}` : ''}
-                    </p>
-                  )}
-                  <p className="mt-0.5 text-xs text-muted-foreground">Pick a different time or duration.</p>
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Duration</Label>
-                <Select value={form.duration_minutes} onValueChange={(v) => setField({ duration_minutes: v })}>
-                  <SelectTrigger className="rounded-xl h-11" data-testid="session-duration-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {['30', '45', '60', '90'].map((d) => <SelectItem key={d} value={d}>{d} min</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Location</Label>
-                <Input value={form.location} onChange={(e) => setField({ location: e.target.value })} placeholder="CVF Studio" className="rounded-xl h-11" data-testid="session-location-input" />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Planned workout</Label>
-              <Select value={form.workout_id} onValueChange={(v) => setForm((current) => ({ ...current, workout_id: v }))}>
-                <SelectTrigger className="rounded-xl h-11" data-testid="session-workout-select">
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No workout attached</SelectItem>
-                  {(workouts || []).map((workout) => (
-                    <SelectItem key={workout.id} value={workout.id}>{workout.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">The client sees the plan on their session page.</p>
-            </div>
-            <DrawerFooter className="px-0">
-              <Button type="submit" disabled={saving} className="rounded-xl h-11 font-semibold" data-testid="session-save-button">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editing ? 'Save changes' : 'Schedule session'}
-              </Button>
-            </DrawerFooter>
-          </form>
-        </div>
-      </DrawerContent>
-    </Drawer>
-  );
-}
-
-function NotesDialog({ session, onClose }) {
-  const [notes, setNotes] = useState(null);
-  const [content, setContent] = useState('');
-  const [shared, setShared] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!session) return;
-    try {
-      const { data } = await api.get(`/sessions/${session.id}/notes`);
-      setNotes(data);
-    } catch (e) {
-      toast.error(errMsg(e));
-    }
-  }, [session]);
-
-  useEffect(() => {
-    setNotes(null);
-    setContent('');
-    setShared(false);
-    load();
-  }, [load]);
-
-  const addNote = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await api.post(`/sessions/${session.id}/notes`, { content, shared_with_client: shared });
-      toast.success(shared ? 'Note saved & shared with client' : 'Note saved');
-      setContent('');
-      setShared(false);
-      load();
-    } catch (err) {
-      toast.error(errMsg(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const toggleShare = async (note) => {
-    try {
-      await api.put(`/sessions/notes/${note.id}`, { shared_with_client: !note.shared_with_client });
-      load();
-    } catch (err) {
-      toast.error(errMsg(err));
-    }
-  };
-
-  return (
-    <Dialog open={Boolean(session)} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md" data-testid="session-notes-dialog">
-        <DialogHeader>
-          <DialogTitle>Session notes</DialogTitle>
-          <DialogDescription>Record private coach notes and client-visible notes for this session.</DialogDescription>
-        </DialogHeader>
-        {session && (
-          <p className="text-xs text-muted-foreground -mt-2">
-            {session.client?.name} - {fmtDateTime(session.scheduled_at)}
-          </p>
-        )}
-        <div className="space-y-2 max-h-52 overflow-y-auto">
-          {notes && notes.length === 0 && <p className="text-sm text-muted-foreground">No notes yet.</p>}
-          {(notes || []).map((n) => (
-            <div key={n.id} className="rounded-xl border border-border bg-card/60 p-3" data-testid="session-note-row">
-              <p className="text-sm whitespace-pre-wrap">{n.content}</p>
-              <div className="flex items-center justify-between mt-2">
-                <p className="text-[10px] text-muted-foreground">{fmtDateTime(n.created_at)}</p>
-                <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  Shared with client
-                  <Switch checked={n.shared_with_client} onCheckedChange={() => toggleShare(n)} className="scale-75" data-testid="note-share-toggle" />
-                </label>
-              </div>
-            </div>
-          ))}
-        </div>
-        <form onSubmit={addNote} className="space-y-3 border-t border-border pt-4">
-          <Textarea required rows={3} value={content} onChange={(e) => setContent(e.target.value)} placeholder="How did the session go?" data-testid="session-notes-textarea" />
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Switch checked={shared} onCheckedChange={setShared} data-testid="session-notes-share-switch" />
-              Share with client
-            </label>
-            <Button type="submit" size="sm" disabled={saving || !content.trim()} className="rounded-xl" data-testid="note-save-button">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add note'}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

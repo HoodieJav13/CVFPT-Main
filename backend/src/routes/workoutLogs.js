@@ -2,7 +2,7 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
-const { todayDateInTz } = require('../utils/time');
+const { todayDateInTz, dateInTz } = require('../utils/time');
 const { addDays, buildWeekRhythm } = require('../lib/rhythm');
 const { dispatchPush, sendToCoaches } = require('../services/push');
 
@@ -104,6 +104,46 @@ function actorStamp(user) {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Session linkage: a workout started without an explicit session context
+// links to the client's scheduled session on the same Denver day, preferring
+// a session whose attached plan is the workout being started, then the one
+// closest to now. Best-effort — resolution must never block a start.
+async function startedWorkoutId({ programDayId, workoutAssignmentId }) {
+  const table = workoutAssignmentId ? 'workout_assignments' : programDayId ? 'program_days' : null;
+  if (!table) return null;
+  const { data } = await supabaseAdmin.from(table).select('workout_id')
+    .eq('id', workoutAssignmentId || programDayId).maybeSingle();
+  return data?.workout_id || null;
+}
+
+async function resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId, now = new Date() }) {
+  try {
+    // 36h window bounds the scan; the Denver-day filter below is what decides.
+    const windowStart = new Date(now.getTime() - 36 * 3600 * 1000).toISOString();
+    const windowEnd = new Date(now.getTime() + 36 * 3600 * 1000).toISOString();
+    const { data: rows, error } = await supabaseAdmin.from('sessions')
+      .select('id, scheduled_at, workout_id')
+      .eq('client_id', clientId).eq('status', 'scheduled').eq('archived', false)
+      .gte('scheduled_at', windowStart).lte('scheduled_at', windowEnd);
+    if (error) throw error;
+    const today = dateInTz(now);
+    const sameDay = (rows || []).filter((session) => dateInTz(session.scheduled_at) === today);
+    if (!sameDay.length) return null;
+    let candidates = sameDay;
+    if (sameDay.some((session) => session.workout_id)) {
+      const workoutId = await startedWorkoutId({ programDayId, workoutAssignmentId });
+      const planned = workoutId ? sameDay.filter((session) => session.workout_id === workoutId) : [];
+      if (planned.length) candidates = planned;
+    }
+    return candidates.reduce((best, session) => (
+      Math.abs(new Date(session.scheduled_at) - now) < Math.abs(new Date(best.scheduled_at) - now) ? session : best
+    )).id;
+  } catch (error) {
+    logError('session link resolution error', error);
+    return null;
+  }
+}
 
 // Program 011 A: one in-app notification per workout event to the owning
 // coach and every admin (mirrors the completion trigger's recipient set).
@@ -394,8 +434,8 @@ router.post('/start', async (req, res) => {
       || (!programSource && !workoutAssignmentId)) {
       return res.status(400).json({ error: 'Choose one assigned workout' });
     }
-    const sessionId = body.session_id || null;
-    if (sessionId !== null && (typeof sessionId !== 'string' || !UUID_RE.test(sessionId))) {
+    const explicitSessionId = body.session_id || null;
+    if (explicitSessionId !== null && (typeof explicitSessionId !== 'string' || !UUID_RE.test(explicitSessionId))) {
       return res.status(400).json({ error: 'Invalid session' });
     }
 
@@ -416,6 +456,9 @@ router.post('/start', async (req, res) => {
       }
       clientId = clientRow.id;
     }
+
+    const sessionId = explicitSessionId
+      ?? await resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId });
 
     const stamp = actorStamp(req.user);
     const { data, error } = await supabaseAdmin.rpc('start_workout_log_v2', {
@@ -767,7 +810,7 @@ router.post('/quick-complete', requireClient, async (req, res) => {
       p_workout_assignment_id: workoutAssignmentId,
       p_started_by: 'client',
       p_started_by_coach_id: null,
-      p_session_id: null,
+      p_session_id: await resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId }),
     });
     if (startErr) throw startErr;
     if (started.outcome === 'conflict') {

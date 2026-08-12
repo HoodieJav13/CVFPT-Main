@@ -162,6 +162,32 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
   await expect(page.getByTestId('message-thread-row').first()).toBeVisible();
 });
 
+test('coach session indicators and detail page cover the workout-done confirm flow', async ({ page }) => {
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/sessions');
+  // session_today carries a completed linked workout log: the row shows the
+  // gold chip and surfaces the one-tap confirm in place of the status badge.
+  await expect(page.getByTestId('session-workout-done-chip').first()).toBeVisible();
+  await expect(page.getByTestId('session-confirm-complete-button').first()).toBeVisible();
+
+  // The row itself opens the coach session detail page.
+  await page.getByTestId('coach-session-detail-link').first().click();
+  await expect(page).toHaveURL(/\/coach\/sessions\/session_today$/);
+  await expect(page.getByTestId('coach-session-detail-card')).toBeVisible();
+  await expect(page.getByTestId('session-workout-done-chip')).toBeVisible();
+  await expect(page.getByTestId('session-plan-exercise').first()).toBeVisible();
+  await expect(page.getByTestId('session-detail-notes')).toBeVisible();
+
+  // Linked workout activity opens the workout log detail.
+  await page.getByTestId('session-linked-log-row').first().click();
+  await expect(page).toHaveURL(/\/coach\/workouts\/log_preview_complete$/);
+  await page.goBack();
+
+  // Approving from the detail page completes the session.
+  await page.getByTestId('session-detail-complete').click();
+  await expect(page.getByTestId('coach-session-detail-status')).toHaveText(/completed/i);
+});
+
 test('client preview covers dashboard and every client navigation destination', async ({ page }) => {
   await usePreviewRole(page, 'client');
   await page.goto('/client');
@@ -171,6 +197,11 @@ test('client preview covers dashboard and every client navigation destination', 
   await page.goto('/client/sessions');
   await expect(page.getByTestId('booking-request-button')).toBeVisible();
   await expect(page.getByTestId('client-upcoming-session-row').first()).toBeVisible();
+  // Past rows open the session detail page too (same link as upcoming rows).
+  await page.getByTestId('client-past-session-detail-link').first().click();
+  await expect(page).toHaveURL(/\/client\/sessions\/session_done$/);
+  await expect(page.getByTestId('session-detail-card')).toBeVisible();
+  await page.goBack();
 
   await page.goto('/client/progress');
   await expect(page.getByTestId('client-metric-card').first()).toBeVisible();

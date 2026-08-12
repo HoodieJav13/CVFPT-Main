@@ -134,7 +134,7 @@ export default function ClientSessionDetail() {
                 >
                   {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingCancel ? 'Tap to confirm' : 'Cancel')}
                 </Button>
-              ) : asked ? (
+              ) : (asked || session.cancel_requested) ? (
                 <p className="text-[11px] text-muted-foreground" data-testid="ask-cancel-sent">Asked — your coach will confirm.</p>
               ) : (
                 <Button
