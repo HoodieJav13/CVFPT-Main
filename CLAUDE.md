@@ -18,6 +18,16 @@ cold-visibility rules in `docs/design-principles.md` before production
 implementation — a passing build is not sufficient evidence of "done" for
 identity/signature work.
 
+Design QA tooling (2026-08-11): `docs/design-qa-surface-audit.md` is the
+per-surface pre-launch checklist; `docs/design-reference-links.md` is the
+vetted external reference list (including tools evaluated and rejected — do
+not re-propose those without new information). The Agentation annotate
+overlay mounts in dev/preview builds only (never production, never under
+test automation). The project-scoped `impeccable` Claude Code plugin is
+**audit-only**: its findings are proposals; this file's brand tokens and
+`docs/design-principles.md` always take precedence, and any restyle it
+suggests still goes through the visual gate.
+
 ## Locked invariants — do not violate
 
 - **Auth User ≠ Client.** `clients.auth_user_id` is nullable; clients are created by coaches and later claim their record via an invite flow.
