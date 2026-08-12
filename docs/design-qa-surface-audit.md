@@ -221,6 +221,27 @@ Check once per surface while doing its specific section.
 
 Record findings as you go; triage after the pass, fix in scoped commits.
 
+### 2026-08-11 first pass (agent)
+
+Method: code sweeps for the grep-able foundations (F-1/F-2/F-3, autocomplete,
+input modes), a preview-mode browser walk of every client surface at 375 px
+and every coach surface at desktop width with console-error harvesting, plus
+the standing e2e record for loading/error/empty, reduced motion, and offline
+behavior. Items that need a real device or live credentials were left for
+the owner phone pass: C-SDT-2 (iOS .ics), X-1 (push round-trip), X-5 (PWA
+install), and the P-RES real-email flows.
+
 | ID | Item | Surface | Severity (defect / polish) | Status |
 |----|------|---------|---------------------------|--------|
-|    |      |         |                           |        |
+| AUD-1 | F-foundations | Client Home check-in card | defect | fixed — Badge (a div) rendered inside a `<p>`; invalid DOM nesting flagged by React ([Home.jsx](../frontend/src/pages/client/Home.jsx)) |
+| AUD-2 | P-LOG-1 / P-SIG / P-RES | All four auth forms | defect | fixed — no `autoComplete` attributes anywhere; password managers now get `email` / `current-password` / `new-password` |
+| AUD-3 | F-2 | Admin coach menu; coach Resources edit/archive | defect | fixed — three 36 px icon buttons raised to the 44 px convention |
+| AUD-4 | Tooling | Agentation overlay (dev/preview) | defect | fixed — default placement covered the mobile tab bar and collided with the preview toolbar on desktop; offset via scoped CSS |
+| AUD-5 | Dev ergonomics | vite config | polish | fixed — hardcoded `hmr.clientPort: 443` (cloud-IDE leftover) broke local HMR and logged websocket errors on every page; now env-gated behind `CVF_DEV_TUNNEL` |
+| AUD-6 | F-1 | Poster cards (client/coach session detail, client sessions row) | polish | deferred — inline `hsl(202 35% …)` gradient literals in three files; token-derived but not tokens. Candidate for a `--poster-gradient` token; cosmetic-neutral refactor |
+| AUD-7 | C-TRK-5 | Tracker abandon | polish | deferred — uses `window.confirm` rather than the app's two-tap/dialog pattern; functional and accessible, just off-pattern |
+
+Everything else checked in this pass rendered correctly: session lifecycle
+chips and detail pages on both roles, cancel/ask-to-cancel around the 24 h
+cutoff, booking approve/decline with conflict notes, calendar masking,
+progress charts with PR badge and goal line, and role-boundary redirects.
