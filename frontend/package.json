@@ -85,6 +85,7 @@
     "@playwright/test": "1.61.1",
     "@types/lodash": "4.17.24",
     "@vitejs/plugin-react": "^4.7.0",
+    "agentation": "^3.0.2",
     "autoprefixer": "10.4.20",
     "dotenv": "16.4.5",
     "eslint": "9.23.0",

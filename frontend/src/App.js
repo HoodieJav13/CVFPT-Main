@@ -41,6 +41,15 @@ const CoachAnalytics = lazy(() => import('@/pages/coach/Analytics'));
 const AdminPage = lazy(() => import('@/pages/admin/Admin'));
 // Dev/preview only: never even fetched in production builds.
 const PreviewToolbar = isPreviewMode ? lazy(() => import('@/components/PreviewToolbar')) : () => null;
+// Agentation click-to-annotate overlay (docs/design-reference-links.md):
+// dev and preview/demo builds only, and never under test automation —
+// Playwright sets navigator.webdriver, and the toolbar would otherwise
+// add stray interactive elements to every e2e snapshot.
+const annotationEnabled = (import.meta.env.DEV || isPreviewMode)
+  && typeof navigator !== 'undefined' && !navigator.webdriver;
+const AnnotationOverlay = annotationEnabled
+  ? lazy(() => import('agentation').then((m) => ({ default: m.Agentation })))
+  : () => null;
 
 function RoleRedirect() {
   const { user, loading } = useAuth();
@@ -132,6 +141,7 @@ export default function App() {
             <Route path="*" element={<RoleRedirect />} />
           </Routes>
           <PreviewToolbar />
+          <AnnotationOverlay />
           </Suspense>
         </BrowserRouter>
         </NotificationsProvider>
