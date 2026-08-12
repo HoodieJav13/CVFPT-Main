@@ -370,3 +370,16 @@
     }
   }
 }
+
+/* Agentation annotate toolbar (mounts in dev/preview builds only — see
+   App.js): its default bottom-right placement sits on the mobile tab bar
+   and under the preview-mode toolbar on desktop. Lift it clear of both.
+   Inert in production, where the toolbar never mounts. */
+[data-agentation-toolbar] {
+  bottom: 5.5rem !important;
+}
+@media (min-width: 1024px) {
+  [data-agentation-toolbar] {
+    bottom: 6.5rem !important;
+  }
+}

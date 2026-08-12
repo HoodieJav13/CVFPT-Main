@@ -137,8 +137,8 @@ export default function CoachResources() {
                     <div className="flex flex-wrap gap-2 sm:justify-end">
                       <Button type="button" size="sm" variant="outline" className="rounded-xl" disabled={downloadingId === resource.id} onClick={() => download(resource)} data-testid="coach-resource-download"><Download className="mr-1.5 h-4 w-4" /> PDF</Button>
                       {!resource.is_public && <Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={() => setAssignResource(resource)} data-testid="coach-resource-assign"><Users className="mr-1.5 h-4 w-4" /> Assign</Button>}
-                      <Button type="button" size="icon" variant="ghost" className="h-9 w-9 rounded-xl" onClick={() => setEditResource(resource)} aria-label={`Edit ${resource.title}`} data-testid="coach-resource-edit"><Pencil className="h-4 w-4" /></Button>
-                      <Button type="button" size="icon" variant="ghost" className="h-9 w-9 rounded-xl text-muted-foreground" onClick={() => archive(resource)} aria-label={`Archive ${resource.title}`} data-testid="coach-resource-archive"><Archive className="h-4 w-4" /></Button>
+                      <Button type="button" size="icon" variant="ghost" className="h-11 w-11 rounded-xl" onClick={() => setEditResource(resource)} aria-label={`Edit ${resource.title}`} data-testid="coach-resource-edit"><Pencil className="h-4 w-4" /></Button>
+                      <Button type="button" size="icon" variant="ghost" className="h-11 w-11 rounded-xl text-muted-foreground" onClick={() => archive(resource)} aria-label={`Archive ${resource.title}`} data-testid="coach-resource-archive"><Archive className="h-4 w-4" /></Button>
                     </div>
                   </div>
                 </CardContent>

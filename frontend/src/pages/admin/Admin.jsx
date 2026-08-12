@@ -178,7 +178,7 @@ function CoachesTab() {
             {c.is_admin && <Badge variant="outline" className="bg-primary/10 text-primary border-primary/25">Admin</Badge>}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" aria-label={`Manage ${c.name}`} disabled={acting === c.id} data-testid="admin-coach-menu-button">
+                <Button variant="ghost" size="icon" className="h-11 w-11 rounded-lg" aria-label={`Manage ${c.name}`} disabled={acting === c.id} data-testid="admin-coach-menu-button">
                   {acting === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
                 </Button>
               </DropdownMenuTrigger>

@@ -52,7 +52,7 @@ export default function ForgotPassword() {
               <form onSubmit={submit} className="space-y-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                  <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com" className="h-11 rounded-xl" data-testid="forgot-password-email-input" />
                 </div>
                 {error && (

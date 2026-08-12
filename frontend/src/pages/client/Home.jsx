@@ -279,12 +279,12 @@ export default function ClientHome() {
         <Card data-testid="daily-check-in-card">
           <CardContent className="flex items-center justify-between gap-3 p-4">
             <div className="min-w-0">
-              <p className="flex items-center gap-2 text-sm font-medium">
+              <div className="flex items-center gap-2 text-sm font-medium">
                 Checked in today
                 <Badge variant="outline" className="bg-success/15 text-success-foreground border-success/25">
                   {todayCheckIn.review_status === 'reviewed' ? 'Reviewed' : 'Sent'}
                 </Badge>
-              </p>
+              </div>
               <CheckInStats
                 className="mt-1.5"
                 stats={[
