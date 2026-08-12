@@ -464,8 +464,13 @@ test('reduced motion preserves workout completion and rest-expiry information wi
 
   const firstExercise = page.getByTestId('tracker-exercise-card').first();
   await firstExercise.getByRole('button', { name: 'Complete set 1' }).click();
-  await page.clock.runFor(90_000);
+  // runFor dispatches every faked rAF/interval tick across the whole window —
+  // ~5.6k frames through the motion loop, which can outlast the test budget
+  // on slow hardware. Tick 1s for the save round-trip, then jump: fastForward
+  // fires each pending timer at most once and lands on the same end state.
+  await page.clock.runFor(1_000);
   await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await page.clock.fastForward(89_000);
 
   const timer = page.getByTestId('rest-timer');
   await expect(timer).toHaveAttribute('data-rest-state', 'complete');
