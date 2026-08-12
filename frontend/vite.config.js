@@ -59,7 +59,10 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 3000,
       allowedHosts: true,
-      hmr: { clientPort: 443 },
+      // clientPort 443 is only right behind an HTTPS tunnel (the old cloud
+      // IDE setup); locally it breaks HMR and logs a websocket error on
+      // every page load. Opt in via CVF_DEV_TUNNEL when tunneling.
+      hmr: process.env.CVF_DEV_TUNNEL ? { clientPort: 443 } : undefined,
       proxy: hostedTestBackend && protectionBypass ? {
         '/api': {
           target: hostedTestBackend,

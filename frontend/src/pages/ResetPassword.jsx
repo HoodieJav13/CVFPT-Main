@@ -68,12 +68,12 @@ export default function ResetPassword() {
               <form onSubmit={submit} className="space-y-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="password">New password</Label>
-                  <Input id="password" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
+                  <Input id="password" type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
                     placeholder="At least 8 characters" className="h-11 rounded-xl" data-testid="reset-password-input" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="confirm">Confirm new password</Label>
-                  <Input id="confirm" type="password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)}
+                  <Input id="confirm" type="password" autoComplete="new-password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)}
                     placeholder="Repeat the password" className="h-11 rounded-xl" data-testid="reset-password-confirm-input" />
                 </div>
                 {error && (

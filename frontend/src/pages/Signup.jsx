@@ -67,17 +67,17 @@ export default function Signup() {
             <form onSubmit={submit} className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email (as given to your coach)</Label>
-                <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com" className="h-11 rounded-xl" data-testid="signup-email-input" />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="password">Create password</Label>
-                <Input id="password" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
+                <Input id="password" type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
                   placeholder="At least 8 characters" className="h-11 rounded-xl" data-testid="signup-password-input" />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="confirm">Confirm password</Label>
-                <Input id="confirm" type="password" required value={confirm} onChange={(e) => setConfirm(e.target.value)}
+                <Input id="confirm" type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)}
                   placeholder="Repeat your password" className="h-11 rounded-xl" data-testid="signup-confirm-input" />
               </div>
               {error && (
