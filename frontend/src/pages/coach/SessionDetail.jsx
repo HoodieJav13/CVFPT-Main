@@ -81,7 +81,7 @@ export default function CoachSessionDetail() {
         <ArrowLeft className="h-4 w-4" /> Sessions
       </button>
 
-      <Card className="mb-4 border-primary/40 bg-gradient-to-b from-[hsl(202_35%_13%)] to-[hsl(214_28%_7%)] shadow-[var(--app-elev)]" data-testid="coach-session-detail-card">
+      <Card className="mb-4 border-primary/40 bg-card shadow-[var(--app-elev)]" data-testid="coach-session-detail-card">
         <CardContent className="p-6">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">Session</p>
