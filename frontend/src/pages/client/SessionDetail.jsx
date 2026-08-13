@@ -46,6 +46,7 @@ export default function ClientSessionDetail() {
       await api.patch(`/sessions/${session.id}/ask-cancel`);
       setAsked(true);
       toast.success('Sent — your coach will take it from here');
+      requestAnimationFrame(() => document.querySelector('[data-ask-sent]')?.focus());
     } catch (e) {
       toast.error(errMsg(e, 'Could not send the request'));
     } finally {
@@ -132,10 +133,10 @@ export default function ClientSessionDetail() {
                   onClick={cancelSession}
                   data-testid="session-detail-cancel"
                 >
-                  {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingCancel ? 'Tap to confirm' : 'Cancel')}
+                  {acting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Cancelling</span></> : (confirmingCancel ? 'Tap to confirm' : 'Cancel')}
                 </Button>
               ) : (asked || session.cancel_requested) ? (
-                <p className="text-[11px] text-muted-foreground" data-testid="ask-cancel-sent">Asked — your coach will confirm.</p>
+                <p role="status" tabIndex={-1} data-ask-sent className="text-[11px] text-muted-foreground" data-testid="ask-cancel-sent">Asked — your coach will confirm.</p>
               ) : (
                 <Button
                   variant="ghost"
@@ -144,7 +145,7 @@ export default function ClientSessionDetail() {
                   onClick={askCancel}
                   data-testid="session-detail-ask-cancel"
                 >
-                  {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingAsk ? 'Tap to confirm' : 'Ask to cancel')}
+                  {acting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Sending</span></> : (confirmingAsk ? 'Tap to confirm' : 'Ask to cancel')}
                 </Button>
               )}
             </div>

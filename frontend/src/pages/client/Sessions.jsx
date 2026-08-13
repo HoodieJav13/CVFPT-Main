@@ -120,6 +120,9 @@ export default function ClientSessions() {
       await api.patch(`/sessions/${session.id}/ask-cancel`);
       setAskedIds((current) => new Set(current).add(session.id));
       toast.success('Sent — your coach will take it from here');
+      // The button unmounts on success; park focus on the confirmation so
+      // keyboard users don't drop to <body> and screen readers hear it.
+      requestAnimationFrame(() => document.querySelector(`[data-ask-sent="${session.id}"]`)?.focus());
     } catch (e) {
       toast.error(errMsg(e, 'Could not send the request'));
     } finally {
@@ -130,7 +133,7 @@ export default function ClientSessions() {
 
   const { upcoming, past } = useMemo(() => {
     if (!sessions) return { upcoming: [], past: [] };
-    const isPast = (s) => s.status === 'completed' || s.status === 'cancelled' || isBeforeToday(s.scheduled_at);
+    const isPast = (s) => s.status === 'completed' || s.status === 'cancelled' || s.status === 'no_show' || isBeforeToday(s.scheduled_at);
     return {
       upcoming: sessions.filter((s) => !isPast(s)).slice().reverse(),
       past: sessions.filter(isPast),
@@ -165,9 +168,9 @@ export default function ClientSessions() {
                 <div className="mt-0.5 flex items-center justify-between gap-3">
                   <p className="min-w-0 truncate text-xs text-muted-foreground">{r.duration_minutes}m{r.note ? ` - "${r.note}"` : ''}</p>
                   <Button size="sm" variant="ghost"
-                    className={`min-h-9 shrink-0 rounded-lg ${confirmingId === `withdraw-${r.id}` ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
+                    className={`min-h-11 shrink-0 rounded-lg ${confirmingId === `withdraw-${r.id}` ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
                     disabled={acting === r.id} onClick={() => withdrawRequest(r)} data-testid="booking-withdraw-button">
-                    {acting === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingId === `withdraw-${r.id}` ? 'Tap to confirm' : 'Withdraw')}
+                    {acting === r.id ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Withdrawing</span></> : (confirmingId === `withdraw-${r.id}` ? 'Tap to confirm' : 'Withdraw')}
                   </Button>
                 </div>
               </div>
@@ -204,22 +207,22 @@ export default function ClientSessions() {
               </Link>
               {s.status === 'scheduled' && (
                 <div className="mt-2 flex items-center gap-2">
-                  <Button size="sm" variant="outline" className="min-h-9 rounded-lg" onClick={() => downloadIcs(s)} data-testid="session-ics-button">
+                  <Button size="sm" variant="outline" className="min-h-11 rounded-lg" onClick={() => downloadIcs(s)} data-testid="session-ics-button">
                     <CalendarPlus className="h-3.5 w-3.5 mr-1" /> Add to calendar
                   </Button>
                   {cancellableUntil(s) ? (
                     <Button size="sm" variant="ghost"
-                      className={`min-h-9 rounded-lg ${confirmingId === `cancel-${s.id}` ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
+                      className={`min-h-11 rounded-lg ${confirmingId === `cancel-${s.id}` ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
                       disabled={acting === s.id} onClick={() => cancelSession(s)} data-testid="session-client-cancel-button">
-                      {acting === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingId === `cancel-${s.id}` ? 'Tap to confirm' : 'Cancel')}
+                      {acting === s.id ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Cancelling</span></> : (confirmingId === `cancel-${s.id}` ? 'Tap to confirm' : 'Cancel')}
                     </Button>
                   ) : (askedIds.has(s.id) || s.cancel_requested) ? (
-                    <p className="text-[11px] text-muted-foreground" data-testid="ask-cancel-sent">Asked — your coach will confirm.</p>
+                    <p role="status" tabIndex={-1} data-ask-sent={s.id} className="text-[11px] text-muted-foreground" data-testid="ask-cancel-sent">Asked — your coach will confirm.</p>
                   ) : (
                     <Button size="sm" variant="ghost"
-                      className={`min-h-9 rounded-lg ${confirmingId === `ask-${s.id}` ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
+                      className={`min-h-11 rounded-lg ${confirmingId === `ask-${s.id}` ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
                       disabled={acting === s.id} onClick={() => askCancel(s)} data-testid="session-ask-cancel-button">
-                      {acting === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (confirmingId === `ask-${s.id}` ? 'Tap to confirm' : 'Ask to cancel')}
+                      {acting === s.id ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Sending</span></> : (confirmingId === `ask-${s.id}` ? 'Tap to confirm' : 'Ask to cancel')}
                     </Button>
                   )}
                 </div>
@@ -240,7 +243,7 @@ export default function ClientSessions() {
 
       <SectionLabel className="mb-2 mt-6">Past</SectionLabel>
       {past.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No past sessions yet.</p>
+        <EmptyState icon={CalendarDays} title="No past sessions yet" subtitle="Completed sessions will collect here." testId="past-empty-state" />
       ) : (
         <div className="space-y-2">
           {past.map((s) => (
@@ -442,7 +445,7 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
             </div>
             <DrawerFooter className="px-0">
               <Button type="submit" disabled={saving} className="rounded-xl h-11 font-semibold" data-testid="booking-submit-button">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : (coachAutoBook && slots ? 'Book session' : 'Send request')}
+                {saving ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Sending request</span></> : (coachAutoBook && slots ? 'Book session' : 'Send request')}
               </Button>
             </DrawerFooter>
           </form>

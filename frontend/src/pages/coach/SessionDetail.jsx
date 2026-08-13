@@ -119,7 +119,7 @@ export default function CoachSessionDetail() {
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {!futureDay && (
                 <Button className="min-h-11 rounded-xl font-semibold" disabled={acting} onClick={complete} data-testid="session-detail-complete">
-                  {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Check className="mr-1.5 h-4 w-4" /> Complete</>}
+                  {acting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Working</span></> : <><Check className="mr-1.5 h-4 w-4" /> Complete</>}
                 </Button>
               )}
               {started && (
@@ -164,7 +164,11 @@ export default function CoachSessionDetail() {
                         : `Completed ${fmtDateTime(log.completed_at)}${log.quick_completed ? ' (not tracked)' : ''}`}
                     </span>
                   </span>
-                  <StatusBadge status={log.status === 'active' ? 'pending' : log.status} />
+                  {log.status === 'active' ? (
+                    <Badge variant="outline" className="shrink-0 bg-primary/15 text-primary border-primary/25">In progress</Badge>
+                  ) : (
+                    <StatusBadge status={log.status} />
+                  )}
                 </Link>
               ))}
             </div>
@@ -210,7 +214,7 @@ export default function CoachSessionDetail() {
         <CardContent className="p-5">
           <div className="flex items-center justify-between gap-2">
             <SectionLabel>Session notes</SectionLabel>
-            <Button size="sm" variant="outline" className="min-h-9 rounded-lg" onClick={() => setNotesOpen(true)} data-testid="session-detail-notes-button">
+            <Button size="sm" variant="outline" className="min-h-11 rounded-lg" onClick={() => setNotesOpen(true)} data-testid="session-detail-notes-button">
               <StickyNote className="mr-1.5 h-3.5 w-3.5" /> Notes
             </Button>
           </div>

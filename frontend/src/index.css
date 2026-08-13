@@ -164,7 +164,9 @@
 
   .signature-glass.signature-glass-success {
     background: hsl(var(--success));
-    color: hsl(var(--success-foreground));
+    /* Dark ink, not the --success-foreground tint: that tint only reads on
+       dark cards — on solid green it was ~2:1. Same ink as solid primary. */
+    color: hsl(var(--primary-foreground));
   }
 
   /* Skeleton shimmer — pure CSS loading placeholder */

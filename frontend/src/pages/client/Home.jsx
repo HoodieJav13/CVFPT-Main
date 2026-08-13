@@ -184,7 +184,7 @@ export default function ClientHome() {
             onClick={() => quickComplete({ workout_assignment_id: rhythm.yesterday_missed[0].id })}
             data-testid="catch-up-quick-complete"
           >
-            {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
+            {quickCompleting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Recording workout</span></> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
           </Button>
         </div>
       )}
@@ -205,12 +205,11 @@ export default function ClientHome() {
               <h2 className="font-display text-4xl font-semibold tracking-tight" data-testid="client-today-plan-title">{todayPlan.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{todayPlan.description}</p>
             </div>
-            
           </div>
           {todayPlan.source ? (
             <>
               <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" disabled={startingWorkout || quickCompleting} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
-                {startingWorkout ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
+                {startingWorkout ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Starting workout</span></> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
               </Button>
               {/* One-tap for clients who won't track sets: open app, tap, close. */}
               <Button
@@ -220,7 +219,7 @@ export default function ClientHome() {
                 onClick={() => quickComplete(todayPlan.source)}
                 data-testid="client-today-quick-complete"
               >
-                {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
+                {quickCompleting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Recording workout</span></> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
               </Button>
             </>
           ) : todayPlan.kind === 'check_in' ? (
@@ -263,9 +262,9 @@ export default function ClientHome() {
                     {fmtDateTime(latest.created_at)}{unread.length > 1 ? ` · +${unread.length - 1} more after this` : ''}
                   </p>
                 </div>
-                <Button size="sm" variant="outline" className="min-h-9 shrink-0 rounded-lg" disabled={acknowledging}
+                <Button size="sm" variant="outline" className="min-h-11 shrink-0 rounded-lg" disabled={acknowledging}
                   onClick={() => acknowledgeAnnouncement(latest)} data-testid="announcement-got-it">
-                  {acknowledging ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Got it'}
+                  {acknowledging ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Acknowledging</span></> : 'Got it'}
                 </Button>
               </div>
             </CardContent>
@@ -294,7 +293,7 @@ export default function ClientHome() {
                 ]}
               />
             </div>
-            <Button variant="ghost" size="sm" className="min-h-9 shrink-0 rounded-lg" onClick={() => setCheckInOpen(true)} data-testid="open-check-in-button">
+            <Button variant="ghost" size="sm" className="min-h-11 shrink-0 rounded-lg" onClick={() => setCheckInOpen(true)} data-testid="open-check-in-button">
               Edit
             </Button>
           </CardContent>
@@ -305,34 +304,13 @@ export default function ClientHome() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <SectionLabel>Daily check-in</SectionLabel>
-              <h2 className="font-display text-xl font-semibold mt-1">
-                {todayCheckIn ? 'You checked in today' : 'Ready for your check-in?'}
-              </h2>
-              {todayCheckIn ? (
-                <CheckInStats
-                  className="mt-1.5"
-                  stats={[
-                    ['Energy', todayCheckIn.energy || '-'],
-                    ['Sleep', todayCheckIn.sleep_quality || '-'],
-                    ['Stress', todayCheckIn.stress || '-'],
-                  ]}
-                />
-              ) : (
-                <p className="text-sm text-muted-foreground mt-1">Log readiness, soreness, sleep, stress, and notes for your coach.</p>
-              )}
+              <h2 className="font-display text-xl font-semibold mt-1">Ready for your check-in?</h2>
+              <p className="text-sm text-muted-foreground mt-1">Log readiness, soreness, sleep, stress, and notes for your coach.</p>
             </div>
-            <Badge variant="outline" className={todayCheckIn ? 'bg-success/15 text-success-foreground border-success/25' : 'bg-gold/10 text-gold border-gold/25'}>
-              {todayCheckIn ? (todayCheckIn.review_status === 'reviewed' ? 'Reviewed' : 'Sent') : 'Open'}
-            </Badge>
+            <Badge variant="outline" className="bg-gold/10 text-gold border-gold/25">Open</Badge>
           </div>
-          {todayCheckIn?.coach_notes && (
-            <div className="mt-3 rounded-xl border border-primary/20 bg-primary/10 px-3 py-2">
-              <p className="text-xs font-semibold text-primary">Coach note</p>
-              <p className="text-sm mt-1 whitespace-pre-wrap">{todayCheckIn.coach_notes}</p>
-            </div>
-          )}
-          <Button className="mt-4 rounded-xl" onClick={() => setCheckInOpen(true)} data-testid="open-check-in-button">
-            <ClipboardCheck className="h-4 w-4 mr-1.5" /> {todayCheckIn ? 'Edit check-in' : 'Start check-in'}
+          <Button className="mt-4 min-h-11 rounded-xl" onClick={() => setCheckInOpen(true)} data-testid="open-check-in-button">
+            <ClipboardCheck className="h-4 w-4 mr-1.5" /> Start check-in
           </Button>
         </CardContent>
       </Card>
@@ -375,7 +353,7 @@ export default function ClientHome() {
           ) : (
             <div>
               <p className="text-sm text-muted-foreground">No upcoming sessions.</p>
-              <Button asChild size="sm" className="mt-3 rounded-xl">
+              <Button asChild size="sm" className="mt-3 min-h-11 rounded-xl">
                 <Link to="/client/sessions" data-testid="request-session-cta">Request a session</Link>
               </Button>
             </div>
