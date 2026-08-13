@@ -4,6 +4,9 @@ import { api, errMsg } from '@/lib/api';
 import { PageHeader, SessionsSkeleton, LoadErrorState, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -34,6 +37,9 @@ export default function CoachSessions() {
   const [hoursOpen, setHoursOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [notesFor, setNotesFor] = useState(null);
+  // Destructive friction (audit F-9): cancelling from the row menu confirms
+  // in a dialog, matching the two-tap pattern everywhere else.
+  const [cancelFor, setCancelFor] = useState(null);
   const [bookingConflicts, setBookingConflicts] = useState({});
 
   const load = useCallback(async () => {
@@ -234,6 +240,7 @@ export default function CoachSessions() {
           <button
             key={f.key}
             onClick={() => setFilter(f.key)}
+            aria-pressed={filter === f.key}
             data-testid={`session-filter-${f.key}`}
             className={`min-h-11 shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${filter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
           >
@@ -284,8 +291,8 @@ export default function CoachSessions() {
                     {s.status === 'scheduled' && s.linked_workout_log?.status === 'completed' ? (
                       // The workout is in — surface the approval right on the
                       // row; the chip already says why.
-                      <Button size="sm" className="min-h-9 rounded-lg" disabled={acting === s.id} onClick={() => complete(s)} data-testid="session-confirm-complete-button">
-                        {acting === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Check className="h-3.5 w-3.5 mr-1" /> Complete</>}
+                      <Button size="sm" className="min-h-11 rounded-lg" disabled={acting === s.id} onClick={() => complete(s)} data-testid="session-confirm-complete-button">
+                        {acting === s.id ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Completing session</span></> : <><Check className="h-3.5 w-3.5 mr-1" /> Complete</>}
                       </Button>
                     ) : (
                       <StatusBadge status={s.status} />
@@ -297,7 +304,9 @@ export default function CoachSessions() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        {s.status === 'scheduled' && (
+                        {/* Mirror the server guard (and the detail page): a
+                            future day's session can't be completed. */}
+                        {s.status === 'scheduled' && new Date(s.scheduled_at).setHours(0, 0, 0, 0) <= Date.now() && (
                           <DropdownMenuItem onClick={() => complete(s)} data-testid="session-complete-action">
                             <Check className="h-4 w-4 mr-2" /> Mark complete
                           </DropdownMenuItem>
@@ -320,7 +329,7 @@ export default function CoachSessions() {
                             <DropdownMenuItem onClick={() => { setEditing(s); setDrawerOpen(true); }} data-testid="session-edit-action">
                               <Pencil className="h-4 w-4 mr-2" /> Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => cancel(s)} className="text-destructive" data-testid="session-cancel-action">
+                            <DropdownMenuItem onClick={() => setCancelFor(s)} className="text-destructive" data-testid="session-cancel-action">
                               <X className="h-4 w-4 mr-2" /> Cancel session
                             </DropdownMenuItem>
                           </>
@@ -346,6 +355,31 @@ export default function CoachSessions() {
 
       <SessionNotesDialog session={notesFor} onClose={() => setNotesFor(null)} />
       <AvailabilityDrawer open={hoursOpen} onOpenChange={setHoursOpen} />
+
+      <Dialog open={Boolean(cancelFor)} onOpenChange={(open) => !open && setCancelFor(null)}>
+        <DialogContent className="max-w-sm" data-testid="session-cancel-dialog">
+          <DialogHeader>
+            <DialogTitle>Cancel this session?</DialogTitle>
+            <DialogDescription>
+              {cancelFor && `${cancelFor.client?.name} — ${fmtDateTime(cancelFor.scheduled_at)}. The client will be notified.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" className="min-h-11 rounded-xl" onClick={() => setCancelFor(null)} data-testid="session-cancel-keep">
+              Keep session
+            </Button>
+            <Button
+              variant="ghost"
+              className="min-h-11 rounded-xl border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={Boolean(acting)}
+              onClick={async () => { const target = cancelFor; setCancelFor(null); await cancel(target); }}
+              data-testid="session-cancel-confirm"
+            >
+              Cancel session
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

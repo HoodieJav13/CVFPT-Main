@@ -81,7 +81,7 @@ function ExerciseHistory({ logId, exercise }) {
       {open && (
         <div className="mt-2 space-y-3 rounded-lg bg-secondary/40 p-3" aria-live="polite">
           {loading && !occurrences.length && <p className="text-sm text-muted-foreground"><Loader2 className="mr-1.5 inline h-4 w-4 animate-spin motion-reduce:animate-none" />Loading history…</p>}
-          {error && <div role="alert" className="space-y-2 text-sm"><p>{error}</p><Button type="button" size="sm" variant="outline" onClick={() => loadHistory(nextCursor && occurrences.length ? nextCursor : null)}>Retry</Button></div>}
+          {error && <div role="alert" className="space-y-2 text-sm"><p>{error}</p><Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => loadHistory(nextCursor && occurrences.length ? nextCursor : null)}>Retry</Button></div>}
           {!loading && !error && attempted && occurrences.length === 0 && <p className="text-sm text-muted-foreground">No completed history yet.</p>}
           {occurrences.map((occurrence) => (
             <section key={occurrence.workout_log_id} className="space-y-2" data-testid="history-occurrence">
@@ -98,10 +98,81 @@ function ExerciseHistory({ logId, exercise }) {
               </div>
             </section>
           ))}
-          {nextCursor && !error && <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => loadHistory(nextCursor)}>{loading ? 'Loading…' : 'Load more'}</Button>}
+          {nextCursor && !error && <Button type="button" size="sm" variant="outline" className="min-h-11" disabled={loading} onClick={() => loadHistory(nextCursor)}>{loading ? 'Loading…' : 'Load more'}</Button>}
         </div>
       )}
     </div>
+  );
+}
+
+// The rest timer owns its own 250ms tick so a running countdown re-renders
+// only this FAB — not every exercise card and controlled input (audit #11).
+// The opt-in end-of-rest cue lives here too, since it keys off the same tick.
+function RestTimerFab({ restEndsAt, onClear, restAlerts, attentionScale }) {
+  const [now, setNow] = useState(Date.now());
+  const announcedRef = useRef(false);
+
+  useEffect(() => {
+    setNow(Date.now());
+    if (!restEndsAt) return undefined;
+    let timer;
+    const tick = () => {
+      const current = Date.now();
+      setNow(current);
+      if (current >= restEndsAt) window.clearInterval(timer);
+    };
+    timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [restEndsAt]);
+
+  const complete = Boolean(restEndsAt && now >= restEndsAt);
+
+  useEffect(() => {
+    if (!complete) {
+      announcedRef.current = false;
+      return;
+    }
+    if (announcedRef.current || !restAlerts) return;
+    announcedRef.current = true;
+    try {
+      if (typeof navigator.vibrate === 'function') navigator.vibrate(200);
+    } catch { /* capability declined */ }
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        const context = new AudioCtx();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.frequency.value = 880;
+        gain.gain.value = 0.05;
+        oscillator.start();
+        oscillator.stop(context.currentTime + 0.18);
+        oscillator.onended = () => context.close();
+      }
+    } catch { /* audio unavailable or blocked */ }
+  }, [complete, restAlerts]);
+
+  if (!restEndsAt) return null;
+  const seconds = Math.max(0, Math.ceil((restEndsAt - now) / 1000));
+  return (
+    <>
+      <Button
+        type="button"
+        onClick={onClear}
+        className={`signature-glass fixed bottom-40 right-4 z-40 h-14 min-w-28 rounded-full px-4 font-display text-base font-semibold lg:bottom-24 ${complete ? 'signature-glass-success motion-attention-pop-once hover:bg-success/90' : 'text-foreground hover:bg-card/80'}`}
+        style={complete ? { '--motion-attention-scale': attentionScale } : undefined}
+        aria-label={complete ? 'Rest complete, tap to dismiss' : `Rest timer ${formatTimer(seconds)}, tap to stop`}
+        data-testid="rest-timer"
+        data-rest-state={complete ? 'complete' : 'running'}
+      >
+        <Clock3 className="h-5 w-5" /> {complete ? 'Rest complete' : formatTimer(seconds)}
+      </Button>
+      <div className="sr-only" aria-live="assertive" aria-atomic="true" data-testid="rest-complete-announcement">
+        {complete ? 'Rest complete' : ''}
+      </div>
+    </>
   );
 }
 
@@ -118,11 +189,9 @@ export default function WorkoutTracker() {
   const [workoutNotes, setWorkoutNotes] = useState('');
   const [finishing, setFinishing] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
-  const [timerNow, setTimerNow] = useState(Date.now());
   const [lastTimeLoading, setLastTimeLoading] = useState(null);
   const [restAlerts, setRestAlerts] = useState(() => localStorage.getItem('cvf_rest_alerts') === 'on');
   const lastTimeCache = useRef({});
-  const restAnnouncedRef = useRef(false);
   const intensity = useVisualIntensity();
   const outbox = useWorkoutOutbox(id, setLog);
   const hydratePending = outbox.hydrate;
@@ -133,7 +202,6 @@ export default function WorkoutTracker() {
   const startRest = (seconds) => {
     const endsAt = Date.now() + (seconds * 1000);
     localStorage.setItem(restStorageKey, String(endsAt));
-    setTimerNow(Date.now());
     setRestEndsAt(endsAt);
   };
   const clearRest = () => {
@@ -143,7 +211,6 @@ export default function WorkoutTracker() {
   useEffect(() => {
     const stored = Number(localStorage.getItem(restStorageKey));
     if (stored && stored > Date.now()) {
-      setTimerNow(Date.now());
       setRestEndsAt(stored);
     } else if (stored) {
       localStorage.removeItem(restStorageKey);
@@ -165,48 +232,6 @@ export default function WorkoutTracker() {
   }, [basePath, hydratePending, id, navigate]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => {
-    if (!restEndsAt) return undefined;
-    let timer;
-    const tick = () => {
-      const now = Date.now();
-      setTimerNow(now);
-      if (now >= restEndsAt) window.clearInterval(timer);
-    };
-    timer = window.setInterval(tick, 250);
-    tick();
-    return () => window.clearInterval(timer);
-  }, [restEndsAt]);
-
-  // Opt-in end-of-rest cue: fires once per timer, only when enabled, and
-  // only through capabilities the device actually has.
-  const restIsComplete = Boolean(restEndsAt && timerNow >= restEndsAt);
-  useEffect(() => {
-    if (!restIsComplete) {
-      restAnnouncedRef.current = false;
-      return;
-    }
-    if (restAnnouncedRef.current || !restAlerts) return;
-    restAnnouncedRef.current = true;
-    try {
-      if (typeof navigator.vibrate === 'function') navigator.vibrate(200);
-    } catch { /* capability declined */ }
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) {
-        const context = new AudioCtx();
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.frequency.value = 880;
-        gain.gain.value = 0.05;
-        oscillator.start();
-        oscillator.stop(context.currentTime + 0.18);
-        oscillator.onended = () => context.close();
-      }
-    } catch { /* audio unavailable or blocked */ }
-  }, [restIsComplete, restAlerts]);
 
   const toggleRestAlerts = () => {
     const next = !restAlerts;
@@ -230,8 +255,6 @@ export default function WorkoutTracker() {
     return 'bg-secondary/30';
   };
   const remainingCount = allSets.filter((set) => set.status === 'pending').length;
-  const restSeconds = restEndsAt ? Math.max(0, Math.ceil((restEndsAt - timerNow) / 1000)) : 0;
-  const restComplete = Boolean(restEndsAt && timerNow >= restEndsAt);
   const sealed = outbox.queuedComplete;
   const attentionRecipe = ATTENTION_FEEDBACK_MOTION[intensity];
 
@@ -421,7 +444,7 @@ export default function WorkoutTracker() {
             variant="ghost"
             size="sm"
             onClick={abandon}
-            className="min-h-9 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            className="min-h-11 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
           >
             Abandon
           </Button>
@@ -430,16 +453,18 @@ export default function WorkoutTracker() {
       {outbox.queuedComplete && (
         <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="finished-locally-banner">
           <p className="text-sm font-medium">Finished on this phone — waiting to sync. Editing is locked so the finished workout stays exactly as you left it.</p>
-          <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={outbox.removeQueuedComplete} data-testid="keep-editing-button">
+          <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0" onClick={outbox.removeQueuedComplete} data-testid="keep-editing-button">
             Keep editing instead
           </Button>
         </div>
       )}
-      <div className="mb-4 flex items-center gap-2 text-xs" aria-live="polite" data-testid="workout-save-state">
-        {outbox.saveState === 'saved' && <><Save className="h-3.5 w-3.5 text-success" /> Saved</>}
-        {outbox.saveState === 'saving' && <><Loader2 className="h-3.5 w-3.5 animate-spin text-primary motion-reduce:animate-none" /> Saving</>}
-        {outbox.saveState === 'not_saved' && <><CircleAlert className="h-3.5 w-3.5 text-gold" /> Not saved yet</>}
-        {!outbox.online && <Badge variant="outline"><WifiOff className="mr-1 h-3.5 w-3.5" /> Offline</Badge>}
+      <div className="mb-4 flex items-center gap-2 text-xs">
+        <span className="flex items-center gap-2" aria-live="polite" data-testid="workout-save-state">
+          {outbox.saveState === 'saved' && <><Save className="h-3.5 w-3.5 text-success" /> Saved</>}
+          {outbox.saveState === 'saving' && <><Loader2 className="h-3.5 w-3.5 animate-spin text-primary motion-reduce:animate-none" /> Saving</>}
+          {outbox.saveState === 'not_saved' && <><CircleAlert className="h-3.5 w-3.5 text-gold" /> Not saved yet</>}
+          {!outbox.online && <Badge variant="outline"><WifiOff className="mr-1 h-3.5 w-3.5" /> Offline</Badge>}
+        </span>
         <Button
           type="button" variant="ghost" size="sm"
           className="ml-auto min-h-11 px-2 text-xs text-muted-foreground"
@@ -474,6 +499,7 @@ export default function WorkoutTracker() {
                 </Badge>
               </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {exercise.prescribed_load_value != null && <span>Load {exercise.prescribed_load_value} {exercise.prescribed_load_unit || 'lb'}</span>}
                 {exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
                 {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
                 {(exercise.prescribed_rest_seconds != null || exercise.prescribed_rest) && (
@@ -493,7 +519,7 @@ export default function WorkoutTracker() {
                   <div className="flex min-w-0 gap-1">
                     <Input
                       type="number" min="0" step="0.5" inputMode="decimal"
-                      className={cn('h-10 min-w-0 px-2 text-sm tabular-nums', isActiveSet(exercise, set) && 'h-12 border-primary/40 font-display text-lg font-semibold')}
+                      className={cn('h-11 min-w-0 px-2 text-sm tabular-nums', isActiveSet(exercise, set) && 'h-12 border-primary/40 font-display text-lg font-semibold')}
                       value={set.actual_load_value ?? ''}
                       placeholder={exercise.prescribed_load_value != null ? String(exercise.prescribed_load_value) : undefined}
                       onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
@@ -516,7 +542,7 @@ export default function WorkoutTracker() {
                       });
                     }}>
                       <SelectTrigger
-                        className="h-10 w-14 shrink-0 px-1.5"
+                        className="h-11 w-14 shrink-0 px-1.5"
                         aria-label={`${exercise.exercise_name} set ${set.set_number} weight unit`}
                       >
                         <SelectValue />
@@ -524,11 +550,11 @@ export default function WorkoutTracker() {
                       <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
                     </Select>
                   </div>
-                  <Input type="number" min="0" step="1" inputMode="numeric" className="h-10 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
+                  <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
                     placeholder={exercise.prescribed_reps || undefined}
                     onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
                     aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} />
-                  <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-10 px-2 text-sm tabular-nums" value={set.actual_rpe ?? ''}
+                  <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-11 px-2 text-sm tabular-nums" value={set.actual_rpe ?? ''}
                     placeholder={exercise.prescribed_rpe || undefined}
                     onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
                     aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
@@ -540,18 +566,18 @@ export default function WorkoutTracker() {
                     <Check className="h-5 w-5" />
                   </Button>
                   {set.set_origin === 'extra' && (
-                    <Button type="button" size="sm" variant="ghost" className="col-start-2 w-fit text-muted-foreground" onClick={() => removeSet(exercise, set)}>
+                    <Button type="button" size="sm" variant="ghost" className="col-start-2 min-h-11 w-fit text-muted-foreground" onClick={() => removeSet(exercise, set)}>
                       <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove extra set
                     </Button>
                   )}
                 </div>
               ))}
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={sealed} onClick={() => addSet(exercise)}>
+                <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={sealed} onClick={() => addSet(exercise)}>
                   <Plus className="mr-1.5 h-4 w-4" /> Add set
                 </Button>
                 <Button
-                  type="button" variant="outline" size="sm"
+                  type="button" variant="outline" size="sm" className="min-h-11"
                   disabled={sealed || lastTimeLoading === exercise.id}
                   onClick={() => applyLastTime(exercise)}
                   data-testid="same-as-last-time"
@@ -610,24 +636,7 @@ export default function WorkoutTracker() {
         </div>
       </div>
 
-      {restEndsAt && (
-        <>
-          <Button
-            type="button"
-            onClick={clearRest}
-            className={`signature-glass fixed bottom-40 right-4 z-40 h-14 min-w-28 rounded-full px-4 font-display text-base font-semibold lg:bottom-24 ${restComplete ? 'signature-glass-success motion-attention-pop-once hover:bg-success/90' : 'text-foreground hover:bg-card/80'}`}
-            style={restComplete ? { '--motion-attention-scale': attentionRecipe.scale } : undefined}
-            aria-label={restComplete ? 'Rest complete, tap to dismiss' : `Rest timer ${formatTimer(restSeconds)}, tap to stop`}
-            data-testid="rest-timer"
-            data-rest-state={restComplete ? 'complete' : 'running'}
-          >
-            <Clock3 className="h-5 w-5" /> {restComplete ? 'Rest complete' : formatTimer(restSeconds)}
-          </Button>
-          <div className="sr-only" role="status" aria-live="assertive" aria-atomic="true" data-testid="rest-complete-announcement">
-            {restComplete ? 'Rest complete' : ''}
-          </div>
-        </>
-      )}
+      <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
 
       <Dialog open={finishOpen} onOpenChange={setFinishOpen}>
         <DialogContent className="signature-glass bg-card/80 sm:rounded-2xl" data-testid="workout-completion-dialog">
@@ -641,7 +650,7 @@ export default function WorkoutTracker() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFinishOpen(false)}>Keep tracking</Button>
-            <Button onClick={finish} disabled={finishing}>{finishing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirm completion'}</Button>
+            <Button onClick={finish} disabled={finishing}>{finishing ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Finishing workout</span></> : 'Confirm completion'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

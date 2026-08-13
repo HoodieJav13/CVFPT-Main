@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { errMsg } from '@/lib/api';
+import { LoadingScreen } from '@/components/common';
 import { BrandBackdrop } from '@/components/BrandBackdrop';
 import { AuthEntrance } from '@/components/Choreography';
 
@@ -19,7 +20,10 @@ export default function Login() {
   const [error, setError] = useState('');
   const [logoBroken, setLogoBroken] = useState(false);
 
-  if (!loading && user) return <Navigate to={user.role === 'client' ? '/client' : '/coach'} replace />;
+  // Wait for the auth check before painting the form — a signed-in user
+  // should never see a flash of the login screen and its choreography.
+  if (loading) return <LoadingScreen />;
+  if (user) return <Navigate to={user.role === 'client' ? '/client' : '/coach'} replace />;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -73,14 +77,14 @@ export default function Login() {
                   placeholder="Your password" className="h-11 rounded-xl" data-testid="login-password-input" />
               </div>
               {error && (
-                <Alert className="border-primary/30 bg-primary/10" aria-live="polite" data-testid="login-error-text">
-                  <CircleAlert className="h-4 w-4 text-primary" aria-hidden />
+                <Alert variant="destructive" className="bg-destructive/10" data-testid="login-error-text">
+                  <CircleAlert className="h-4 w-4" aria-hidden />
                   <AlertTitle>Unable to log in</AlertTitle>
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
               <Button type="submit" className="w-full h-11 rounded-xl font-semibold" disabled={submitting} data-testid="login-submit-button">
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log in'}
+                {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Logging in</span></> : 'Log in'}
               </Button>
             </form>
             <p className="mt-5 text-center text-sm text-muted-foreground">
