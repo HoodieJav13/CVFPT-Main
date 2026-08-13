@@ -385,3 +385,80 @@
     bottom: 6.5rem !important;
   }
 }
+
+/* ================================================================
+   TEMPORARY directional variants — warm-graphite background review
+   (docs/design-principles.md gate). Activated ONLY by the preview
+   toolbar palette lever; production never adds these classes.
+
+   Baseline "graphite": Leagues-matched warm ramp — every surface at
+   hue 30–37 with saturation ≤ 20% (OKLCH ≈ hue 75, chroma ≤ 0.012),
+   arithmetically incapable of reading navy or green. Accents keep
+   their hues (all re-verified ≥ 4.5:1 on the new card). Deltas:
+   background 215 28% 5% → 36 19% 5%; card 214 28% 8% → 30 15% 11%;
+   border 214 22% 18% → 33 10% 21%; foreground 210 25% 97% → 37 25% 90%;
+   top-glow teal alpha 0.16 → 0.10; poster gradients → 170deg
+   hsl(30 15% 11%) → hsl(34 19% 7%).
+
+   Bold probe "desert" (adds to graphite): the teal glow field is
+   removed entirely, and cards carry depth via layered light — inset
+   lit top edge + stacked soft shadows — instead of 1px borders.
+
+   Remove this whole block after the owner picks; the chosen values
+   become the shipped tokens plus the arithmetic guard test.
+   ================================================================ */
+:root.palette-graphite {
+  --background: 36 19% 5%;
+  --foreground: 37 25% 90%;
+  --card: 30 15% 11%;
+  --card-foreground: 37 25% 90%;
+  --popover: 30 15% 11%;
+  --popover-foreground: 37 25% 90%;
+  --primary-foreground: 36 19% 8%;
+  --secondary: 32 12% 14%;
+  --secondary-foreground: 37 25% 90%;
+  --muted: 32 10% 16%;
+  --muted-foreground: 34 6% 62%;
+  --accent: 32 12% 14%;
+  --accent-foreground: 37 25% 90%;
+  --gold-foreground: 36 19% 8%;
+  --achievement-gold-foreground: 34 19% 10%;
+  --signature-foreground: 40 30% 99%;
+  --border: 33 10% 21%;
+  --input: 33 10% 21%;
+}
+:root.palette-graphite ::-webkit-scrollbar-thumb {
+  background: hsl(33 10% 21%);
+}
+:root.palette-graphite .top-glow {
+  background: radial-gradient(600px circle at 20% -10%, rgba(91, 194, 212, 0.10), transparent 55%);
+}
+:root.palette-graphite [class*="from-[hsl(202"] {
+  background-image: linear-gradient(170deg, hsl(30 15% 11%), hsl(34 19% 7%)) !important;
+}
+:root.palette-desert .top-glow {
+  display: none;
+}
+:root.palette-desert [class*="bg-card"],
+:root.palette-desert [class*="from-[hsl(202"] {
+  border-color: transparent;
+  background-color: transparent;
+  background-image: linear-gradient(170deg, hsl(32 17% 12%), hsl(34 19% 7%)) !important;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.07) inset,
+    0 2px 4px rgb(0 0 0 / 0.30),
+    0 10px 20px rgb(0 0 0 / 0.25),
+    0 24px 48px rgb(0 0 0 / 0.22);
+}
+:root.palette-desert [class*="border-primary/40"],
+:root.palette-desert [class*="border-primary/25"] {
+  border-color: transparent;
+}
+/* Probe-only stand-in for the ridge asset recolor: rotate the navy-teal
+   backdrop into the warm band so the probe shows a fully de-navy'd frame.
+   Production would recolor the SVG itself, not filter it. */
+:root.palette-desert .brand-backdrop__ridge,
+:root.palette-desert .brand-backdrop__glow,
+:root.palette-desert .brand-backdrop__veil {
+  filter: hue-rotate(165deg) saturate(0.45);
+}

@@ -49,6 +49,22 @@ export default function PreviewToolbar() {
   const [incompleteAnalytics, setIncompleteAnalytics] = useState(() => {
     try { return localStorage.getItem('cvf_preview_incomplete_analytics') === '1'; } catch { return false; }
   });
+  // TEMPORARY (warm-graphite review): palette lever for the directional
+  // variants defined at the bottom of index.css. Remove with that block
+  // once the owner picks a direction.
+  const [palette, setPalette] = useState(() => {
+    try { return localStorage.getItem('cvf_preview_palette') || 'navy'; } catch { return 'navy'; }
+  });
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('palette-graphite', 'palette-desert');
+    if (palette === 'graphite') root.classList.add('palette-graphite');
+    if (palette === 'desert') root.classList.add('palette-graphite', 'palette-desert');
+    try {
+      if (palette === 'navy') localStorage.removeItem('cvf_preview_palette');
+      else localStorage.setItem('cvf_preview_palette', palette);
+    } catch { /* private mode: the lever just won't persist */ }
+  }, [palette]);
   const clients = useMemo(() => getPreviewClients(), []);
 
   useEffect(() => onPreviewChange(() => {
@@ -129,6 +145,17 @@ export default function PreviewToolbar() {
             {clients.map((client) => (
               <option key={client.id} value={client.id}>{client.name}</option>
             ))}
+          </select>
+          <select
+            value={palette}
+            onChange={(e) => setPalette(e.target.value)}
+            aria-label="Preview palette"
+            className="h-11 rounded-lg border border-border bg-card px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:h-8"
+            data-testid="preview-palette-select"
+          >
+            <option value="navy">Navy (current)</option>
+            <option value="graphite">Graphite</option>
+            <option value="desert">Desert night</option>
           </select>
           {role !== 'client' && (
             <label className="flex h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-2 text-xs lg:h-8" data-testid="preview-incomplete-analytics">
