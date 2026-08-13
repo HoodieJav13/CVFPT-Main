@@ -436,12 +436,14 @@
 :root.palette-graphite [class*="from-[hsl(202"] {
   background-image: linear-gradient(170deg, hsl(30 15% 11%), hsl(34 19% 7%)) !important;
 }
-:root.palette-desert .top-glow {
-  display: none;
-}
+/* Desert v2 (owner direction 2026-08-13): keep desert's depth and gloss,
+   keep graphite's teal ridge header (the hue-rotate stand-in read red and
+   is gone), and make the teal outline a consistent card signature — every
+   card carries primary/0.22; surfaces that already declared the stronger
+   primary/0.40 keep it, so the dominant card still reads dominant. */
 :root.palette-desert [class*="bg-card"],
 :root.palette-desert [class*="from-[hsl(202"] {
-  border-color: transparent;
+  border-color: hsl(var(--primary) / 0.22);
   background-color: transparent;
   background-image: linear-gradient(170deg, hsl(32 17% 12%), hsl(34 19% 7%)) !important;
   box-shadow:
@@ -450,15 +452,6 @@
     0 10px 20px rgb(0 0 0 / 0.25),
     0 24px 48px rgb(0 0 0 / 0.22);
 }
-:root.palette-desert [class*="border-primary/40"],
-:root.palette-desert [class*="border-primary/25"] {
-  border-color: transparent;
-}
-/* Probe-only stand-in for the ridge asset recolor: rotate the navy-teal
-   backdrop into the warm band so the probe shows a fully de-navy'd frame.
-   Production would recolor the SVG itself, not filter it. */
-:root.palette-desert .brand-backdrop__ridge,
-:root.palette-desert .brand-backdrop__glow,
-:root.palette-desert .brand-backdrop__veil {
-  filter: hue-rotate(165deg) saturate(0.45);
+:root.palette-desert [class*="border-primary/40"] {
+  border-color: hsl(var(--primary) / 0.4);
 }
