@@ -190,7 +190,7 @@ export default function ClientSessions() {
               // Surface roles (010 §6): the next session is the raised
               // surface; later ones stay standard so raised means something.
               className={index === 0
-                ? 'rounded-xl border border-primary/40 bg-gradient-to-b from-[hsl(202_35%_12%)] to-[hsl(214_28%_7%)] px-4 py-3 shadow-[var(--app-elev-soft)]'
+                ? 'rounded-xl border border-primary/40 bg-card px-4 py-3 shadow-[var(--app-elev-soft)]'
                 : 'rounded-xl border border-border bg-card/60 px-4 py-3'}
               data-testid="client-upcoming-session-row"
             >

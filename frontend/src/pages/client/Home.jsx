@@ -192,7 +192,7 @@ export default function ClientHome() {
       {/* The dominant-purpose card is the one raised, loud surface on this
           screen (design-plans/010: bold direction, owner pick 2026-08-07). */}
       <Card
-        className="mb-4 overflow-hidden border-primary/40 bg-gradient-to-b from-[hsl(202_35%_13%)] to-[hsl(214_28%_7%)] shadow-[var(--app-elev)]"
+        className="mb-4 overflow-hidden border-primary/40 bg-card shadow-[var(--app-elev)]"
         data-testid="client-today-plan"
       >
         <CardContent className="p-6">

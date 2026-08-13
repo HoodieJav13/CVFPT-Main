@@ -161,7 +161,7 @@ export default function CoachDashboard() {
               // Surface roles (010 §6): the queue's first item — the thing to
               // do next — is the raised surface; the rest stay standard.
               className={index === 0
-                ? 'rounded-xl border border-primary/35 bg-gradient-to-b from-[hsl(202_35%_12%)] to-[hsl(214_28%_7%)] px-4 py-3 shadow-[var(--app-elev-soft)]'
+                ? 'rounded-xl border border-primary/35 bg-card px-4 py-3 shadow-[var(--app-elev-soft)]'
                 : 'rounded-xl border border-border bg-card/60 px-4 py-3'}
               data-testid={`coach-action-${item.kind}`}
             >

@@ -149,7 +149,7 @@ function ProgramAssignmentCard({ assignment, starting, onStart }) {
   const program = assignment.program || {};
   const frequency = program.frequency_days || program.days?.length || 0;
   return (
-    <Card className="border-primary/35 bg-gradient-to-b from-[hsl(202_35%_12%)] to-[hsl(214_28%_7%)] shadow-[var(--app-elev-soft)]" data-testid="client-program-card">
+    <Card className="border-primary/35 bg-card shadow-[var(--app-elev-soft)]" data-testid="client-program-card">
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div><CardTitle className="font-display text-lg">{program.name}</CardTitle>{program.description && <p className="mt-1 text-sm text-muted-foreground">{program.description}</p>}</div>
