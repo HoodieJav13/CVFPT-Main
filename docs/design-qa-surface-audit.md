@@ -245,3 +245,33 @@ Everything else checked in this pass rendered correctly: session lifecycle
 chips and detail pages on both roles, cancel/ask-to-cancel around the 24 h
 cutoff, booking approve/decline with conflict notes, calendar masking,
 progress charts with PR badge and goal line, and role-boundary redirects.
+
+### 2026-08-12 second pass (impeccable plugin, fresh headless session)
+
+Report-only run over the seven core surfaces + token system; findings
+verified against source before fixing. 23 items: 4 P1, 9 P2, 10 P3.
+
+| ID | Finding | Status |
+|----|---------|--------|
+| IMP-1 | Rest-complete FAB ink was the `--success-foreground` tint on solid `--success` — measured 2.01:1; now dark ink at 7.16:1 | fixed |
+| IMP-2 | Coach row-menu "Cancel session" was one-tap destructive; now confirms in a dialog like every other surface | fixed |
+| IMP-3 | 44 px touch-target rule violated as a pattern (~20 call sites at 32–40 px across client surfaces + tracker inputs) | fixed |
+| IMP-4 | Row-menu "Mark complete" offered future-day completion the server refuses; now guarded like the detail page | fixed |
+| IMP-5 | Signed-in users saw a login-screen flash before redirect | fixed |
+| IMP-6 | Login errors styled in brand primary instead of destructive | fixed |
+| IMP-7 | Prescribed load existed only as an input placeholder; now printed in the prescription chips | fixed |
+| IMP-8 | ~14 buttons lost their accessible name while showing a spinner | fixed |
+| IMP-9 | Form-primitive focus ring was 1 px against the project's 2 px spec | fixed |
+| IMP-10 | Client `isPast` omitted `no_show` — roles disagreed about the same session | fixed |
+| IMP-11 | Rest timer re-rendered the whole tracker 4×/sec; tick now isolated in a `RestTimerFab` component | fixed |
+| IMP-12 | Dead `todayCheckIn` conditionals in Home's falsy-branch card | fixed |
+| IMP-13 | Ask-to-cancel confirmation dropped focus and never announced; now a focusable `role="status"` | fixed |
+| IMP-14 | Active linked workout log rendered the "Pending" badge; now "In progress" | fixed |
+| IMP-15 | Coach filter chips signaled selection by color alone; `aria-pressed` added | fixed |
+| IMP-16 | Save-state live region wrapped the rest-alerts toggle; toggle moved out | fixed |
+| IMP-17 | `role="status"` + `aria-live="assertive"` conflict on the rest announcement | fixed |
+| IMP-18 | Past list bare-`<p>` empty state; now the shared `EmptyState` | fixed |
+| IMP-19 | Stray empty flex child in Home's dominant card | fixed |
+| IMP-20 | index.css hygiene: fourth hardcoded gold, three color duplicates, five dead tokens, render-blocking font `@import` | deferred — dedicated token/visual-diff PR with AUD-6 |
+
+AUD-7 (`window.confirm` abandon) remains open as previously triaged.
