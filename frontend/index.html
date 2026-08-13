@@ -6,6 +6,10 @@
     <meta name="theme-color" content="#0B0F12" />
     <meta name="description" content="CVF PT — Core Value Fitness personal training management. Fitness Done Right." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Self-hosted brand fonts: preload the latin files so the auth
+         screen's first paint never waits on a late font discovery. -->
+    <link rel="preload" href="/fonts/oswald-var-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-var-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
