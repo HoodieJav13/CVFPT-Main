@@ -188,6 +188,7 @@ export default function WorkoutTracker() {
   const [feedback, setFeedback] = useState('');
   const [workoutNotes, setWorkoutNotes] = useState('');
   const [finishing, setFinishing] = useState(false);
+  const [abandonOpen, setAbandonOpen] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
   const [lastTimeLoading, setLastTimeLoading] = useState(null);
   const [restAlerts, setRestAlerts] = useState(() => localStorage.getItem('cvf_rest_alerts') === 'on');
@@ -422,7 +423,7 @@ export default function WorkoutTracker() {
   };
 
   const abandon = async () => {
-    if (!window.confirm('Abandon this workout? Saved progress will remain out of the completed history.')) return;
+    setAbandonOpen(false);
     try {
       await api.post(`/workout-logs/${id}/abandon`);
       trackProductEvent('workout_abandoned', { source: isCoach ? 'coach_tracker' : 'client_tracker' });
@@ -443,7 +444,7 @@ export default function WorkoutTracker() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={abandon}
+            onClick={() => setAbandonOpen(true)}
             className="min-h-11 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
           >
             Abandon
@@ -637,6 +638,28 @@ export default function WorkoutTracker() {
       </div>
 
       <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
+
+      <Dialog open={abandonOpen} onOpenChange={setAbandonOpen}>
+        <DialogContent className="max-w-sm" data-testid="workout-abandon-dialog">
+          <DialogHeader>
+            <DialogTitle>Abandon this workout?</DialogTitle>
+            <DialogDescription>Saved progress stays on record but out of the completed history.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" className="min-h-11 rounded-xl" onClick={() => setAbandonOpen(false)} data-testid="abandon-keep-button">
+              Keep tracking
+            </Button>
+            <Button
+              variant="ghost"
+              className="min-h-11 rounded-xl border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={abandon}
+              data-testid="abandon-confirm-button"
+            >
+              Abandon workout
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={finishOpen} onOpenChange={setFinishOpen}>
         <DialogContent className="signature-glass bg-card/80 sm:rounded-2xl" data-testid="workout-completion-dialog">

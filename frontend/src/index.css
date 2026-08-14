@@ -87,7 +87,6 @@
     --success: 160 84% 39%;
     --success-foreground: 152 76% 80%;
     --signature-primary: 188 72% 74%;
-    --signature-gold: 58 100% 72%;
     --signature-foreground: 40 30% 99%;
     --border: 33 10% 21%;
     --input: 33 10% 21%;
@@ -95,16 +94,12 @@
     --chart-1: 188 58% 60%;
     --chart-2: 168 62% 52%;
     --chart-3: 42 92% 62%;
-    --chart-4: 200 70% 58%;
-    --chart-5: 352 86% 62%;
     --radius: 0.9rem;
 
     --font-display: 'Oswald', ui-sans-serif, system-ui;
     --font-body: 'Inter', ui-sans-serif, system-ui;
     --app-elev: 0 10px 30px rgba(0, 0, 0, 0.35);
     --app-elev-soft: 0 8px 18px rgba(0, 0, 0, 0.25);
-    --brand-glow: 0 12px 38px hsl(var(--gold) / 0.18);
-    --focus-ring: 0 0 0 3px rgba(91, 194, 212, 0.35);
     --motion-duration-press: 160ms;
     --motion-duration-state: 200ms;
     --motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
