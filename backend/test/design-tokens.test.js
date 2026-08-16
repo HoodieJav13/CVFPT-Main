@@ -51,3 +51,31 @@ test('the accent family is untouched by the surface rule', () => {
   assert.equal(token('success').h, 160);
   assert.equal(token('destructive').h, 352);
 });
+
+test('the PWA frame colors (meta theme-color, manifest) stay in the warm band', () => {
+  // The app frame — splash screen, status bar, app-switcher card — is
+  // painted from these two files, not from index.css; a palette change
+  // that forgets them greets users with the old color before first paint.
+  const html = fs.readFileSync(path.join(__dirname, '../../frontend/index.html'), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../../frontend/public/site.webmanifest'), 'utf8'));
+  const meta = html.match(/name="theme-color" content="(#[0-9a-fA-F]{6})"/);
+  assert.ok(meta, 'theme-color meta not found');
+  for (const [label, hex] of [
+    ['meta theme-color', meta[1]],
+    ['manifest theme_color', manifest.theme_color],
+    ['manifest background_color', manifest.background_color],
+  ]) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b); const min = Math.min(r, g, b); const d = max - min;
+    let h = 0;
+    if (d > 0) {
+      if (max === r) h = 60 * (((g - b) / d) % 6);
+      else if (max === g) h = 60 * ((b - r) / d + 2);
+      else h = 60 * ((r - g) / d + 4);
+    }
+    if (h < 0) h += 360;
+    assert.ok(h >= WARM_HUE[0] && h <= WARM_HUE[1], `${label} ${hex} hue ${h.toFixed(0)} outside warm band`);
+  }
+});
