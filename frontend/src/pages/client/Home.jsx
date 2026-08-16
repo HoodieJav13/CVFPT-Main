@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   CalendarDays, Dumbbell, ChevronRight, MapPin,
-  MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2, CheckCircle2,
+  MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2, CheckCircle2, Library,
 } from 'lucide-react';
 import { fmtDay, fmtTime, fmtDateTime, fmtDate, initials } from '@/lib/format';
 import { toast } from 'sonner';
@@ -330,7 +330,7 @@ export default function ClientHome() {
         </CardHeader>
         <CardContent>
           {data.next_session ? (
-            <div>
+            <Link to={`/client/sessions/${data.next_session.id}`} className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="next-session-detail-link">
               <p className="font-display text-2xl font-semibold">
                 {fmtDay(data.next_session.scheduled_at)} <span className="text-primary">{fmtTime(data.next_session.scheduled_at)}</span>
               </p>
@@ -349,7 +349,7 @@ export default function ClientHome() {
                   <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {data.next_session.location}</span>
                 )}
               </div>
-            </div>
+            </Link>
           ) : (
             <div>
               <p className="text-sm text-muted-foreground">No upcoming sessions.</p>
@@ -361,14 +361,18 @@ export default function ClientHome() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 mt-4">
-        <Link to="/client/sessions" className="flex items-center gap-3 rounded-xl border border-border bg-card/60 px-4 py-3.5 hover:bg-card transition-colors" data-testid="quick-link-book">
-          <CalendarDays className="h-5 w-5 text-primary" />
-          <span className="text-sm font-medium">Book</span>
+      <div className="grid grid-cols-3 gap-3 mt-4">
+        <Link to="/client/sessions" className="flex items-center gap-2.5 rounded-xl border border-border bg-card/60 px-3.5 py-3.5 hover:bg-card transition-colors" data-testid="quick-link-book">
+          <CalendarDays className="h-5 w-5 shrink-0 text-primary" />
+          <span className="truncate text-sm font-medium">Book</span>
         </Link>
-        <Link to="/client/programs" className="flex items-center gap-3 rounded-xl border border-border bg-card/60 px-4 py-3.5 hover:bg-card transition-colors" data-testid="quick-link-programs">
-          <Dumbbell className="h-5 w-5 text-primary" />
-          <span className="text-sm font-medium">Programs</span>
+        <Link to="/client/programs" className="flex items-center gap-2.5 rounded-xl border border-border bg-card/60 px-3.5 py-3.5 hover:bg-card transition-colors" data-testid="quick-link-programs">
+          <Dumbbell className="h-5 w-5 shrink-0 text-primary" />
+          <span className="truncate text-sm font-medium">Programs</span>
+        </Link>
+        <Link to="/client/resources" className="flex items-center gap-2.5 rounded-xl border border-border bg-card/60 px-3.5 py-3.5 hover:bg-card transition-colors" data-testid="quick-link-resources">
+          <Library className="h-5 w-5 shrink-0 text-primary" />
+          <span className="truncate text-sm font-medium">Resources</span>
         </Link>
       </div>
 
