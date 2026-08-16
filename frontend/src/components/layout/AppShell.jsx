@@ -52,9 +52,7 @@ const COACH_EXTRA = [
   { to: '/coach/analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
-const CLIENT_EXTRA = [
-  { to: '/client/waiver', label: 'Waiver', icon: FileSignature },
-];
+
 
 function BrandLogo({ size = 'desktop' }) {
   const [logoBroken, setLogoBroken] = useState(false);
@@ -122,7 +120,7 @@ export default function AppShell() {
   const nav = isCoach ? COACH_NAV : CLIENT_NAV;
   const sidebarNav = isCoach
     ? [...COACH_NAV, ...COACH_EXTRA, ...(user.role === 'admin' ? [{ to: '/admin', label: 'Admin', icon: ShieldCheck }] : [])]
-    : [...CLIENT_NAV, ...CLIENT_EXTRA];
+    : CLIENT_NAV;
 
   useEffect(() => { refreshNotifications(); }, [location.pathname, refreshNotifications]);
 

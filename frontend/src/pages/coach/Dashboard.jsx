@@ -119,7 +119,7 @@ export default function CoachDashboard() {
             <p className="text-sm text-muted-foreground py-2">No sessions scheduled today.</p>
           )}
           {data.today_sessions.map((s) => (
-            <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="today-session-row">
+            <Link key={s.id} to={`/coach/sessions/${s.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3 hover:bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid="today-session-row">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="text-center shrink-0">
                   <p className="font-display font-semibold text-primary tabular-nums">{fmtTime(s.scheduled_at)}</p>
@@ -131,7 +131,7 @@ export default function CoachDashboard() {
                 </div>
               </div>
               <StatusBadge status={s.status} />
-            </div>
+            </Link>
           ))}
         </CardContent>
       </Card>
