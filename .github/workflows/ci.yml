@@ -21,6 +21,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
+      - name: Deploy-boundary guard (backend must not reach into frontend/)
+        working-directory: .
+        run: bash scripts/check-boundaries.sh backend
       - run: npm ci
       - run: npm test
       - run: npm audit --omit=dev
@@ -37,6 +40,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Deploy-boundary guard (frontend must not reach into backend/)
+        working-directory: .
+        run: bash scripts/check-boundaries.sh frontend
       - run: npm ci
       - run: npm run build
       - run: npx playwright install --with-deps chromium
