@@ -2,8 +2,10 @@
 
 Status: **owner-reviewed 2026-08-01** — the four review corrections are
 applied below and the four open decisions are resolved (recorded at the
-end). The build is unblocked once the owner completes the provider setup
-steps. One migration ⚠ (digest opt-out) ships with the build.
+end). Built and merged 2026-08-01 (`6259852`, PR #49); inert until the owner
+sets the provider env values (`RESEND_API_KEY`, `CRON_SECRET`,
+`NOTIFY_REPLY_TO` — see docs/closed-loop-operations.md). One migration ⚠
+(digest opt-out, `20260801091539_email_digest_preferences.sql`) shipped with it.
 
 ## Scope (per D2)
 

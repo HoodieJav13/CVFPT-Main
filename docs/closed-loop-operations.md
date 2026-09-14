@@ -1,6 +1,6 @@
 # Closed-loop operations upgrade
 
-Status: implemented on `codex/closed-loop-operations`; production activation is intentionally held for owner review.
+Status: merged to `main` in `6259852` (PR #49, 2026-08-01; the source branch is gone). Remaining owner steps: hosted apply confirmation + email activation below.
 
 ## What changed
 
@@ -10,16 +10,16 @@ Status: implemented on `codex/closed-loop-operations`; production activation is 
 4. **First-party operations telemetry** — privacy-filtered events record the major training, booking, message, check-in, PWA, and frontend-error moments. The server derives actor identity, enforces fixed event/property vocabularies, reduces routes to non-identifying templates, rate-limits writes, and returns a request ID on every API response. Sanitized 5xx logs contain only request ID, method, route template, status, and duration.
 5. **Mobile/accessibility hardening** — shared page actions stack safely on narrow screens; the Sessions action row stays in view; Client Detail tabs announce their overflow; and touched primary controls measure at least 44px at 390px.
 
-## Owner stops before merge
+## Owner activation steps
 
-### Database apply
+### Database apply confirmation
 
-Review and apply both migrations from this branch in one push:
+Both migrations are on `main`:
 
 - `20260801091539_email_digest_preferences.sql`
 - `20260801091657_product_telemetry.sql`
 
-Run `supabase db push` only after reviewing the PR. Both migrations were replayed with the complete migration history on a disposable local database. Neither has been applied to the hosted project by this branch.
+The repository holds no hosted-apply record for either file (the last hosted ledger record is `docs/hardening/2026-07-22-pr5-hosted-release.md`). Confirm with `supabase migration list --linked` — both versions must show in the Remote column; if either is missing, run `supabase db push` after review. Both migrations were replayed with the complete migration history on a disposable local database before merge.
 
 ### Email activation
 

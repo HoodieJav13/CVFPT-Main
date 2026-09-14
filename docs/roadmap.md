@@ -164,10 +164,5 @@ Merged and, where ⚠, applied to hosted:
 | Coach history/last-time unhide in tracker | #29 | merged (owner approved) |
 | Roadmap doc (this file) | #27 | merged last, ledger final for this round |
 
-Sequenced next: PR-F conflict surfacing in the merged picker + booking
-approve (roadmap Track 3 item 9); structured rest ⚠ (unblocked by #22's
-merge); UI-6 desktop pass (owner design gate); Goals ⚠ and Availability ⚠
-(owner decisions).
-
-Old PR #7 is superseded by #9 and can be closed. PR #3 (Stripe) stays
-untouched per the standing deferral.
+Superseded by `docs/roadmap-v3.md` (v2 closed at PR #39; PR #7 is closed).
+PR #3 (Stripe) stays untouched per the standing deferral.
