@@ -24,6 +24,9 @@ jobs:
       - name: Deploy-boundary guard (backend must not reach into frontend/)
         working-directory: .
         run: bash scripts/check-boundaries.sh backend
+      - name: Test provisioning guards and recovery (mocked service, no network)
+        working-directory: .
+        run: node --test scripts/prepare-test-accounts.test.mjs
       - run: npm ci
       - run: npm test
       - run: npm audit --omit=dev
