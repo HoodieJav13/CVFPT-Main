@@ -1,0 +1,5 @@
+[
+  {"number": 101, "labels": [], "files": [{"path": "supabase/migrations/20260901000000_a.sql"}]},
+  {"number": 103, "labels": [{"name": "enhancement"}], "files": [{"path": "supabase/migrations/20260902000000_b.sql"}]},
+  {"number": 102, "labels": [], "files": [{"path": "frontend/src/pages/Home.jsx"}]}
+]
