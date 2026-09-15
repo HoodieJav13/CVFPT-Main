@@ -73,10 +73,13 @@ list changes.
 ⚠ migrations expected: #2 and #3 (small, sequential), possibly #7.
 Applied before merge, never two pending, exactly as in v2.
 
-**v3 close-out (2026-08-01):** every unblocked item is merged. The two
-remaining builds each wait on an owner action — group slots ⚠ on the D5
-partner decision (recommended wording is in this doc), and the email
-build ⚠ on provider setup (steps in docs/email-notifications-design.md).
+**v3 close-out (2026-08-01, amended 2026-09-14):** every unblocked item is
+merged. Group slots ⚠ still waits on the D5 partner decision (recommended
+wording is in this doc). The email build merged in `6259852` (PR #49,
+2026-08-01: `backend/src/services/email.js` + migration
+`20260801091539_email_digest_preferences.sql`); what remains is owner
+provider configuration only — `RESEND_API_KEY`, `CRON_SECRET`,
+`NOTIFY_REPLY_TO` (steps in docs/closed-loop-operations.md).
 
 ## Status ledger
 
@@ -87,6 +90,7 @@ build ⚠ on provider setup (steps in docs/email-notifications-design.md).
 | Studio week view | #42 | merged |
 | Auto-book ⚠ | #43 | merged (migration applied) |
 | PWA installability | #44 | merged |
-| Email notifications design note | #45 | merged — D2 spec settled; build awaits owner provider setup + ships one opt-out migration ⚠ |
+| Email notifications design note | #45 | merged — D2 spec settled |
+| Email notifications build ⚠ | #49 (`6259852`) | merged — inert until the owner sets the provider env values |
 | Coach analytics design note | #46 | merged — thresholds approved, response contract settled |
 | Coach analytics build | #47 | merged — endpoint + dashboard live; thresholds now tune against real usage by editing the ATTENTION constants |
