@@ -65,7 +65,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:e2e:preview": "playwright test",
-    "test:e2e:live": "playwright test --config playwright.live.config.mjs"
+    "test:e2e:live": "playwright test --config playwright.live.config.mjs",
+    "lint": "eslint ."
   },
   "browserslist": {
     "production": [
