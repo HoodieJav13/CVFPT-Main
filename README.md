@@ -26,8 +26,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment details.
 ## Verification
 
 Backend unit/regression checks, the frontend production build, and preview-mode
-browser checks are secret-free. The current results are 94/94 backend checks and
-16/16 preview browser flows:
+browser checks are secret-free. The current results are 319/319 backend checks and
+20/20 preview browser flows:
 
 ```sh
 cd backend && npm test
