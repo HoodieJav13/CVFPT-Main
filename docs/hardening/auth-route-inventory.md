@@ -258,7 +258,8 @@ identified below.
 
 Evidence codes:
 
-- **U94** — 94 backend regressions under `backend/test`, including access,
+- **U319** — 319 backend regressions under `backend/test` (94 when this
+  inventory was first recorded), including access,
   archived-boundary, validation, CORS, rate-limit, Stripe-mode, claim-race,
   logging, deterministic paste/CSV/PDF drafts, grants, workout tracking,
   notifications, coach feedback, Exercise History, and transactional source
@@ -267,8 +268,8 @@ Evidence codes:
   development database with real auth and labeled fake records.
 - **B7** — `frontend/e2e/live-auth.spec.mjs`, 7/7 historical Production
   real-auth browser flows. This suite was not rerun for the PR #5 release.
-- **P16** — `frontend/e2e/preview-critical.spec.mjs`, 16/16 deterministic
-  browser flows.
+- **P20** — `frontend/e2e/preview-critical.spec.mjs`, 20/20 deterministic
+  browser flows (16 when this inventory was first recorded).
 - **PG** — isolated PostgreSQL migration/RPC behavior and hosted grant probes.
 - **H19** — 12 protected-Vercel role/profile checks plus seven hosted
   invite/signup/refresh/identity/archive checks.
@@ -280,22 +281,22 @@ handler. External/gated exceptions are called out explicitly.
 
 | Inventory section / endpoints | Relevant tests |
 |---|---|
-| Authentication — all four endpoints | **L88**, **B7**, **H19**; signup race and archived refresh: **U94** |
-| Clients — all six endpoints | **L88**, **B7**, **U94**; archive/restore boundary: **B7** + **U94** |
-| Sessions and notes — all nine endpoints | **L88**, **B7**, **U94**; atomic credit-independent completion: **PG** |
-| Progress — all eight endpoints | **L88**, **B7**, **U94** |
-| Daily check-ins — all six endpoints | **L88**, **B7**, **U94** |
-| Exercise library/workout CRUD — first ten Program Builder endpoints | **L88**, **B7**, **P16**, **U94**, **PG** |
-| Deterministic paste parse, shared review/commit, and one-to-five-day edit | **L88**, **B7**, **P16**, **U94**, **PG**; normalized-name reuse and manual/needs-review source tagging verified |
-| CSV template/parse, import commit, PDF export | **L88**, **B7**, **P16**, **PG**; CSV/PDF draft validation remains three to five days |
-| AI PDF parse | File/config/error boundaries: **U94**; successful external-AI parsing explicitly deferred by scope |
-| Program CRUD and both assignment families | **L88**, **B7**, **P16**, **U94**, **PG** |
-| Resource Library and categories — all eight endpoints | **L88**, **P16**, **U94**, **PG**; public/assigned access, cross-client hiding, cross-uploader management, upload rejection, signing order, and soft unassign/reassign verified |
-| Messages — all five endpoints | **L88**, **B7**, **U94** |
-| Booking requests — all five endpoints | **L88**, **B7**, **U94**, **PG** |
-| Waiver reads/status | **L88**, **B7**, **U94**, **PG** |
-| Waiver version/sign/paper mutations | Uniqueness/grants/transaction boundaries: **U94**, **PG**; successful UI signing/paper-sign verification explicitly deferred by the owner on 2026-07-11 pending approved legal text |
-| Workout tracking, coach feedback, and notifications — all 20 endpoints | Baseline workout/notification flows: **B7**; current deterministic and backend coverage: **P16**, **U94**, **PG**. PR #5 hosted grants and rollback-only behavior probes are recorded in the release evidence; its dedicated real-auth suite was not rerun. |
-| Retired package/payment routes | Production `404` checks; dormant source-level historical evidence remains **L88**, **B7**, **U94**, **PG** |
+| Authentication — all four endpoints | **L88**, **B7**, **H19**; signup race and archived refresh: **U319** |
+| Clients — all six endpoints | **L88**, **B7**, **U319**; archive/restore boundary: **B7** + **U319** |
+| Sessions and notes — all nine endpoints | **L88**, **B7**, **U319**; atomic credit-independent completion: **PG** |
+| Progress — all eight endpoints | **L88**, **B7**, **U319** |
+| Daily check-ins — all six endpoints | **L88**, **B7**, **U319** |
+| Exercise library/workout CRUD — first ten Program Builder endpoints | **L88**, **B7**, **P20**, **U319**, **PG** |
+| Deterministic paste parse, shared review/commit, and one-to-five-day edit | **L88**, **B7**, **P20**, **U319**, **PG**; normalized-name reuse and manual/needs-review source tagging verified |
+| CSV template/parse, import commit, PDF export | **L88**, **B7**, **P20**, **PG**; CSV/PDF draft validation remains three to five days |
+| AI PDF parse | File/config/error boundaries: **U319**; successful external-AI parsing explicitly deferred by scope |
+| Program CRUD and both assignment families | **L88**, **B7**, **P20**, **U319**, **PG** |
+| Resource Library and categories — all eight endpoints | **L88**, **P20**, **U319**, **PG**; public/assigned access, cross-client hiding, cross-uploader management, upload rejection, signing order, and soft unassign/reassign verified |
+| Messages — all five endpoints | **L88**, **B7**, **U319** |
+| Booking requests — all five endpoints | **L88**, **B7**, **U319**, **PG** |
+| Waiver reads/status | **L88**, **B7**, **U319**, **PG** |
+| Waiver version/sign/paper mutations | Uniqueness/grants/transaction boundaries: **U319**, **PG**; successful UI signing/paper-sign verification explicitly deferred by the owner on 2026-07-11 pending approved legal text |
+| Workout tracking, coach feedback, and notifications — all 20 endpoints | Baseline workout/notification flows: **B7**; current deterministic and backend coverage: **P20**, **U319**, **PG**. PR #5 hosted grants and rollback-only behavior probes are recorded in the release evidence; its dedicated real-auth suite was not rerun. |
+| Retired package/payment routes | Production `404` checks; dormant source-level historical evidence remains **L88**, **B7**, **U319**, **PG** |
 | Admin — all four endpoints | **L88**, **B7**, **H19** |
-| Coach/client dashboards | **L88**, **B7**, **P16**, **H19** |
+| Coach/client dashboards | **L88**, **B7**, **P20**, **H19** |
