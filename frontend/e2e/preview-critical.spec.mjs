@@ -931,3 +931,29 @@ test('focused entry is opt-in and never turns a target into a logged value', asy
   await page.goto('/client/workouts/opt-out/track?entry=list');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('cvf_set_entry'))).toBe('list');
 });
+
+test('coach agenda and client home follow the round-2 structure', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach');
+  await expect(page.getByTestId('coach-day-summary')).toContainText('waiting on you');
+  const agenda = page.getByTestId('coach-dashboard-today-sessions-card');
+  await expect(agenda.getByTestId('agenda-workout-done-chip')).toBeVisible();
+  await expect(agenda.getByTestId('agenda-confirm-complete-button')).toBeVisible();
+  // On desktop the agenda and the queue sit side by side.
+  const [agendaBox, queueBox] = await Promise.all([agenda.boundingBox(), page.getByTestId('coach-action-queue').boundingBox()]);
+  expect(queueBox.x).toBeGreaterThan(agendaBox.x + agendaBox.width - 1);
+
+  await usePreviewRole(page, 'client');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/client');
+  const plan = page.getByTestId('client-today-plan');
+  await expect(plan).toBeVisible();
+  await expect(page.getByTestId('week-legend')).toBeVisible();
+  // Today's work comes before yesterday's catch-up reminder.
+  const catchUp = page.getByTestId('catch-up-card');
+  if (await catchUp.count()) {
+    expect((await catchUp.boundingBox()).y).toBeGreaterThan((await plan.boundingBox()).y);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
