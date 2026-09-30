@@ -97,6 +97,21 @@ test('coach export still renders from the shared module', async () => {
   assert.match(text, /PRIVATE watch left knee/);
 });
 
+test('page footers do not spill onto extra blank pages', async () => {
+  const { PDFParse } = require('pdf-parse');
+  const pdf = await generateProgramPdf(
+    { name: 'Short Program', frequency_days: 1, days: [{ day_number: 1, workout: { name: 'Legs', exercises: [squat] } }] },
+    { coach: { name: 'Coach Sam' } },
+  );
+  const parser = new PDFParse({ data: pdf });
+  try {
+    const info = await parser.getInfo();
+    assert.equal(info.total, 1);
+  } finally {
+    await parser.destroy();
+  }
+});
+
 test('client log-sheet routes are client-only, rate limited, and scoped to the caller', () => {
   const program = routeBlock("router.get('/client/assignments/:assignmentId/log-sheet.pdf', requireClient, pdfExportLimiter,");
   assert.match(program, /from\('program_assignments'\)/);

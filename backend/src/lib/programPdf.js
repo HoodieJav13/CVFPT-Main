@@ -88,6 +88,9 @@ function createBrandedPdf(title, render) {
     const range = doc.bufferedPageRange();
     for (let i = range.start; i < range.start + range.count; i += 1) {
       doc.switchToPage(i);
+      // The footer sits inside the bottom margin; without this pdfkit treats it
+      // as overflow and appends a blank page per footer.
+      doc.page.margins.bottom = 0;
       doc.fillColor(muted).font('Helvetica').fontSize(8)
         .text(`Core Value Fitness - ${i + 1} / ${range.count}`, 42, 752, { width: 528, align: 'center' });
     }
@@ -112,7 +115,7 @@ function drawDayBanner(doc, title, goal) {
 function drawExerciseTitle(doc, exercise, index) {
   const top = doc.y;
   doc.circle(53, top + 8, 8).fill(teal);
-  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(8).text(String(index + 1), 49, top + 3, { width: 8, align: 'center' });
+  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(8).text(String(index + 1), 45, top + 3, { width: 16, align: 'center', lineBreak: false });
   doc.fillColor('#111827').font('Helvetica-Bold').fontSize(10).text(exerciseName(exercise), 70, top, { width: 470 });
 }
 
