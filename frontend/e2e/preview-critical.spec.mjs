@@ -870,3 +870,64 @@ test.describe('home-screen install on Android Chrome', () => {
     await expect(page.getByTestId('install-guide')).toHaveCount(0);
   });
 });
+
+test('focused entry is opt-in and never turns a target into a logged value', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('start-program-workout').first().click();
+  await expect(page.getByTestId('workout-tracker')).toBeVisible();
+  // Off by default: the set table renders until the device opts in.
+  await expect(page.getByTestId('tracker-exercise-card').first()).toBeVisible();
+  await expect(page.getByTestId('focused-entry')).toHaveCount(0);
+
+  // ?entry=focused opts this device in and is remembered. Preview data lives
+  // in memory, so opt in first, then start a fresh workout.
+  await page.goto('/client/workouts/opt-in/track?entry=focused');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('cvf_set_entry'))).toBe('focused');
+  await page.goto('/client/programs');
+  await page.getByTestId('start-program-workout').first().click();
+  await expect(page.getByTestId('focused-entry')).toBeVisible();
+  await expect(page.getByTestId('tracker-exercise-card')).toHaveCount(0);
+  await expect(page.getByText('Reps (optional)')).toBeVisible();
+
+  // Log set 1 with only a weight: reps and RPE stay "not recorded".
+  await page.locator('#focused-weight').fill('40');
+  await page.getByTestId('focused-log-set').click();
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await expect(page.getByTestId('focused-logged-values').first()).toHaveText('40 lb · reps not recorded · RPE not recorded');
+
+  // The dedicated rest screen replaces the fields, then hands back to set 2.
+  await expect(page.getByTestId('focused-rest')).toBeVisible();
+  await page.getByRole('button', { name: '+30s' }).click();
+  await page.getByTestId('focused-skip-rest').click();
+  await expect(page.getByText('Set 2 of 3')).toBeVisible();
+
+  // RPE keeps half-point steps and can be cleared back to not recorded.
+  await page.getByRole('button', { name: 'Increase RPE' }).click();
+  await page.getByRole('button', { name: 'Increase RPE' }).click();
+  await expect(page.locator('#focused-rpe')).toHaveValue('7.5');
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await expect(page.locator('#focused-rpe')).toHaveValue('');
+
+  // Correct set 1 explicitly, then check the saved values.
+  await page.getByRole('button', { name: 'Edit set 1' }).click();
+  await expect(page.getByTestId('focused-editing-banner')).toContainText('Editing set 1');
+  await page.locator('#focused-reps').fill('10');
+  await page.getByTestId('focused-save-edit').click();
+  await expect(page.getByTestId('focused-logged-values').first()).toHaveText('40 lb · 10 reps · RPE not recorded');
+
+  // Finish stays reachable and keeps both feedback and workout notes.
+  await page.getByTestId('focused-finish-button').click();
+  const dialog = page.getByTestId('workout-completion-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId('finish-exercise-counts')).toBeVisible();
+  await expect(dialog.getByLabel('Feedback for your coach')).toBeVisible();
+  await expect(dialog.getByLabel('Workout notes')).toBeVisible();
+  await expect(dialog.getByTestId('finish-mark-remaining-done')).toContainText('Mark the other 8 sets done');
+  await page.keyboard.press('Escape');
+
+  // ?entry=list turns it back off for this device.
+  await page.goto('/client/workouts/opt-out/track?entry=list');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('cvf_set_entry'))).toBe('list');
+});
