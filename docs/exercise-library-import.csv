@@ -152,7 +152,7 @@ Banded Supermans,Core,,Back,"Shoulders, Glutes",,Spinal & Shoulder Stability
 Superman Flutter Kick,Core,,Back,Glutes,,Spinal & Shoulder Stability
 Cross Body Superman,Core,,Back,Glutes,,Spinal & Shoulder Stability
 Prone Arm Circles,Core,,Back,"Shoulders, Glutes",,Spinal & Shoulder Stability
-Push up,Strength,,Chest,"Shoulders, Triceps",,Calisthenics
+Push up,Strength,,Chest,"Shoulders, Triceps",,"Calisthenics | Variations: Assisted, Decline, Single leg, Spiderman"
 Close Grip Push Up,Strength,,Chest,"Shoulders, Triceps",,Calisthenics
 Wide Grip Push Up,Strength,,Chest,"Shoulders, Triceps",,Calisthenics
 Diamond Push Up,Strength,,Chest,"Shoulders, Triceps",,Calisthenics
@@ -195,7 +195,6 @@ Standing Barbell Curl,Strength,,Biceps,,,Barbell Isolation
 Chest Press,Strength,,Chest,,,"Variations: Dumbbell, Barbell, Machine"
 Incline Press,Strength,,Chest,,,"Variations: Dumbbell, Barbell, Machine"
 Decline Press,Strength,,Chest,,,"Variations: Dumbbell, Barbell"
-Push ups,Strength,,Chest,,,"Variations: Assisted, Decline, Single leg, Spiderman"
 Dips,Strength,,Chest,,,Variations: Assisted
 Flies (3 Angles),Strength,,Chest,,,"Variations: Dumbbell, Cables, Machine"
 Cross Body Press,Strength,,Chest,,,"Variations: Cables, Bands"
@@ -271,7 +270,7 @@ Goblet Squats,Strength,,Quads,Legs,,"Variations: Heel elevated, Pause, TUT | Ver
 Hack Squat,Strength,,Quads,,,"Variations: Pause, TUT"
 Leg Press,Strength,,Quads,Glutes,,"Variations: Single Leg, TUT, High rep | Variations: Single leg, Pause, TUT"
 Lunge (3 angles),Strength,,Quads,,,"Variations: Heel elevated, Walking, ISO"
-Split squat,Strength,,Quads,,,"Variations: Rear foot elevated, Heel elevated"
+Split squat,Strength,,Quads,,,"Variations: Rear foot elevated, Heel elevated | Vertical jump progression: Build the base"
 Step ups (3 angles),Strength,,Quads,,,"Variations: Slow, Weighted, Explosive"
 Sled,Strength,,Quads,,,"Variations: Push, Pull, Row"
 Leg Extensions,Strength,,Quads,,,Variations: Single leg
@@ -286,7 +285,7 @@ Kettle bell swings,Strength,,Hamstrings,Glutes,,Variations: Single arm
 Bridges,Strength,,Glutes,,,"Variations: Single leg, MB, Bands, Marching"
 Hip Thrusts,Strength,,Glutes,,,Variations: Single leg
 Squats,Strength,,Glutes,,,"Variations: Banded, Pause, TUT, Box"
-Standing Calf Raise,Strength,,Calves/Ankles,,,"Variations: Single leg, elevated, slant board"
+Standing Calf Raise,Strength,,Calves/Ankles,,,"Variations: Single leg, elevated, slant board | Ankle stability level 1"
 Seated Calf Raise,Strength,,Calves/Ankles,,,"Variations: Single leg, pyramids"
 Pogo jumps,Strength,,Calves/Ankles,,,"Variations: Band assisted, weighted"
 Single Leg Balance (Assisted),Balance,Chair/Pole,Legs,Calf & Ankle,,Balance progression level 0 | Ankle stability level 0 | Ankle stability level 1
@@ -322,8 +321,8 @@ Lunges (Isometric),Balance,"DB,KB,BB",Legs,,,Balance progression level 3
 Lunges (Stationary (Pulses)),Balance,"DB,KB,BB",Legs,,,Balance progression level 3
 Lunges (Forward),Balance,"DB,KB,BB",Legs,,,Balance progression level 3
 Lunges (Reverse),Balance,"DB,KB,BB",Legs,,,Balance progression level 3
-Lunges (Walking),Balance,"DB,KB,BB",Legs,,,Balance progression level 3
-Lunges (Pendulum),Balance,"DB,KB,BB",Legs,,,Balance progression level 3
+Lunges (Walking),Balance,"DB,KB,BB",Legs,,,Balance progression level 3 | Vertical jump progression: Build the base
+Lunges (Pendulum),Balance,"DB,KB,BB",Legs,,,Balance progression level 3 | Vertical jump progression: Build the base
 Lunges (Lateral),Balance,"DB,KB,BB",Legs,,,Balance progression level 3
 Lunges (Multidirectional),Balance,"DB,KB,BB",Legs,,,Balance progression level 3
 Lunges (Perturbation),Balance,Bosu Ball,Legs,,,Balance progression level 3
@@ -383,7 +382,6 @@ Toe Marches (Assisted),Stability,,Calf & Ankle,,,Ankle stability level 0
 Foot Pronation/Supination (Seated),Stability,,Calf & Ankle,,,Ankle stability level 0
 Calf Raise ISO Hold (Assisted),Stability,,Calf & Ankle,,,Ankle stability level 0
 Seated Foam Roller Inv./Eversion,Stability,Foam Roller,Calf & Ankle,,,Ankle stability level 1
-Calf Raise (Standing),Stability,,Calf & Ankle,,,Ankle stability level 1
 Tibialis Raise (Assisted),Stability,,Calf & Ankle,,,Ankle stability level 1
 Angled Calf Raise (Assisted),Stability,,Calf & Ankle,,,Ankle stability level 1
 Angled Calf Raise ISO Hold (Assisted),Stability,,Calf & Ankle,,,Ankle stability level 1
@@ -423,9 +421,6 @@ Low level lunge hops,Plyometrics,,Legs,,,Vertical jump progression: Build the ba
 Banded + heel elevated tube walk,Plyometrics,,Legs,,,Vertical jump progression: Build the base
 Banded Knee Drive,Plyometrics,,Legs,,,Vertical jump progression: Build the base
 Step ups w/knee drive,Plyometrics,,Legs,,,Vertical jump progression: Build the base
-Pendulum Lunges,Plyometrics,,Legs,,,Vertical jump progression: Build the base
-Walking lunges,Plyometrics,,Legs,,,Vertical jump progression: Build the base
-Splits squats,Plyometrics,,Legs,,,Vertical jump progression: Build the base
 Single leg RDL (w/Row),Plyometrics,,Legs,,,Vertical jump progression: Build the base
 Bridges (Weighted/Marching/SL),Plyometrics,,Legs,,,Vertical jump progression: Build the base
 Single leg calf extensions (end range),Plyometrics,,Legs,,,Vertical jump progression: Build the base
