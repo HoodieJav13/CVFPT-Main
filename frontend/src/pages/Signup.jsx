@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,12 +8,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { errMsg } from '@/lib/api';
+import { postAuthPath } from '@/lib/authRedirect';
 import { BrandBackdrop } from '@/components/BrandBackdrop';
 import { AuthEntrance } from '@/components/Choreography';
 
 export default function Signup() {
   const { user, loading, signup } = useAuth();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const [email, setEmail] = useState(searchParams.get('email') || '');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -21,7 +23,7 @@ export default function Signup() {
   const [error, setError] = useState('');
   const [logoBroken, setLogoBroken] = useState(false);
 
-  if (!loading && user) return <Navigate to={user.role === 'client' ? '/client' : '/coach'} replace />;
+  if (!loading && user) return <Navigate to={postAuthPath(user, location.state?.from)} replace />;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -93,7 +95,7 @@ export default function Signup() {
             </form>
             <p className="mt-5 text-center text-sm text-muted-foreground">
               Already have an account?{' '}
-              <Link to="/login" className="signature-primary-text font-medium hover:underline" data-testid="go-to-login-link">
+              <Link to="/login" state={location.state} className="signature-primary-text font-medium hover:underline" data-testid="go-to-login-link">
                 Log in
               </Link>
             </p>

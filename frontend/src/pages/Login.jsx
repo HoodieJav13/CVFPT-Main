@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate } from 'react-router';
+import { Link, Navigate, useLocation } from 'react-router';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,12 +8,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { errMsg } from '@/lib/api';
+import { postAuthPath } from '@/lib/authRedirect';
 import { LoadingScreen } from '@/components/common';
 import { BrandBackdrop } from '@/components/BrandBackdrop';
 import { AuthEntrance } from '@/components/Choreography';
 
 export default function Login() {
   const { user, loading, login } = useAuth();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -23,7 +25,7 @@ export default function Login() {
   // Wait for the auth check before painting the form — a signed-in user
   // should never see a flash of the login screen and its choreography.
   if (loading) return <LoadingScreen />;
-  if (user) return <Navigate to={user.role === 'client' ? '/client' : '/coach'} replace />;
+  if (user) return <Navigate to={postAuthPath(user, location.state?.from)} replace />;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -89,7 +91,7 @@ export default function Login() {
             </form>
             <p className="mt-5 text-center text-sm text-muted-foreground">
               Invited by your coach?{' '}
-              <Link to="/signup" className="signature-primary-text font-medium hover:underline" data-testid="go-to-signup-link">
+              <Link to="/signup" state={location.state} className="signature-primary-text font-medium hover:underline" data-testid="go-to-signup-link">
                 Claim your account
               </Link>
             </p>
