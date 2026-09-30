@@ -30,6 +30,8 @@ import { toast } from 'sonner';
 import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { CoachClientWeek } from '@/components/WeekRhythm';
+import { SaveTemplateDialog } from '@/components/training/TemplateBits';
+import { WorkoutDialog, workoutToForm } from '@/pages/coach/Programs';
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -892,17 +894,26 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [exerciseLoads, setExerciseLoads] = useState({});
+  const [programAssignments, setProgramAssignments] = useState(null);
+  // Editing a client's private copy of a workout day, and saving a copy back as a template.
+  const [copyEditor, setCopyEditor] = useState(null); // { workout, form }
+  const [copyLibrary, setCopyLibrary] = useState(null);
+  const [copySaving, setCopySaving] = useState(false);
+  const [templateTarget, setTemplateTarget] = useState(null); // { kind, id, name, parent, label }
+  const [templateSaving, setTemplateSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [programRes, workoutRes, assignmentRes, historyRes] = await Promise.all([
+      const [programRes, workoutRes, assignmentRes, historyRes, programAssignmentRes] = await Promise.all([
         api.get('/programs'),
         api.get('/programs/workouts'),
         api.get(`/programs/workout-assignments/client/${clientId}`),
         api.get(`/workout-logs/client/${clientId}`),
+        api.get(`/programs/program-assignments/client/${clientId}`),
       ]);
       setPrograms(programRes.data);
       setWorkouts(workoutRes.data);
+      setProgramAssignments(programAssignmentRes.data);
       setWorkoutAssignments(assignmentRes.data);
       setWorkoutHistory(historyRes.data);
       setLoadError(null);
@@ -915,12 +926,22 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const awaitingInitialData = !programs || !workouts || !workoutAssignments || !workoutHistory;
+  const awaitingInitialData = !programs || !workouts || !workoutAssignments || !workoutHistory || !programAssignments;
   if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="client-detail-programs" onRetry={() => { setLoadError(null); load(); }} />;
   if (awaitingInitialData) return <LoadingScreen />;
 
-  const assigned = programs.filter((p) => (p.active_assignments || []).some((a) => a.client?.id === clientId));
-  const available = programs.filter((p) => !p.active_assignments.some((a) => a.client?.id === clientId));
+  // Each assignment carries the client's own program (a private copy of the template it
+  // came from, or the template itself for older live-linked assignments). Shape them like
+  // the program cards expect: the program, plus this client's assignment.
+  const assigned = programAssignments.map((assignment) => ({
+    ...assignment.program,
+    day_count: (assignment.program.days || []).length,
+    exercise_count: (assignment.program.days || []).reduce((sum, day) => sum + (day.workout?.exercise_count ?? day.workout?.exercises?.length ?? 0), 0),
+    active_assignments: [{ ...assignment, client: { id: clientId } }],
+  }));
+  const assignedSourceIds = new Set(programAssignments.map((a) => a.program.source_program_id || a.program.id));
+  const available = programs.filter((p) => !p.hidden && !assignedSourceIds.has(p.id));
+  const assignableWorkouts = workouts.filter((w) => !w.hidden);
   const activeWorkouts = workoutAssignments.filter((a) => a.assignment_mode === 'active');
   const datedWorkouts = workoutAssignments
     .filter((a) => a.assignment_mode === 'dated')
@@ -1002,6 +1023,58 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
 
   const noAssignments = assigned.length === 0 && workoutAssignments.length === 0;
 
+  const openCopyEditor = async (workout) => {
+    try {
+      if (!copyLibrary) {
+        const { data } = await api.get('/programs/exercise-library');
+        setCopyLibrary(data);
+      }
+      setCopyEditor({ workout, form: workoutToForm(workout) });
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
+  };
+
+  const saveCopy = async (event) => {
+    event.preventDefault();
+    setCopySaving(true);
+    try {
+      await api.put(`/programs/workouts/${copyEditor.workout.id}`, copyEditor.form);
+      toast.success('Updated for this client only');
+      setCopyEditor(null);
+      load();
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setCopySaving(false);
+    }
+  };
+
+  const saveAsTemplate = async ({ name, variation_of }) => {
+    setTemplateSaving(true);
+    try {
+      const path = templateTarget.kind === 'program'
+        ? `/programs/${templateTarget.id}/save-as-template`
+        : `/programs/workouts/${templateTarget.id}/save-as-template`;
+      await api.post(path, { name, variation_of });
+      toast.success('Saved to the shared library as a hidden template. Unhide it in Training builder when it is ready.');
+      setTemplateTarget(null);
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const programTemplateParent = (program) => {
+    const id = program.is_template === false ? program.source_program_id : program.id;
+    return programs.find((template) => template.id === id) || null;
+  };
+  const workoutTemplateParent = (workout) => {
+    const id = workout.is_template === false ? workout.source_workout_id : workout.id;
+    return workouts.find((template) => template.id === id) || null;
+  };
+
   const startWorkout = async (key, source) => {
     setStarting(key);
     try {
@@ -1064,7 +1137,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                     <Label>Workout</Label>
                     <Select value={selectedWorkout} onValueChange={(value) => { setSelectedWorkout(value); setExerciseLoads({}); }}>
                       <SelectTrigger className="rounded-xl" data-testid="client-assignment-workout-select"><SelectValue placeholder="Choose workout..." /></SelectTrigger>
-                      <SelectContent>{workouts.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
+                      <SelectContent>{assignableWorkouts.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1.5">
@@ -1120,6 +1193,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
               </div>
               <div className="flex gap-1">
                 <ExistingLoadEditor type="program" assignment={assignment} selection={p} onSaved={load} />
+                <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setTemplateTarget({ kind: 'program', id: p.id, name: `${p.name} (variation)`, parent: programTemplateParent(p), label: 'program' })} data-testid="save-program-template-button">Save as template</Button>
                 <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
               </div>
             </div>
@@ -1133,6 +1207,11 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                       </span>
                       <p className="text-sm font-medium">{day.workout?.name || 'Workout day'}</p>
                     </div>
+                    {day.workout && day.workout.is_template === false && (
+                      <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground shrink-0" onClick={() => openCopyEditor(day.workout)} data-testid="edit-client-workout-button">
+                        <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                      </Button>
+                    )}
                     {assignment && day.id && (
                       <Button
                         size="sm" variant="secondary" className="rounded-lg shrink-0"
@@ -1153,11 +1232,32 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         );
       })}
       {activeWorkouts.map((assignment) => (
-        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} />
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} onEdit={openCopyEditor} onSaveTemplate={(workout) => setTemplateTarget({ kind: 'workout', id: workout.id, name: `${workout.name} (variation)`, parent: workoutTemplateParent(workout), label: 'workout day' })} />
       ))}
       {datedWorkouts.map((assignment) => (
-        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} />
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} onEdit={openCopyEditor} onSaveTemplate={(workout) => setTemplateTarget({ kind: 'workout', id: workout.id, name: `${workout.name} (variation)`, parent: workoutTemplateParent(workout), label: 'workout day' })} />
       ))}
+      <SaveTemplateDialog
+        open={Boolean(templateTarget)}
+        onOpenChange={(next) => { if (!next) setTemplateTarget(null); }}
+        kindLabel={templateTarget?.label || 'plan'}
+        defaultName={templateTarget?.name}
+        parent={templateTarget?.parent}
+        busy={templateSaving}
+        onSubmit={saveAsTemplate}
+      />
+      {copyEditor && (
+        <WorkoutDialog
+          open
+          onOpenChange={(next) => { if (!next) setCopyEditor(null); }}
+          form={copyEditor.form}
+          setForm={(form) => setCopyEditor((current) => ({ ...current, form: typeof form === 'function' ? form(current.form) : form }))}
+          library={(copyLibrary || []).filter((exercise) => !exercise.hidden)}
+          saving={copySaving}
+          onSubmit={saveCopy}
+          editing={copyEditor.workout}
+        />
+      )}
       <section className="space-y-3 pt-3" data-testid="coach-client-workout-history">
         <div><h3 className="font-display text-lg font-semibold">Workout history</h3><p className="text-sm text-muted-foreground">Completed self-guided workouts.</p></div>
         {workoutHistory.length === 0 ? <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">No completed workouts yet.</p> : workoutHistory.slice(0, 12).map((log) => (
@@ -1278,7 +1378,7 @@ function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
   );
 }
 
-function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onStart }) {
+function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onStart, onEdit, onSaveTemplate }) {
   const workout = assignment.workout || {};
   const label = assignment.assignment_mode === 'dated'
     ? `Dated: ${assignment.assigned_for ? fmtDate(assignment.assigned_for) : 'No date'}`
@@ -1304,6 +1404,12 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
               </Button>
             )}
             <ExistingLoadEditor type="workout" assignment={assignment} selection={workout} onSaved={onReload} />
+            {onEdit && workout.is_template === false && (
+              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onEdit(workout)} data-testid="edit-client-workout-button"><Pencil className="mr-1 h-3.5 w-3.5" /> Edit</Button>
+            )}
+            {onSaveTemplate && (
+              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onSaveTemplate(workout)} data-testid="save-workout-template-button">Save as template</Button>
+            )}
             <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">Unassign</Button>
           </div>
         </div>
