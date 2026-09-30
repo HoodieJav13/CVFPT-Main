@@ -19,7 +19,7 @@ import { toast } from 'sonner';
 import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
 import { chooseClientTodayPlan } from '@/lib/clientTodayPlan';
-import { WeekStrip, StreakPill } from '@/components/WeekRhythm';
+import { WeekStrip, WeekLegend, StreakPill } from '@/components/WeekRhythm';
 import { trackProductEvent } from '@/lib/telemetry';
 import { useShowInstallCard } from '@/lib/pwa';
 import { InstallCard } from '@/components/InstallGuide';
@@ -147,6 +147,7 @@ export default function ClientHome() {
     ...training,
     unreadMessages: data.unread_messages,
     todayCheckIn,
+    rhythm,
   });
 
   return (
@@ -157,6 +158,84 @@ export default function ClientHome() {
         subtitle="Check in and make today count."
         testId="client-dashboard-header"
       />
+
+      {/* The dominant-purpose card is the one raised, loud surface on this
+          screen (design-plans/010: bold direction, owner pick 2026-08-07). It
+          comes before the reminders below it (round-2 decision, 2026-09-29). */}
+      <Card
+        className="mb-4 overflow-hidden border-primary/40 bg-card shadow-[var(--app-elev)]"
+        data-testid="client-today-plan"
+      >
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">{todayPlan.eyebrow}</p>
+            <StreakPill count={rhythm?.week_streak} />
+          </div>
+          <div className="mt-1 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="font-display text-4xl font-semibold tracking-tight" data-testid="client-today-plan-title">{todayPlan.title}</h2>
+              <p className="mt-1 text-sm text-muted-foreground" data-testid="client-today-plan-description">{todayPlan.description}</p>
+            </div>
+          </div>
+          {todayPlan.kind === 'active' && todayPlan.progress?.total > 0 && (
+            <div
+              className="mt-3 h-1.5 overflow-hidden rounded-full bg-secondary"
+              role="progressbar"
+              aria-label="Sets completed"
+              aria-valuemin={0}
+              aria-valuemax={todayPlan.progress.total}
+              aria-valuenow={todayPlan.progress.done}
+            >
+              <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round((todayPlan.progress.done / todayPlan.progress.total) * 100)}%` }} />
+            </div>
+          )}
+          {todayPlan.source ? (
+            <>
+              <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" disabled={startingWorkout || quickCompleting} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
+                {startingWorkout ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Starting workout</span></> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
+              </Button>
+              {/* One-tap for clients who won't track sets: open app, tap, close. */}
+              <Button
+                variant="outline"
+                className="mt-2 min-h-11 w-full rounded-xl"
+                disabled={startingWorkout || quickCompleting}
+                onClick={() => quickComplete(todayPlan.source)}
+                data-testid="client-today-quick-complete"
+              >
+                {quickCompleting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Recording workout</span></> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
+              </Button>
+            </>
+          ) : todayPlan.kind === 'check_in' ? (
+            <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
+              <ClipboardCheck className="mr-1.5 h-4 w-4" />{todayPlan.action}
+            </Button>
+          ) : todayPlan.kind === 'unavailable' ? (
+            <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" onClick={() => load()} data-testid="client-today-primary-action">
+              {todayPlan.action}
+            </Button>
+          ) : (
+            <>
+              <Button asChild className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" data-testid="client-today-primary-action">
+                <Link to={todayPlan.href}>{todayPlan.action}<ChevronRight className="ml-1 h-4 w-4" /></Link>
+              </Button>
+              {todayPlan.secondary && (
+                <Button asChild variant="outline" className="mt-2 min-h-11 w-full rounded-xl" data-testid="client-today-secondary-action">
+                  <Link to={todayPlan.secondary.href}>{todayPlan.secondary.action}</Link>
+                </Button>
+              )}
+            </>
+          )}
+          {/* The week lives inside the dominant card (011 A bold pick,
+              owner 2026-08-10): today's work, the week, and the streak are
+              one object. */}
+          {rhythm && rhythm.week_total > 0 && (
+            <div className="mt-5 space-y-2.5 border-t border-primary/15 pt-4">
+              <WeekStrip rhythm={rhythm} />
+              <WeekLegend rhythm={rhythm} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {data.waiver.has_version && !data.waiver.signed_latest && (
         <Link to="/client/waiver" className="block mb-4" data-testid="waiver-alert-card">
@@ -193,57 +272,6 @@ export default function ClientHome() {
       )}
 
       {showInstallCard && <InstallCard />}
-
-      {/* The dominant-purpose card is the one raised, loud surface on this
-          screen (design-plans/010: bold direction, owner pick 2026-08-07). */}
-      <Card
-        className="mb-4 overflow-hidden border-primary/40 bg-card shadow-[var(--app-elev)]"
-        data-testid="client-today-plan"
-      >
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary">{todayPlan.eyebrow}</p>
-            <StreakPill count={rhythm?.week_streak} />
-          </div>
-          <div className="mt-1 flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <h2 className="font-display text-4xl font-semibold tracking-tight" data-testid="client-today-plan-title">{todayPlan.title}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{todayPlan.description}</p>
-            </div>
-          </div>
-          {todayPlan.source ? (
-            <>
-              <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" disabled={startingWorkout || quickCompleting} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
-                {startingWorkout ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Starting workout</span></> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
-              </Button>
-              {/* One-tap for clients who won't track sets: open app, tap, close. */}
-              <Button
-                variant="outline"
-                className="mt-2 min-h-11 w-full rounded-xl"
-                disabled={startingWorkout || quickCompleting}
-                onClick={() => quickComplete(todayPlan.source)}
-                data-testid="client-today-quick-complete"
-              >
-                {quickCompleting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Recording workout</span></> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
-              </Button>
-            </>
-          ) : todayPlan.kind === 'check_in' ? (
-            <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
-              <ClipboardCheck className="mr-1.5 h-4 w-4" />{todayPlan.action}
-            </Button>
-          ) : (
-            <Button asChild className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" data-testid="client-today-primary-action">
-              <Link to={todayPlan.href}>{todayPlan.action}<ChevronRight className="ml-1 h-4 w-4" /></Link>
-            </Button>
-          )}
-          {/* The week lives inside the dominant card (011 A bold pick,
-              owner 2026-08-10): today's work, the week, and the streak are
-              one object. */}
-          {rhythm && rhythm.week_total > 0 && (
-            <WeekStrip rhythm={rhythm} className="mt-5 border-t border-primary/15 pt-4" />
-          )}
-        </CardContent>
-      </Card>
 
       {/* One-way coach announcements (011 C): only unread ones surface, and
           "Got it" is the read receipt behind the coach's seen-count. */}

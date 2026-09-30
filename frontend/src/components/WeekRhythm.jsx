@@ -54,6 +54,31 @@ export function WeekStrip({ rhythm, className }) {
   );
 }
 
+// Names every marker the strip can show, so the shapes and colours never have
+// to be decoded (round-2 decision, 2026-09-29).
+const LEGEND = [
+  ['done', 'Done'],
+  ['today', 'Today'],
+  ['upcoming', 'Planned'],
+  ['to_make_up', 'To make up'],
+  ['rest', 'Rest'],
+];
+
+export function WeekLegend({ rhythm, className }) {
+  if (!rhythm) return null;
+  const shown = new Set(rhythm.days.map((day) => day.state));
+  return (
+    <ul className={cn('flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground', className)} aria-label="Week key" data-testid="week-legend">
+      {LEGEND.filter(([state]) => shown.has(state)).map(([state, label]) => (
+        <li key={state} className="flex items-center gap-1.5">
+          <span aria-hidden className={cn('h-3 w-3 rounded-full border', dayCellClass(state))} />
+          {label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Self-contained coach-side week view for ClientDetail — quiet on failure. */
 export function CoachClientWeek({ clientId }) {
   const [rhythm, setRhythm] = useState(null);
