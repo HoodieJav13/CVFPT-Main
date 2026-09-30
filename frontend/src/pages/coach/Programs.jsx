@@ -16,8 +16,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  AlertTriangle, Archive, BookOpen, CalendarDays, CheckCircle2, CircleAlert, Download,
-  Dumbbell, FileText, FileUp, Loader2, Pencil, Plus, Trash2, UserPlus, Video,
+  AlertTriangle, Archive, BookOpen, CalendarDays, CheckCircle2, CircleAlert, Copy, Download,
+  Dumbbell, Eye, EyeOff, FileText, FileUp, Loader2, Pencil, Plus, Trash2, UserPlus, Video,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,13 @@ import { parseRestSeconds } from '@/lib/rest';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { downloadBlob } from '@/lib/download';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useAuth } from '@/context/AuthContext';
+import {
+  AuthorByline, AuthorFilter, HiddenBadge, LegacyLockDialog,
+} from '@/components/training/TemplateBits';
+import {
+  authorOptions, filterByAuthor, groupVariations, isLegacyLockError,
+} from '@/lib/trainingLibrary';
 
 const {
   normalizeDraft,
@@ -54,6 +61,12 @@ const PROGRAM_FREQUENCIES = ['1', '2', '3', '4', '5'];
 const IMPORT_FREQUENCIES = ['3', '4', '5'];
 const PASTE_NO_EXERCISES_MESSAGE = "Couldn't find any exercises in this text.";
 
+// Keep a name the coach typed; otherwise mark the copy so it reads apart from the original.
+function variationName(formName, originalName) {
+  const typed = String(formName || '').trim();
+  return !typed || typed === originalName ? `${originalName} (variation)` : typed;
+}
+
 function frequencyLabel(value) {
   return `${value} ${String(value) === '1' ? 'day' : 'days'}/week`;
 }
@@ -68,7 +81,7 @@ export default function Programs() {
   const load = useCallback(async () => {
     try {
       const [lib, w, p, c] = await Promise.all([
-        api.get('/programs/exercise-library'),
+        api.get('/programs/exercise-library?include_hidden=true'),
         api.get('/programs/workouts'),
         api.get('/programs'),
         api.get('/clients'),
@@ -91,6 +104,9 @@ export default function Programs() {
   if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="coach-programs" onRetry={() => { setLoadError(null); load(); }} />;
   if (awaitingInitialData) return <LoadingScreen />;
 
+  // Hidden exercises stay manageable on the library tab but cannot be added to workouts.
+  const pickerLibrary = library.filter((exercise) => !exercise.hidden);
+
   return (
     <div>
       <PageHeader title="Training builder" subtitle="Manage exercise library, workout days, structured programs, and assignments" />
@@ -102,8 +118,8 @@ export default function Programs() {
           <TabsTrigger className="min-h-11" value="assignments" data-testid="training-builder-tab-assignments">Assignments</TabsTrigger>
         </TabsList>
         <TabsContent value="library"><ExerciseLibraryTab library={library} reload={load} /></TabsContent>
-        <TabsContent value="workouts"><WorkoutsTab workouts={workouts} library={library} reload={load} /></TabsContent>
-        <TabsContent value="programs"><StructuredProgramsTab programs={programs} workouts={workouts} library={library} reload={load} /></TabsContent>
+        <TabsContent value="workouts"><WorkoutsTab workouts={workouts} library={pickerLibrary} reload={load} /></TabsContent>
+        <TabsContent value="programs"><StructuredProgramsTab programs={programs} workouts={workouts} library={pickerLibrary} reload={load} /></TabsContent>
         <TabsContent value="assignments"><AssignmentsTab programs={programs} workouts={workouts} clients={clients} reload={load} /></TabsContent>
       </Tabs>
     </div>
@@ -169,6 +185,16 @@ function ExerciseLibraryTab({ library, reload }) {
     }
   };
 
+  const toggleHidden = async (exercise) => {
+    try {
+      await api.put(`/programs/exercise-library/${exercise.id}`, { hidden: !exercise.hidden });
+      toast.success(exercise.hidden ? 'Exercise is available again' : 'Exercise hidden from workout builders');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
   const [importing, setImporting] = useState(false);
 
   const importCsv = async (file, inputElement) => {
@@ -226,13 +252,14 @@ function ExerciseLibraryTab({ library, reload }) {
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium">{exercise.name}</p>
+                  <p className="flex items-center gap-2 font-medium">{exercise.name}{exercise.hidden && <HiddenBadge />}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {[exercise.category, exercise.equipment, exercise.primary_muscle].filter(Boolean).join(' - ') || 'No tags'}
                   </p>
                   {safeHttpUrl(exercise.video_url) && <a href={safeHttpUrl(exercise.video_url)} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">Video</a>}
                 </div>
                 <div className="flex gap-1.5">
+                  <IconButton label={exercise.hidden ? `Unhide ${exercise.name}` : `Hide ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(exercise)} data-testid="exercise-library-hide-button">{exercise.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</IconButton>
                   <IconButton label={`Edit ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(exercise)} data-testid="exercise-library-edit-button"><Pencil className="h-3.5 w-3.5" /></IconButton>
                   <IconButton label={`Archive ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(exercise)} data-testid="exercise-library-archive-button"><Archive className="h-3.5 w-3.5" /></IconButton>
                 </div>
@@ -265,7 +292,7 @@ function ExerciseLibraryTab({ library, reload }) {
   );
 }
 
-function workoutToForm(workout) {
+export function workoutToForm(workout) {
   return {
     name: workout.name || '',
     description: workout.description || '',
@@ -289,10 +316,15 @@ function workoutToForm(workout) {
 }
 
 function WorkoutsTab({ workouts, library, reload }) {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_WORKOUT);
   const [saving, setSaving] = useState(false);
+  const [author, setAuthor] = useState('all');
+  const [lock, setLock] = useState(null);
+  const groups = groupVariations(filterByAuthor(workouts, author, user?.profile?.id));
+  const liveEditing = editing ? (workouts.find((w) => w.id === editing.id) || editing) : null;
   // Desktop two-pane (UI-6): the editor lives beside the list instead of
   // in the dialog; mobile keeps the dialog flow with the same state.
   const [paneActive, setPaneActive] = useState(false);
@@ -342,9 +374,48 @@ function WorkoutsTab({ workouts, library, reload }) {
       setOpen(false);
       reload();
     } catch (err) {
+      if (isLegacyLockError(err)) setLock({ message: err.response.data.error });
+      else toast.error(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // The original is live-assigned, so the edits go to a new hidden variation instead.
+  const saveVariationFromLock = async () => {
+    setSaving(true);
+    try {
+      const { data: copy } = await api.post(`/programs/workouts/${editing.id}/save-as-template`, {});
+      await api.put(`/programs/workouts/${copy.id}`, { ...form, name: variationName(form.name, editing.name) });
+      toast.success('Saved as a hidden variation. Unhide it when it is ready to assign.');
+      setLock(null);
+      setOpen(false);
+      setPaneActive(false);
+      reload();
+    } catch (err) {
       toast.error(errMsg(err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleHidden = async (workout) => {
+    try {
+      await api.patch(`/programs/workouts/${workout.id}/hidden`, { hidden: !workout.hidden });
+      toast.success(workout.hidden ? 'Workout is available to assign' : 'Workout hidden from assignment');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const duplicate = async (workout) => {
+    try {
+      await api.post(`/programs/workouts/${workout.id}/save-as-template`, {});
+      toast.success('Saved a hidden variation. Unhide it when it is ready to assign.');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
     }
   };
 
@@ -364,6 +435,9 @@ function WorkoutsTab({ workouts, library, reload }) {
       <div className="flex justify-end lg:hidden">
         <Button className="rounded-xl" onClick={openCreate} data-testid="workout-create-button"><Plus className="h-4 w-4 mr-1.5" /> New workout day</Button>
       </div>
+      {workouts.length > 0 && (
+        <AuthorFilter value={author} onChange={setAuthor} options={authorOptions(workouts)} testId="workout-author-filter" />
+      )}
       {workouts.length === 0 && <EmptyState icon={Dumbbell} title="No workout days yet" subtitle="Create reusable day templates from library exercises or custom movements." />}
 
       {/* ---------- Desktop: list rail + persistent editor pane ---------- */}
@@ -372,24 +446,17 @@ function WorkoutsTab({ workouts, library, reload }) {
           <Button className="w-full rounded-xl" onClick={selectCreate} data-testid="workout-rail-create">
             <Plus className="h-4 w-4 mr-1.5" /> New workout day
           </Button>
-          {workouts.map((workout) => (
-            <button
-              key={workout.id}
-              onClick={() => selectEdit(workout)}
-              aria-current={paneActive && editing?.id === workout.id ? 'true' : undefined}
-              className={cn(
-                'w-full rounded-xl border px-4 py-3 text-left transition-colors',
-                paneActive && editing?.id === workout.id
-                  ? 'border-l-[3px] border-l-primary border-primary/40 bg-primary/15'
-                  : 'border-border bg-card/60 hover:bg-card',
+          {groups.map(({ item, children }) => (
+            <div key={item.id} className="space-y-2" data-testid="workout-rail-group">
+              <WorkoutRailRow workout={item} active={paneActive && editing?.id === item.id} onSelect={selectEdit} />
+              {children.length > 0 && (
+                <div className="ml-4 space-y-2 border-l border-border pl-3" data-testid="workout-variations">
+                  {children.map((child) => (
+                    <WorkoutRailRow key={child.id} workout={child} active={paneActive && editing?.id === child.id} onSelect={selectEdit} />
+                  ))}
+                </div>
               )}
-              data-testid="workout-rail-row"
-            >
-              <p className="truncate font-medium">{workout.name}</p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {workout.goal || workout.description || 'Workout day'} · {workout.exercise_count} exercise{workout.exercise_count === 1 ? '' : 's'}
-              </p>
-            </button>
+            </div>
           ))}
         </aside>
         <section className="flex min-h-0 flex-col overflow-y-auto rounded-2xl border border-border bg-card/40 p-5" data-testid="workout-editor-pane">
@@ -400,11 +467,22 @@ function WorkoutsTab({ workouts, library, reload }) {
           ) : (
             <>
               <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-primary/[0.08] px-4 py-3" data-testid="workout-editor-header">
-                <h3 className="truncate font-display text-xl font-semibold">{editing ? editing.name : 'New workout day'}</h3>
+                <div className="min-w-0">
+                  <h3 className="truncate font-display text-xl font-semibold">{editing ? editing.name : 'New workout day'}</h3>
+                  {liveEditing && <div className="flex items-center gap-2"><AuthorByline author={liveEditing.author} />{liveEditing.hidden && <HiddenBadge />}</div>}
+                </div>
                 {editing && (
-                  <IconButton label={`Archive ${editing.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground shrink-0" onClick={() => archive(editing)} data-testid="workout-editor-archive">
-                    <Archive className="h-4 w-4" />
-                  </IconButton>
+                  <div className="flex shrink-0 gap-1">
+                    <IconButton label={`Save a variation of ${editing.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => duplicate(editing)} data-testid="workout-editor-duplicate">
+                      <Copy className="h-4 w-4" />
+                    </IconButton>
+                    <IconButton label={liveEditing.hidden ? `Unhide ${editing.name}` : `Hide ${editing.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(liveEditing)} data-testid="workout-editor-hide">
+                      {liveEditing.hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                    </IconButton>
+                    <IconButton label={`Archive ${editing.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(editing)} data-testid="workout-editor-archive">
+                      <Archive className="h-4 w-4" />
+                    </IconButton>
+                  </div>
                 )}
               </div>
               <WorkoutFormFields form={form} setForm={setForm} library={library} saving={saving} onSubmit={save} />
@@ -415,15 +493,20 @@ function WorkoutsTab({ workouts, library, reload }) {
 
       {/* ---------- Mobile: card grid + dialog (unchanged flow) ---------- */}
       <div className="grid gap-3 md:grid-cols-2 lg:hidden">
-        {workouts.map((workout) => (
-          <Card key={workout.id} data-testid="workout-card">
+        {groups.map(({ item, children }) => (
+          <div key={item.id} className="min-w-0 space-y-2">
+            {[item, ...children].map((workout, position) => (
+          <Card key={workout.id} data-testid="workout-card" className={position > 0 ? 'ml-4 border-l-2 border-l-primary/30' : undefined}>
             <CardHeader className="pb-2">
-              <div className="flex items-start justify-between gap-3">
-                <div>
+              <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                <div className="min-w-0 flex-1 basis-40">
                   <CardTitle className="text-base font-display">{workout.name}</CardTitle>
                   <p className="text-xs text-muted-foreground mt-1">{workout.goal || workout.description || 'Workout day template'}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"><AuthorByline author={workout.author} className="whitespace-nowrap" />{workout.hidden && <HiddenBadge />}</div>
                 </div>
-                <div className="flex gap-1.5">
+                <div className="flex shrink-0 gap-1.5">
+                  <IconButton label={`Save a variation of ${workout.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => duplicate(workout)} data-testid="workout-duplicate-button"><Copy className="h-3.5 w-3.5" /></IconButton>
+                  <IconButton label={workout.hidden ? `Unhide ${workout.name}` : `Hide ${workout.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(workout)} data-testid="workout-hide-button">{workout.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</IconButton>
                   <IconButton label={`Edit ${workout.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(workout)} data-testid="workout-edit-button"><Pencil className="h-3.5 w-3.5" /></IconButton>
                   <IconButton label={`Archive ${workout.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(workout)} data-testid="workout-archive-button"><Archive className="h-3.5 w-3.5" /></IconButton>
                 </div>
@@ -449,19 +532,51 @@ function WorkoutsTab({ workouts, library, reload }) {
               </Accordion>
             </CardContent>
           </Card>
+            ))}
+          </div>
         ))}
       </div>
       <WorkoutDialog open={open} onOpenChange={setOpen} form={form} setForm={setForm} library={library} saving={saving} onSubmit={save} editing={editing} />
+      <LegacyLockDialog open={Boolean(lock)} message={lock?.message} busy={saving} onCancel={() => setLock(null)} onSaveVariation={saveVariationFromLock} />
     </div>
   );
 }
 
+function WorkoutRailRow({ workout, active, onSelect }) {
+  return (
+    <button
+      onClick={() => onSelect(workout)}
+      aria-current={active ? 'true' : undefined}
+      className={cn(
+        'w-full rounded-xl border px-4 py-3 text-left transition-colors',
+        active
+          ? 'border-l-[3px] border-l-primary border-primary/40 bg-primary/15'
+          : 'border-border bg-card/60 hover:bg-card',
+      )}
+      data-testid="workout-rail-row"
+    >
+      <p className="truncate font-medium">{workout.name}</p>
+      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+        {workout.goal || workout.description || 'Workout day'} · {workout.exercise_count} exercise{workout.exercise_count === 1 ? '' : 's'}
+      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <AuthorByline author={workout.author} className="whitespace-nowrap" />
+        {workout.hidden && <HiddenBadge />}
+      </div>
+    </button>
+  );
+}
+
 function StructuredProgramsTab({ programs, workouts, library, reload }) {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', description: '', frequency_days: '3', days: [] });
   const [saving, setSaving] = useState(false);
+  const [author, setAuthor] = useState('all');
+  const [lock, setLock] = useState(null);
+  const groups = groupVariations(filterByAuthor(programs, author, user?.profile?.id));
 
   const resetDays = (frequency, existing = []) => Array.from({ length: Number(frequency) }, (_, i) => ({
     day_number: i + 1,
@@ -507,9 +622,47 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
       setOpen(false);
       reload();
     } catch (err) {
+      if (isLegacyLockError(err)) setLock({ message: err.response.data.error });
+      else toast.error(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // The original is live-assigned, so the edits go to a new hidden variation instead.
+  const saveVariationFromLock = async () => {
+    setSaving(true);
+    try {
+      const { data: copy } = await api.post(`/programs/${editing.id}/save-as-template`, {});
+      await api.put(`/programs/${copy.id}`, { ...form, name: variationName(form.name, editing.name) });
+      toast.success('Saved as a hidden variation. Unhide it when it is ready to assign.');
+      setLock(null);
+      setOpen(false);
+      reload();
+    } catch (err) {
       toast.error(errMsg(err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleHidden = async (program) => {
+    try {
+      await api.patch(`/programs/${program.id}/hidden`, { hidden: !program.hidden });
+      toast.success(program.hidden ? 'Program is available to assign' : 'Program hidden from assignment');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const duplicate = async (program) => {
+    try {
+      await api.post(`/programs/${program.id}/save-as-template`, {});
+      toast.success('Saved a hidden variation. Unhide it when it is ready to assign.');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
     }
   };
 
@@ -541,15 +694,21 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
         <Button variant="secondary" className="rounded-xl" onClick={() => setImportOpen(true)} data-testid="program-import-open-button"><FileUp className="h-4 w-4 mr-1.5" /> Import program</Button>
         <Button className="rounded-xl" onClick={openCreate} data-testid="program-create-button"><Plus className="h-4 w-4 mr-1.5" /> New program</Button>
       </div>
+      {programs.length > 0 && (
+        <AuthorFilter value={author} onChange={setAuthor} options={authorOptions(programs)} testId="program-author-filter" />
+      )}
       {programs.length === 0 && <EmptyState icon={CalendarDays} title="No structured programs yet" subtitle="Build a 1-5 day weekly program from saved workout days." />}
       <div className="space-y-3">
-        {programs.map((program) => (
-          <Card key={program.id} data-testid="program-card">
+        {groups.map(({ item, children }) => (
+          <div key={item.id} className="min-w-0 space-y-3" data-testid="program-group">
+            {[item, ...children].map((program, position) => (
+          <Card key={program.id} data-testid="program-card" className={position > 0 ? 'ml-4 border-l-2 border-l-primary/30' : undefined}>
             <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                <div className="min-w-0 flex-1">
                   <p className="font-display font-semibold">{program.name}</p>
                   <p className="text-xs text-muted-foreground mt-1">{frequencyLabel(program.frequency_days)} - {program.exercise_count} total exercises</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"><AuthorByline author={program.author} className="whitespace-nowrap" />{program.hidden && <HiddenBadge />}</div>
                   <Accordion
                     type="multiple"
                     defaultValue={(program.days || []).length ? [`day-${program.days[0].day_number}`] : []}
@@ -581,7 +740,9 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
                     ))}
                   </Accordion>
                 </div>
-                <div className="flex gap-1.5 shrink-0">
+                <div className="flex flex-wrap gap-1.5 sm:shrink-0 sm:justify-end">
+                  <IconButton label={`Save a variation of ${program.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => duplicate(program)} data-testid="program-duplicate-button"><Copy className="h-3.5 w-3.5" /></IconButton>
+                  <IconButton label={program.hidden ? `Unhide ${program.name}` : `Hide ${program.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(program)} data-testid="program-hide-button">{program.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</IconButton>
                   <IconButton label={`Export ${program.name} as PDF`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => exportPdf(program)} data-testid="program-export-pdf-button"><Download className="h-3.5 w-3.5" /></IconButton>
                   <IconButton label={`Edit ${program.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(program)} data-testid="program-edit-button"><Pencil className="h-3.5 w-3.5" /></IconButton>
                   <IconButton label={`Archive ${program.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(program)} data-testid="program-archive-button"><Archive className="h-3.5 w-3.5" /></IconButton>
@@ -589,8 +750,11 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
               </div>
             </CardContent>
           </Card>
+            ))}
+          </div>
         ))}
       </div>
+      <LegacyLockDialog open={Boolean(lock)} message={lock?.message} busy={saving} onCancel={() => setLock(null)} onSaveVariation={saveVariationFromLock} />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
           <DialogHeader>
@@ -1063,7 +1227,7 @@ function AssignmentsTab({ programs, workouts, clients, reload }) {
               <Label>Program</Label>
               <Select value={programId} onValueChange={setProgramId}>
                 <SelectTrigger className="rounded-xl" data-testid="assignment-program-select"><SelectValue placeholder="Choose program..." /></SelectTrigger>
-                <SelectContent>{programs.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{programs.filter((p) => !p.hidden).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           ) : (
@@ -1072,7 +1236,7 @@ function AssignmentsTab({ programs, workouts, clients, reload }) {
                 <Label>Workout</Label>
                 <Select value={workoutId} onValueChange={setWorkoutId}>
                   <SelectTrigger className="rounded-xl" data-testid="assignment-workout-select"><SelectValue placeholder="Choose workout..." /></SelectTrigger>
-                  <SelectContent>{workouts.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>{workouts.filter((w) => !w.hidden).map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
@@ -1191,7 +1355,7 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
   );
 }
 
-function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onSubmit, editing }) {
+export function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onSubmit, editing }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">

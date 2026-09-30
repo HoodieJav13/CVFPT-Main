@@ -23,15 +23,16 @@ const { dateInTz, todayDateInTz } = require('../utils/time');
 const CLIENT_CANCEL_CUTOFF_MS = 24 * 60 * 60 * 1000;
 
 // Program 011 B: a session may carry the workout the coach plans to run.
-// The attachment must be the acting coach's own (admins may attach the
-// session coach's workouts), unarchived. Returns { ok, value | error }.
+// Any shared template is attachable (templates belong to every coach); a
+// client instance only by its own coach (admins act as the session coach).
+// Unarchived. Returns { ok, value | error }.
 async function validateWorkoutAttachment(workoutId, coachId) {
   if (workoutId === null) return { ok: true, value: null };
   const idValidation = validateUuid(workoutId, 'Workout ID');
   if (!idValidation.ok) return { ok: false, error: idValidation.error };
-  const { data: workout } = await supabaseAdmin.from('workouts').select('id, coach_id')
+  const { data: workout } = await supabaseAdmin.from('workouts').select('id, coach_id, is_template')
     .eq('id', idValidation.value).eq('archived', false).maybeSingle();
-  if (!workout || workout.coach_id !== coachId) return { ok: false, error: 'Workout not found' };
+  if (!workout || (workout.is_template === false && workout.coach_id !== coachId)) return { ok: false, error: 'Workout not found' };
   return { ok: true, value: workout.id };
 }
 

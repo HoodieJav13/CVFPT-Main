@@ -7,9 +7,17 @@ const {
   canAccessProgram,
   canAccessWorkout,
   canAccessWorkoutAssignment,
+  canAssignTemplate,
   canManageWorkout,
+  isTemplate,
   programDaysUseAccessibleWorkouts,
 } = require('../security/access');
+const {
+  clientSafeProgramAssignment,
+  clientSafeWorkoutAssignment,
+  filterByAuthor,
+  withAuthor,
+} = require('../lib/trainingLibrary');
 const {
   csvImportLimiter,
   libraryImportLimiter,
@@ -173,7 +181,9 @@ async function workoutAssignmentLoads(assignmentId) {
   return data || [];
 }
 
-async function programWithDetails(programId) {
+// `user` scopes legacy assignments to clients the caller may see, so a shared
+// program never reveals another coach's clients. Omit it for internal use.
+async function programWithDetails(programId, user = null) {
   const { data: program } = await supabaseAdmin.from('programs').select('*')
     .eq('id', programId).eq('archived', false).maybeSingle();
   if (!program) return null;
@@ -190,38 +200,142 @@ async function programWithDetails(programId) {
   }
   const { data: assignments } = await supabaseAdmin
     .from('program_assignments')
-    .select('*, client:clients(id, name)')
+    .select('*, client:clients(id, name, coach_id)')
     .eq('program_id', programId)
     .eq('archived', false);
   const detailedAssignments = [];
   for (const assignment of assignments || []) {
+    if (user && !canAccessClient(user, assignment.client)) continue;
     detailedAssignments.push({ ...assignment, exercise_loads: await programAssignmentLoads(assignment.id) });
   }
   return { ...program, days: detailedDays, assignments: detailedAssignments };
 }
 
-async function listWorkouts(user) {
-  let q = supabaseAdmin.from('workouts').select('*').eq('archived', false).order('created_at', { ascending: false });
-  if (user.role !== 'admin') q = q.or(`coach_id.is.null,coach_id.eq.${user.coach.id}`);
+async function coachesById() {
+  const { data, error } = await supabaseAdmin.from('coaches').select('id, name');
+  if (error) throw error;
+  return new Map((data || []).map((coach) => [coach.id, coach]));
+}
+
+// Templates are shared by every coach. Client instances never appear here.
+async function listWorkouts(user, { author = null, assignableOnly = false } = {}) {
+  let q = supabaseAdmin.from('workouts').select('*')
+    .eq('archived', false).eq('is_template', true)
+    .order('created_at', { ascending: false });
+  if (assignableOnly) q = q.eq('hidden', false);
   const { data, error } = await q;
   if (error) throw error;
+  const authors = await coachesById();
+  const rows = filterByAuthor(data || [], author, user);
   const result = [];
-  for (const workout of data || []) result.push(await workoutWithDetails(workout.id));
+  for (const workout of rows) result.push(withAuthor(await workoutWithDetails(workout.id), authors));
   return result;
 }
 
-async function programDaysAreAccessible(user, days) {
+// A template that clients are still live-linked to (assignments created before
+// the copy-on-assign model) must not change underneath them. Instances never
+// count: they are already private to one client.
+async function legacyAssignmentCount(kind, row) {
+  if (!isTemplate(row)) return 0;
+  const count = async (query) => {
+    const { count: n, error } = await query;
+    if (error) throw error;
+    return n || 0;
+  };
+  if (kind === 'program') {
+    return count(supabaseAdmin.from('program_assignments').select('id', { count: 'exact', head: true })
+      .eq('program_id', row.id).eq('archived', false));
+  }
+  let total = await count(supabaseAdmin.from('workout_assignments').select('id', { count: 'exact', head: true })
+    .eq('workout_id', row.id).eq('archived', false));
+  const { data: days, error } = await supabaseAdmin.from('program_days').select('program_id')
+    .eq('workout_id', row.id).eq('archived', false);
+  if (error) throw error;
+  const programIds = [...new Set((days || []).map((day) => day.program_id))];
+  if (programIds.length) {
+    const { data: programs, error: programError } = await supabaseAdmin.from('programs').select('id')
+      .in('id', programIds).eq('archived', false);
+    if (programError) throw programError;
+    const activeIds = (programs || []).map((program) => program.id);
+    if (activeIds.length) {
+      total += await count(supabaseAdmin.from('program_assignments').select('id', { count: 'exact', head: true })
+        .in('program_id', activeIds).eq('archived', false));
+    }
+  }
+  return total;
+}
+
+async function rejectIfLegacyAssigned(res, kind, row) {
+  const assignmentCount = await legacyAssignmentCount(kind, row);
+  if (!assignmentCount) return false;
+  const noun = kind === 'program' ? 'program' : 'workout';
+  res.status(409).json({
+    error: `This ${noun} is still live-assigned to ${assignmentCount} client plan${assignmentCount === 1 ? '' : 's'}, so changing it would change those plans. Save it as a variation instead.`,
+    code: 'LEGACY_ASSIGNMENTS',
+    assignment_count: assignmentCount,
+  });
+  return true;
+}
+
+// Hidden library exercises cannot be added to a workout (already-present ones stay).
+async function newHiddenLibraryExercises(exercises, existingWorkout = null) {
+  const wanted = [...new Set((Array.isArray(exercises) ? exercises : [])
+    .map((exercise) => exercise?.exercise_library_id).filter(Boolean))];
+  if (!wanted.length) return [];
+  const already = new Set((existingWorkout?.exercises || []).map((exercise) => exercise.exercise_library_id).filter(Boolean));
+  const candidates = wanted.filter((id) => !already.has(id));
+  if (!candidates.length) return [];
+  const { data, error } = await supabaseAdmin.from('exercise_library').select('id, name')
+    .in('id', candidates).eq('hidden', true);
+  if (error) throw error;
+  return data || [];
+}
+
+// Where a saved copy should nest. An explicit `variation_of` (or null for
+// "standalone") wins; otherwise default to the template the row came from
+// (or the template itself when duplicating one), if that template is still live.
+async function resolveVariationParent(kind, row, body) {
+  const table = kind === 'program' ? 'programs' : 'workouts';
+  const explicit = 'variation_of' in body;
+  const candidate = explicit
+    ? body.variation_of
+    : (isTemplate(row) ? row.id : (kind === 'program' ? row.source_program_id : row.source_workout_id));
+  if (candidate === null || candidate === undefined || candidate === '') return { id: null };
+  if (typeof candidate !== 'string' || !/^[0-9a-f-]{36}$/i.test(candidate)) return { error: 'variation_of must be a template id' };
+  const { data } = await supabaseAdmin.from(table).select('id')
+    .eq('id', candidate).eq('is_template', true).eq('archived', false).maybeSingle();
+  if (!data) return explicit ? { error: 'Variation parent not found' } : { id: null };
+  return { id: data.id };
+}
+
+// An explicit name wins. A variation without one is "<source> (variation)" so it is
+// distinguishable in flat pickers; a standalone copy keeps the source name.
+function copyName(body, source, variationParentId) {
+  if (typeof body.name === 'string' && body.name.trim()) return body.name.trim();
+  return variationParentId ? `${source.name} (variation)` : null;
+}
+
+function rpcErrorStatus(error) {
+  const message = String(error?.message || '');
+  if (/not found/i.test(message)) return { status: 404, message };
+  if (/invalid .*exercise load/i.test(message)) return { status: 400, message: 'Each assigned load must reference an assigned exercise' };
+  return null;
+}
+
+async function programDaysAreAccessible(user, days, options = {}) {
   const workoutIds = [...new Set((days || []).map((day) => day.workout_id).filter(Boolean))];
   if (!workoutIds.length) return true;
   const { data, error } = await supabaseAdmin.from('workouts').select('*').in('id', workoutIds);
   if (error) throw error;
-  return programDaysUseAccessibleWorkouts(user, days, data || []);
+  return programDaysUseAccessibleWorkouts(user, days, data || [], options);
 }
 
 // ----- Exercise library -----
 router.get('/exercise-library', requireCoach, async (req, res) => {
   try {
     let q = supabaseAdmin.from('exercise_library').select('*').eq('archived', false).order('name');
+    // Hidden exercises stay out of builders/pickers unless the library page asks for them.
+    if (req.query.include_hidden !== 'true') q = q.eq('hidden', false);
     if (req.query.q) q = q.ilike('name', `%${req.query.q}%`);
     const { data, error } = await q;
     if (error) throw error;
@@ -281,6 +395,7 @@ router.put('/exercise-library/:id', requireCoach, async (req, res) => {
     const allowed = ['name', 'category', 'equipment', 'primary_muscle', 'secondary_muscles', 'video_url', 'notes', 'source', 'review_status'];
     const updates = { updated_at: new Date().toISOString() };
     for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k] || null;
+    if ('hidden' in (req.body || {})) updates.hidden = req.body.hidden === true;
     if (updates.name !== undefined && !String(updates.name).trim()) return res.status(400).json({ error: 'Exercise name is required' });
     const { data, error } = await supabaseAdmin.from('exercise_library').update(updates)
       .eq('id', req.params.id).eq('archived', false).select().maybeSingle();
@@ -307,7 +422,10 @@ router.patch('/exercise-library/:id/archive', requireCoach, async (req, res) => 
 // ----- Workout templates -----
 router.get('/workouts', requireCoach, async (req, res) => {
   try {
-    return res.json(await listWorkouts(req.user));
+    return res.json(await listWorkouts(req.user, {
+      author: typeof req.query.author === 'string' ? req.query.author : null,
+      assignableOnly: req.query.assignable === 'true',
+    }));
   } catch (e) {
     logError('list workouts error', e);
     return res.status(500).json({ error: 'Failed to load workouts' });
@@ -318,9 +436,12 @@ router.post('/workouts', requireCoach, async (req, res) => {
   try {
     const { name, description, goal, exercises } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Workout name is required' });
+    const hiddenPicked = await newHiddenLibraryExercises(exercises);
+    if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
+    // Templates are shared, so the creator is always recorded as the author.
     const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
       p_workout_id: null,
-      p_coach_id: req.user.role === 'admin' ? null : req.user.coach.id,
+      p_coach_id: req.user.coach.id,
       p_name: String(name).trim(),
       p_description: description || null,
       p_goal: goal || null,
@@ -338,7 +459,7 @@ router.get('/workouts/:id', requireCoach, async (req, res) => {
   try {
     const workout = await workoutWithDetails(req.params.id);
     if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
-    return res.json(workout);
+    return res.json(withAuthor(workout, await coachesById()));
   } catch (e) {
     logError('get workout error', e);
     return res.status(500).json({ error: 'Failed to load workout' });
@@ -349,9 +470,12 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
   try {
     const workout = await workoutWithDetails(req.params.id);
     if (!canManageWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    if (await rejectIfLegacyAssigned(res, 'workout', workout)) return undefined;
     const body = req.body || {};
     const name = 'name' in body ? String(body.name || '').trim() : workout.name;
     if (!name) return res.status(400).json({ error: 'Workout name is required' });
+    const hiddenPicked = await newHiddenLibraryExercises(body.exercises, workout);
+    if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
     const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
       p_workout_id: workout.id,
       p_coach_id: workout.coach_id,
@@ -373,12 +497,55 @@ router.patch('/workouts/:id/archive', requireCoach, async (req, res) => {
   try {
     const workout = await workoutWithDetails(req.params.id);
     if (!canManageWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    if (await rejectIfLegacyAssigned(res, 'workout', workout)) return undefined;
     const { data, error } = await supabaseAdmin.from('workouts').update({ archived: true, updated_at: new Date().toISOString() }).eq('id', workout.id).select().single();
     if (error) throw error;
     return res.json(data);
   } catch (e) {
     logError('archive workout error', e);
     return res.status(500).json({ error: 'Failed to archive workout' });
+  }
+});
+
+router.patch('/workouts/:id/hidden', requireCoach, async (req, res) => {
+  try {
+    const workout = await workoutWithDetails(req.params.id);
+    if (!canManageWorkout(req.user, workout) || !isTemplate(workout)) return res.status(404).json({ error: 'Workout not found' });
+    if (typeof req.body?.hidden !== 'boolean') return res.status(400).json({ error: 'hidden must be true or false' });
+    const { data, error } = await supabaseAdmin.from('workouts')
+      .update({ hidden: req.body.hidden, updated_at: new Date().toISOString() }).eq('id', workout.id).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    logError('hide workout error', e);
+    return res.status(500).json({ error: 'Failed to update workout visibility' });
+  }
+});
+
+// Copies a client's workout (or duplicates a template) into a new hidden
+// template. From a client instance, client-specific loads/coach notes are stripped.
+router.post('/workouts/:id/save-as-template', requireCoach, async (req, res) => {
+  try {
+    const workout = await workoutWithDetails(req.params.id);
+    if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    const body = req.body || {};
+    const variationOf = await resolveVariationParent('workout', workout, body);
+    if (variationOf.error) return res.status(400).json({ error: variationOf.error });
+    const { data: newId, error } = await supabaseAdmin.rpc('save_workout_as_template', {
+      p_workout_id: workout.id,
+      p_coach_id: req.user.coach.id,
+      p_name: copyName(body, workout, variationOf.id),
+      p_variation_of: variationOf.id,
+    });
+    if (error) {
+      const mapped = rpcErrorStatus(error);
+      if (mapped) return res.status(mapped.status).json({ error: mapped.message });
+      throw error;
+    }
+    return res.status(201).json(withAuthor(await workoutWithDetails(newId), await coachesById()));
+  } catch (e) {
+    logError('save workout as template error', e);
+    return res.status(500).json({ error: 'Failed to save workout as template' });
   }
 });
 
@@ -474,23 +641,26 @@ router.post('/import/commit', requireCoach, programCommitLimiter, async (req, re
 // ----- Structured programs -----
 router.get('/', requireCoach, async (req, res) => {
   try {
-    let q = supabaseAdmin.from('programs').select('*, assignments:program_assignments(id, archived, client:clients(id, name))')
-      .eq('archived', false)
+    let q = supabaseAdmin.from('programs').select('*')
+      .eq('archived', false).eq('is_template', true)
       .not('frequency_days', 'is', null)
       .order('created_at', { ascending: false });
-    if (req.user.role !== 'admin') q = q.eq('coach_id', req.user.coach.id);
+    if (req.query.assignable === 'true') q = q.eq('hidden', false);
     const { data, error } = await q;
     if (error) throw error;
+    const authors = await coachesById();
+    const rows = filterByAuthor(data || [], typeof req.query.author === 'string' ? req.query.author : null, req.user);
     const result = [];
-    for (const program of data || []) {
-      const detailed = await programWithDetails(program.id);
-      result.push({
+    for (const program of rows) {
+      const detailed = await programWithDetails(program.id, req.user);
+      result.push(withAuthor({
         ...program,
         days: detailed.days,
         day_count: detailed.days.length,
         exercise_count: detailed.days.reduce((sum, day) => sum + (day.workout?.exercise_count || 0), 0),
+        // Only legacy live-linked assignments can appear on a template, and only for the caller's clients.
         active_assignments: (detailed.assignments || []).filter((a) => !a.archived),
-      });
+      }, authors));
     }
     return res.json(result);
   } catch (e) {
@@ -518,7 +688,7 @@ router.post('/', requireCoach, async (req, res) => {
       p_days: validDays,
     });
     if (error) throw error;
-    return res.status(201).json(await programWithDetails(programId));
+    return res.status(201).json(withAuthor(await programWithDetails(programId, req.user), await coachesById()));
   } catch (e) {
     logError('create program error', e);
     return res.status(500).json({ error: e.message || 'Failed to create program' });
@@ -546,9 +716,9 @@ router.get('/:id/export.pdf', requireCoach, pdfExportLimiter, async (req, res) =
 
 router.get('/:id', requireCoach, async (req, res) => {
   try {
-    const program = await programWithDetails(req.params.id);
+    const program = await programWithDetails(req.params.id, req.user);
     if (!program || !canAccessProgram(req.user, program) || program.archived) return res.status(404).json({ error: 'Program not found' });
-    return res.json(program);
+    return res.json(withAuthor(program, await coachesById()));
   } catch (e) {
     logError('get program error', e);
     return res.status(500).json({ error: 'Failed to load program' });
@@ -557,8 +727,9 @@ router.get('/:id', requireCoach, async (req, res) => {
 
 router.put('/:id', requireCoach, async (req, res) => {
   try {
-    const program = await programWithDetails(req.params.id);
+    const program = await programWithDetails(req.params.id, req.user);
     if (!program || !canAccessProgram(req.user, program)) return res.status(404).json({ error: 'Program not found' });
+    if (await rejectIfLegacyAssigned(res, 'program', program)) return undefined;
     const body = req.body || {};
     const name = 'name' in body ? String(body.name || '').trim() : program.name;
     if (!name) return res.status(400).json({ error: 'Program name is required' });
@@ -570,7 +741,9 @@ router.put('/:id', requireCoach, async (req, res) => {
     if (validDays.length !== frequency) {
       return res.status(400).json({ error: `Assign one workout to each of the ${frequency} days` });
     }
-    if (!await programDaysAreAccessible(req.user, validDays)) return res.status(404).json({ error: 'Workout not found' });
+    if (!await programDaysAreAccessible(req.user, validDays, { instanceClientId: isTemplate(program) ? null : program.client_id })) {
+      return res.status(404).json({ error: 'Workout not found' });
+    }
     const { data: programId, error } = await supabaseAdmin.rpc('save_program', {
       p_program_id: program.id,
       p_coach_id: program.coach_id,
@@ -582,7 +755,7 @@ router.put('/:id', requireCoach, async (req, res) => {
     });
     if (error) throw error;
     if (!programId) return res.status(404).json({ error: 'Program not found' });
-    return res.json(await programWithDetails(programId));
+    return res.json(withAuthor(await programWithDetails(programId, req.user), await coachesById()));
   } catch (e) {
     logError('update program error', e);
     return res.status(500).json({ error: 'Failed to update program' });
@@ -593,6 +766,7 @@ router.patch('/:id/archive', requireCoach, async (req, res) => {
   try {
     const program = await programWithDetails(req.params.id);
     if (!program || !canAccessProgram(req.user, program)) return res.status(404).json({ error: 'Program not found' });
+    if (await rejectIfLegacyAssigned(res, 'program', program)) return undefined;
     const { data, error } = await supabaseAdmin.from('programs').update({ archived: true }).eq('id', program.id).select().single();
     if (error) throw error;
     return res.json(data);
@@ -602,39 +776,118 @@ router.patch('/:id/archive', requireCoach, async (req, res) => {
   }
 });
 
-router.post('/:id/assign', requireCoach, async (req, res) => {
+router.patch('/:id/hidden', requireCoach, async (req, res) => {
+  try {
+    const program = await programWithDetails(req.params.id);
+    if (!program || !canAccessProgram(req.user, program) || !isTemplate(program)) return res.status(404).json({ error: 'Program not found' });
+    if (typeof req.body?.hidden !== 'boolean') return res.status(400).json({ error: 'hidden must be true or false' });
+    const { data, error } = await supabaseAdmin.from('programs').update({ hidden: req.body.hidden }).eq('id', program.id).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    logError('hide program error', e);
+    return res.status(500).json({ error: 'Failed to update program visibility' });
+  }
+});
+
+// Copies a client's program (or duplicates a template) into a new hidden template.
+router.post('/:id/save-as-template', requireCoach, async (req, res) => {
   try {
     const program = await programWithDetails(req.params.id);
     if (!program || !canAccessProgram(req.user, program)) return res.status(404).json({ error: 'Program not found' });
+    const body = req.body || {};
+    const variationOf = await resolveVariationParent('program', program, body);
+    if (variationOf.error) return res.status(400).json({ error: variationOf.error });
+    const { data: newId, error } = await supabaseAdmin.rpc('save_program_as_template', {
+      p_program_id: program.id,
+      p_coach_id: req.user.coach.id,
+      p_name: copyName(body, program, variationOf.id),
+      p_variation_of: variationOf.id,
+    });
+    if (error) {
+      const mapped = rpcErrorStatus(error);
+      if (mapped) return res.status(mapped.status).json({ error: mapped.message });
+      throw error;
+    }
+    return res.status(201).json(withAuthor(await programWithDetails(newId, req.user), await coachesById()));
+  } catch (e) {
+    logError('save program as template error', e);
+    return res.status(500).json({ error: 'Failed to save program as template' });
+  }
+});
+
+// Assigning clones the template into a client-specific program; the template
+// is never modified and later edits to either side stay independent.
+router.post('/:id/assign', requireCoach, async (req, res) => {
+  try {
+    const program = await programWithDetails(req.params.id);
+    if (!program || !canAccessProgram(req.user, program) || !isTemplate(program)) return res.status(404).json({ error: 'Program not found' });
+    if (!canAssignTemplate(program)) return res.status(409).json({ error: 'This program is hidden and cannot be assigned. Unhide it first.' });
     const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
-      .eq('id', req.body.client_id).eq('archived', false).maybeSingle();
+      .eq('id', req.body?.client_id).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
-    const { data: existing } = await supabaseAdmin.from('program_assignments').select('id')
-      .eq('program_id', program.id).eq('client_id', clientRow.id).eq('archived', false).maybeSingle();
-    if (existing) return res.status(409).json({ error: 'Program is already assigned to this client' });
+    // Block an accidental double-assign: the same template already active for this client
+    // (as a live-linked legacy assignment, or as a clone of it).
+    const { data: legacy } = await supabaseAdmin.from('program_assignments').select('id')
+      .eq('program_id', program.id).eq('client_id', clientRow.id).eq('archived', false).limit(1);
+    const { data: cloned } = await supabaseAdmin.from('program_assignments')
+      .select('id, program:programs!inner(source_program_id, archived)')
+      .eq('client_id', clientRow.id).eq('archived', false)
+      .eq('program.source_program_id', program.id).eq('program.archived', false).limit(1);
+    if ((legacy && legacy.length) || (cloned && cloned.length)) {
+      return res.status(409).json({ error: 'Program is already assigned to this client' });
+    }
     const loads = cleanExerciseLoads(req.body.exercise_loads, { program: true });
-    const { data: assignmentId, error } = await supabaseAdmin.rpc('save_program_assignment_with_loads', {
-      p_assignment_id: null,
+    const { data: assignmentId, error } = await supabaseAdmin.rpc('assign_program_clone', {
       p_program_id: program.id,
       p_client_id: clientRow.id,
       p_notes: req.body.notes || null,
       p_loads: loads,
     });
-    if (error) throw error;
+    if (error) {
+      const mapped = rpcErrorStatus(error);
+      if (mapped) return res.status(mapped.status).json({ error: mapped.message });
+      throw error;
+    }
     const { data } = await supabaseAdmin.from('program_assignments').select('*, client:clients(id, name)')
       .eq('id', assignmentId).single();
-    return res.status(201).json({ ...data, exercise_loads: await programAssignmentLoads(assignmentId) });
+    return res.status(201).json({
+      ...data,
+      exercise_loads: await programAssignmentLoads(assignmentId),
+      program: await programWithDetails(data.program_id, req.user),
+    });
   } catch (e) {
     logError('assign program error', e);
     return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to assign program' });
   }
 });
 
+// A client's active program assignments with their own (cloned) program plans.
+router.get('/program-assignments/client/:clientId', requireCoach, async (req, res) => {
+  try {
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
+    if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
+    const { data, error } = await supabaseAdmin.from('program_assignments').select('*')
+      .eq('client_id', clientRow.id).eq('archived', false).order('created_at', { ascending: false });
+    if (error) throw error;
+    const result = [];
+    for (const assignment of data || []) {
+      const program = await programWithDetails(assignment.program_id, req.user);
+      if (program) result.push({ ...assignment, program, exercise_loads: await programAssignmentLoads(assignment.id) });
+    }
+    return res.json(result);
+  } catch (e) {
+    logError('client program assignments error', e);
+    return res.status(500).json({ error: 'Failed to load program assignments' });
+  }
+});
+
 router.put('/assignments/:assignmentId/loads', requireCoach, async (req, res) => {
   try {
     const { data: assignment } = await supabaseAdmin.from('program_assignments')
-      .select('*, program:programs(*)').eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
-    if (!assignment || assignment.program?.archived || !canAccessProgram(req.user, assignment.program)) {
+      .select('*, program:programs(*), client:clients(*)').eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
+    if (!assignment || assignment.program?.archived || assignment.client?.archived || !canAccessClient(req.user, assignment.client)) {
       return res.status(404).json({ error: 'Assignment not found' });
     }
     const loads = cleanExerciseLoads(req.body?.exercise_loads, { program: true });
@@ -656,8 +909,8 @@ router.put('/assignments/:assignmentId/loads', requireCoach, async (req, res) =>
 router.patch('/assignments/:assignmentId/archive', requireCoach, async (req, res) => {
   try {
     const { data: assignment } = await supabaseAdmin.from('program_assignments')
-      .select('*, program:programs(*)').eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
-    if (!assignment || assignment.program?.archived || !canAccessProgram(req.user, assignment.program)) {
+      .select('*, program:programs(*), client:clients(*)').eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
+    if (!assignment || assignment.program?.archived || !canAccessClient(req.user, assignment.client)) {
       return res.status(404).json({ error: 'Assignment not found' });
     }
     const { data, error } = await supabaseAdmin.from('program_assignments').update({ archived: true }).eq('id', assignment.id).select().single();
@@ -696,23 +949,28 @@ router.post('/workout-assignments', requireCoach, async (req, res) => {
     const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
       .eq('id', client_id).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
-    const workout = await workoutWithDetails(workout_id);
-    if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    const template = await workoutWithDetails(workout_id);
+    if (!canAccessWorkout(req.user, template) || !isTemplate(template)) return res.status(404).json({ error: 'Workout not found' });
+    if (!canAssignTemplate(template)) return res.status(409).json({ error: 'This workout is hidden and cannot be assigned. Unhide it first.' });
     const mode = assignment_mode === 'dated' ? 'dated' : 'active';
     if (mode === 'dated' && !assigned_for) return res.status(400).json({ error: 'Choose a date for dated workouts' });
     const loads = cleanExerciseLoads(req.body?.exercise_loads);
-    const { data: assignmentId, error } = await supabaseAdmin.rpc('save_workout_assignment_with_loads', {
-      p_assignment_id: null,
+    // Clone the template into this client's own workout; the template is untouched.
+    const { data: assignmentId, error } = await supabaseAdmin.rpc('assign_workout_clone', {
+      p_workout_id: template.id,
       p_client_id: clientRow.id,
-      p_workout_id: workout.id,
       p_assignment_mode: mode,
       p_assigned_for: mode === 'dated' ? assigned_for : null,
       p_notes: notes || null,
       p_loads: loads,
     });
-    if (error) throw error;
+    if (error) {
+      const mapped = rpcErrorStatus(error);
+      if (mapped) return res.status(mapped.status).json({ error: mapped.message });
+      throw error;
+    }
     const { data } = await supabaseAdmin.from('workout_assignments').select('*').eq('id', assignmentId).single();
-    return res.status(201).json({ ...data, workout, exercise_loads: await workoutAssignmentLoads(assignmentId) });
+    return res.status(201).json({ ...data, workout: await workoutWithDetails(data.workout_id), exercise_loads: await workoutAssignmentLoads(assignmentId) });
   } catch (e) {
     logError('assign workout error', e);
     return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to assign workout' });
@@ -777,11 +1035,11 @@ router.get('/client/assigned', requireClient, async (req, res) => {
     if (error) throw error;
     const programs = [];
     for (const assignment of programAssignments || []) {
-      if (assignment.program && !assignment.program.archived) programs.push({
+      if (assignment.program && !assignment.program.archived) programs.push(clientSafeProgramAssignment({
         ...assignment,
         exercise_loads: await programAssignmentLoads(assignment.id),
         program: await programWithDetails(assignment.program_id),
-      });
+      }));
     }
     const { data: workoutAssignments, error: waErr } = await supabaseAdmin.from('workout_assignments').select('*')
       .eq('client_id', req.user.client.id).eq('archived', false).order('assigned_for', { ascending: true, nullsFirst: false });
@@ -789,7 +1047,7 @@ router.get('/client/assigned', requireClient, async (req, res) => {
     const workouts = [];
     for (const assignment of workoutAssignments || []) {
       const workout = await workoutWithDetails(assignment.workout_id);
-      if (workout) workouts.push({ ...assignment, workout, exercise_loads: await workoutAssignmentLoads(assignment.id) });
+      if (workout) workouts.push(clientSafeWorkoutAssignment({ ...assignment, workout, exercise_loads: await workoutAssignmentLoads(assignment.id) }));
     }
     return res.json({ programs, workouts });
   } catch (e) {
