@@ -44,6 +44,15 @@ function renderEmail({ headline, intro, facts = [], actionLabel, actionUrl, foot
   };
 }
 
+// Resend error messages can echo addresses, so only the rejected field's
+// name survives (e.g. "validation_error.reply_to"); the raw message is never
+// logged. Keeps logError's redacted code field diagnosable.
+function providerErrorCode(error) {
+  const name = String(error?.name || error?.statusCode || 'provider_error');
+  const field = /`([a-z_]{1,32})`/.exec(String(error?.message || ''))?.[1];
+  return field ? `${name}.${field}` : name;
+}
+
 async function sendEmail(message, idempotencyKey, env = process.env) {
   if (!configured(env)) return { skipped: 'unconfigured' };
   const resend = new Resend(env.RESEND_API_KEY);
@@ -55,7 +64,7 @@ async function sendEmail(message, idempotencyKey, env = process.env) {
   if (error) {
     const sendError = new Error('email provider rejected send');
     sendError.name = 'EmailProviderError';
-    sendError.code = error.name || error.statusCode;
+    sendError.code = providerErrorCode(error);
     sendError.status = error.statusCode;
     throw sendError;
   }
@@ -288,6 +297,7 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
 }
 
 module.exports = {
+  providerErrorCode,
   configured, dispatchEmail, formatDenver, notifyBookingEvent, notifySessionCancelRequested,
   notifySessionCancelled, notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
   renderEmail, sendDailyDigests, sendEmail, sessionFacts,
