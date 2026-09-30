@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   migration-guard:
@@ -38,3 +39,20 @@ jobs:
           fi
           echo "::error::This PR changes supabase/migrations/ but does not carry the 'migration-applied' label. Apply the migration to hosted Supabase first (supabase db push, then verify supabase migration list --linked), then add the label to this PR."
           exit 1
+
+  # docs/roadmap.md standing rule: never two unapplied migrations in flight.
+  # Counts every OPEN PR that touches supabase/migrations/ and lacks the
+  # migration-applied label (this PR included); more than one fails.
+  migrations-in-flight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Self-test the in-flight check against fixtures
+        run: bash scripts/check-migration-inflight.test.sh
+      - name: At most one unapplied migration PR may be open
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 \
+            --json number,labels,files \
+            | bash scripts/check-migration-inflight.sh

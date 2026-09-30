@@ -79,3 +79,30 @@ test('the PWA frame colors (meta theme-color, manifest) stay in the warm band', 
     assert.ok(h >= WARM_HUE[0] && h <= WARM_HUE[1], `${label} ${hex} hue ${h.toFixed(0)} outside warm band`);
   }
 });
+
+test('PDF export hex literals equal the --primary / --gold tokens', () => {
+  // generateProgramPdf cannot read CSS variables, so its teal/gold are hex
+  // literals (CLAUDE.md "Brand system"). This pins them to the tokens: if
+  // --primary or --gold moves, the PDF hex must move with it.
+  const programs = fs.readFileSync(path.join(__dirname, '../src/routes/programs.js'), 'utf8');
+  const fnStart = programs.indexOf('function generateProgramPdf(');
+  assert.ok(fnStart >= 0, 'generateProgramPdf not found in routes/programs.js');
+  const body = programs.slice(fnStart);
+  const literal = (name) => {
+    const m = body.match(new RegExp(`const ${name} = '(#[0-9a-fA-F]{6})'`));
+    assert.ok(m, `const ${name} = '#rrggbb' not found in generateProgramPdf`);
+    return m[1].toUpperCase();
+  };
+  const hslToHex = ({ h, s, l }) => {
+    const S = s / 100; const L = l / 100;
+    const c = (1 - Math.abs(2 * L - 1)) * S;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = L - c / 2;
+    let [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
+      : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    const hex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+    return `#${hex(r)}${hex(g)}${hex(b)}`.toUpperCase();
+  };
+  assert.equal(literal('teal'), hslToHex(token('primary')), 'PDF teal drifted from --primary');
+  assert.equal(literal('gold'), hslToHex(token('gold')), 'PDF gold drifted from --gold');
+});
