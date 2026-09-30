@@ -957,3 +957,42 @@ test('coach agenda and client home follow the round-2 structure', async ({ page 
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
 });
+
+test('coaches pick up to three goal measures that show on both dashboards', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach');
+  const goalCard = page.getByTestId('coach-goal-clients-card');
+  const sarah = goalCard.getByTestId('coach-goal-client').filter({ hasText: 'Sarah Martinez' });
+  await expect(sarah.getByTestId('goal-measure-row')).toHaveCount(2);
+  await expect(sarah).toContainText('Goal 155 lbs');
+  // Clients by goal sits under the agenda on desktop, not below the queue.
+  const agendaBox = await page.getByTestId('coach-dashboard-today-sessions-card').boundingBox();
+  const goalBox = await goalCard.boundingBox();
+  expect(Math.abs(goalBox.x - agendaBox.x)).toBeLessThan(2);
+  expect(goalBox.y).toBeGreaterThan(agendaBox.y + agendaBox.height - 1);
+
+  await page.goto('/coach/clients/client_sarah?tab=progress');
+  await expect(page.getByTestId('metric-goal-measure-badge')).toHaveCount(2);
+  await page.getByTestId('add-metric-button').click();
+  await page.getByTestId('metric-name-input').fill('Back Squat 1RM');
+  await page.getByTestId('metric-goal-measure-switch').click();
+  await page.getByTestId('metric-save-button').click();
+  await expect(page.getByTestId('metric-goal-measure-badge')).toHaveCount(3);
+  // A fourth is refused before it reaches the API.
+  await page.getByTestId('add-metric-button').click();
+  await expect(page.getByTestId('metric-goal-measure-switch')).toBeDisabled();
+  await expect(page.getByTestId('metric-goal-measure-help')).toContainText('already has 3 goal measures');
+  await page.keyboard.press('Escape');
+
+  await usePreviewRole(page, 'client');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/client');
+  const clientGoal = page.getByTestId('client-goal-card');
+  await expect(clientGoal.getByTestId('client-goal-text')).toContainText('run a 10k');
+  await expect(clientGoal.getByTestId('goal-measure-row')).toHaveCount(2);
+  await expect(clientGoal.getByTestId('goal-measure-row').first()).toContainText('162 lbs');
+  await expect(clientGoal.getByTestId('goal-measure-change').first()).toHaveText('−6 lbs');
+  // Today's plan stays first on the home screen.
+  expect((await clientGoal.boundingBox()).y).toBeGreaterThan((await page.getByTestId('client-today-plan').boundingBox()).y);
+});
