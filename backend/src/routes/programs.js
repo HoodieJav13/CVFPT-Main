@@ -1,8 +1,5 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const multer = require('multer');
-const PDFDocument = require('pdfkit');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
@@ -31,6 +28,12 @@ const {
   validateDraft,
 } = require('../lib/programDraft.cjs');
 const { extractPdfText } = require('../lib/pdfText');
+const {
+  generateLogSheetPdf,
+  generateProgramPdf,
+  logSheetFilename,
+  safeFilename,
+} = require('../lib/programPdf');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -50,9 +53,6 @@ function programImportUpload(req, res, next) {
     return res.status(400).json({ error: 'Could not read the uploaded file.' });
   });
 }
-
-const CVF_LOCATION = 'Core Value Fitness - Albuquerque, NM';
-const LOGO_PATH = path.join(__dirname, '..', 'assets', 'cvf-logo.png');
 
 function isCsvUpload(file) {
   return Boolean(file && (
@@ -78,121 +78,6 @@ function sourceForImport(sourceType) {
 
 function isSupportedProgramFrequency(value) {
   return Number.isInteger(value) && value >= 1 && value <= 5;
-}
-
-function safeFilename(value) {
-  const cleaned = String(value || 'Program')
-    .replace(/[^a-z0-9]+/gi, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-  return `CVF-${cleaned || 'Program'}.pdf`;
-}
-
-function getExerciseText(exercise, includeCoachNotes = false) {
-  const parts = [];
-  if (exercise.sets || exercise.reps) parts.push(`${exercise.sets || '?'} x ${exercise.reps || '?'}`);
-  if (exercise.rest) parts.push(`Rest: ${exercise.rest}`);
-  if (exercise.tempo) parts.push(`Tempo: ${exercise.tempo}`);
-  if (exercise.client_notes || exercise.notes) parts.push(exercise.client_notes || exercise.notes);
-  if (includeCoachNotes && exercise.coach_notes) parts.push(`Coach: ${exercise.coach_notes}`);
-  return parts.filter(Boolean).join(' - ');
-}
-
-function addWrappedText(doc, text, x, y, options = {}) {
-  doc.text(String(text || ''), x, y, options);
-  return doc.y;
-}
-
-function ensurePdfSpace(doc, needed = 80) {
-  if (doc.y + needed > doc.page.height - doc.page.margins.bottom) {
-    doc.addPage();
-  }
-}
-
-function generateProgramPdf(program, user, options = {}) {
-  const includeVideos = options.includeVideos !== false;
-  const includeCoachNotes = Boolean(options.includeCoachNotes);
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'LETTER', margin: 42, bufferPages: true });
-    const chunks = [];
-    doc.on('data', (chunk) => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-
-    // Keep in sync with --primary in frontend/src/index.css — pdfkit can't read CSS vars.
-    const teal = '#5EC4D4';
-    // Keep in sync with --gold in frontend/src/index.css — pdfkit can't read CSS vars.
-    const gold = '#FCF640';
-    const dark = '#09111C';
-    const muted = '#5F6B78';
-
-    doc.rect(0, 0, doc.page.width, 116).fill(dark);
-    if (fs.existsSync(LOGO_PATH)) {
-      doc.image(LOGO_PATH, 42, 26, { width: 52, height: 52 });
-    } else {
-      doc.roundedRect(42, 30, 44, 44, 8).fill(teal).fillColor(dark).font('Helvetica-Bold').fontSize(13).text('CVF', 51, 45);
-    }
-    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(20).text(program.name || 'Training Program', 110, 30, { width: 430 });
-    doc.fillColor(gold).font('Helvetica-Bold').fontSize(9).text('CVF PT', 110, 58);
-    doc.fillColor('#DCE6EF').font('Helvetica').fontSize(9).text(CVF_LOCATION, 110, 73);
-
-    doc.y = 140;
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(14).text('Program Overview');
-    doc.moveTo(42, doc.y + 6).lineTo(570, doc.y + 6).strokeColor(teal).lineWidth(1.5).stroke();
-    doc.moveDown(1);
-    doc.fillColor('#111827').font('Helvetica').fontSize(10);
-    const generated = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-    const coachName = user?.coach?.name || 'CVF Coach';
-    const frequency = program.frequency_days || program.days?.length || 0;
-    doc.text(`${frequency} ${frequency === 1 ? 'day' : 'days'}/week`, { continued: true });
-    doc.fillColor(muted).text(`   Coach: ${coachName}   Generated: ${generated}`);
-    if (program.description) {
-      doc.moveDown(0.8);
-      doc.fillColor('#1F2937').fontSize(10).text(program.description, { width: 510, lineGap: 2 });
-    }
-    doc.moveDown(1.2);
-
-    (program.days || []).forEach((day) => {
-      ensurePdfSpace(doc, 120);
-      const workout = day.workout || {};
-      doc.roundedRect(42, doc.y, 528, 32, 6).fill('#F3F8FA');
-      doc.fillColor(dark).font('Helvetica-Bold').fontSize(12).text(`Day ${day.day_number}: ${workout.name || 'Workout Day'}`, 54, doc.y + 9, { width: 390 });
-      if (workout.goal) doc.fillColor(teal).fontSize(9).text(workout.goal, 440, doc.y - 14, { width: 116, align: 'right' });
-      doc.y += 42;
-      if (day.notes) {
-        doc.fillColor(muted).font('Helvetica-Oblique').fontSize(9).text(day.notes, 54, doc.y, { width: 490 });
-        doc.moveDown(0.6);
-      }
-
-      (workout.exercises || []).forEach((exercise, index) => {
-        ensurePdfSpace(doc, 72);
-        const exerciseName = exercise.library_exercise?.name || exercise.custom_name || exercise.name || 'Exercise';
-        const top = doc.y;
-        doc.circle(53, top + 8, 8).fill(teal);
-        doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(8).text(String(index + 1), 49, top + 3, { width: 8, align: 'center' });
-        doc.fillColor('#111827').font('Helvetica-Bold').fontSize(10).text(exerciseName, 70, top, { width: 470 });
-        const detail = getExerciseText(exercise, includeCoachNotes);
-        if (detail) doc.fillColor('#374151').font('Helvetica').fontSize(9).text(detail, 70, doc.y + 3, { width: 470, lineGap: 2 });
-        if (includeVideos && (exercise.video_url || exercise.library_exercise?.video_url)) {
-          const video = exercise.video_url || exercise.library_exercise.video_url;
-          doc.fillColor(teal).fontSize(8).text(video, 70, doc.y + 4, { width: 470, underline: true });
-        }
-        doc.moveDown(0.8);
-        doc.strokeColor('#E5E7EB').lineWidth(0.5).moveTo(70, doc.y).lineTo(570, doc.y).stroke();
-        doc.moveDown(0.5);
-      });
-      doc.moveDown(0.6);
-    });
-
-    const range = doc.bufferedPageRange();
-    for (let i = range.start; i < range.start + range.count; i += 1) {
-      doc.switchToPage(i);
-      doc.fillColor(muted).font('Helvetica').fontSize(8)
-        .text(`Core Value Fitness - ${i + 1} / ${range.count}`, 42, 752, { width: 528, align: 'center' });
-    }
-
-    doc.end();
-  });
 }
 
 async function callOpenAiForDraft(pdfText, originalFilename) {
@@ -910,6 +795,64 @@ router.get('/client/assigned', requireClient, async (req, res) => {
   } catch (e) {
     logError('client programs error', e);
     return res.status(500).json({ error: 'Failed to load your programs' });
+  }
+});
+
+function sendLogSheet(res, name, pdf) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${logSheetFilename(name)}"`);
+  return res.send(pdf);
+}
+
+router.get('/client/assignments/:assignmentId/log-sheet.pdf', requireClient, pdfExportLimiter, async (req, res) => {
+  try {
+    const { data: assignment, error } = await supabaseAdmin.from('program_assignments').select('*')
+      .eq('id', req.params.assignmentId).eq('client_id', req.user.client.id).eq('archived', false).maybeSingle();
+    if (error) throw error;
+    const program = assignment ? await programWithDetails(assignment.program_id) : null;
+    if (!program) return res.status(404).json({ error: 'Program not found' });
+    const loads = await programAssignmentLoads(assignment.id);
+    const pdf = await generateLogSheetPdf({
+      title: program.name,
+      clientName: req.user.client.name,
+      note: assignment.notes,
+      sections: (program.days || []).map((day) => ({
+        title: `Day ${day.day_number}: ${day.workout?.name || 'Workout Day'}`,
+        goal: day.workout?.goal,
+        notes: day.notes,
+        exercises: day.workout?.exercises || [],
+        loads: loads.filter((load) => load.program_day_id === day.id),
+      })),
+    });
+    return sendLogSheet(res, program.name, pdf);
+  } catch (e) {
+    logError('client program log sheet error', e);
+    return res.status(500).json({ error: 'Failed to create workout PDF' });
+  }
+});
+
+router.get('/client/workout-assignments/:assignmentId/log-sheet.pdf', requireClient, pdfExportLimiter, async (req, res) => {
+  try {
+    const { data: assignment, error } = await supabaseAdmin.from('workout_assignments').select('*')
+      .eq('id', req.params.assignmentId).eq('client_id', req.user.client.id).eq('archived', false).maybeSingle();
+    if (error) throw error;
+    const workout = assignment ? await workoutWithDetails(assignment.workout_id) : null;
+    if (!workout) return res.status(404).json({ error: 'Workout not found' });
+    const pdf = await generateLogSheetPdf({
+      title: workout.name,
+      clientName: req.user.client.name,
+      note: assignment.notes,
+      sections: [{
+        title: workout.name || 'Workout',
+        goal: workout.goal,
+        exercises: workout.exercises,
+        loads: await workoutAssignmentLoads(assignment.id),
+      }],
+    });
+    return sendLogSheet(res, workout.name, pdf);
+  } catch (e) {
+    logError('client workout log sheet error', e);
+    return res.status(500).json({ error: 'Failed to create workout PDF' });
   }
 });
 
