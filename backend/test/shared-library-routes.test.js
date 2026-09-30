@@ -404,10 +404,19 @@ test('save-as-template defaults the variation parent to the source template and 
     db.rpcCalls.length = 0;
     await call('POST', `/workouts/${uuid(3)}/save-as-template`, { variation_of: null });
     assert.equal(db.rpcCalls[0].args.p_variation_of, null);
-    // Duplicating a template defaults to a variation of itself
+    // Duplicating a template defaults to a variation of itself, named so it reads apart
     db.rpcCalls.length = 0;
     await call('POST', `/workouts/${uuid(1)}/save-as-template`, {});
     assert.equal(db.rpcCalls[0].args.p_variation_of, uuid(1));
+    assert.equal(db.rpcCalls[0].args.p_name, 'A template (variation)');
+    // A standalone copy (explicit null parent, no name) keeps the source name
+    db.rpcCalls.length = 0;
+    await call('POST', `/workouts/${uuid(1)}/save-as-template`, { variation_of: null });
+    assert.equal(db.rpcCalls[0].args.p_name, null);
+    db.rpcResults.save_program_as_template = { data: uuid(15), error: null };
+    db.rpcCalls.length = 0;
+    await call('POST', `/${uuid(11)}/save-as-template`, {});
+    assert.equal(db.rpcCalls[0].args.p_name, 'A program (variation)');
     // A stale default parent (archived template) falls back to standalone rather than failing
     db.tables.workouts.find((w) => w.id === uuid(1)).archived = true;
     db.rpcCalls.length = 0;

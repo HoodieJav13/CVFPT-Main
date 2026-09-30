@@ -60,6 +60,12 @@ const PROGRAM_FREQUENCIES = ['1', '2', '3', '4', '5'];
 const IMPORT_FREQUENCIES = ['3', '4', '5'];
 const PASTE_NO_EXERCISES_MESSAGE = "Couldn't find any exercises in this text.";
 
+// Keep a name the coach typed; otherwise mark the copy so it reads apart from the original.
+function variationName(formName, originalName) {
+  const typed = String(formName || '').trim();
+  return !typed || typed === originalName ? `${originalName} (variation)` : typed;
+}
+
 function frequencyLabel(value) {
   return `${value} ${String(value) === '1' ? 'day' : 'days'}/week`;
 }
@@ -379,7 +385,7 @@ function WorkoutsTab({ workouts, library, reload }) {
     setSaving(true);
     try {
       const { data: copy } = await api.post(`/programs/workouts/${editing.id}/save-as-template`, {});
-      await api.put(`/programs/workouts/${copy.id}`, form);
+      await api.put(`/programs/workouts/${copy.id}`, { ...form, name: variationName(form.name, editing.name) });
       toast.success('Saved as a hidden variation. Unhide it when it is ready to assign.');
       setLock(null);
       setOpen(false);
@@ -627,7 +633,7 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
     setSaving(true);
     try {
       const { data: copy } = await api.post(`/programs/${editing.id}/save-as-template`, {});
-      await api.put(`/programs/${copy.id}`, form);
+      await api.put(`/programs/${copy.id}`, { ...form, name: variationName(form.name, editing.name) });
       toast.success('Saved as a hidden variation. Unhide it when it is ready to assign.');
       setLock(null);
       setOpen(false);

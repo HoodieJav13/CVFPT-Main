@@ -423,6 +423,13 @@ async function resolveVariationParent(kind, row, body) {
   return { id: data.id };
 }
 
+// An explicit name wins. A variation without one is "<source> (variation)" so it is
+// distinguishable in flat pickers; a standalone copy keeps the source name.
+function copyName(body, source, variationParentId) {
+  if (typeof body.name === 'string' && body.name.trim()) return body.name.trim();
+  return variationParentId ? `${source.name} (variation)` : null;
+}
+
 function rpcErrorStatus(error) {
   const message = String(error?.message || '');
   if (/not found/i.test(message)) return { status: 404, message };
@@ -642,7 +649,7 @@ router.post('/workouts/:id/save-as-template', requireCoach, async (req, res) => 
     const { data: newId, error } = await supabaseAdmin.rpc('save_workout_as_template', {
       p_workout_id: workout.id,
       p_coach_id: req.user.coach.id,
-      p_name: typeof body.name === 'string' ? body.name : null,
+      p_name: copyName(body, workout, variationOf.id),
       p_variation_of: variationOf.id,
     });
     if (error) {
@@ -909,7 +916,7 @@ router.post('/:id/save-as-template', requireCoach, async (req, res) => {
     const { data: newId, error } = await supabaseAdmin.rpc('save_program_as_template', {
       p_program_id: program.id,
       p_coach_id: req.user.coach.id,
-      p_name: typeof body.name === 'string' ? body.name : null,
+      p_name: copyName(body, program, variationOf.id),
       p_variation_of: variationOf.id,
     });
     if (error) {
