@@ -737,6 +737,11 @@ test('offline finish queues completion, defers celebration, and syncs on reconne
 });
 
 test('session conflicts surface inline, clear on relevant edits, and keep refused bookings pending', async ({ page }) => {
+  // Pin "now" to a mid-month Denver midday. Fixtures are Denver-day relative
+  // and pickDay(5) must not cross a month boundary, so a real clock made this
+  // fail on evenings (UTC runner) and in the last five days of every month.
+  const now = new Date('2026-09-15T12:00:00-06:00');
+  await page.clock.setFixedTime(now);
   await usePreviewRole(page, 'coach');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/coach/sessions', { waitUntil: 'domcontentloaded' });
@@ -744,9 +749,9 @@ test('session conflicts surface inline, clear on relevant edits, and keep refuse
 
   const pickDay = async (offsetDays) => {
     const panel = page.getByTestId('session-datetime-input-panel');
-    const target = new Date();
+    const target = new Date(now);
     target.setDate(target.getDate() + offsetDays);
-    if (target.getMonth() !== new Date().getMonth()) {
+    if (target.getMonth() !== now.getMonth()) {
       await panel.getByRole('button', { name: /next/i }).click();
     }
     await panel.getByRole('grid')
