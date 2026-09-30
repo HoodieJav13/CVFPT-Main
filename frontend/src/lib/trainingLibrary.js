@@ -54,3 +54,41 @@ export function authorOptions(rows) {
 export function isLegacyLockError(error) {
   return error?.response?.status === 409 && error.response?.data?.code === 'LEGACY_ASSIGNMENTS';
 }
+
+// ----- Exercise library filters -----
+// Equipment is free text ("DB,KB,BB", "Box/Step + KB"), so it is split into
+// individual items for the filter; an exercise matches when any item matches.
+export function splitEquipment(value) {
+  return String(value || '').split(/[,/]/).map((part) => part.trim()).filter(Boolean);
+}
+
+function distinctSorted(values) {
+  const seen = new Map();
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (!seen.has(key)) seen.set(key, value);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+export function exerciseFilterOptions(rows) {
+  const clean = (value) => String(value || '').trim();
+  return {
+    categories: distinctSorted(rows.map((row) => clean(row.category)).filter(Boolean)),
+    muscles: distinctSorted(rows.map((row) => clean(row.primary_muscle)).filter(Boolean)),
+    equipment: distinctSorted(rows.flatMap((row) => splitEquipment(row.equipment))),
+  };
+}
+
+// category / muscle / equipment are 'all' or a value from exerciseFilterOptions.
+export function filterExercises(rows, { search = '', category = 'all', muscle = 'all', equipment = 'all' } = {}) {
+  const query = search.trim().toLowerCase();
+  const same = (a, b) => String(a || '').trim().toLowerCase() === b.toLowerCase();
+  return rows.filter((row) => {
+    if (category !== 'all' && !same(row.category, category)) return false;
+    if (muscle !== 'all' && !same(row.primary_muscle, muscle)) return false;
+    if (equipment !== 'all' && !splitEquipment(row.equipment).some((item) => same(item, equipment))) return false;
+    if (!query) return true;
+    return [row.name, row.category, row.equipment, row.primary_muscle].join(' ').toLowerCase().includes(query);
+  });
+}

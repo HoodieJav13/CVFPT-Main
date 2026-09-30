@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, LoadingScreen, LoadErrorState, EmptyState, IconButton } from '@/components/common';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,7 @@ import {
   AuthorByline, AuthorFilter, HiddenBadge, LegacyLockDialog,
 } from '@/components/training/TemplateBits';
 import {
-  authorOptions, filterByAuthor, groupVariations, isLegacyLockError,
+  authorOptions, exerciseFilterOptions, filterByAuthor, filterExercises, groupVariations, isLegacyLockError,
 } from '@/lib/trainingLibrary';
 
 const {
@@ -126,14 +126,42 @@ export default function Programs() {
   );
 }
 
+function LibraryFilter({ label, allLabel, value, onChange, options, testId }) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="h-11 w-full rounded-xl" aria-label={`Filter by ${label.toLowerCase()}`} data-testid={testId}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="max-h-72">
+        <SelectItem value="all">{allLabel}</SelectItem>
+        {options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
 function ExerciseLibraryTab({ library, reload }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_LIBRARY);
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('all');
+  const [muscle, setMuscle] = useState('all');
+  const [equipment, setEquipment] = useState('all');
   const [saving, setSaving] = useState(false);
 
-  const filtered = library.filter((ex) => [ex.name, ex.category, ex.equipment, ex.primary_muscle].join(' ').toLowerCase().includes(search.toLowerCase()));
+  const options = useMemo(() => exerciseFilterOptions(library), [library]);
+  const filtered = useMemo(
+    () => filterExercises(library, { search, category, muscle, equipment }),
+    [library, search, category, muscle, equipment],
+  );
+  const filtersActive = category !== 'all' || muscle !== 'all' || equipment !== 'all' || search.trim() !== '';
+  const clearFilters = () => {
+    setSearch('');
+    setCategory('all');
+    setMuscle('all');
+    setEquipment('all');
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -244,8 +272,27 @@ function ExerciseLibraryTab({ library, reload }) {
           </Button>
         </div>
       </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="exercise-library-filters">
+        <LibraryFilter label="Category" allLabel="All categories" value={category} onChange={setCategory} options={options.categories} testId="exercise-library-filter-category" />
+        <LibraryFilter label="Muscle" allLabel="All muscles" value={muscle} onChange={setMuscle} options={options.muscles} testId="exercise-library-filter-muscle" />
+        <LibraryFilter label="Equipment" allLabel="All equipment" value={equipment} onChange={setEquipment} options={options.equipment} testId="exercise-library-filter-equipment" />
+      </div>
+      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <p aria-live="polite" data-testid="exercise-library-count">
+          {filtersActive ? `Showing ${filtered.length} of ${library.length} exercises` : `${library.length} exercises`}
+        </p>
+        {filtersActive && (
+          <Button type="button" variant="ghost" size="sm" className="h-8 rounded-lg px-2 text-xs" onClick={clearFilters} data-testid="exercise-library-clear-filters">Clear filters</Button>
+        )}
+      </div>
       <p className="text-xs text-muted-foreground">CSV columns: name, category, equipment, primary_muscle, secondary_muscles, video_url, notes</p>
-      {filtered.length === 0 && <EmptyState icon={BookOpen} title="No exercises found" subtitle="Import a CSV or add an exercise manually." />}
+      {filtered.length === 0 && (
+        <EmptyState
+          icon={BookOpen}
+          title="No exercises found"
+          subtitle={library.length ? 'Nothing matches these filters. Try clearing them.' : 'Import a CSV or add an exercise manually.'}
+        />
+      )}
       <div className="grid gap-3 md:grid-cols-2">
         {filtered.map((exercise) => (
           <Card key={exercise.id} data-testid="exercise-library-card">

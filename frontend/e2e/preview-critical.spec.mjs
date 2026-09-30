@@ -162,6 +162,37 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
   await expect(page.getByTestId('message-thread-row').first()).toBeVisible();
 });
 
+test('exercise library filters narrow the list, combine with search, and clear at mobile width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await expect(page.getByTestId('exercise-library-filters')).toBeVisible();
+
+  const cards = page.getByTestId('exercise-library-card');
+  const total = await cards.count();
+  expect(total).toBeGreaterThan(1);
+  await expect(page.getByTestId('exercise-library-count')).toHaveText(`${total} exercises`);
+  await expect(page.getByTestId('exercise-library-clear-filters')).toHaveCount(0);
+
+  await page.getByTestId('exercise-library-filter-category').click();
+  const options = page.getByRole('option');
+  expect(await options.count()).toBeGreaterThan(1);
+  await options.nth(1).click();
+  const narrowed = await cards.count();
+  expect(narrowed).toBeGreaterThan(0);
+  expect(narrowed).toBeLessThanOrEqual(total);
+  await expect(page.getByTestId('exercise-library-count')).toHaveText(`Showing ${narrowed} of ${total} exercises`);
+
+  await page.getByTestId('exercise-library-search-input').fill('zzz-no-such-exercise');
+  await expect(cards).toHaveCount(0);
+  await expect(page.getByText('Nothing matches these filters. Try clearing them.')).toBeVisible();
+
+  await page.getByTestId('exercise-library-clear-filters').click();
+  await expect(cards).toHaveCount(total);
+  await expect(page.getByTestId('exercise-library-count')).toHaveText(`${total} exercises`);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
+
 test('coach session indicators and detail page cover the workout-done confirm flow', async ({ page }) => {
   await usePreviewRole(page, 'coach');
   await page.goto('/coach/sessions');
