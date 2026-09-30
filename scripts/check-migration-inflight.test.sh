@@ -12,4 +12,5 @@ expect() {
 expect one-unlabelled.json 0
 expect two-unlabelled.json 1
 expect two-one-labelled.json 0
+expect two-dev-only-labelled.json 1
 exit $fail
