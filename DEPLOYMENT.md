@@ -86,7 +86,7 @@ built from it.
 | Variable | Purpose |
 |---|---|
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Key pair identifying this server to browser push services. Generate once with `npx web-push generate-vapid-keys`; all three rows required or push stays inert |
-| `VAPID_SUBJECT` | Contact URI for push services, e.g. `mailto:owner@corevaluefitness.com` |
+| `VAPID_SUBJECT` | Contact URI for push services, e.g. `mailto:owner@corevaluefit.com` |
 
 iPhones deliver web push only to the installed (Home Screen) PWA; the
 notification-settings dialog explains this to users. Rotating the key pair

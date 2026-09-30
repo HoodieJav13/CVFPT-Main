@@ -5,7 +5,7 @@ const { logError } = require('../utils/logger');
 const { dateInTz } = require('../utils/time');
 const { fetchAllRows } = require('../lib/supabasePage');
 
-const FROM = 'CVF PT <notifications@corevaluefitness.com>';
+const FROM = 'CVF PT <notifications@corevaluefit.com>';
 const DENVER = 'America/Denver';
 
 function configured(env = process.env) {
