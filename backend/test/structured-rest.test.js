@@ -10,6 +10,7 @@ const migration = fs.readFileSync(
 );
 const tracker = fs.readFileSync(path.join(root, 'frontend', 'src', 'pages', 'client', 'WorkoutTracker.jsx'), 'utf8');
 const restLib = fs.readFileSync(path.join(root, 'frontend', 'src', 'lib', 'rest.js'), 'utf8');
+const restCountdown = fs.readFileSync(path.join(root, 'frontend', 'src', 'lib', 'useRestCountdown.js'), 'utf8');
 const builder = fs.readFileSync(path.join(root, 'frontend', 'src', 'pages', 'coach', 'Programs.jsx'), 'utf8');
 
 test('structured rest schema: parser, columns, range checks, service-role only', () => {
@@ -60,8 +61,10 @@ test('rest timer is durable and end-of-rest alerts are opt-in with capability ch
   assert.match(tracker, /stored > Date\.now\(\)/);
   // Alerts default off, persist as a preference, and probe capabilities.
   assert.match(tracker, /localStorage\.getItem\('cvf_rest_alerts'\) === 'on'/);
-  assert.match(tracker, /typeof navigator\.vibrate === 'function'/);
-  assert.match(tracker, /window\.AudioContext \|\| window\.webkitAudioContext/);
+  // The end-of-rest cue lives in the shared countdown hook both rest views use.
+  assert.match(tracker, /useRestCountdown\(restEndsAt, restAlerts\)/);
+  assert.match(restCountdown, /typeof navigator\.vibrate === 'function'/);
+  assert.match(restCountdown, /window\.AudioContext \|\| window\.webkitAudioContext/);
 });
 
 test('builder authors rest numerically; shared parser mirrors the SQL range', () => {
