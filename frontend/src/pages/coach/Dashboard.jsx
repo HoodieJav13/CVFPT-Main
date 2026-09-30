@@ -150,15 +150,18 @@ export default function CoachDashboard() {
                     <span className="h-px flex-1 bg-primary/60" />
                   </div>
                 )}
-                <div className={`flex flex-wrap items-center gap-3 border-t border-border/60 py-2.5 ${past && !workoutDone ? 'opacity-60' : ''}`} data-testid="today-session-row">
-                  <Link to={`/coach/sessions/${s.id}`} className="flex min-w-[15rem] flex-1 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <div className="w-16 shrink-0">
+                <div className={`flex flex-wrap items-center gap-3 border-t border-border/60 py-2.5 lg:py-1.5 ${past && !workoutDone ? 'opacity-60' : ''}`} data-testid="today-session-row">
+                  <Link to={`/coach/sessions/${s.id}`} className="flex min-w-[11rem] flex-1 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <div className="w-16 shrink-0 lg:flex lg:w-28 lg:items-baseline lg:gap-2">
                       <p className="font-display font-semibold tabular-nums">{fmtTime(s.scheduled_at)}</p>
                       <p className="text-[11px] text-muted-foreground">{s.duration_minutes} min</p>
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{s.client?.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
+                    {/* Two lines on a phone, one line per session on desktop so
+                        a busy day fits without scrolling. A row with a live or
+                        done chip keeps its second line so nothing is cut. */}
+                    <div className={`min-w-0 ${live || workoutDone ? '' : 'lg:flex lg:flex-1 lg:items-center lg:gap-4'}`}>
+                      <p className={`truncate font-medium ${live || workoutDone ? '' : 'lg:w-40 lg:shrink-0'}`}>{s.client?.name}</p>
+                      <p className={`truncate text-xs text-muted-foreground ${live || workoutDone ? '' : 'lg:min-w-0 lg:flex-1 lg:text-sm'}`}>
                         {[s.linked.workout?.name, s.location].filter(Boolean).join(' · ') || 'No location'}
                       </p>
                       {live && (
