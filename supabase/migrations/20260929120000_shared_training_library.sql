@@ -88,8 +88,10 @@ for each row execute function public.set_template_created_by();
 -- One internal helper for both directions.
 --   assign:  template -> client instance (everything is copied, including
 --            default loads and coach notes, because the coach may tune them)
---   save:    instance -> new hidden template (client-specific data stripped:
---            default load and coach-only notes)
+--   save:    instance or template -> new hidden template. When the source is a
+--            client instance, client-specific data is stripped (default load and
+--            coach-only notes); duplicating a template keeps the coach's own
+--            prescription intact.
 -- Returns { workout_id, exercise_map } where exercise_map is
 -- { "<source exercise id>": "<cloned exercise id>" }.
 create or replace function public.clone_workout(
@@ -110,11 +112,13 @@ declare
   v_ex public.workout_exercises%rowtype;
   v_new_ex uuid;
   v_map jsonb := '{}'::jsonb;
+  v_strip boolean;
 begin
   select * into v_src from public.workouts where id = p_workout_id and archived = false;
   if not found then
     raise exception 'Workout not found';
   end if;
+  v_strip := p_as_template and not v_src.is_template;
 
   if p_as_template then
     insert into public.workouts (
@@ -144,10 +148,10 @@ begin
     ) values (
       v_new_id, v_ex.exercise_library_id, v_ex.custom_name, v_ex.sets, v_ex.reps, v_ex.rest,
       v_ex.rest_seconds, v_ex.tempo, v_ex.target_rpe,
-      case when p_as_template then null else v_ex.default_load_value end,
-      case when p_as_template then null else v_ex.default_load_unit end,
+      case when v_strip then null else v_ex.default_load_value end,
+      case when v_strip then null else v_ex.default_load_unit end,
       v_ex.notes, v_ex.client_notes,
-      case when p_as_template then null else v_ex.coach_notes end,
+      case when v_strip then null else v_ex.coach_notes end,
       v_ex.video_url, v_ex.position
     ) returning id into v_new_ex;
     v_map := v_map || jsonb_build_object(v_ex.id::text, v_new_ex);
@@ -322,7 +326,7 @@ end;
 $$;
 
 -- ---------- Save instance as template / variation ----------
-create or replace function public.save_workout_instance_as_template(
+create or replace function public.save_workout_as_template(
   p_workout_id uuid,
   p_coach_id uuid,
   p_name text,
@@ -340,7 +344,7 @@ declare
   v_new_id uuid;
 begin
   select * into v_src from public.workouts
-  where id = p_workout_id and archived = false and not is_template;
+  where id = p_workout_id and archived = false;
   if not found then
     raise exception 'Workout not found';
   end if;
@@ -354,7 +358,7 @@ begin
 end;
 $$;
 
-create or replace function public.save_program_instance_as_template(
+create or replace function public.save_program_as_template(
   p_program_id uuid,
   p_coach_id uuid,
   p_name text,
@@ -373,7 +377,7 @@ declare
   v_clone jsonb;
 begin
   select * into v_src from public.programs
-  where id = p_program_id and archived = false and not is_template;
+  where id = p_program_id and archived = false;
   if not found then
     raise exception 'Program not found';
   end if;
@@ -394,12 +398,119 @@ begin
     order by day_number
   loop
     v_clone := public.clone_workout(v_day.workout_id, p_coach_id, null, true, null);
-    -- Day notes on an instance may be client-specific, so they are not carried over.
-    insert into public.program_days (program_id, day_number, workout_id)
-    values (v_new_program_id, v_day.day_number, (v_clone ->> 'workout_id')::uuid);
+    -- Day notes on a client instance may be client-specific, so only a template's are kept.
+    insert into public.program_days (program_id, day_number, workout_id, notes)
+    values (
+      v_new_program_id, v_day.day_number, (v_clone ->> 'workout_id')::uuid,
+      case when v_src.is_template then v_day.notes else null end
+    );
   end loop;
 
   return v_new_program_id;
+end;
+$$;
+
+-- ---------- save_program: shared-template composition rules ----------
+-- Same signature as before (p_is_admin is retained but no longer gates
+-- anything: templates are shared by every coach). A template program may only
+-- use template workouts; a client's program instance may only use workouts
+-- that belong to that same client, so an instance can never be re-linked to a
+-- shared template. Grants are unchanged (create or replace keeps them).
+create or replace function public.save_program(
+  p_program_id uuid,
+  p_coach_id uuid,
+  p_is_admin boolean,
+  p_name text,
+  p_description text,
+  p_frequency_days integer,
+  p_days jsonb
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_program_id uuid;
+  v_day jsonb;
+  v_workout_id uuid;
+  v_is_template boolean := true;
+  v_client_id uuid := null;
+begin
+  if btrim(coalesce(p_name, '')) = '' then
+    raise exception 'Program name is required';
+  end if;
+  if p_frequency_days is null or p_frequency_days < 1 or p_frequency_days > 5 then
+    raise exception 'Program frequency must be between 1 and 5';
+  end if;
+  if jsonb_array_length(coalesce(p_days, '[]'::jsonb)) <> p_frequency_days then
+    raise exception 'Program day count must match frequency';
+  end if;
+  if (
+    select count(distinct (value ->> 'day_number')::integer)
+    from jsonb_array_elements(coalesce(p_days, '[]'::jsonb))
+  ) <> p_frequency_days then
+    raise exception 'Program day numbers must be unique';
+  end if;
+
+  if p_program_id is not null then
+    select is_template, client_id into v_is_template, v_client_id
+    from public.programs where id = p_program_id and archived = false;
+    if not found then
+      return null;
+    end if;
+  end if;
+
+  for v_day in select value from jsonb_array_elements(p_days)
+  loop
+    v_workout_id := nullif(v_day ->> 'workout_id', '')::uuid;
+    if not exists (
+      select 1 from public.workouts
+      where id = v_workout_id
+        and archived = false
+        and case
+          when v_is_template then is_template
+          else client_id = v_client_id
+        end
+    ) then
+      raise exception 'Workout not found';
+    end if;
+  end loop;
+
+  if p_program_id is null then
+    insert into public.programs (coach_id, name, description, frequency_days)
+    values (p_coach_id, btrim(p_name), nullif(p_description, ''), p_frequency_days)
+    returning id into v_program_id;
+  else
+    update public.programs
+    set name = btrim(p_name),
+        description = nullif(p_description, ''),
+        frequency_days = p_frequency_days
+    where id = p_program_id and archived = false
+    returning id into v_program_id;
+  end if;
+
+  update public.program_days
+  set archived = true
+  where program_id = v_program_id and archived = false;
+
+  for v_day in select value from jsonb_array_elements(p_days)
+  loop
+    insert into public.program_days (program_id, day_number, workout_id, notes, archived)
+    values (
+      v_program_id,
+      (v_day ->> 'day_number')::integer,
+      (v_day ->> 'workout_id')::uuid,
+      nullif(v_day ->> 'notes', ''),
+      false
+    )
+    on conflict (program_id, day_number) do update
+    set workout_id = excluded.workout_id,
+        notes = excluded.notes,
+        archived = false;
+  end loop;
+
+  return v_program_id;
 end;
 $$;
 
@@ -459,9 +570,9 @@ revoke execute on function public.assign_workout_clone(uuid, uuid, text, date, t
   from public, anon, authenticated;
 revoke execute on function public.assign_program_clone(uuid, uuid, text, jsonb)
   from public, anon, authenticated;
-revoke execute on function public.save_workout_instance_as_template(uuid, uuid, text, uuid)
+revoke execute on function public.save_workout_as_template(uuid, uuid, text, uuid)
   from public, anon, authenticated;
-revoke execute on function public.save_program_instance_as_template(uuid, uuid, text, uuid)
+revoke execute on function public.save_program_as_template(uuid, uuid, text, uuid)
   from public, anon, authenticated;
 
 grant execute on function public.set_template_created_by() to service_role;
@@ -469,5 +580,5 @@ grant execute on function public.clone_workout(uuid, uuid, uuid, boolean, uuid) 
 grant execute on function public.resolve_variation_root(text, uuid) to service_role;
 grant execute on function public.assign_workout_clone(uuid, uuid, text, date, text, jsonb) to service_role;
 grant execute on function public.assign_program_clone(uuid, uuid, text, jsonb) to service_role;
-grant execute on function public.save_workout_instance_as_template(uuid, uuid, text, uuid) to service_role;
-grant execute on function public.save_program_instance_as_template(uuid, uuid, text, uuid) to service_role;
+grant execute on function public.save_workout_as_template(uuid, uuid, text, uuid) to service_role;
+grant execute on function public.save_program_as_template(uuid, uuid, text, uuid) to service_role;

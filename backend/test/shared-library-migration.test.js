@@ -14,8 +14,8 @@ const functions = [
   ['resolve_variation_root', 'text, uuid'],
   ['assign_workout_clone', 'uuid, uuid, text, date, text, jsonb'],
   ['assign_program_clone', 'uuid, uuid, text, jsonb'],
-  ['save_workout_instance_as_template', 'uuid, uuid, text, uuid'],
-  ['save_program_instance_as_template', 'uuid, uuid, text, uuid'],
+  ['save_workout_as_template', 'uuid, uuid, text, uuid'],
+  ['save_program_as_template', 'uuid, uuid, text, uuid'],
 ];
 
 test('shared-library RPCs are invoker-security and service-role-only', () => {
@@ -54,10 +54,12 @@ test('assigning clones from active, non-hidden templates only', () => {
 });
 
 test('saving an instance as a template strips client-specific data and starts hidden', () => {
-  assert.match(migration, /case when p_as_template then null else v_ex\.default_load_value end/);
-  assert.match(migration, /case when p_as_template then null else v_ex\.coach_notes end/);
+  assert.match(migration, /v_strip := p_as_template and not v_src\.is_template;/);
+  assert.match(migration, /case when v_strip then null else v_ex\.default_load_value end/);
+  assert.match(migration, /case when v_strip then null else v_ex\.coach_notes end/);
   assert.match(migration, /v_src\.id, p_variation_of, true, p_coach_id/);
-  assert.match(migration, /Day notes on an instance may be client-specific/);
+  assert.match(migration, /Day notes on a client instance may be client-specific/);
+  assert.match(migration, /case when v_src\.is_template then v_day\.notes else null end/);
   // Variations always attach to the root template.
   assert.match(migration, /select coalesce\(variation_of, id\) into v_root\s+from public\.programs/);
   assert.match(migration, /select coalesce\(variation_of, id\) into v_root\s+from public\.workouts/);
