@@ -18,16 +18,12 @@ import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import { formatRestSeconds } from '@/lib/rest';
+import { formatTimer, useRestCountdown } from '@/lib/useRestCountdown';
 import { trackProductEvent } from '@/lib/telemetry';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
 // database parses and backfills. The old runtime text parser is gone; text
 // only survives as a display fallback for legacy completed snapshots.
-
-function formatTimer(seconds) {
-  const safe = Math.max(0, seconds);
-  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
-}
 
 function displayPerformed(value, suffix = '') {
   return value === null || value === undefined ? 'Not recorded' : `${value}${suffix}`;
@@ -105,57 +101,12 @@ function ExerciseHistory({ logId, exercise }) {
   );
 }
 
-// The rest timer owns its own 250ms tick so a running countdown re-renders
-// only this FAB — not every exercise card and controlled input (audit #11).
-// The opt-in end-of-rest cue lives here too, since it keys off the same tick.
+// The tick and the end-of-rest cue live in useRestCountdown, so this FAB is
+// still the only thing that re-renders while a countdown runs.
 function RestTimerFab({ restEndsAt, onClear, restAlerts, attentionScale }) {
-  const [now, setNow] = useState(Date.now());
-  const announcedRef = useRef(false);
-
-  useEffect(() => {
-    setNow(Date.now());
-    if (!restEndsAt) return undefined;
-    let timer;
-    const tick = () => {
-      const current = Date.now();
-      setNow(current);
-      if (current >= restEndsAt) window.clearInterval(timer);
-    };
-    timer = window.setInterval(tick, 250);
-    return () => window.clearInterval(timer);
-  }, [restEndsAt]);
-
-  const complete = Boolean(restEndsAt && now >= restEndsAt);
-
-  useEffect(() => {
-    if (!complete) {
-      announcedRef.current = false;
-      return;
-    }
-    if (announcedRef.current || !restAlerts) return;
-    announcedRef.current = true;
-    try {
-      if (typeof navigator.vibrate === 'function') navigator.vibrate(200);
-    } catch { /* capability declined */ }
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) {
-        const context = new AudioCtx();
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.frequency.value = 880;
-        gain.gain.value = 0.05;
-        oscillator.start();
-        oscillator.stop(context.currentTime + 0.18);
-        oscillator.onended = () => context.close();
-      }
-    } catch { /* audio unavailable or blocked */ }
-  }, [complete, restAlerts]);
+  const { seconds, complete } = useRestCountdown(restEndsAt, restAlerts);
 
   if (!restEndsAt) return null;
-  const seconds = Math.max(0, Math.ceil((restEndsAt - now) / 1000));
   return (
     <>
       <Button
