@@ -53,6 +53,43 @@ test('client Today plan chooses resume, due assignment, program, then honest fal
   assert.equal(chooseClientTodayPlan({ assignments: null, history: [], todayCheckIn: {}, complete: false }).kind, 'unavailable');
 });
 
+test('client Today plan tells done, no program, planned rest and not-loaded apart', async () => {
+  const { chooseClientTodayPlan } = await import(pathToFileURL(path.join(root, 'frontend/src/lib/clientTodayPlan.js')));
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
+  const program = { id: 'p1', program: { name: 'Foundation', days: [{ id: 'd1', workout: { name: 'Day one' } }] } };
+
+  const done = chooseClientTodayPlan({
+    assignments: { workouts: [], programs: [program] },
+    history: [{ id: 'l1', status: 'completed', completed_at: new Date().toISOString(), workout_name: 'Day one', program_assignment_id: 'p1', coach_responses: [{ read_at: null }] }],
+    complete: true,
+  });
+  assert.equal(done.kind, 'done_today');
+  assert.equal(done.action, 'Read feedback');
+  assert.equal(done.href, '/client/workouts/l1');
+
+  const unassigned = chooseClientTodayPlan({ assignments: { workouts: [], programs: [] }, history: [], todayCheckIn: null, complete: true });
+  assert.equal(unassigned.kind, 'unassigned');
+
+  const rhythm = {
+    week_total: 1,
+    days: [
+      { date: today, state: 'rest', assignments: [] },
+      { date: '9999-12-31', state: 'upcoming', assignments: [{ workout_name: 'Upper Body B' }] },
+    ],
+  };
+  const dated = { id: 'a9', assignment_mode: 'dated', assigned_for: '9999-12-31', workout: { name: 'Upper Body B' } };
+  const recovery = chooseClientTodayPlan({ assignments: { workouts: [dated], programs: [] }, history: [], rhythm, complete: true });
+  assert.equal(recovery.kind, 'recovery');
+  assert.match(recovery.description, /Upper Body B/);
+
+  // A program client is never told to rest: the program always has a next day.
+  assert.equal(chooseClientTodayPlan({ assignments: { workouts: [], programs: [program] }, history: [], rhythm, complete: true }).kind, 'program');
+  // Not loaded wins over every "nothing to do" state and never says rest.
+  const unavailable = chooseClientTodayPlan({ assignments: null, history: [], rhythm, complete: false });
+  assert.equal(unavailable.kind, 'unavailable');
+  assert.match(unavailable.description, /isn’t a rest day/);
+});
+
 test('email rendering escapes user-derived facts and is inert without owner configuration', async () => {
   const rendered = renderEmail({
     headline: 'Booked <now>', intro: 'Hello & welcome', facts: ['<script>'],
