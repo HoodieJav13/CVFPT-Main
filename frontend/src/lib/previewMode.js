@@ -84,9 +84,9 @@ const state = {
     { id: 'timeoff_1', coach_id: 'coach_marcus', starts_at: iso(2, 13), ends_at: iso(2, 23), reason: 'Family afternoon', created_at: iso(-2) },
   ],
   metrics: [
-    { id: 'metric_weight', client_id: 'client_sarah', name: 'Body Weight', unit: 'lbs', improvement_direction: 'lower', target_value: 155, archived: false, created_at: iso(-40) },
-    { id: 'metric_waist', client_id: 'client_sarah', name: 'Waist', unit: 'in', improvement_direction: 'lower', target_value: null, archived: false, created_at: iso(-40) },
-    { id: 'metric_mile', client_id: 'client_david', name: 'Mile Time', unit: 'min', improvement_direction: 'lower', target_value: 7, archived: false, created_at: iso(-30) },
+    { id: 'metric_weight', client_id: 'client_sarah', name: 'Body Weight', unit: 'lbs', improvement_direction: 'lower', target_value: 155, is_goal_measure: true, archived: false, created_at: iso(-40) },
+    { id: 'metric_waist', client_id: 'client_sarah', name: 'Waist', unit: 'in', improvement_direction: 'lower', target_value: null, is_goal_measure: true, archived: false, created_at: iso(-40) },
+    { id: 'metric_mile', client_id: 'client_david', name: 'Mile Time', unit: 'min', improvement_direction: 'lower', target_value: 7, is_goal_measure: true, archived: false, created_at: iso(-30) },
   ],
   metricEntries: [
     { id: 'entry_w1', metric_id: 'metric_weight', value: 168, notes: null, recorded_on: dateOnly(-28), archived: false, created_at: iso(-28) },
@@ -789,6 +789,35 @@ function waiverStatus(clientId) {
   };
 }
 
+// Mirrors goalMeasureSummary in backend/src/lib/progress.js.
+function goalMeasures(clientId) {
+  return state.metrics
+    .filter((m) => m.client_id === clientId && !m.archived && m.is_goal_measure)
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+    .map((m) => {
+      const entries = state.metricEntries
+        .filter((e) => e.metric_id === m.id && !e.archived)
+        .sort((a, b) => String(a.recorded_on).localeCompare(String(b.recorded_on)) || String(a.created_at).localeCompare(String(b.created_at)));
+      const first = entries[0] || null;
+      const latest = entries[entries.length - 1] || null;
+      const point = (e) => (e ? { value: Number(e.value), recorded_on: e.recorded_on } : null);
+      return {
+        id: m.id,
+        name: m.name,
+        unit: m.unit || null,
+        improvement_direction: ['higher', 'lower'].includes(m.improvement_direction) ? m.improvement_direction : 'neutral',
+        target_value: m.target_value ?? null,
+        first: point(first),
+        latest: point(latest),
+        change: first && latest && first !== latest ? Number((Number(latest.value) - Number(first.value)).toFixed(2)) : null,
+      };
+    });
+}
+
+function goalMeasureLimitReached(clientId, exceptMetricId = null) {
+  return state.metrics.filter((m) => m.client_id === clientId && !m.archived && m.is_goal_measure && m.id !== exceptMetricId).length >= 3;
+}
+
 function dashboardClient() {
   const client = currentClient();
   const clientSessions = state.sessions.filter((s) => s.client_id === client.id && !s.archived);
@@ -815,6 +844,7 @@ function dashboardClient() {
     program_count: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).length
       + state.workoutAssignments.filter((a) => a.client_id === client.id && !a.archived).length,
     coach_name: coachById(client.coach_id).name,
+    goal: { text: client.goals || null, measures: goalMeasures(client.id) },
   };
 }
 
@@ -834,6 +864,10 @@ function dashboardCoach() {
     unread_messages: messages.filter((m) => m.sender_role === 'client' && !m.read_by_recipient).length,
     recent_messages: messages.slice(0, 5).map((m) => ({ ...m, client: { id: m.client_id, name: clientById(m.client_id).name } })),
     recent_check_ins: checkIns.slice(0, 5),
+    goal_clients: clients
+      .map((c) => ({ id: c.id, name: c.name, goals: c.goals || null, measures: goalMeasures(c.id) }))
+      .filter((c) => (c.goals && c.goals.trim()) || c.measures.length)
+      .sort((a, b) => a.name.localeCompare(b.name)),
   };
 }
 
@@ -1781,13 +1815,15 @@ export function installPreviewApi(api) {
     const coachMetrics = path.match(/^\/progress\/clients\/([^/]+)\/metrics$/);
     if (coachMetrics && method === 'get') return ok(state.metrics.filter((m) => m.client_id === coachMetrics[1] && !m.archived).map(metricWithEntries), config);
     if (coachMetrics && method === 'post') {
-      const row = { id: id('metric'), client_id: coachMetrics[1], name: payload.name, unit: payload.unit || null, improvement_direction: payload.improvement_direction || 'neutral', target_value: payload.target_value ?? null, archived: false, created_at: new Date().toISOString(), entries: [] };
+      if (payload.is_goal_measure && goalMeasureLimitReached(coachMetrics[1])) return fail(config, 400, 'A client can have up to 3 goal measures. Turn one off first.');
+      const row = { id: id('metric'), client_id: coachMetrics[1], name: payload.name, unit: payload.unit || null, improvement_direction: payload.improvement_direction || 'neutral', target_value: payload.target_value ?? null, is_goal_measure: payload.is_goal_measure === true, archived: false, created_at: new Date().toISOString(), entries: [] };
       state.metrics.push(row);
       return ok(row, config, 201);
     }
     const metricUpdate = path.match(/^\/progress\/metrics\/([^/]+)$/);
     if (metricUpdate && method === 'patch') {
       const row = state.metrics.find((m) => m.id === metricUpdate[1]);
+      if (payload.is_goal_measure && !row.is_goal_measure && goalMeasureLimitReached(row.client_id, row.id)) return fail(config, 400, 'A client can have up to 3 goal measures. Turn one off first.');
       Object.assign(row, payload);
       return ok(row, config);
     }

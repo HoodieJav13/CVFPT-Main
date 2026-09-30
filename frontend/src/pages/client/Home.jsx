@@ -23,6 +23,7 @@ import { WeekStrip, WeekLegend, StreakPill } from '@/components/WeekRhythm';
 import { trackProductEvent } from '@/lib/telemetry';
 import { useShowInstallCard } from '@/lib/pwa';
 import { InstallCard } from '@/components/InstallGuide';
+import { GoalMeasureRow } from '@/components/GoalMeasures';
 
 export default function ClientHome() {
   const { user } = useAuth();
@@ -347,6 +348,29 @@ export default function ClientHome() {
           </Button>
         </CardContent>
       </Card>
+      )}
+
+      {/* Your goal (round-2 decision): the goal in the client's words plus
+          the measures their coach picked to track it. */}
+      {(data.goal?.text || data.goal?.measures?.length > 0) && (
+        <Card className="mt-4" data-testid="client-goal-card">
+          <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+            <SectionLabel>Your goal</SectionLabel>
+            <Link to="/client/progress" className="text-xs text-primary font-medium flex items-center">
+              Progress <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.goal.text && <p className="whitespace-pre-wrap text-sm" data-testid="client-goal-text">{data.goal.text}</p>}
+            {data.goal.measures.length > 0 && (
+              <div className="divide-y divide-border rounded-xl border border-border bg-card/60">
+                {data.goal.measures.map((measure) => (
+                  <GoalMeasureRow key={measure.id} measure={measure} className="px-4 py-2.5" />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid grid-cols-2 gap-3 mt-4">

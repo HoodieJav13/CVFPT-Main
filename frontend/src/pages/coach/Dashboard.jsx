@@ -11,6 +11,7 @@ import { Check, Plus, ChevronRight, Dumbbell } from 'lucide-react';
 import { fmtTime, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
 import { buildCoachActionQueue } from '@/lib/coachActionQueue';
+import { GoalMeasureRow } from '@/components/GoalMeasures';
 
 export default function CoachDashboard() {
   const { user } = useAuth();
@@ -126,7 +127,10 @@ export default function CoachDashboard() {
           2026-09-29): the counts matter, the tiles only repeated the lists. */}
       <p className="-mt-1 mb-4 text-sm text-muted-foreground" data-testid="coach-day-summary">{summary}</p>
 
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start lg:gap-5">
+      {/* Desktop: agenda then clients-by-goal on the left, "Needs you" spanning
+          the right. The 1fr second row keeps the queue's height from pushing
+          the goal card away from the agenda. Phone order: agenda, queue, goals. */}
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-5">
       <Card data-testid="coach-dashboard-today-sessions-card">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
           <SectionLabel>Today&apos;s agenda</SectionLabel>
@@ -190,7 +194,7 @@ export default function CoachDashboard() {
         </CardContent>
       </Card>
 
-      <Card className="mt-4 lg:mt-0" data-testid="coach-action-queue">
+      <Card className="mt-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0" data-testid="coach-action-queue">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
           <div>
             <SectionLabel>Needs you</SectionLabel>
@@ -254,6 +258,39 @@ export default function CoachDashboard() {
           ))}
         </CardContent>
       </Card>
+
+      {/* Clients by goal (round-2 decision): each client's goal and the up to
+          three measures their coach picked, so progress is visible without
+          opening every profile. */}
+      {data.goal_clients?.length > 0 && (
+        <Card className="mt-4 lg:col-start-1 lg:row-start-2 lg:mt-0" data-testid="coach-goal-clients-card">
+          <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+            <SectionLabel>Clients by goal</SectionLabel>
+            <Link to="/coach/clients" className="flex min-h-11 items-center text-xs text-primary font-medium">
+              All clients <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            {data.goal_clients.map((client) => (
+              <div key={client.id} className="rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="coach-goal-client">
+                <Link to={`/coach/clients/${client.id}?tab=progress`} className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <p className="truncate font-medium">{client.name}</p>
+                  {client.goals && <p className="line-clamp-2 text-xs text-muted-foreground">{client.goals}</p>}
+                </Link>
+                {client.measures.length > 0 ? (
+                  <div className="mt-2 space-y-2 border-t border-border/60 pt-2">
+                    {client.measures.map((measure) => <GoalMeasureRow key={measure.id} measure={measure} />)}
+                  </div>
+                ) : (
+                  <Link to={`/coach/clients/${client.id}?tab=progress`} className="mt-2 flex min-h-11 items-center border-t border-border/60 pt-2 text-xs font-medium text-primary" data-testid="coach-goal-pick-measures">
+                    Pick goal measures <ChevronRight className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
       </div>
     </DashboardChoreography>
   );

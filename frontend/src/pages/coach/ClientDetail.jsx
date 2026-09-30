@@ -572,7 +572,10 @@ function NoteBlock({ label, value, accent }) {
   );
 }
 
-const blankMetricForm = () => ({ name: '', unit: '', improvement_direction: 'neutral', target_value: '' });
+const blankMetricForm = () => ({ name: '', unit: '', improvement_direction: 'neutral', target_value: '', is_goal_measure: false });
+
+// Mirrors MAX_GOAL_MEASURES in backend/src/lib/progress.js; the API enforces it.
+const MAX_GOAL_MEASURES = 3;
 
 const improvementDirectionLabel = (direction) => ({
   higher: 'Higher is better',
@@ -624,6 +627,7 @@ function ProgressTab({ clientId }) {
       unit: metric.unit || '',
       improvement_direction: metric.improvement_direction || 'neutral',
       target_value: metric.target_value ?? '',
+      is_goal_measure: Boolean(metric.is_goal_measure),
     });
     setMetricOpen(true);
   };
@@ -696,6 +700,8 @@ function ProgressTab({ clientId }) {
   if (!metrics && loadError) return <LoadErrorState message={loadError} scope="client-detail-progress" onRetry={() => { setLoadError(null); load(); }} />;
   if (!metrics) return <LoadingScreen />;
   const neutralMetricCount = metrics.filter((metric) => !['higher', 'lower'].includes(metric.improvement_direction)).length;
+  const otherGoalMeasures = metrics.filter((metric) => metric.is_goal_measure && metric.id !== editingMetric?.id).length;
+  const goalMeasureFull = !metricForm.is_goal_measure && otherGoalMeasures >= MAX_GOAL_MEASURES;
 
   return (
     <div className="space-y-4 mt-1">
@@ -740,6 +746,23 @@ function ProgressTab({ clientId }) {
                 <Input type="number" step="any" inputMode="decimal" value={metricForm.target_value} onChange={(e) => setMetricForm({ ...metricForm, target_value: e.target.value })} placeholder="Optional target" data-testid="metric-target-input" />
                 <p className="text-xs text-muted-foreground">Shown to the client as a goal line on their chart. Leave blank for no goal.</p>
               </div>
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+                <div className="min-w-0">
+                  <Label htmlFor="metric-goal-measure-switch">Goal measure</Label>
+                  <p className="mt-0.5 text-xs text-muted-foreground" data-testid="metric-goal-measure-help">
+                    {goalMeasureFull
+                      ? `This client already has ${MAX_GOAL_MEASURES} goal measures. Turn one off first.`
+                      : `Shows on the client's home and your dashboard. Up to ${MAX_GOAL_MEASURES} per client.`}
+                  </p>
+                </div>
+                <Switch
+                  id="metric-goal-measure-switch"
+                  checked={metricForm.is_goal_measure}
+                  disabled={goalMeasureFull}
+                  onCheckedChange={(checked) => setMetricForm({ ...metricForm, is_goal_measure: checked })}
+                  data-testid="metric-goal-measure-switch"
+                />
+              </div>
               <DialogFooter>
                 <Button type="submit" disabled={saving} className="rounded-xl w-full sm:w-auto" data-testid="metric-save-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingMetric ? 'Save changes' : 'Create'}
@@ -760,7 +783,14 @@ function ProgressTab({ clientId }) {
           <Card key={m.id} data-testid="metric-card">
             <CardHeader className="pb-2 flex-row items-start justify-between space-y-0">
               <div>
-                <CardTitle className="text-base font-display">{m.name}</CardTitle>
+                <CardTitle className="flex flex-wrap items-center gap-2 text-base font-display">
+                  {m.name}
+                  {m.is_goal_measure && (
+                    <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wide text-primary" data-testid="metric-goal-measure-badge">
+                      Goal measure
+                    </span>
+                  )}
+                </CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {latest ? <>Latest: <span className="text-primary font-semibold tabular-nums">{latest.value}{m.unit ? ` ${m.unit}` : ''}</span> on {fmtDate(latest.recorded_on)}</> : 'No entries yet'}
                 </p>
