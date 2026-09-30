@@ -21,9 +21,12 @@ import { DashboardChoreography } from '@/components/Choreography';
 import { chooseClientTodayPlan } from '@/lib/clientTodayPlan';
 import { WeekStrip, StreakPill } from '@/components/WeekRhythm';
 import { trackProductEvent } from '@/lib/telemetry';
+import { useShowInstallCard } from '@/lib/pwa';
+import { InstallCard } from '@/components/InstallGuide';
 
 export default function ClientHome() {
   const { user } = useAuth();
+  const showInstallCard = useShowInstallCard();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [training, setTraining] = useState({ assignments: null, activeLog: null, history: [], complete: false });
@@ -188,6 +191,8 @@ export default function ClientHome() {
           </Button>
         </div>
       )}
+
+      {showInstallCard && <InstallCard />}
 
       {/* The dominant-purpose card is the one raised, loud surface on this
           screen (design-plans/010: bold direction, owner pick 2026-08-07). */}
