@@ -1,7 +1,8 @@
 # Shared training library: design
 
-Status: proposed (2026-09-29). Not implemented. Needs owner review, then a new
-forward-only migration.
+Status: implemented on branch `claude/shared-training-library` (2026-09-29);
+migration `20260929120000_shared_training_library.sql` is NOT yet applied to
+hosted Supabase. See "Implementation notes and release" at the end.
 
 ## Goal
 
@@ -148,3 +149,45 @@ Implementation notes:
   parent promotion.
 - Client responses contain no attribution/provenance fields (regression test).
 - Legacy guard: editing or archiving a template with active legacy assignments returns 409; a template with only clone-instances does not.
+
+## Implementation notes and release
+
+Decisions made while building, where the code differs from or adds to the text above:
+
+- **Save as template** accepts a client copy *or a template* as its source
+  (`save_workout_as_template` / `save_program_as_template`), so a locked template
+  can be duplicated as a variation. Stripping of client-specific data (default
+  load, coach-only notes, program day notes) applies only when the source is a
+  client copy; duplicating a template keeps the coach's own prescription.
+- **Hidden** blocks assignment (409) and is excluded from assignable pickers.
+  It does not stop a hidden workout being composed into a program, and hidden
+  library exercises cannot be newly added to a workout (422).
+- **Admin-authored workouts** are now stored with the admin's `coach_id`
+  (not NULL), so they get a publisher. Existing NULL-owner workouts keep a null
+  publisher and remain visible to everyone.
+- **Editing a client copy** from the client's Programs tab uses the existing
+  `PUT /programs/workouts/:id`, authorized to the client's coach or an admin.
+  Removing an exercise that has an assigned load previously failed in the
+  database (load-validation trigger); the migration fixes that.
+- **Session workout attachment** now accepts any shared template (previously only
+  the coach's own workout); another coach's client copy is still refused.
+- **Author filter** is applied client-side in the UI; the API also accepts
+  `?author=me|<coach id>`.
+- **Client responses** now use an explicit allowlist. This also stops two
+  pre-existing exposures on `GET /programs/client/assigned`: coach-only
+  `coach_notes` on exercises, and other clients' names/loads on a shared program.
+
+### Release order (migration-first)
+
+The migration is backward-compatible: the currently deployed backend keeps
+working once it is applied. The new backend and frontend do **not** work without
+it (they query `is_template`, and the client page calls
+`/programs/program-assignments/client/:id`). Merging auto-deploys both Vercel
+projects, so per `.github/workflows/migration-guard.yml`:
+
+1. Owner applies the migration to hosted Supabase (`supabase db push`) and verifies
+   `supabase migration list --linked`.
+2. Before that, count active legacy assignments on hosted data so the coaches know
+   which templates the 409 guard will lock.
+3. Add the `migration-applied` label, then merge. Backend should become ready before
+   frontend; the new client page needs the new backend endpoint.
