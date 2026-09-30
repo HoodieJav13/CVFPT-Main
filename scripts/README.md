@@ -3,7 +3,7 @@
 | Script | Who runs it | What it does |
 |---|---|---|
 | `check-boundaries.sh` | CI (`ci.yml`, both jobs) or anyone | Fails if `frontend/src` reaches into `backend/` or vice versa. |
-| `check-migration-inflight.sh` + `check-migration-inflight.test.sh` | CI (`migration-guard.yml`) | Fails when more than one open PR carries migrations without the `migration-applied` label. Fixtures in `fixtures/migration-inflight/`. |
+| `check-migration-inflight.sh` + `check-migration-inflight.test.sh` | CI (`migration-guard.yml`) | Fails when more than one open PR carries migrations not yet labelled as applied to both dev (`migration-applied`) and production (`prod-migration-applied`). Fixtures in `fixtures/migration-inflight/`. |
 | `prepare-test-accounts.mjs` | **owner-run; creates hosted users** | Creates dedicated admin / coach A / coach B / client accounts on an independently confirmed development project; requires `--yes`, validates the exact HTTPS target and rejects shared/linked projects. Saves credentials and progress to `backend/.env.test-accounts` before each hosted creation. |
 | `prepare-test-accounts.test.mjs` | CI backend job or anyone | `node --test scripts/prepare-test-accounts.test.mjs` executes the actual CLI in temporary repositories with a fake SDK. No hosted calls, real credentials or installed SDK required. |
 | `set-test-secrets.sh` | **owner-run; writes GitHub environment secrets** | Creates the `development` environment if needed and sets the ten `CVF_TEST_*` secrets consumed by `development-integration.yml`. Never prints a value. |

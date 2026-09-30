@@ -39,6 +39,10 @@ where they are more specific.
   a new migration. `backend/migration.sql` is frozen history.
 - Passing a local clean reset does not prove hosted application. State exactly
   which environment received a migration and verify hosted state separately.
+- There are two hosted projects (development and `cvfpt-production`). A
+  migration PR is mergeable only after both are migrated and labelled
+  (`migration-applied` + `prod-migration-applied`); applying to production is a
+  hosted migration and needs explicit owner authorization.
 - Preserve the active retirement and historical-data invariants recorded in
   `CLAUDE.md`; dormant payment-era schema and source are not cleanup targets.
 - Snapshot promised money or entitlement behavior at agreement time. Keep
