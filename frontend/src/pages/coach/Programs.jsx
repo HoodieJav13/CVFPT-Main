@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
 import { safeHttpUrl } from '@/lib/safeUrl';
+import { downloadBlob } from '@/lib/download';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const {
@@ -1255,16 +1256,4 @@ function resizeDraftDays(days, frequency) {
     });
   }
   return nextDays.map((day, index) => ({ ...day, day_number: index + 1 }));
-}
-
-function downloadBlob(data, filename, fallbackType) {
-  const blob = data instanceof Blob ? data : new Blob([data], { type: fallbackType });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
 }
