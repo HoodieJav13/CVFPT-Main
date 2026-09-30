@@ -87,7 +87,7 @@ Frontend and backend deploy as **two separate Vercel projects**, each rooted at 
 
 ## Preview mode
 
-`previewMode.js` is a DEV-only mock layer, double-gated, pending a keep/kill decision. Do not extend it without being asked.
+`previewMode.js` is a DEV-only mock layer, double-gated. Owner decision (2026-09-30): keep it, and use it as the place to try new features on sample data. When a feature adds or changes an API response, extend the preview fixtures and handlers to mirror it (same fields, same validation and limits) so the feature can be seen and e2e-tested without a hosted database. It stays DEV-only: never real client data, never reachable in production.
 
 ## Conventions
 
