@@ -3,9 +3,45 @@ const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, requireClient } = require('../middleware/auth');
 const { todayRangeInTz, todayDateInTz } = require('../utils/time');
+const { goalMeasureSummary } = require('../lib/progress');
 
 const router = express.Router();
 router.use(requireAuth);
+
+// Goal measures for a set of clients the caller is already allowed to see,
+// keyed by client id. Best-effort: a failure (for example before the
+// goal-measures migration is applied) yields no measures, never a failed
+// dashboard.
+async function goalMeasuresByClient(clientIds) {
+  const byClient = {};
+  if (!clientIds.length) return byClient;
+  try {
+    const { data: metrics, error } = await supabaseAdmin.from('metrics')
+      .select('id, client_id, name, unit, improvement_direction, target_value, created_at')
+      .in('client_id', clientIds).eq('archived', false).eq('is_goal_measure', true)
+      .order('created_at');
+    if (error) throw error;
+    const metricIds = (metrics || []).map((m) => m.id);
+    const entriesByMetric = {};
+    if (metricIds.length) {
+      const { data: entries, error: entriesError } = await supabaseAdmin.from('metric_entries')
+        .select('id, metric_id, value, recorded_on, created_at')
+        .in('metric_id', metricIds).eq('archived', false)
+        .order('recorded_on').order('created_at');
+      if (entriesError) throw entriesError;
+      for (const entry of entries || []) {
+        (entriesByMetric[entry.metric_id] = entriesByMetric[entry.metric_id] || []).push(entry);
+      }
+    }
+    for (const metric of metrics || []) {
+      (byClient[metric.client_id] = byClient[metric.client_id] || [])
+        .push(goalMeasureSummary(metric, entriesByMetric[metric.id] || []));
+    }
+  } catch (e) {
+    logError('goal measures load error', e);
+  }
+  return byClient;
+}
 
 // GET /api/dashboard/coach
 router.get('/coach', requireCoach, async (req, res) => {
@@ -44,7 +80,7 @@ router.get('/coach', requireCoach, async (req, res) => {
     ]);
 
     // unread messages from clients
-    let clientIdsQ = supabaseAdmin.from('clients').select('id').eq('archived', false);
+    let clientIdsQ = supabaseAdmin.from('clients').select('id, name, goals').eq('archived', false);
     if (!isAdmin) clientIdsQ = clientIdsQ.eq('coach_id', coachId);
     const { data: ownClients } = await clientIdsQ;
     let unread = 0;
@@ -65,6 +101,13 @@ router.get('/coach', requireCoach, async (req, res) => {
       recentCheckIns = checkIns || [];
     }
 
+    // Clients by goal: each client's goal text and coach-picked measures.
+    const measures = await goalMeasuresByClient(ids);
+    const goalClients = (ownClients || [])
+      .filter((c) => (c.goals && String(c.goals).trim()) || measures[c.id]?.length)
+      .map((c) => ({ id: c.id, name: c.name, goals: c.goals || null, measures: measures[c.id] || [] }))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
     return res.json({
       today_sessions: todaySessions || [],
       upcoming_sessions: upcoming || [],
@@ -74,6 +117,7 @@ router.get('/coach', requireCoach, async (req, res) => {
       unread_messages: unread,
       recent_messages: recentMessages,
       recent_check_ins: recentCheckIns,
+      goal_clients: goalClients,
     });
   } catch (e) {
     logError('coach dashboard error', e);
@@ -136,6 +180,8 @@ router.get('/client', requireClient, async (req, res) => {
     const { count: programCount } = await supabaseAdmin.from('program_assignments')
       .select('id', { count: 'exact', head: true }).eq('client_id', clientId).eq('archived', false);
 
+    const measures = await goalMeasuresByClient([clientId]);
+
     return res.json({
       next_session: nextSessions?.[0] || null,
       upcoming_sessions: nextSessions || [],
@@ -147,6 +193,7 @@ router.get('/client', requireClient, async (req, res) => {
       waiver: { has_version: Boolean(latest), signed_latest: signedLatest },
       program_count: programCount || 0,
       coach_name: coach?.name || null,
+      goal: { text: req.user.client.goals || null, measures: measures[clientId] || [] },
     });
   } catch (e) {
     logError('client dashboard error', e);

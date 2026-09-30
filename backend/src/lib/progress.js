@@ -77,7 +77,33 @@ function metricProgressSummary(metric, entries = []) {
   };
 }
 
+// A coach-picked goal measure, reduced to what the home and coach dashboard
+// show: latest value, first value, and the change between them. Entries
+// must be in recorded order (oldest first).
+const MAX_GOAL_MEASURES = 3;
+
+function goalMeasureSummary(metric, entries = []) {
+  const first = entries[0] || null;
+  const latest = entries[entries.length - 1] || null;
+  const change = first && latest && first !== latest
+    ? Number((Number(latest.value) - Number(first.value)).toFixed(2))
+    : null;
+  const point = (entry) => (entry ? { value: Number(entry.value), recorded_on: entry.recorded_on } : null);
+  return {
+    id: metric.id,
+    name: metric.name,
+    unit: metric.unit || null,
+    improvement_direction: normalizeImprovementDirection(metric.improvement_direction),
+    target_value: metric.target_value ?? null,
+    first: point(first),
+    latest: point(latest),
+    change,
+  };
+}
+
 module.exports = {
+  MAX_GOAL_MEASURES,
+  goalMeasureSummary,
   IMPROVEMENT_DIRECTIONS,
   normalizeImprovementDirection,
   normalizeTargetValue,

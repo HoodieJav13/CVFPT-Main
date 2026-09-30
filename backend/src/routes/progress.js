@@ -9,6 +9,7 @@ const {
   normalizeTargetValue,
   personalBestResult,
   metricProgressSummary,
+  MAX_GOAL_MEASURES,
 } = require('../lib/progress');
 
 const router = express.Router();
@@ -34,6 +35,18 @@ async function metricsWithEntries(clientId) {
   return (metrics || []).map((m) => metricProgressSummary(m, entriesByMetric[m.id] || []));
 }
 
+// Goal measures are capped per client; the flag is only ever set by a coach.
+async function goalMeasureLimitReached(clientId, exceptMetricId = null) {
+  let q = supabaseAdmin.from('metrics').select('id', { count: 'exact', head: true })
+    .eq('client_id', clientId).eq('archived', false).eq('is_goal_measure', true);
+  if (exceptMetricId) q = q.neq('id', exceptMetricId);
+  const { count, error } = await q;
+  if (error) throw error;
+  return (count || 0) >= MAX_GOAL_MEASURES;
+}
+
+const GOAL_LIMIT_ERROR = `A client can have up to ${MAX_GOAL_MEASURES} goal measures. Turn one off first.`;
+
 async function guardClient(req, res) {
   const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
     .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
@@ -56,13 +69,15 @@ router.get('/clients/:clientId/metrics', requireCoach, async (req, res) => {
   }
 });
 
-// POST /api/progress/clients/:clientId/metrics { name, unit, improvement_direction, target_value }
+// POST /api/progress/clients/:clientId/metrics { name, unit, improvement_direction, target_value, is_goal_measure? }
 router.post('/clients/:clientId/metrics', requireCoach, async (req, res) => {
   try {
     const clientRow = await guardClient(req, res);
     if (!clientRow) return;
-    const { name, unit, improvement_direction = 'neutral', target_value } = req.body || {};
+    const { name, unit, improvement_direction = 'neutral', target_value, is_goal_measure = false } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Metric name is required' });
+    if (typeof is_goal_measure !== 'boolean') return res.status(400).json({ error: 'Goal measure must be on or off' });
+    if (is_goal_measure && await goalMeasureLimitReached(clientRow.id)) return res.status(400).json({ error: GOAL_LIMIT_ERROR });
     if (!IMPROVEMENT_DIRECTIONS.has(improvement_direction)) {
       return res.status(400).json({ error: 'Choose whether higher, lower, or neither direction represents improvement' });
     }
@@ -74,6 +89,9 @@ router.post('/clients/:clientId/metrics', requireCoach, async (req, res) => {
       unit: unit || null,
       improvement_direction,
       target_value: target.value,
+      // Only sent when on, so creating plain metrics works before the
+      // goal-measures migration is applied.
+      ...(is_goal_measure ? { is_goal_measure: true } : {}),
     }).select().single();
     if (error) throw error;
     return res.status(201).json({ ...data, entries: [] });
@@ -94,7 +112,7 @@ async function guardMetric(req, res) {
   return metric;
 }
 
-// PATCH /api/progress/metrics/:metricId { name?, unit?, improvement_direction?, target_value? }
+// PATCH /api/progress/metrics/:metricId { name?, unit?, improvement_direction?, target_value?, is_goal_measure? }
 router.patch('/metrics/:metricId', requireCoach, async (req, res) => {
   try {
     const metric = await guardMetric(req, res);
@@ -116,6 +134,13 @@ router.patch('/metrics/:metricId', requireCoach, async (req, res) => {
       const target = normalizeTargetValue(req.body.target_value);
       if (!target.ok) return res.status(400).json({ error: 'Goal must be a number, or blank for no goal' });
       updates.target_value = target.value;
+    }
+    if ('is_goal_measure' in (req.body || {})) {
+      if (typeof req.body.is_goal_measure !== 'boolean') return res.status(400).json({ error: 'Goal measure must be on or off' });
+      if (req.body.is_goal_measure && !metric.is_goal_measure && await goalMeasureLimitReached(metric.client_id, metric.id)) {
+        return res.status(400).json({ error: GOAL_LIMIT_ERROR });
+      }
+      updates.is_goal_measure = req.body.is_goal_measure;
     }
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'No metric changes provided' });
 
