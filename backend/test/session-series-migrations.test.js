@@ -54,3 +54,21 @@ test('check_session_slots is read-only, service-role-only, and reuses the shared
   assert.match(sql, /grant execute on function public\.check_session_slots\(uuid, uuid, integer, jsonb, jsonb\) to service_role/);
   assert.doesNotMatch(sql, FORBIDDEN);
 });
+
+test('schedule_session_series locks before the idempotency lookup and links in a safe order', () => {
+  const sql = read('20260930130000_schedule_session_series.sql');
+  assert.match(sql, /create or replace function public\.schedule_session_series\(/);
+  const lock = sql.indexOf("pg_advisory_xact_lock(hashtext('cvf_session_scheduling'))");
+  const lookup = sql.indexOf('from public.session_series where coach_id = p_coach_id and request_id = p_request_id');
+  const insertSeries = sql.indexOf('insert into public.session_series');
+  const linkSessions = sql.indexOf('update public.sessions s');
+  assert.ok(lock > -1 && lookup > lock, 'advisory lock must be taken BEFORE the request lookup');
+  assert.ok(insertSeries > lookup, 'series row is inserted after the lookup');
+  assert.ok(linkSessions > insertSeries, 'sessions are linked AFTER the series row exists (foreign key)');
+  assert.match(sql, /public\.check_session_slots\(/);
+  assert.match(sql, /public\.schedule_session\(null,/);
+  assert.match(sql, /save_program_assignment_with_loads\(null,/);
+  assert.match(sql, /revoke execute on function public\.schedule_session_series\(uuid, text, uuid, uuid, integer, text, jsonb, uuid, boolean, jsonb\) from public, anon, authenticated/);
+  assert.match(sql, /grant execute on function public\.schedule_session_series\(uuid, text, uuid, uuid, integer, text, jsonb, uuid, boolean, jsonb\) to service_role/);
+  assert.doesNotMatch(sql, FORBIDDEN);
+});
