@@ -1573,3 +1573,19 @@ test('duplicate and remove stay full tap targets on phones, and editing a copy l
   await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 15/, /Romanian Deadlift.*3 x 8/, /Romanian Deadlift.*3 x 6/, /Pallof/]);
   await expect(page.getByRole('dialog').getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
 });
+
+test('the coach client page fits a phone screen with assigned program and workout cards', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  await expect(page.getByTestId('assigned-program-card').first()).toBeVisible();
+  await expect(page.getByTestId('assigned-workout-card').first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  // Every card action stays on screen and tappable.
+  for (const id of ['save-program-template-button', 'unassign-program-button', 'save-workout-template-button', 'unassign-workout-button']) {
+    const box = await page.getByTestId(id).first().boundingBox();
+    expect(box.x, id).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, id).toBeLessThanOrEqual(390);
+  }
+});
