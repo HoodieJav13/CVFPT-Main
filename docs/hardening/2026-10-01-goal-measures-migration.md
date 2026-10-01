@@ -130,10 +130,14 @@ the checkout happens to be linked to.
    `/api` to `CVF_E2E_BACKEND_URL` with the bypass header (the browser stays
    same-origin); without it, the browser calls `REACT_APP_BACKEND_URL`
    directly and the backend's CORS must allow `http://127.0.0.1:4174`. The
-   bypass secret is needed only for a protected preview: if
-   `curl -s -o /dev/null -w '%{http_code}' <backend preview>/api/health`
-   returns 200, the preview is unprotected and a missing secret is not a
-   blocker. No
+   bypass secret is needed only for a protected preview. Check with
+   `curl -s -o /dev/null -w '%{http_code}' <backend preview>/api/health`:
+   200 means unprotected, and a missing secret is not a blocker. Anything
+   else needs diagnosing before asking for a secret: a 401 or 403 that
+   returns Vercel's authentication page (`curl -sI` shows a `_vercel_sso`
+   or Vercel login redirect) is protection; a 5xx, 404 or connection
+   failure is a deployment, URL or network problem to fix or report, not
+   a reason to request the secret. No
    Supabase key is needed: leave `SUPABASE_SERVICE_ROLE_KEY` unset. The
    test-account logins come from local settings on the machine that runs the
    test; the Supabase CLI does not supply them. Check which variables are
