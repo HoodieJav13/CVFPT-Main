@@ -1004,3 +1004,116 @@ test('coaches pick up to three goal measures that show on both dashboards', asyn
   // Today's plan stays first on the home screen.
   expect((await clientGoal.boundingBox()).y).toBeGreaterThan((await page.getByTestId('client-today-plan').boundingBox()).y);
 });
+
+test('home never offers a new workout when training data fails, and recovers on retry', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  // Each request can fail on its own; any one of them makes today unknown.
+  for (const failing of ['get /programs/client/assigned', 'get /workout-logs/active', 'get /workout-logs/mine']) {
+    // Twice: dev-mode StrictMode runs Home's load effect twice on mount.
+    await page.addInitScript((key) => { globalThis.__CVF_PREVIEW_FAIL_ONCE__ = [key, key]; }, failing);
+    await page.goto('/client');
+    const action = page.getByTestId('client-today-primary-action');
+    await expect(action, failing).toHaveText('Try again');
+    await expect(page.getByTestId('client-today-quick-complete')).toHaveCount(0);
+    await expect(page.getByTestId('client-today-plan-description')).toContainText('isn’t a rest day');
+    await action.click();
+    await expect(action, `${failing} retry`).toHaveText(/Start workout/);
+    await expect(page.getByTestId('client-today-quick-complete')).toBeVisible();
+  }
+});
+
+test('a confirmed active workout stays resumable even if history fails', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.addInitScript(() => {
+    localStorage.setItem('cvf_preview_home_state', 'active');
+    globalThis.__CVF_PREVIEW_FAIL_ONCE__ = ['get /workout-logs/mine', 'get /workout-logs/mine'];
+  });
+  await page.goto('/client');
+  await expect(page.getByTestId('client-today-primary-action')).toHaveText(/Resume workout/);
+});
+
+test('every client home state renders its own plan', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  const expected = {
+    ready: { action: /Start workout/ },
+    active: { action: /Resume workout/ },
+    done: { action: /View workout|Read feedback/ },
+    'no-workout': { title: 'No workout scheduled today' },
+    unassigned: { action: /Message your coach/ },
+    unavailable: { action: /Try again/ },
+  };
+  for (const [state, want] of Object.entries(expected)) {
+    await page.addInitScript((value) => localStorage.setItem('cvf_preview_home_state', value), state);
+    await page.goto('/client');
+    if (want.action) await expect(page.getByTestId('client-today-primary-action'), state).toHaveText(want.action);
+    if (want.title) await expect(page.getByTestId('client-today-plan-title'), state).toHaveText(want.title);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), state).toBeTruthy();
+  }
+});
+
+test('busy coach day and a strength/run goal client render', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach');
+  const agenda = page.getByTestId('coach-dashboard-today-sessions-card');
+  await expect(agenda.getByTestId('today-session-row')).toHaveCount(6);
+  await expect(page.getByTestId('coach-day-summary')).toContainText('6 sessions today');
+  const ana = page.getByTestId('coach-goal-client').filter({ hasText: 'Ana Lucero' });
+  await expect(ana).toContainText('Run a sub-25 5K');
+  await expect(ana.getByTestId('goal-measure-row').filter({ hasText: '5K time' })).toContainText('Goal 25 min');
+  await expect(ana.getByTestId('goal-measure-row').filter({ hasText: 'Deadlift 1RM' })).toContainText('210 lb');
+});
+
+test('the desktop top bar keeps account and notifications on screen for every role', async ({ page }) => {
+  for (const role of ['client', 'coach', 'admin']) {
+    await usePreviewRole(page, role);
+    for (const width of [1023, 1024, 1100, 1279, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(role === 'client' ? '/client' : '/coach');
+      const account = page.getByTestId('mobile-header-actions').getByTestId('user-menu-trigger');
+      await expect(account).toBeVisible();
+      const box = await account.boundingBox();
+      expect(box.x + box.width, `${role} ${width} account`).toBeLessThanOrEqual(width);
+      if (role !== 'client' && width >= 1024) {
+        const bell = await page.getByTestId('desktop-notifications-link').boundingBox();
+        expect(bell.x >= 0 && bell.x + bell.width <= width, `${role} ${width} notifications`).toBeTruthy();
+      }
+    }
+  }
+});
+
+test('the closed corner menu is hidden from assistive tech; the open one is modal', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client');
+  const fab = page.getByTestId('mobile-menu-button');
+  const nav = page.getByRole('navigation', { name: 'Main' });
+  // Closed: none of the six destinations are exposed.
+  await expect(page.getByRole('link', { name: /^Sessions/ })).toHaveCount(0);
+  await expect(page.locator('[data-testid="mobile-bottom-navigation"] nav')).toHaveAttribute('aria-hidden', 'true');
+
+  // Open with the keyboard (a screen reader's activate sends the same click).
+  await fab.focus();
+  await page.keyboard.press('Enter');
+  await expect(fab).toHaveAttribute('aria-expanded', 'true');
+  await expect(nav.getByRole('link', { name: /^Home/ })).toBeFocused();
+  await expect(nav.getByRole('link')).toHaveCount(6);
+  await expect(page.locator('main')).toHaveAttribute('inert', '');
+  // Tab stays inside the menu (six items plus the close button).
+  for (let i = 0; i < 7; i += 1) await page.keyboard.press('Tab');
+  await expect(nav.getByRole('link', { name: /^Home/ })).toBeFocused();
+  // Escape closes and returns focus to the button.
+  await page.keyboard.press('Escape');
+  await expect(fab).toHaveAttribute('aria-expanded', 'false');
+  await expect(fab).toBeFocused();
+  await expect(page.locator('main')).not.toHaveAttribute('inert', '');
+
+  // Tap opens; tapping outside closes.
+  await fab.click();
+  await expect(fab).toHaveAttribute('aria-expanded', 'true');
+  await page.mouse.click(40, 300);
+  await expect(fab).toHaveAttribute('aria-expanded', 'false');
+});
