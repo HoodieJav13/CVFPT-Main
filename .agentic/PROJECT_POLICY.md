@@ -63,9 +63,8 @@ explicit owner decision.
 
 - Use the tokens and canonical motion vocabulary named in `CLAUDE.md` and
   `docs/design-principles.md`; do not introduce point-of-use magic values.
-- Genuine visual-direction work follows the three-outcome quality gate,
-  cold-visibility floor, bold-probe comparison, and owner decision process in
-  `docs/design-principles.md`.
+- Visual-direction work is approved by the owner from mockups or a live
+  prototype before production code, per `docs/design-principles.md`.
 - Separate visual commits from functional changes. Routine bug and
   accessibility corrections do not require manufactured design variants.
 

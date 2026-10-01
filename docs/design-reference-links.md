@@ -11,7 +11,7 @@ excluded (uiverse, taste-skill, cloner templates).
 | Tool | What it does here | Where |
 |------|-------------------|-------|
 | [Agentation](https://agentation.com) | Click-to-annotate overlay in dev/preview builds — feedback arrives as exact selectors + component paths instead of prose. Used for owner phone passes and partner demo feedback. | `agentation` devDependency, mounted in `App.js` for dev/preview only |
-| [Impeccable](https://impeccable.style) | Design-audit skill for Claude Code (`/impeccable audit`, slop checks). **Audit-only discipline**: findings are proposals; CVF tokens and `design-principles.md` always take precedence, and restyling still goes through the visual gate. | Claude Code plugin |
+| [Impeccable](https://impeccable.style) | Design-audit skill for Claude Code (`/impeccable audit`, slop checks). **Audit-only discipline**: findings are proposals; CVF tokens and `design-principles.md` always take precedence, and restyling still needs owner approval. | Claude Code plugin |
 
 ## QA references (use during audits)
 

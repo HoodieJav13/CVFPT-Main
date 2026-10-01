@@ -1,7 +1,7 @@
 # Surface QA audit — pre-launch checklist
 
 A per-surface pass for catching completeness and correctness gaps in shipped
-UI. This is **not** a visual-direction review (that's governed by
+UI. This is **not** a visual-direction review (that's owner approval, see
 `design-principles.md`); every item here is a defect-or-fine judgment —
 missing states, broken affordances, inconsistency with our own conventions.
 

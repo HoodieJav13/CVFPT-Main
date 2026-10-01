@@ -12,11 +12,11 @@ scope, and the [design principles](docs/design-principles.md) for durable design
 guidance. Implementation values remain in the code-level sources linked from
 those documents.
 
-Any genuine visual-direction decision (not a bug fix or accessibility
-correction) must follow the visual quality review, directional-variant, and
-cold-visibility rules in `docs/design-principles.md` before production
-implementation — a passing build is not sufficient evidence of "done" for
-identity/signature work.
+Visual-direction changes (not bug fixes or accessibility corrections) are
+approved by the owner from mockups or a live prototype before production
+implementation, per `docs/design-principles.md` — a passing build is not
+sufficient evidence of "done" for visual work. The design principles are
+guidance; the owner removed the old review gates on 2026-10-01.
 
 Design QA tooling (2026-08-11): `docs/design-qa-surface-audit.md` is the
 per-surface pre-launch checklist; `docs/design-reference-links.md` is the
@@ -26,7 +26,7 @@ overlay mounts in dev/preview builds only (never production, never under
 test automation). The project-scoped `impeccable` Claude Code plugin is
 **audit-only**: its findings are proposals; this file's brand tokens and
 `docs/design-principles.md` always take precedence, and any restyle it
-suggests still goes through the visual gate.
+suggests still needs owner approval.
 
 ## Locked invariants — do not violate
 
