@@ -38,9 +38,9 @@ before asking for the merge. Do not rely on a post-merge migration-first sequenc
 - [ ] Branch pushed and a **pull request opened** (CI only runs for `pull_request` and
       pushes to `main`; a bare branch push runs nothing).
 - [ ] CI green on the PR: `backend`, `frontend` (build, unit tests, preview suite,
-      audit), `frontend-series`, `database`. Note the `database` and `frontend-series`
-      jobs have never run on GitHub; a first-run failure there is expected to be an
-      environment detail, not a reason to skip the check.
+      audit), `frontend-series`, `database`. The `database` and `frontend-series` jobs have
+      never run on GitHub: if either fails on its first run, investigate and resolve the
+      cause (environmental or an implementation defect) before proceeding; do not skip the check.
 - [ ] Migration diff is additions only:
       `git diff --name-status main...HEAD -- supabase/migrations` (every line starts `A`).
 - [ ] `migration-guard` is the one check expected to stay red until Gate 2 is done.
@@ -149,10 +149,14 @@ select public.check_session_slots(
   '[{"key":"x","scheduled_at":"2031-06-03T17:30:00Z"}]'::jsonb, null);
 rollback;
 
--- D. After the rollback, nothing remains. Expect 0 | 0 | 0.
+-- D. After the rollback, nothing of the probe remains. Counted by the probe's EXACT ids, so
+--    unrelated hosted rows can never cause a false failure. Expect 0 | 0 | 0 | 0.
 select (select count(*) from public.session_series where request_id = 'f0000000-0000-4000-8000-0000000000c1') as series,
-       (select count(*) from public.coaches where email like 'probe-%@example.invalid') as probe_coaches,
-       (select count(*) from public.sessions where scheduled_at >= '2031-01-01') as probe_sessions;
+       (select count(*) from public.coaches where id = 'f0000000-0000-4000-8000-0000000000a1') as probe_coaches,
+       (select count(*) from public.clients where id = 'f0000000-0000-4000-8000-0000000000b1') as probe_clients,
+       (select count(*) from public.sessions
+         where coach_id = 'f0000000-0000-4000-8000-0000000000a1'
+            or client_id = 'f0000000-0000-4000-8000-0000000000b1') as probe_sessions;
 ```
 
 If the final query returns anything other than zeros, stop and report; do not delete
