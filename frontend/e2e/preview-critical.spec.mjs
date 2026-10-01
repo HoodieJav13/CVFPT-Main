@@ -1522,3 +1522,19 @@ test('duplicating a builder exercise inserts a full copy below it that saves as 
   await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 8-10/, /Romanian Deadlift/, /Pallof/]);
   await expect(rail.filter({ hasText: 'Lower Strength A' })).toContainText('4 exercises');
 });
+
+test('the coach client page fits a phone screen with assigned program and workout cards', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  await expect(page.getByTestId('assigned-program-card').first()).toBeVisible();
+  await expect(page.getByTestId('assigned-workout-card').first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  // Every card action stays on screen and tappable.
+  for (const id of ['save-program-template-button', 'unassign-program-button', 'save-workout-template-button', 'unassign-workout-button']) {
+    const box = await page.getByTestId(id).first().boundingBox();
+    expect(box.x, id).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, id).toBeLessThanOrEqual(390);
+  }
+});
