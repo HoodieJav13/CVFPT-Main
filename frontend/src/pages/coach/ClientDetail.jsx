@@ -91,6 +91,8 @@ export default function ClientDetail() {
   // the visible part (minus the 32px trailing fade) on load and on change,
   // including deep links such as ?tab=programs from the dashboard queue.
   const tabListRef = useRef(null);
+  const [tabsAtEnd, setTabsAtEnd] = useState(false);
+  const syncTabsAtEnd = (list) => setTabsAtEnd(list.scrollLeft + list.clientWidth >= list.scrollWidth - 1);
   useEffect(() => {
     const list = tabListRef.current;
     const active = list?.querySelector('[data-state="active"]');
@@ -99,6 +101,7 @@ export default function ClientDetail() {
     const tabBox = active.getBoundingClientRect();
     if (tabBox.left < listBox.left) list.scrollLeft += tabBox.left - listBox.left;
     else if (tabBox.right > listBox.right - 32) list.scrollLeft += tabBox.right - (listBox.right - 32);
+    syncTabsAtEnd(list);
   }, [activeTab, loading, loadedId]);
 
   const hasCurrentClient = loadedId === id;
@@ -184,7 +187,7 @@ export default function ClientDetail() {
       {/* Controlled: navigating to the same client with a different ?tab=
           (e.g. a dashboard action-queue link) must switch the visible tab. */}
       <Tabs key={client.id} value={activeTab} onValueChange={selectTab}>
-        <TabsList ref={tabListRef} className="h-auto min-h-[52px] w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade" aria-label="Client detail sections" data-testid="client-detail-tabs">
+        <TabsList ref={tabListRef} onScroll={(event) => syncTabsAtEnd(event.currentTarget)} data-at-end={tabsAtEnd} className="h-auto min-h-[52px] w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade" aria-label="Client detail sections" data-testid="client-detail-tabs">
           <TabsTrigger value="overview" className="min-h-11" data-testid="tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="check-ins" className="min-h-11" data-testid="tab-check-ins">Check-ins</TabsTrigger>
           <TabsTrigger value="progress" className="min-h-11" data-testid="tab-progress">Progress</TabsTrigger>
