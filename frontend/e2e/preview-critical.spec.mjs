@@ -1177,3 +1177,39 @@ test('switching workouts while a save is pending never retargets the editor or o
   await expect(titles).toHaveText([/Bench/, /Row/]);
   await expect(page.getByTestId('workout-superset-group')).toHaveCount(0);
 });
+
+test('returning to a workout while its save is still in flight shows the edits being saved', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const pressSave = async () => {
+    // The fixed preview toolbar overlaps the pane's Save at this width.
+    await page.getByTestId('workout-save-button').focus();
+    await page.keyboard.press('Enter');
+  };
+
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  // Slow the save (PUT /programs/workouts/:id) via the preview test harness.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts/[^/]+$', ms: 2500 }])));
+  await pressSave();
+
+  // Away and straight back while the save is still pending.
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+
+  // Once it lands, saving again from this form keeps the superset.
+  await expect(page.getByTestId('workout-save-button')).toBeEnabled({ timeout: 6000 });
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await pressSave();
+  await expect(page.getByTestId('workout-save-button')).toBeEnabled({ timeout: 6000 });
+  await page.waitForTimeout(1500); // let the background list reload land
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+});

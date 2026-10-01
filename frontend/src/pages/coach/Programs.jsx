@@ -409,6 +409,11 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
   // editor if nothing was selected while it was in flight; otherwise it
   // would retarget the editor (or reset the form) under another workout.
   const selectionSeq = useRef(0);
+  // Forms of saves still in flight, by workout id. Until a save lands the
+  // list still holds the pre-save copy, so re-opening that workout must
+  // show what is being saved, not the stale list row.
+  const inFlightForms = useRef(new Map());
+  const formFor = (workout) => inFlightForms.current.get(workout.id) || workoutToForm(workout);
 
   const openCreate = () => {
     selectionSeq.current += 1;
@@ -420,7 +425,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
   const openEdit = (workout) => {
     selectionSeq.current += 1;
     setEditing(workout);
-    setForm(workoutToForm(workout));
+    setForm(formFor(workout));
     setOpen(true);
   };
 
@@ -434,7 +439,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
   const selectEdit = (workout) => {
     selectionSeq.current += 1;
     setEditing(workout);
-    setForm(workoutToForm(workout));
+    setForm(formFor(workout));
     setPaneActive(true);
   };
 
@@ -447,6 +452,8 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
     setSaving(true);
     const seq = selectionSeq.current;
     const stillSelected = () => selectionSeq.current === seq;
+    const savingId = editing?.id;
+    if (savingId) inFlightForms.current.set(savingId, form);
     try {
       if (editing) {
         const { data: saved } = await api.put(`/programs/workouts/${editing.id}`, form);
@@ -472,6 +479,9 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
       if (isLegacyLockError(err)) setLock({ message: err.response.data.error });
       else toast.error(errMsg(err));
     } finally {
+      // Settled: the list now holds the saved copy (or, on failure, the
+      // server's unchanged one), so re-opens read the list again.
+      if (savingId && inFlightForms.current.get(savingId) === form) inFlightForms.current.delete(savingId);
       setSaving(false);
     }
   };
