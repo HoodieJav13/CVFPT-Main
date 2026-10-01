@@ -2,10 +2,10 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireCoach, canAccessClient } = require('../middleware/auth');
-const { validateUuid } = require('../validation/business');
+const { validateUuid, validateNotifyFlag } = require('../validation/business');
 const { parseCreateRequest } = require('../lib/sessionSeries/createRequest');
 const { validateWorkoutIds } = require('../lib/sessionWorkouts');
-const { dispatchEmail, notifySeriesScheduled } = require('../services/email');
+const { dispatchEmail, notifySeriesScheduled, notifySeriesCancelled } = require('../services/email');
 const { dispatchPush, sendToClient } = require('../services/push');
 const {
   parseRule, expandSeriesRule, horizonBounds, validateSlotShapes, slotHorizonError, isRealDate, requestHash,
@@ -250,6 +250,54 @@ router.post('/', requireCoach, async (req, res) => {
   } catch (e) {
     logError('series create error', e);
     return res.status(500).json({ error: 'Failed to create the series' });
+  }
+});
+
+// ---- PATCH /api/sessions/series/:seriesId/cancel ----
+// Cancels the anchor session and every LATER scheduled session of the same series.
+// Completed, no-show and already-cancelled sessions are never touched. Nothing is
+// deleted. Notifies only when rows actually changed (a retry that changes zero rows
+// is silent).
+router.patch('/:seriesId/cancel', requireCoach, async (req, res) => {
+  try {
+    const seriesId = validateUuid(req.params.seriesId, 'Series ID');
+    if (!seriesId.ok) return res.status(400).json({ error: seriesId.error });
+    const anchorId = validateUuid((req.body || {}).from_session_id, 'Session ID');
+    if (!anchorId.ok) return res.status(400).json({ error: anchorId.error });
+    const notify = validateNotifyFlag(req.body);
+    if (!notify.ok) return res.status(400).json({ error: notify.error });
+
+    const { data: series } = await supabaseAdmin.from('session_series').select('*')
+      .eq('id', seriesId.value).eq('archived', false).maybeSingle();
+    if (!series || (req.user.role !== 'admin' && series.coach_id !== req.user.coach.id)) {
+      return res.status(404).json({ error: 'Series not found' });
+    }
+    const { data: anchor } = await supabaseAdmin.from('sessions').select('id, series_id, client_id, scheduled_at')
+      .eq('id', anchorId.value).eq('archived', false).maybeSingle();
+    if (!anchor || anchor.series_id !== series.id || anchor.client_id !== series.client_id) {
+      return res.status(404).json({ error: 'Session not found in this series' });
+    }
+
+    const { data: changed, error } = await supabaseAdmin.from('sessions')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('series_id', series.id).eq('status', 'scheduled').eq('archived', false)
+      .gte('scheduled_at', anchor.scheduled_at)
+      .select('id, scheduled_at');
+    if (error) throw error;
+    const cancelled = [...(changed || [])].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+
+    if (notify.value && cancelled.length) {
+      await dispatchEmail(() => notifySeriesCancelled({ seriesId: series.id, clientId: series.client_id, coachId: series.coach_id, cancelled }));
+      dispatchPush(() => sendToClient(series.client_id, {
+        title: cancelled.length === 1 ? 'Session cancelled' : 'Sessions cancelled',
+        body: `${cancelled.length} session${cancelled.length === 1 ? '' : 's'} starting ${formatDenverDisplay(cancelled[0].scheduled_at)} ${cancelled.length === 1 ? 'was' : 'were'} cancelled.`,
+        url: '/client/sessions',
+      }));
+    }
+    return res.json({ cancelled });
+  } catch (e) {
+    logError('series cancel error', e);
+    return res.status(500).json({ error: 'Failed to cancel the sessions' });
   }
 });
 

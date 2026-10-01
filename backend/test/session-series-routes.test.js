@@ -415,3 +415,57 @@ test('series routes require a coach', async () => {
   assert.equal((await call('/preview', { body: previewBody() })).status, 403);
   assert.equal((await call('/check', { body: {} })).status, 403);
 });
+
+
+// ---------- cancel this-and-future ----------
+const ANCHOR_ID = 'eeeeeeee-0000-0000-0000-00000000000e';
+const cancelBody = (overrides = {}) => ({ from_session_id: ANCHOR_ID, notify: true, ...overrides });
+function seedSeriesForCancel() {
+  state.existingSeries = { id: SERIES_ID, coach_id: COACH_ID, client_id: CLIENT_ID, archived: false };
+  state.anchorSession = { id: ANCHOR_ID, series_id: SERIES_ID, client_id: CLIENT_ID, scheduled_at: new Date(Date.now() + 7 * 86400000).toISOString(), archived: false };
+  state.cancelledRows = [
+    { id: ANCHOR_ID, scheduled_at: state.anchorSession.scheduled_at },
+    { id: 'later-1', scheduled_at: new Date(Date.now() + 14 * 86400000).toISOString() },
+  ];
+}
+
+test('cancel this-and-future changes only the returned scheduled rows and sends one summary', async () => {
+  resetState(); currentUser = coachUser; seedSeriesForCancel();
+  const result = await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody() });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.cancelled.length, 2);
+  assert.deepEqual(state.sessionUpdates.map((u) => u.status), ['cancelled']);
+  assert.equal(state.cancelEmails.length, 1);
+  assert.equal(state.cancelEmails[0].cancelled.length, 2);
+  assert.equal(state.cancelEmails[0].seriesId, SERIES_ID);
+  assert.equal(state.pushes, 1);
+});
+
+test('cancel with notify false is silent; a retry that changes zero rows sends nothing', async () => {
+  resetState(); currentUser = coachUser; seedSeriesForCancel();
+  assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody({ notify: false }) })).status, 200);
+  assert.equal(state.cancelEmails.length, 0);
+  resetState(); currentUser = coachUser; seedSeriesForCancel();
+  state.cancelledRows = []; // nothing left to cancel
+  const retry = await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody() });
+  assert.equal(retry.status, 200);
+  assert.deepEqual(retry.body.cancelled, []);
+  assert.equal(state.cancelEmails.length, 0);
+  assert.equal(state.pushes, 0);
+});
+
+test('cancel validates ids and the notify flag, and masks other coaches\' series and foreign anchors', async () => {
+  resetState(); currentUser = coachUser; seedSeriesForCancel();
+  assert.equal((await call('/not-a-uuid/cancel', { method: 'PATCH', body: cancelBody() })).status, 400);
+  assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody({ from_session_id: 'nope' }) })).status, 400);
+  assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody({ notify: 'x' }) })).status, 400);
+  state.existingSeries = { ...state.existingSeries, coach_id: OTHER_COACH_ID };
+  assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody() })).status, 404);
+  seedSeriesForCancel();
+  state.anchorSession = { ...state.anchorSession, series_id: 'some-other-series' };
+  assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody() })).status, 404);
+  seedSeriesForCancel();
+  state.anchorSession = { ...state.anchorSession, client_id: 'someone-else' };
+  assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody() })).status, 404);
+  assert.equal(state.sessionUpdates.length, 0);
+});
