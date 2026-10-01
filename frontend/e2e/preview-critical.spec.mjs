@@ -1466,6 +1466,381 @@ test('"Show more" clicked while a history refresh is loading is discarded once t
   expect(new Set(hrefs).size).toBe(13);
 });
 
+test('workout builder links supersets and giant sets and reorders exercises at mobile width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  await page.getByTestId('workout-create-button').click();
+
+  const dialog = page.getByRole('dialog');
+  const names = dialog.getByTestId('workout-exercise-name-input');
+  await names.first().fill('Bench Press');
+  for (const name of ['Chest-Supported Row', 'Curl']) {
+    await dialog.getByTestId('workout-exercise-add-button').click();
+    const rows = dialog.getByTestId('workout-exercise-row');
+    await rows.last().locator('h3 button').click(); // expand the new row
+    await names.last().fill(name);
+  }
+  const markers = dialog.getByTestId('workout-exercise-marker');
+  const order = () => names.evaluateAll((inputs) => inputs.map((input) => input.value));
+  await expect(markers).toHaveText(['1', '2', '3']);
+
+  // Bench + Row -> superset; then + Curl -> giant set.
+  await dialog.getByTestId('workout-exercise-link-button').first().click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(markers).toHaveText(['A1', 'A2', 'B']);
+  await dialog.getByTestId('workout-exercise-link-button').click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
+  await expect(markers).toHaveText(['A1', 'A2', 'A3']);
+
+  // Reorder inside the group keeps it intact.
+  await dialog.getByLabel('Move Curl up').click();
+  await expect.poll(order).toEqual(['Bench Press', 'Curl', 'Chest-Supported Row']);
+  await expect(dialog.getByTestId('workout-superset-group')).toHaveCount(1);
+
+  // Split off the last exercise, then move it above the superset as a block.
+  await dialog.getByTestId('workout-exercise-unlink-button').nth(1).click();
+  await expect(markers).toHaveText(['A1', 'A2', 'B']);
+  await dialog.getByTestId('workout-superset-move-down-button').click();
+  await expect.poll(order).toEqual(['Chest-Supported Row', 'Bench Press', 'Curl']);
+  await expect(markers).toHaveText(['A', 'B1', 'B2']);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  if (process.env.CVF_SHOT_DIR) await dialog.screenshot({ path: `${process.env.CVF_SHOT_DIR}/builder-mobile.png` });
+
+  await dialog.getByTestId('workout-superset-ungroup-button').click();
+  await expect(dialog.getByTestId('workout-superset-group')).toHaveCount(0);
+  await expect(markers).toHaveText(['1', '2', '3']);
+
+  // Drag and drop with a pointer: Curl (3rd) dragged onto the top row.
+  const openRows = dialog.locator('[data-testid="workout-exercise-row"] h3 button[data-state="open"]');
+  while (await openRows.count()) await openRows.first().click();
+  const handles = dialog.getByTestId('workout-exercise-drag-handle');
+  const from = await handles.nth(2).boundingBox();
+  const to = await handles.nth(0).boundingBox();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, from.y - 10, { steps: 5 });
+  await page.mouse.move(to.x + to.width / 2, to.y + 4, { steps: 12 });
+  await page.mouse.up();
+  await expect(dialog.getByTestId('workout-exercise-row').locator('h3')).toHaveText([/Curl/, /Chest-Supported Row/, /Bench Press/]);
+
+  // Keyboard dragging: focus the grip, space to lift, arrow down, space to drop.
+  await handles.nth(0).focus();
+  // dnd-kit measures drop positions between keystrokes.
+  for (const key of ['Space', 'ArrowDown', 'Space']) {
+    await page.keyboard.press(key);
+    await page.waitForTimeout(250);
+  }
+  await expect(dialog.getByTestId('workout-exercise-row').locator('h3')).toHaveText([/Chest-Supported Row/, /Curl/, /Bench Press/]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  if (process.env.CVF_SHOT_DIR) await dialog.screenshot({ path: `${process.env.CVF_SHOT_DIR}/builder-drag-mobile.png` });
+});
+
+test('a saved superset survives reopen, reaches the client tracker, and rests once per round', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+
+  // Link RDL + Pallof (rows 2 and 3) and save.
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  // The fixed preview toolbar overlaps the pane's Save at this width; use
+  // the keyboard (a real path) rather than a forced click.
+  await page.getByTestId('workout-save-button').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Workout updated')).toBeVisible();
+
+  // Reopen from the list: the group came back from the saved copy.
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await expect(page.getByTestId('workout-superset-group')).toHaveCount(0);
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+
+  // Same in-memory preview data, now as the client (no reload).
+  await page.getByTestId('preview-role-select').selectOption('client');
+  await expect(page).toHaveURL(/\/client$/);
+  await page.evaluate(() => {
+    window.history.pushState({}, '', '/client/programs');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page.getByTestId('superset-group').first()).toContainText('alternate B1–B2');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+
+  const group = page.getByTestId('superset-group');
+  await expect(group).toHaveCount(1);
+  // Rest is the longest in the group: RDL 90s vs Pallof 45s.
+  await expect(group).toContainText('alternate B1–B2, then rest 1:30');
+  const cards = page.getByTestId('tracker-exercise-card');
+  const [squat, rdl, pallof] = [cards.nth(0), cards.nth(1), cards.nth(2)];
+  await expect(rdl.getByTestId('exercise-marker')).toHaveText('B1');
+  await expect(pallof.getByTestId('exercise-marker')).toHaveText('B2');
+  const timer = page.getByTestId('rest-timer');
+
+  // Straight set: its own rest starts. Finish it so the superset is current.
+  await squat.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(timer).toBeVisible();
+  await squat.getByRole('button', { name: 'Complete set 2' }).click();
+  await squat.getByRole('button', { name: 'Complete set 3' }).click();
+  await expect(timer).toBeVisible();
+  // B1 mid-round: no rest, and the running timer is cleared.
+  await rdl.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(timer).toHaveCount(0);
+  // B2 (Pallof, 45s of its own) is now current; a manual rest offers the
+  // group's round rest, like the automatic timer.
+  await expect(page.getByTestId('rest-start')).toHaveText(/Rest 1:30/);
+  // B2 closes the round: one 1:30 rest.
+  await pallof.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(timer).toBeVisible();
+  await expect(timer).toHaveText(/1:(30|29|28)/);
+  // Next round starts on B1 again: no rest until B2.
+  await rdl.getByRole('button', { name: 'Complete set 2' }).click();
+  await expect(timer).toHaveCount(0);
+});
+
+test.describe('touch device', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('builder rows reorder by touch-dragging the grip inside a scrolling dialog', async ({ page }) => {
+    await usePreviewRole(page, 'coach');
+    await page.goto('/coach/programs');
+    await page.getByTestId('training-builder-tab-workouts').tap();
+    const card = page.locator('[data-testid="workout-edit-button"][aria-label="Edit Lower Strength A"]');
+    await card.tap();
+    const dialog = page.getByRole('dialog');
+    const titles = dialog.getByTestId('workout-exercise-row').locator('h3');
+    await expect(titles).toHaveText([/Goblet Squat/, /Romanian Deadlift/, /Half-kneeling Pallof Press/]);
+    // Leave the first row expanded so the dialog scrolls: a grip that let
+    // the browser treat the gesture as a pan would scroll instead of drag.
+    await dialog.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    expect(await dialog.evaluate((element) => element.scrollHeight > element.clientHeight + 100)).toBeTruthy();
+
+    // Real touch input through Chromium's input pipeline (touch -> pointer
+    // events), not mouse events: drag the Pallof grip up onto the RDL row.
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', {
+      type, touchPoints: type === 'touchEnd' ? [] : [{ x: Math.round(x), y: Math.round(y) }],
+    });
+    const handles = dialog.getByTestId('workout-exercise-drag-handle');
+    const from = await handles.nth(2).boundingBox();
+    const to = await handles.nth(1).boundingBox();
+    const x = from.x + from.width / 2;
+    await touch('touchStart', x, from.y + from.height / 2);
+    const steps = 14;
+    for (let i = 1; i <= steps; i += 1) {
+      const y = from.y + from.height / 2 + ((to.y + 4) - (from.y + from.height / 2)) * (i / steps);
+      await touch('touchMove', x, y);
+      await page.waitForTimeout(16);
+    }
+    await touch('touchEnd');
+
+    // Pallof moved up (dnd-kit may auto-scroll the dialog near its edge, so
+    // the exact slot can vary); the other two keep their order. Without
+    // touch-action: none on the grip, Chromium pans instead and nothing moves.
+    await expect.poll(async () => {
+      const order = (await titles.allTextContents()).map((text) => (/Pallof/.test(text) ? 'P' : /Goblet/.test(text) ? 'G' : 'R'));
+      return order.indexOf('P') < 2 && order.indexOf('G') < order.indexOf('R');
+    }).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  });
+});
+
+test('re-opening a workout while the list reload is slow shows the saved superset, and saving again keeps it', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const reopenLower = async () => {
+    await rail.filter({ hasText: 'Upper Strength A' }).click();
+    await rail.filter({ hasText: 'Lower Strength A' }).click();
+  };
+  const save = async () => {
+    // The fixed preview toolbar overlaps the pane's Save at this width.
+    await page.getByTestId('workout-save-button').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByText('Workout updated').last()).toBeVisible();
+  };
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+
+  // From here on the workout list reload is slow (preview test harness).
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts$', ms: 2500 }])));
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  await save();
+
+  // Switch away and back before the reload lands: the saved group shows.
+  await reopenLower();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+
+  // Saving again from that form keeps the group once everything settles.
+  await save();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await page.waitForTimeout(3000);
+  await reopenLower();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+});
+
+test('switching workouts while a save is pending never retargets the editor or overwrites the other workout', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const titles = page.getByTestId('workout-exercise-row').locator('h3');
+  const pressSave = async () => {
+    // The fixed preview toolbar overlaps the pane's Save at this width.
+    await page.getByTestId('workout-save-button').focus();
+    await page.keyboard.press('Enter');
+  };
+
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  // Slow the save (PUT /programs/workouts/:id) via the preview test harness.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts/[^/]+$', ms: 2000 }])));
+  await pressSave();
+
+  // Open another workout while Lower's save is still in flight.
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await expect(titles).toHaveText([/Bench/, /Row/]);
+  await expect(page.getByText('Workout updated').first()).toBeVisible({ timeout: 6000 });
+
+  // The response must not retarget the editor: still Upper, with Upper's rows.
+  await expect(page.getByRole('heading', { name: 'Upper Strength A' })).toBeVisible();
+  await expect(titles).toHaveText([/Bench/, /Row/]);
+
+  // Saving now writes Upper, not Lower.
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await pressSave();
+  await expect(page.getByTestId('workout-save-button')).toBeDisabled();
+  await expect(page.getByTestId('workout-save-button')).toBeEnabled({ timeout: 6000 });
+  await page.waitForTimeout(1500); // let the background list reload land
+
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(titles).toHaveText([/Goblet Squat/, /Romanian Deadlift/, /Pallof/]);
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await expect(titles).toHaveText([/Bench/, /Row/]);
+  await expect(page.getByTestId('workout-superset-group')).toHaveCount(0);
+});
+
+test('returning to a workout while its save is still in flight shows the edits being saved', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const pressSave = async () => {
+    // The fixed preview toolbar overlaps the pane's Save at this width.
+    await page.getByTestId('workout-save-button').focus();
+    await page.keyboard.press('Enter');
+  };
+
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  // Slow the save (PUT /programs/workouts/:id) via the preview test harness.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts/[^/]+$', ms: 2500 }])));
+  await pressSave();
+
+  // Away and straight back while the save is still pending.
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+
+  // Once it lands, saving again from this form keeps the superset.
+  await expect(page.getByTestId('workout-save-button')).toBeEnabled({ timeout: 6000 });
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await pressSave();
+  await expect(page.getByTestId('workout-save-button')).toBeEnabled({ timeout: 6000 });
+  await page.waitForTimeout(1500); // let the background list reload land
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+});
+
+test('duplicating a builder exercise inserts a full copy below it that saves as its own row', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const titles = page.getByTestId('workout-exercise-row').locator('h3');
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(titles).toHaveText([/Goblet Squat/, /Romanian Deadlift/, /Pallof/]);
+
+  // The first row is open by default; duplicate it.
+  await page.getByTestId('workout-exercise-duplicate-button').first().click();
+  await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 8-10/, /Romanian Deadlift/, /Pallof/]);
+
+  await page.getByTestId('workout-save-button').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Workout updated')).toBeVisible();
+  await page.waitForTimeout(1000);
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 8-10/, /Romanian Deadlift/, /Pallof/]);
+  await expect(rail.filter({ hasText: 'Lower Strength A' })).toContainText('4 exercises');
+});
+
+test('duplicate and remove stay full tap targets on phones, and editing a copy leaves the original alone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  await page.locator('[data-testid="workout-edit-button"][aria-label="Edit Lower Strength A"]').click();
+  const dialog = page.getByRole('dialog');
+  const rows = dialog.getByTestId('workout-exercise-row');
+  const titles = rows.locator('h3');
+  const openRow = async (index) => {
+    const trigger = rows.nth(index).locator('h3 button');
+    if ((await trigger.getAttribute('data-state')) !== 'open') await trigger.click();
+  };
+  const reps = (index) => rows.nth(index).getByTestId('workout-exercise-reps-input');
+
+  // Phone tap targets: Duplicate and Remove keep 44x44 beside the name field.
+  // Laid-out size (offsetWidth), so the dialog's opening zoom doesn't skew it.
+  for (const id of ['workout-exercise-duplicate-button', 'workout-exercise-remove-button']) {
+    const size = await rows.first().getByTestId(id).evaluate((el) => ({ w: el.offsetWidth, h: el.offsetHeight }));
+    expect(size.w, id).toBeGreaterThanOrEqual(44);
+    expect(size.h, id).toBeGreaterThanOrEqual(44);
+  }
+
+  // A straight set: edit the copy, the original keeps its reps.
+  await rows.first().getByTestId('workout-exercise-duplicate-button').click();
+  await expect(titles).toHaveText([/Goblet Squat/, /Goblet Squat/, /Romanian Deadlift/, /Pallof/]);
+  await openRow(1);
+  await reps(1).fill('15');
+  await expect(reps(0)).toHaveValue('8-10');
+  await expect(reps(1)).toHaveValue('15');
+
+  // Inside a superset: link RDL + Pallof, duplicate RDL, edit the copy.
+  await dialog.getByTestId('workout-exercise-link-button').nth(2).click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await openRow(2);
+  await rows.nth(2).getByTestId('workout-exercise-duplicate-button').click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
+  await openRow(3);
+  await reps(3).fill('6');
+  await expect(reps(2)).toHaveValue('8');
+  await expect(reps(3)).toHaveValue('6');
+
+  // Saved and reopened: every row kept its own values.
+  await dialog.getByTestId('workout-save-button').click();
+  await expect(page.getByText('Workout updated')).toBeVisible();
+  await page.waitForTimeout(1000);
+  await page.locator('[data-testid="workout-edit-button"][aria-label="Edit Lower Strength A"]').click();
+  await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 15/, /Romanian Deadlift.*3 x 8/, /Romanian Deadlift.*3 x 6/, /Pallof/]);
+  await expect(page.getByRole('dialog').getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
+});
+
 test('the coach client page fits a phone screen with assigned program and workout cards', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await usePreviewRole(page, 'coach');

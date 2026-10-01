@@ -91,6 +91,7 @@ Frontend and backend deploy as **two separate Vercel projects**, each rooted at 
 ## Known duplication
 
 - Program Draft logic is intentionally duplicated as browser ESM at `frontend/src/lib/programDraft.js` and backend CommonJS at `backend/src/lib/programDraft.cjs` — see Deploy architecture above. Changes to the paste/CSV/PDF Program Draft schema must be applied to both copies.
+- Superset/giant-set grouping helpers (`supersetBlocks`, `exerciseMarkers`, label generation) are duplicated at `frontend/src/lib/supersets.js` (display + builder edits) and `backend/src/lib/supersets.js` (save normalization + PDF markers). `backend/test/supersets.test.js` asserts the two produce identical markers.
 - The real CVF logo is duplicated at `frontend/public/logo.png` (served to the browser) and `backend/src/assets/cvf-logo.png` (used by PDF export) for the same reason.
 
 ## Preview mode
