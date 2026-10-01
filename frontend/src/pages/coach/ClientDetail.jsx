@@ -354,11 +354,11 @@ function OverviewTab({ client, waiver, reload, user }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="font-medium text-sm">App invite</p>
-              {!client.auth_user_id && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {client.invited ? `Sent to ${client.email || 'their email'} · Turn off to withdraw` : 'Turn on to email a signup link'}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {client.auth_user_id
+                  ? 'Accepted'
+                  : client.invited ? `Sent to ${client.email || 'their email'} · Turn off to withdraw` : 'Turn on to email a signup link'}
+              </p>
             </div>
             <Switch
               checked={client.invited || Boolean(client.auth_user_id)}
