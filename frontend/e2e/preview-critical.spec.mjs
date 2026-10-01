@@ -1603,6 +1603,54 @@ test('a saved superset survives reopen, reaches the client tracker, and rests on
   await expect(timer).toHaveCount(0);
 });
 
+test('focused entry follows superset rounds like the set table', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.addInitScript(() => localStorage.setItem('cvf_set_entry', 'focused'));
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  await page.getByTestId('workout-rail-row').filter({ hasText: 'Lower Strength A' }).click();
+  // Link RDL + Pallof (rows 2 and 3) and save.
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await page.getByTestId('workout-save-button').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Workout updated')).toBeVisible();
+
+  // Same in-memory preview data, now as the client (no reload).
+  await page.getByTestId('preview-role-select').selectOption('client');
+  await expect(page).toHaveURL(/\/client$/);
+  await page.evaluate(() => {
+    window.history.pushState({}, '', '/client/programs');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page.getByTestId('focused-entry')).toBeVisible();
+
+  const title = page.getByTestId('focused-entry').locator('header h2');
+  const log = page.getByTestId('focused-log-set');
+  const skipRest = page.getByTestId('focused-skip-rest');
+  const rest = page.getByTestId('focused-rest');
+
+  // Straight sets: each one rests, then the superset becomes current.
+  await expect(title).toHaveText('Goblet Squat');
+  for (let set = 1; set <= 3; set += 1) {
+    await log.click();
+    await expect(rest).toBeVisible();
+    await skipRest.click();
+  }
+  await expect(title).toHaveText('Romanian Deadlift');
+  // B1 mid-round: no rest, and the screen hands off to B2.
+  await log.click();
+  await expect(title).toHaveText('Half-kneeling Pallof Press');
+  await expect(rest).toHaveCount(0);
+  // B2 closes the round: one 1:30 rest, then back to B1.
+  await log.click();
+  await expect(rest).toBeVisible();
+  await expect(rest.getByRole('timer')).toHaveText(/1:(30|29|28)/);
+  await expect(title).toHaveText('Romanian Deadlift');
+});
+
 test.describe('touch device', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

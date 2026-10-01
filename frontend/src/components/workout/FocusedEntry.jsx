@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatRestSeconds } from '@/lib/rest';
 import { formatTimer, useRestCountdown } from '@/lib/useRestCountdown';
+import { nextExercise as nextInRound } from '@/lib/supersets';
 
 // Focused set entry (round-2 design decision, 2026-09-29): one set at a time,
 // with a dedicated rest screen and explicit corrections. It reuses the
@@ -118,7 +119,9 @@ export default function FocusedEntry({
   const { seconds: restSeconds, complete: restComplete } = useRestCountdown(restEndsAt, restAlerts);
 
   const exercises = log.exercises;
-  const firstOpen = exercises.find((row) => row.sets.some((set) => set.status !== 'completed'));
+  // Same "current exercise" rule as the set table: inside a superset or
+  // giant set it alternates between members round by round.
+  const firstOpen = nextInRound(exercises);
   const exercise = exercises.find((row) => row.id === selectedId) || firstOpen || exercises[0];
   if (!exercise) return null;
 
@@ -127,7 +130,16 @@ export default function FocusedEntry({
   const editingSet = editing ? exercise.sets.find((set) => set.id === editing.setId) : null;
   const currentSet = editingSet || pendingSet;
   const loggedSets = exercise.sets.filter((set) => set.status === 'completed');
-  const nextExercise = exercises.slice(index + 1).find((row) => row.sets.some((set) => set.status !== 'completed'))
+  // Up next: what the round order picks once this set is logged, else the
+  // next exercise with sets left.
+  const afterThisSet = pendingSet
+    ? exercises.map((row) => (row.id !== exercise.id ? row : {
+      ...row, sets: row.sets.map((set) => (set.id === pendingSet.id ? { ...set, status: 'completed' } : set)),
+    }))
+    : exercises;
+  const inRound = nextInRound(afterThisSet);
+  const nextExercise = (inRound && inRound.id !== exercise.id ? exercises.find((row) => row.id === inRound.id) : null)
+    || exercises.slice(index + 1).find((row) => row.sets.some((set) => set.status !== 'completed'))
     || exercises.slice(0, index).find((row) => row.sets.some((set) => set.status !== 'completed'));
   const resting = Boolean(restEndsAt) && !restComplete && !editingSet;
   const allDone = totalCount > 0 && completedCount === totalCount;
@@ -193,7 +205,14 @@ export default function FocusedEntry({
   let primary;
   if (editingSet) primary = { label: `Save set ${editingSet.set_number}`, onClick: saveEdit, testId: 'focused-save-edit' };
   else if (resting && pendingSet) primary = { label: `Start set ${pendingSet.set_number} now`, onClick: onSkipRest, testId: 'focused-skip-rest' };
-  else if (pendingSet) primary = { label: `Log set ${pendingSet.set_number}`, onClick: () => toggleSet(exercise, pendingSet), testId: 'focused-log-set' };
+  else if (pendingSet) {
+    primary = {
+      label: `Log set ${pendingSet.set_number}`,
+      // Inside a superset, logging hands off to the round's next member.
+      onClick: () => { if (exercise.superset_group) setSelectedId(null); toggleSet(exercise, pendingSet); },
+      testId: 'focused-log-set',
+    };
+  }
   else if (nextExercise) primary = { label: 'Next exercise', onClick: () => selectExercise(nextExercise.id), testId: 'focused-next-exercise' };
   else primary = { label: 'Finish workout', onClick: onOpenFinish, testId: 'focused-finish-all', disabled: !completedCount };
 
