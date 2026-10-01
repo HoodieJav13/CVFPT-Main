@@ -1523,6 +1523,57 @@ test('duplicating a builder exercise inserts a full copy below it that saves as 
   await expect(rail.filter({ hasText: 'Lower Strength A' })).toContainText('4 exercises');
 });
 
+test('duplicate and remove stay full tap targets on phones, and editing a copy leaves the original alone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  await page.locator('[data-testid="workout-edit-button"][aria-label="Edit Lower Strength A"]').click();
+  const dialog = page.getByRole('dialog');
+  const rows = dialog.getByTestId('workout-exercise-row');
+  const titles = rows.locator('h3');
+  const openRow = async (index) => {
+    const trigger = rows.nth(index).locator('h3 button');
+    if ((await trigger.getAttribute('data-state')) !== 'open') await trigger.click();
+  };
+  const reps = (index) => rows.nth(index).getByTestId('workout-exercise-reps-input');
+
+  // Phone tap targets: Duplicate and Remove keep 44x44 beside the name field.
+  // Laid-out size (offsetWidth), so the dialog's opening zoom doesn't skew it.
+  for (const id of ['workout-exercise-duplicate-button', 'workout-exercise-remove-button']) {
+    const size = await rows.first().getByTestId(id).evaluate((el) => ({ w: el.offsetWidth, h: el.offsetHeight }));
+    expect(size.w, id).toBeGreaterThanOrEqual(44);
+    expect(size.h, id).toBeGreaterThanOrEqual(44);
+  }
+
+  // A straight set: edit the copy, the original keeps its reps.
+  await rows.first().getByTestId('workout-exercise-duplicate-button').click();
+  await expect(titles).toHaveText([/Goblet Squat/, /Goblet Squat/, /Romanian Deadlift/, /Pallof/]);
+  await openRow(1);
+  await reps(1).fill('15');
+  await expect(reps(0)).toHaveValue('8-10');
+  await expect(reps(1)).toHaveValue('15');
+
+  // Inside a superset: link RDL + Pallof, duplicate RDL, edit the copy.
+  await dialog.getByTestId('workout-exercise-link-button').nth(2).click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await openRow(2);
+  await rows.nth(2).getByTestId('workout-exercise-duplicate-button').click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
+  await openRow(3);
+  await reps(3).fill('6');
+  await expect(reps(2)).toHaveValue('8');
+  await expect(reps(3)).toHaveValue('6');
+
+  // Saved and reopened: every row kept its own values.
+  await dialog.getByTestId('workout-save-button').click();
+  await expect(page.getByText('Workout updated')).toBeVisible();
+  await page.waitForTimeout(1000);
+  await page.locator('[data-testid="workout-edit-button"][aria-label="Edit Lower Strength A"]').click();
+  await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 15/, /Romanian Deadlift.*3 x 8/, /Romanian Deadlift.*3 x 6/, /Pallof/]);
+  await expect(page.getByRole('dialog').getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
+});
+
 test('the coach client page fits a phone screen with assigned program and workout cards', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await usePreviewRole(page, 'coach');

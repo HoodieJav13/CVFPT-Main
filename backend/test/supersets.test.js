@@ -229,3 +229,22 @@ test('duplicating an exercise copies its prescription below it, as a new row, in
   assert.equal(next[2].id, '');
   assert.equal(duplicateExercise(list, 9), list);
 });
+
+test('a duplicated exercise is an independent row: editing it never touches the original', async () => {
+  const { duplicateExercise } = await frontendLib();
+  const list = [
+    { id: 'e1', custom_name: 'Bench', reps: '8', superset_group: 'A', _uid: 'u1' },
+    { id: 'e2', custom_name: 'Row', reps: '10', superset_group: 'A', _uid: 'u2' },
+  ];
+  const next = duplicateExercise(list, 0, { _uid: 'copy' });
+  assert.notEqual(next[1], next[0]);
+  assert.notEqual(next[1], list[0]);
+  // The builder edits rows immutably (setExercise spreads the row); a copy edit
+  // must leave the original row and the input list as they were.
+  const edited = next.map((row, i) => (i === 1 ? { ...row, reps: '15' } : row));
+  assert.equal(edited[0].reps, '8');
+  assert.equal(edited[1].reps, '15');
+  assert.equal(list[0].reps, '8');
+  assert.equal(edited[0].id, 'e1');
+  assert.equal(edited[1].id, '');
+});
