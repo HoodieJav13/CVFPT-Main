@@ -53,7 +53,7 @@ export function LegacyLockDialog({ open, message, busy, onCancel, onSaveVariatio
           <DialogDescription>{message}</DialogDescription>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Your changes will be saved as a new hidden variation. The original stays exactly as it is for the clients using it.
+          Your changes save as a new hidden variation. The original stays unchanged for its clients.
         </p>
         <DialogFooter>
           <Button type="button" variant="outline" className="rounded-xl" onClick={onCancel} disabled={busy}>Cancel</Button>
@@ -81,8 +81,7 @@ export function SaveTemplateDialog({ open, onOpenChange, kindLabel, defaultName,
         <DialogHeader>
           <DialogTitle>Save as template</DialogTitle>
           <DialogDescription>
-            Saves a copy of this {kindLabel} to the shared library, without this client&apos;s loads or coach-only notes.
-            It starts hidden so you can review it before other coaches can assign it.
+            Copies this {kindLabel} to the shared library without client loads or coach-only notes. Starts hidden.
           </DialogDescription>
         </DialogHeader>
         <form

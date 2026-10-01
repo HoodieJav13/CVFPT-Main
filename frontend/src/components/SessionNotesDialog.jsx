@@ -66,13 +66,8 @@ export function SessionNotesDialog({ session, onClose }) {
       <DialogContent className="max-w-md" data-testid="session-notes-dialog">
         <DialogHeader>
           <DialogTitle>Session notes</DialogTitle>
-          <DialogDescription>Record private coach notes and client-visible notes for this session.</DialogDescription>
+          <DialogDescription>{session && `${session.client?.name} · ${fmtDateTime(session.scheduled_at)}`}</DialogDescription>
         </DialogHeader>
-        {session && (
-          <p className="text-xs text-muted-foreground -mt-2">
-            {session.client?.name} - {fmtDateTime(session.scheduled_at)}
-          </p>
-        )}
         <div className="space-y-2 max-h-52 overflow-y-auto">
           {notes && notes.length === 0 && <p className="text-sm text-muted-foreground">No notes yet.</p>}
           {(notes || []).map((n) => (

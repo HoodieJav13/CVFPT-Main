@@ -208,7 +208,6 @@ export default function CoachSessions() {
     <div>
       <PageHeader
         title="Sessions"
-        subtitle="Schedule, complete and manage training sessions"
         action={
           <div className="grid w-full grid-cols-3 gap-1.5 sm:flex sm:w-auto sm:items-center">
             <Button variant="outline" className="min-h-11 min-w-0 rounded-xl px-2 sm:px-4" onClick={() => setHoursOpen(true)} data-testid="session-hours-button">
@@ -273,7 +272,7 @@ export default function CoachSessions() {
       </div>
 
       {grouped.length === 0 && (
-        <EmptyState icon={CalendarDays} title="Nothing here" subtitle={filter === 'upcoming' ? 'Schedule your next session to see it here.' : 'No sessions match this filter.'} testId="sessions-empty-state" />
+        <EmptyState icon={CalendarDays} title="Nothing here" subtitle={filter === 'upcoming' ? null : 'No sessions match this filter.'} testId="sessions-empty-state" />
       )}
 
       <div className="space-y-5">

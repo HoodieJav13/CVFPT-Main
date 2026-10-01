@@ -323,7 +323,7 @@ export function AvailabilityDrawer({ open, onOpenChange }) {
             <DialogHeader>
               <DialogTitle>Turn on instant booking?</DialogTitle>
               <DialogDescription>
-                Your published hours become instantly bookable: when a client picks an open slot it goes straight onto your calendar with no approval step. Conflict protection still applies, and you can turn this off anytime.
+                Your published hours become instantly bookable — no approval step. Conflict protection still applies.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -138,7 +138,7 @@ export default function Programs() {
 
   return (
     <div>
-      <PageHeader title="Training builder" subtitle="Manage exercise library, workout days, structured programs, and assignments" />
+      <PageHeader title="Training builder" />
       <Tabs defaultValue="library">
         <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade">
           <TabsTrigger className="min-h-11" value="library" data-testid="training-builder-tab-library">Exercise Library</TabsTrigger>
@@ -345,11 +345,10 @@ function ExerciseLibraryTab({ library, reload }) {
         ))}
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent aria-describedby={undefined} className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit exercise' : 'Add exercise'}</DialogTitle>
-            <DialogDescription>Create or update an exercise and its library details.</DialogDescription>
-          </DialogHeader>
+                      </DialogHeader>
           <form onSubmit={save} className="space-y-3.5">
             <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Exercise name" data-testid="exercise-library-name-input" />
             <div className="grid grid-cols-2 gap-3">
@@ -864,11 +863,10 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
       </div>
       <LegacyLockDialog open={Boolean(lock)} message={lock?.message} busy={saving} onCancel={() => setLock(null)} onSaveVariation={saveVariationFromLock} />
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
+        <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit program' : 'New structured program'}</DialogTitle>
-            <DialogDescription>Create or update a weekly program and choose a workout for each day.</DialogDescription>
-          </DialogHeader>
+                      </DialogHeader>
           <form onSubmit={save} className="space-y-4">
             <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Program name" data-testid="program-name-input" />
             <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Program description" data-testid="program-description-input" />
@@ -1080,11 +1078,10 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="max-h-[92dvh] max-w-4xl overflow-y-auto" data-testid="program-import-dialog">
+      <DialogContent aria-describedby={undefined} className="max-h-[92dvh] max-w-4xl overflow-y-auto" data-testid="program-import-dialog">
         <DialogHeader>
           <DialogTitle>Import program</DialogTitle>
-          <DialogDescription>Parse a program source, review the draft, and save it to the program vault.</DialogDescription>
-        </DialogHeader>
+                  </DialogHeader>
         <div className="space-y-5">
           <div className="grid gap-3 lg:grid-cols-[180px_1fr_auto] lg:items-end">
             <div className="space-y-1.5">
@@ -1596,11 +1593,10 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
 export function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onSubmit, editing }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">
+      <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Edit workout day' : 'New workout day'}</DialogTitle>
-          <DialogDescription>Create or update a workout day and its ordered exercises.</DialogDescription>
-        </DialogHeader>
+                  </DialogHeader>
         <WorkoutFormFields form={form} setForm={setForm} library={library} saving={saving} onSubmit={onSubmit} idPrefix="workout-dialog" />
       </DialogContent>
     </Dialog>

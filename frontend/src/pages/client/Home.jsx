@@ -2,17 +2,17 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { DashboardSkeleton, LoadErrorState, StatTile, SectionLabel, CheckInStats } from '@/components/common';
+import { DashboardSkeleton, LoadErrorState, StatTile, SectionLabel, CheckInStats, IconLink } from '@/components/common';
 import CheckInForm from '@/components/CheckInForm';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  CalendarDays, Dumbbell, ChevronRight, MapPin,
-  MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2, CheckCircle2, Library,
+  Dumbbell, ChevronRight, MapPin,
+  MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2, CheckCircle2, Pencil,
 } from 'lucide-react';
 import { fmtDay, fmtTime, fmtDateTime, fmtDate, initials } from '@/lib/format';
 import { toast } from 'sonner';
@@ -154,7 +154,6 @@ export default function ClientHome() {
       <DashboardChoreography pageKey={`client-dashboard-${user.id || user.profile?.id || user.role}`}>
       <DashboardHero
         title={`Today, ${firstName}`}
-        subtitle="Check in and make today count."
         testId="client-dashboard-header"
       />
 
@@ -178,16 +177,19 @@ export default function ClientHome() {
       {rhythm?.yesterday_missed?.length > 0 && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-achievement/35 bg-achievement/10 px-4 py-3.5" data-testid="catch-up-card">
           <div className="min-w-0">
-            <p className="text-sm font-semibold">Forget to log yesterday?</p>
-            <p className="truncate text-xs text-muted-foreground">{rhythm.yesterday_missed[0].workout_name || 'Assigned workout'} is still open — it counts for this week.</p>
+            <p className="truncate text-sm font-semibold">{rhythm.yesterday_missed[0].workout_name || 'Assigned workout'}</p>
+            <p className="text-xs text-muted-foreground">Yesterday · Still open · Counts this week</p>
           </div>
           <Button
             size="sm" variant="outline" className="min-h-11 shrink-0 rounded-xl border-achievement/40"
             disabled={quickCompleting}
             onClick={() => quickComplete({ workout_assignment_id: rhythm.yesterday_missed[0].id })}
+            aria-label={`Mark ${rhythm.yesterday_missed[0].workout_name || 'yesterday’s workout'} done without logging sets`}
+            title="Mark done without logging sets"
             data-testid="catch-up-quick-complete"
           >
-            {quickCompleting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Recording workout</span></> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
+            {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden />}
+            Mark done
           </Button>
         </div>
       )}
@@ -208,25 +210,28 @@ export default function ClientHome() {
           <div className="mt-1 flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 className="font-display text-4xl font-semibold tracking-tight" data-testid="client-today-plan-title">{todayPlan.title}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{todayPlan.description}</p>
+              {todayPlan.description && <p className="mt-1 text-sm text-muted-foreground">{todayPlan.description}</p>}
             </div>
           </div>
           {todayPlan.source ? (
-            <>
-              <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" disabled={startingWorkout || quickCompleting} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
+            <div className="mt-4 flex gap-2">
+              <Button className="min-h-14 flex-1 rounded-xl text-base font-semibold" disabled={startingWorkout || quickCompleting} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
                 {startingWorkout ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Starting workout</span></> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
               </Button>
               {/* One-tap for clients who won't track sets: open app, tap, close. */}
               <Button
                 variant="outline"
-                className="mt-2 min-h-11 w-full rounded-xl"
+                className="min-h-14 shrink-0 rounded-xl px-4"
                 disabled={startingWorkout || quickCompleting}
                 onClick={() => quickComplete(todayPlan.source)}
+                aria-label="Mark done without logging sets"
+                title="Mark done without logging sets"
                 data-testid="client-today-quick-complete"
               >
-                {quickCompleting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Recording workout</span></> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
+                {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden />}
+                Mark done
               </Button>
-            </>
+            </div>
           ) : todayPlan.kind === 'check_in' ? (
             <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
               <ClipboardCheck className="mr-1.5 h-4 w-4" />{todayPlan.action}
@@ -264,7 +269,7 @@ export default function ClientHome() {
                   </p>
                   <p className="mt-1.5 whitespace-pre-wrap text-sm">{latest.content}</p>
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    {fmtDateTime(latest.created_at)}{unread.length > 1 ? ` · +${unread.length - 1} more after this` : ''}
+                    {fmtDateTime(latest.created_at)}{unread.length > 1 ? ` · +${unread.length - 1} more` : ''}
                   </p>
                 </div>
                 <Button size="sm" variant="outline" className="min-h-11 shrink-0 rounded-lg" disabled={acknowledging}
@@ -298,23 +303,16 @@ export default function ClientHome() {
                 ]}
               />
             </div>
-            <Button variant="ghost" size="sm" className="min-h-11 shrink-0 rounded-lg" onClick={() => setCheckInOpen(true)} data-testid="open-check-in-button">
-              Edit
+            <Button variant="ghost" size="touchIcon" className="shrink-0 rounded-lg" onClick={() => setCheckInOpen(true)} aria-label="Edit check-in" title="Edit check-in" data-testid="open-check-in-button">
+              <Pencil aria-hidden />
             </Button>
           </CardContent>
         </Card>
-      ) : (
+      ) : todayPlan.kind === 'check_in' ? null : (
       <Card className="border-primary/25" data-testid="daily-check-in-card">
-        <CardContent className="p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <SectionLabel>Daily check-in</SectionLabel>
-              <h2 className="font-display text-xl font-semibold mt-1">Ready for your check-in?</h2>
-              <p className="text-sm text-muted-foreground mt-1">Log readiness, soreness, sleep, stress, and notes for your coach.</p>
-            </div>
-            <Badge variant="outline" className="bg-gold/10 text-gold border-gold/25">Open</Badge>
-          </div>
-          <Button className="mt-4 min-h-11 rounded-xl" onClick={() => setCheckInOpen(true)} data-testid="open-check-in-button">
+        <CardContent className="flex items-center justify-between gap-3 p-4">
+          <SectionLabel>Daily check-in</SectionLabel>
+          <Button className="min-h-11 shrink-0 rounded-xl" onClick={() => setCheckInOpen(true)} data-testid="open-check-in-button">
             <ClipboardCheck className="h-4 w-4 mr-1.5" /> Start check-in
           </Button>
         </CardContent>
@@ -329,9 +327,7 @@ export default function ClientHome() {
       <Card className="mt-4" data-testid="client-home-next-session-card">
         <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
           <SectionLabel>Next session</SectionLabel>
-          <Link to="/client/sessions" className="text-xs text-primary font-medium flex items-center">
-            Sessions <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
+          <IconLink to="/client/sessions" label="All sessions" />
         </CardHeader>
         <CardContent>
           {data.next_session ? (
@@ -366,27 +362,10 @@ export default function ClientHome() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-3 gap-3 mt-4">
-        <Link to="/client/sessions" className="flex items-center gap-2.5 rounded-xl border border-border bg-card/60 px-3.5 py-3.5 hover:bg-card transition-colors" data-testid="quick-link-book">
-          <CalendarDays className="h-5 w-5 shrink-0 text-primary" />
-          <span className="truncate text-sm font-medium">Book</span>
-        </Link>
-        <Link to="/client/programs" className="flex items-center gap-2.5 rounded-xl border border-border bg-card/60 px-3.5 py-3.5 hover:bg-card transition-colors" data-testid="quick-link-programs">
-          <Dumbbell className="h-5 w-5 shrink-0 text-primary" />
-          <span className="truncate text-sm font-medium">Programs</span>
-        </Link>
-        <Link to="/client/resources" className="flex items-center gap-2.5 rounded-xl border border-border bg-card/60 px-3.5 py-3.5 hover:bg-card transition-colors" data-testid="quick-link-resources">
-          <Library className="h-5 w-5 shrink-0 text-primary" />
-          <span className="truncate text-sm font-medium">Resources</span>
-        </Link>
-      </div>
-
       <Card className="mt-4" data-testid="recent-progress-card">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
           <SectionLabel>Recent progress</SectionLabel>
-          <Link to="/client/progress" className="text-xs text-primary font-medium flex items-center">
-            Log/view <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
+          <IconLink to="/client/progress" label="Open progress" />
         </CardHeader>
         <CardContent className="space-y-2">
           {data.recent_progress.length === 0 && <p className="text-sm text-muted-foreground py-1">No progress entries yet.</p>}
@@ -408,12 +387,10 @@ export default function ClientHome() {
       <Card className="mt-4" data-testid="client-recent-messages-card">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
           <SectionLabel>Messages</SectionLabel>
-          <Link to="/client/messages" className="text-xs text-primary font-medium flex items-center">
-            Open chat <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
+          <IconLink to="/client/messages" label="Open chat" />
         </CardHeader>
         <CardContent className="space-y-2">
-          {data.recent_messages.length === 0 && <p className="text-sm text-muted-foreground py-1">No messages yet. Say hi to your coach!</p>}
+          {data.recent_messages.length === 0 && <p className="text-sm text-muted-foreground py-1">No messages yet.</p>}
           {data.recent_messages.slice(0, 3).map((m) => (
             <div key={m.id} className="rounded-xl border border-border bg-card/60 px-4 py-2.5">
               <div className="flex items-center justify-between">
@@ -429,10 +406,9 @@ export default function ClientHome() {
       </DashboardChoreography>
 
       <Dialog open={checkInOpen} onOpenChange={setCheckInOpen}>
-        <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{todayCheckIn ? "Edit today's check-in" : "Today's check-in"}</DialogTitle>
-            <DialogDescription>Record how you are feeling today and update your check-in if needed.</DialogDescription>
           </DialogHeader>
           <CheckInForm initial={todayCheckIn} saving={saving} onSubmit={saveCheckIn} submitLabel={todayCheckIn ? 'Update check-in' : 'Save check-in'} />
           {todayCheckIn?.coach_notes && (

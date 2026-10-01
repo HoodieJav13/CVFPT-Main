@@ -180,7 +180,7 @@ export default function ClientSessionDetail() {
         <Card className="mb-4" data-testid="session-detail-no-workout">
           <CardContent className="p-5">
             <SectionLabel>The plan</SectionLabel>
-            <p className="mt-2 text-sm text-muted-foreground">Your coach hasn't attached a workout — come ready and they'll take it from there.</p>
+            <p className="mt-2 text-sm text-muted-foreground">No workout attached.</p>
           </CardContent>
         </Card>
       )}

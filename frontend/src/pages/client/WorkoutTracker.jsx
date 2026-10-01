@@ -386,7 +386,7 @@ export default function WorkoutTracker() {
       }
     }
     if (!occurrence) {
-      toast.info('No completed history yet for this exercise.');
+      toast.info('No history yet.');
       return;
     }
     // Re-read the exercise: anything typed while history loaded is kept.
@@ -401,7 +401,7 @@ export default function WorkoutTracker() {
       if (queued) filledCount += 1;
     });
     if (!filledCount) {
-      toast.info('Nothing blank to fill — your entries are kept.');
+      toast.info('Nothing copied: no matching blank fields.');
       return;
     }
     toast.success(`Filled ${filledCount} set${filledCount === 1 ? '' : 's'} from ${new Date(occurrence.completed_at).toLocaleDateString()}`);
@@ -463,7 +463,7 @@ export default function WorkoutTracker() {
     <div data-testid="workout-tracker">
       <PageHeader
         title={log.workout_name}
-        subtitle={`${completedCount} of ${allSets.length} sets complete${isCoach && log.client?.name ? ` — logging for ${log.client.name}` : ''}`}
+        subtitle={isCoach && log.client?.name ? `For ${log.client.name}` : null}
         action={(
           <Button
             variant="ghost"
@@ -477,9 +477,9 @@ export default function WorkoutTracker() {
       />
       {outbox.queuedComplete && (
         <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="finished-locally-banner">
-          <p className="text-sm font-medium">Finished on this phone — waiting to sync. Editing is locked so the finished workout stays exactly as you left it.</p>
+          <p className="text-sm font-medium">Finished on this phone — waiting to sync. Editing is locked.</p>
           <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0" onClick={outbox.removeQueuedComplete} data-testid="keep-editing-button">
-            Keep editing instead
+            Keep editing
           </Button>
         </div>
       )}
@@ -510,8 +510,8 @@ export default function WorkoutTracker() {
           data-testid="rest-alerts-toggle"
           data-rest-alerts={restAlerts ? 'on' : 'off'}
         >
-          {restAlerts ? <Bell className="mr-1 h-3.5 w-3.5 text-primary" /> : <BellOff className="mr-1 h-3.5 w-3.5" />}
-          Rest alerts {restAlerts ? 'on' : 'off'}
+          {restAlerts ? <Bell className="text-primary" aria-hidden /> : <BellOff aria-hidden />}
+          Rest alerts
         </Button>
       </div>
 
@@ -620,8 +620,8 @@ export default function WorkoutTracker() {
                     <Check className="h-5 w-5" />
                   </Button>
                   {set.set_origin === 'extra' && (
-                    <Button type="button" size="sm" variant="ghost" className="col-start-2 min-h-11 w-fit text-muted-foreground" disabled={sealed} onClick={() => removeSet(exercise, set)}>
-                      <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove extra set
+                    <Button type="button" size="touchIcon" variant="ghost" className="col-start-2 text-muted-foreground" disabled={sealed} onClick={() => removeSet(exercise, set)} aria-label="Remove extra set" title="Remove extra set">
+                      <Trash2 aria-hidden />
                     </Button>
                   )}
                 </div>
@@ -696,7 +696,7 @@ export default function WorkoutTracker() {
         <DialogContent className="max-w-sm" data-testid="workout-abandon-dialog">
           <DialogHeader>
             <DialogTitle>Abandon this workout?</DialogTitle>
-            <DialogDescription>Saved progress stays on record but out of the completed history.</DialogDescription>
+            <DialogDescription>Logged sets are kept but won't count as completed.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" className="min-h-11 rounded-xl" onClick={() => setAbandonOpen(false)} data-testid="abandon-keep-button">
@@ -718,7 +718,7 @@ export default function WorkoutTracker() {
         <DialogContent className="signature-glass bg-card/80 sm:rounded-2xl" data-testid="workout-completion-dialog">
           <DialogHeader>
             <DialogTitle>Finish workout?</DialogTitle>
-            <DialogDescription>{completedCount} completed and {remainingCount} remaining sets. Remaining sets will be recorded as skipped.</DialogDescription>
+            <DialogDescription>{completedCount} {completedCount === 1 ? 'set' : 'sets'} done{remainingCount ? ` · ${remainingCount} ${remainingCount === 1 ? 'set' : 'sets'} will be skipped` : ''}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {!isCoach && <div className="space-y-1.5"><Label htmlFor="workout-feedback">Feedback for your coach</Label><Textarea id="workout-feedback" rows={4} value={feedback} onChange={(event) => setFeedback(event.target.value)} /></div>}

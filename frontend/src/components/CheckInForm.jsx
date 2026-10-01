@@ -98,7 +98,7 @@ export default function CheckInForm({ initial, saving, onSubmit, submitLabel = '
           <div className="flex items-center justify-between rounded-xl border border-border bg-card/50 px-3 py-2.5">
             <div>
               <p className="text-sm font-medium">Mark reviewed</p>
-              <p className="text-xs text-muted-foreground">Remove this from the dashboard review queue.</p>
+              <p className="text-xs text-muted-foreground">Clears it from the dashboard review queue.</p>
             </div>
             <Switch
               checked={form.review_status === 'reviewed'}

@@ -140,7 +140,7 @@ export default function CoachAnalytics() {
   if (loadError) {
     return (
       <div className="space-y-5">
-        <PageHeader title="Analytics" subtitle="How the practice is doing" testId="analytics-header" />
+        <PageHeader title="Analytics" testId="analytics-header" />
         <LoadErrorState message={loadError} onRetry={() => setAttempt((n) => n + 1)} />
       </div>
     );
@@ -149,7 +149,7 @@ export default function CoachAnalytics() {
   if (!data) {
     return (
       <div className="space-y-5">
-        <PageHeader title="Analytics" subtitle="How the practice is doing" action={rangeToggle} testId="analytics-header" />
+        <PageHeader title="Analytics" action={rangeToggle} testId="analytics-header" />
         <ListSkeleton rows={4} />
       </div>
     );
@@ -164,7 +164,6 @@ export default function CoachAnalytics() {
     <div className="space-y-5">
       <PageHeader
         title="Analytics"
-        subtitle="How the practice is doing"
         action={rangeToggle}
         testId="analytics-header"
       />

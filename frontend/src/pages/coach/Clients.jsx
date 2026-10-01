@@ -84,11 +84,10 @@ export default function Clients() {
                 <Plus className="h-4 w-4 mr-1.5" /> Add client
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent aria-describedby={undefined} className="max-w-md">
               <DialogHeader>
                 <DialogTitle>New client</DialogTitle>
-                <DialogDescription>Create an invited client record and assign its coach.</DialogDescription>
-              </DialogHeader>
+                              </DialogHeader>
               <form onSubmit={createClient} className="space-y-3.5">
                 <div className="space-y-1.5">
                   <Label>Full name *</Label>
