@@ -130,6 +130,8 @@ export default function AppShell() {
   // Its height is published as --shell-top so a page's sky can sit under it.
   const headerRef = useRef(null);
   const [scrolled, setScrolled] = useState(false);
+  // While the phone corner menu is open the page behind it is inert.
+  const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     onScroll();
@@ -176,19 +178,20 @@ export default function AppShell() {
     <div className="min-h-dvh overflow-x-clip">
       <header
         ref={headerRef}
+        inert={menuOpen}
         className={cn(
-          'sticky top-0 z-40 flex items-center gap-3 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] transition-[background-color,box-shadow,backdrop-filter] duration-300 lg:gap-4 lg:px-8 lg:pb-4 lg:pt-4',
+          'sticky top-0 z-40 flex items-center gap-3 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] transition-[background-color,box-shadow,backdrop-filter] duration-300 lg:px-6 lg:pb-4 lg:pt-4 xl:gap-4 xl:px-8',
           scrolled ? 'bg-background/90 shadow-[0_1px_0_hsl(var(--border)/0.7)] backdrop-blur-xl' : 'bg-transparent'
         )}
         data-testid="mobile-header"
       >
         <Link to={isCoach ? '/coach' : '/client'} className="flex shrink-0 items-center gap-2.5" data-testid="mobile-brand">
           <BrandLogo />
-          <span className="font-display text-lg font-semibold tracking-[0.08em] lg:text-xl">CVF PT</span>
+          <span className="font-display text-lg font-semibold tracking-[0.08em] lg:hidden xl:inline xl:text-xl">CVF PT</span>
         </Link>
 
         {/* Desktop: wide glass tabs along the top (the sidebar is gone). */}
-        <nav aria-label="Main" className="glass-surface ml-2 hidden max-w-[52rem] flex-1 items-center gap-0.5 rounded-2xl p-1 lg:flex" data-testid="desktop-navigation">
+        <nav aria-label="Main" className="glass-surface hidden min-w-0 max-w-[52rem] flex-1 items-center gap-0.5 rounded-2xl p-1 lg:flex xl:ml-2" data-testid="desktop-navigation">
           {desktopNav.map((item) => (
             <NavLink
               key={item.to}
@@ -196,19 +199,21 @@ export default function AppShell() {
               end={item.end}
               data-testid={`topnav-${item.label.toLowerCase().replace(/[^a-z]+/g, '-')}`}
               className={({ isActive }) => cn(
-                'relative flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-semibold transition-colors',
+                // Tabs share the bar and may shrink, so the actions on the right
+                // (search, New session, notifications, account) always stay on screen.
+                'relative flex min-h-10 min-w-0 flex-1 basis-0 items-center justify-center gap-1 rounded-xl px-1.5 text-[13px] font-semibold transition-colors xl:gap-1.5 xl:px-2 xl:text-sm',
                 isActive
                   ? 'bg-[image:linear-gradient(180deg,hsl(var(--action-a)),hsl(var(--action-b)))] text-action-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.22)]'
                   : 'hover:bg-foreground/5'
               )}
             >
-              {item.label}
+              <span className="truncate">{item.label}</span>
               {item.label === 'Programs' && programsBadge('desktop-programs-feedback-count', 'rounded-full bg-gold px-1.5 py-0.5 text-[10px] font-bold text-gold-foreground')}
             </NavLink>
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2" data-testid="mobile-header-actions">
+        <div className="ml-auto flex shrink-0 items-center gap-2" data-testid="mobile-header-actions">
           {isCoach && (
             <button
               type="button"
@@ -235,7 +240,7 @@ export default function AppShell() {
               data-testid="dashboard-new-session-button"
             >
               <Plus className="h-4 w-4" aria-hidden />
-              <span className="hidden sm:inline">New session</span>
+              <span className="hidden sm:inline lg:hidden xl:inline">New session</span>
             </Link>
           )}
           {isCoach && (
@@ -278,7 +283,7 @@ export default function AppShell() {
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 lg:max-w-6xl lg:px-8 lg:pb-10 lg:pt-6">
+      <main inert={menuOpen} className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 lg:max-w-6xl lg:px-8 lg:pb-10 lg:pt-6">
         <Outlet />
       </main>
 
@@ -286,6 +291,7 @@ export default function AppShell() {
       {!onTracker && (
         <CornerMenu
           items={nav}
+          onOpenChange={setMenuOpen}
           badgeFor={(item) => (item.label === 'Programs' ? programsBadge(undefined, 'ml-1 rounded-full bg-gold px-1.5 py-0.5 text-[10px] font-bold text-gold-foreground') : null)}
           closedBadge={programsBadge('mobile-programs-feedback-count', 'absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-background bg-gold px-1 text-[10px] font-bold text-gold-foreground')}
         />
