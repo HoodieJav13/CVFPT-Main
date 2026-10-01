@@ -209,3 +209,23 @@ test('PDF exports state the same once-per-round rest as the tracker', async () =
     assert.doesNotMatch(text, /Rest: 90s/);
   }
 });
+
+test('duplicating an exercise copies its prescription below it, as a new row, in its group', async () => {
+  const { duplicateExercise } = await frontendLib();
+  const list = [
+    { id: 'e1', custom_name: 'Squat', sets: '3', reps: '5', rest: '120s', superset_group: null, _uid: 'u1' },
+    { id: 'e2', custom_name: 'Bench', sets: '3', reps: '8', coach_notes: 'pause', superset_group: 'A', _uid: 'u2' },
+    { id: 'e3', custom_name: 'Row', sets: '3', reps: '10', superset_group: 'A', _uid: 'u3' },
+  ];
+  let next = duplicateExercise(list, 0, { _uid: 'copy1' });
+  assert.deepEqual(names(next), ['Squat', 'Squat', 'Bench', 'Row']);
+  assert.deepEqual({ ...next[1] }, { ...list[0], id: '', _uid: 'copy1' });
+  assert.equal(next[0].id, 'e1');
+  // A grouped exercise's copy joins the group (superset -> giant set).
+  next = duplicateExercise(list, 1, { _uid: 'copy2' });
+  assert.deepEqual(names(next), ['Squat', 'Bench', 'Bench', 'Row']);
+  assert.deepEqual(groups(next), [null, 'A', 'A', 'A']);
+  assert.equal(next[2].coach_notes, 'pause');
+  assert.equal(next[2].id, '');
+  assert.equal(duplicateExercise(list, 9), list);
+});

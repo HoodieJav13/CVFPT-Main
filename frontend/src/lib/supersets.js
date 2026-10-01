@@ -167,6 +167,18 @@ export function dropExercise(exercises, from, to) {
   return normalize(next);
 }
 
+// Duplicate the exercise at `index` directly below it, with every
+// prescription field. The copy has no database id (saving inserts a new
+// row) and stays in the original's group, e.g. a back-off set in a
+// superset. `overrides` supplies client-only fields such as a new row key.
+export function duplicateExercise(exercises, index, overrides = {}) {
+  const source = exercises[index];
+  if (!source) return exercises;
+  const next = [...exercises];
+  next.splice(index + 1, 0, { ...source, id: '', ...overrides });
+  return normalize(next);
+}
+
 export function canMoveExercise(exercises, index, direction) {
   const target = index + direction;
   return target >= 0 && target < exercises.length;

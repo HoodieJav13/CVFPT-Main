@@ -32,7 +32,7 @@ import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import {
-  canMoveExercise, dropExercise, exerciseMarkers, groupKindLabel, isLinkedWithNext, moveBlock, moveExercise,
+  canMoveExercise, dropExercise, duplicateExercise, exerciseMarkers, groupKindLabel, isLinkedWithNext, moveBlock, moveExercise,
   supersetBlocks, toggleLinkWithNext, ungroupBlock,
 } from '@/lib/supersets';
 import { downloadBlob } from '@/lib/download';
@@ -1461,6 +1461,7 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
         <AccordionContent className="space-y-2 pb-3">
           <div className="flex items-center gap-2">
             <Input list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
+            <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
             <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setExercises(form.exercises.filter((_, i) => i !== index))} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

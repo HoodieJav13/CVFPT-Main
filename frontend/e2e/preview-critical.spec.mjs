@@ -1213,3 +1213,27 @@ test('returning to a workout while its save is still in flight shows the edits b
   await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
   await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
 });
+
+test('duplicating a builder exercise inserts a full copy below it that saves as its own row', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const titles = page.getByTestId('workout-exercise-row').locator('h3');
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(titles).toHaveText([/Goblet Squat/, /Romanian Deadlift/, /Pallof/]);
+
+  // The first row is open by default; duplicate it.
+  await page.getByTestId('workout-exercise-duplicate-button').first().click();
+  await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 8-10/, /Romanian Deadlift/, /Pallof/]);
+
+  await page.getByTestId('workout-save-button').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Workout updated')).toBeVisible();
+  await page.waitForTimeout(1000);
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 8-10/, /Romanian Deadlift/, /Pallof/]);
+  await expect(rail.filter({ hasText: 'Lower Strength A' })).toContainText('4 exercises');
+});
