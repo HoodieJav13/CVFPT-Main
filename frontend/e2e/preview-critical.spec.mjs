@@ -1102,3 +1102,99 @@ test('rest can be started manually and adjusted by 15 seconds while it runs', as
   await expect(timer).toHaveCount(0);
   await expect(page.getByTestId('rest-start')).toBeVisible();
 });
+
+test('workout history pages in twelves for clients and coaches', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Sarah has 13 completed workouts in the preview fixtures.
+  await page.goto('/client');
+  await page.evaluate(() => {
+    localStorage.setItem('cvf_preview_role', 'client');
+    localStorage.setItem('cvf_preview_client_id', 'client_sarah');
+  });
+  await page.goto('/client/programs?view=history');
+  const history = page.getByTestId('client-workout-history');
+  await expect(history.getByTestId('workout-history-row')).toHaveCount(12);
+  await history.getByTestId('history-show-more').click();
+  await expect(history.getByTestId('workout-history-row')).toHaveCount(13);
+  await expect(history.getByTestId('history-show-more')).toHaveCount(0);
+  const clientIds = await history.getByTestId('workout-history-row').evaluateAll((rows) => rows.map((row) => row.getAttribute('href')));
+  expect(new Set(clientIds).size).toBe(13);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+
+  // Fixtures are static, so a fresh load as the coach is fine here.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_role', 'coach'));
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  await expect(rows).toHaveCount(12);
+  await coachHistory.getByTestId('coach-history-show-more').click();
+  await expect(rows).toHaveCount(13);
+  await expect(coachHistory.getByTestId('coach-history-show-more')).toHaveCount(0);
+  // (Page-width overflow isn't asserted here: the coach client page already
+  // overflows at 390px from the assigned-card action buttons, on main too.)
+});
+
+test('a slow "Show more" that lands after a history refresh is discarded', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  const more = coachHistory.getByTestId('coach-history-show-more');
+  // The fixed preview toolbar overlaps this button at desktop width.
+  const pressMore = async () => { await more.focus(); await page.keyboard.press('Enter'); };
+  await expect(rows).toHaveCount(12);
+
+  // "Show more" is slow (preview test harness; latency is fixed when the
+  // request starts), then an action reloads the page's history quickly.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/workout-logs/client/', ms: 2500 }])));
+  await pressMore();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await page.getByTestId('unassign-workout-button').first().click();
+  await expect(page.getByText('Workout unassigned')).toBeVisible();
+
+  // After the stale page would have landed, the refreshed list is intact:
+  // still its first 12, with its own "Show more".
+  await page.waitForTimeout(3000);
+  await expect(rows).toHaveCount(12);
+  await expect(more).toBeEnabled();
+  await pressMore();
+  await expect(rows).toHaveCount(13);
+  const hrefs = await rows.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  expect(new Set(hrefs).size).toBe(13);
+});
+
+test('"Show more" clicked while a history refresh is loading is discarded once the refresh lands', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  const more = coachHistory.getByTestId('coach-history-show-more');
+  // The fixed preview toolbar overlaps this button at desktop width.
+  const pressMore = async () => { await more.focus(); await page.keyboard.press('Enter'); };
+  const slowHistory = (ms) => page.evaluate((delay) => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/workout-logs/client/', ms: delay }])), ms);
+  await expect(rows).toHaveCount(12);
+
+  // The refresh starts first (1.5s); "Show more" is clicked while it is
+  // still loading and lands after it (3.5s), carrying the old list's cursor.
+  await slowHistory(1500);
+  await page.getByTestId('unassign-workout-button').first().click();
+  // The toast shows as the unassign lands, right when the reload begins.
+  await expect(page.getByText('Workout unassigned')).toBeVisible();
+  await slowHistory(3500);
+  await pressMore();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+
+  // Once both have landed, the refreshed list stands on its own.
+  await page.waitForTimeout(4500);
+  await expect(rows).toHaveCount(12);
+  await expect(more).toBeEnabled();
+  await pressMore();
+  await expect(rows).toHaveCount(13);
+  const hrefs = await rows.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  expect(new Set(hrefs).size).toBe(13);
+});
