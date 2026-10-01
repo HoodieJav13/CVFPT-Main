@@ -118,7 +118,7 @@ router.get('/', requireCoach, async (req, res) => {
     const validation = validateSessionListQuery(req.query);
     if (!validation.ok) return res.status(400).json({ error: validation.error });
     let q = supabaseAdmin.from('sessions')
-      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name)')
+      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name), series:session_series(id, rule, created_count)')
       .eq('archived', false)
       .order('scheduled_at', { ascending: true });
     if (req.user.role !== 'admin') q = q.eq('coach_id', req.user.coach.id);
@@ -520,7 +520,7 @@ router.get('/:id/coach-detail', requireCoach, async (req, res) => {
     const idValidation = validateUuid(req.params.id, 'Session ID');
     if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
     const { data: session } = await supabaseAdmin.from('sessions')
-      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name, description, goal)')
+      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name, description, goal), series:session_series(id, rule, created_count)')
       .eq('id', idValidation.value).eq('archived', false).maybeSingle();
     if (!session || (req.user.role !== 'admin' && session.coach_id !== req.user.coach.id)) {
       return res.status(404).json({ error: 'Session not found' });

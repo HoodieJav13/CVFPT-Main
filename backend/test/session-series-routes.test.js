@@ -32,6 +32,7 @@ function resetState() {
     emails: [],
     cancelEmails: [],
     pushes: 0,
+    sessionSelects: [],
   });
 }
 
@@ -60,7 +61,7 @@ require.cache[supabasePath] = {
       from(table) {
         const chain = {
           _eqs: {}, _update: null,
-          select() { return chain; },
+          select(columns) { if (table === 'sessions' && typeof columns === 'string') state.sessionSelects.push(columns); return chain; },
           eq(column, value) { chain._eqs[column] = value; return chain; },
           in() { return chain; },
           gte() { return chain; },
@@ -468,4 +469,13 @@ test('cancel validates ids and the notify flag, and masks other coaches\' series
   state.anchorSession = { ...state.anchorSession, client_id: 'someone-else' };
   assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody() })).status, 404);
   assert.equal(state.sessionUpdates.length, 0);
+});
+
+test('coach list and coach detail embed the series for session rows', async () => {
+  resetState(); currentUser = coachUser;
+  state.anchorSession = { id: ANCHOR_ID, coach_id: COACH_ID, client_id: CLIENT_ID, scheduled_at: new Date().toISOString(), archived: false };
+  await fetch(`${baseUrl}/api/sessions`).then((r) => r.json());
+  await fetch(`${baseUrl}/api/sessions/${ANCHOR_ID}/coach-detail`).then((r) => r.json());
+  const embeds = state.sessionSelects.filter((columns) => columns.includes('series:session_series(id, rule, created_count)'));
+  assert.equal(embeds.length, 2, `selects seen: ${state.sessionSelects.join(' | ')}`);
 });
