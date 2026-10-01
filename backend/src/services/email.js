@@ -2,7 +2,7 @@ const { Resend } = require('resend');
 const { waitUntil } = require('@vercel/functions');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
-const { dateInTz } = require('../utils/time');
+const { dateInTz, denverTimeOfDay } = require('../utils/time');
 const { fetchAllRows } = require('../lib/supabasePage');
 
 const FROM = 'CVF PT <notifications@corevaluefitness.com>';
@@ -138,6 +138,49 @@ async function notifySessionScheduled(session, env = process.env) {
     actionUrl: `${env.FRONTEND_URL || ''}/client/sessions`,
   });
   return sendEmail({ to: [client.email], subject: headline, ...rendered }, `session-scheduled/${session.id}/${client.id}`, env);
+}
+
+const pluralize = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+// One summary for a whole recurring series, built from the sessions actually
+// saved (not from the original repeat rule — individual dates may have been
+// adjusted). Best-effort like every other notification.
+async function notifySeriesScheduled({ seriesId, clientId, coachId, dates }, env = process.env) {
+  if (!seriesId || !Array.isArray(dates) || !dates.length) return { skipped: 'missing-series' };
+  const { client, coach } = await loadPeople(clientId, coachId);
+  if (!client?.email || !coach) return { skipped: 'missing-recipient' };
+  const shown = dates.slice(0, 5).map(formatDenver);
+  if (dates.length > 5) shown.push(`…and ${dates.length - 5} more`);
+  const timesVary = new Set(dates.map((date) => denverTimeOfDay(date))).size > 1;
+  const headline = `Your coach scheduled ${pluralize(dates.length, 'session')}`;
+  const rendered = renderEmail({
+    headline,
+    intro: timesVary ? 'Times vary — see your schedule for each session.' : 'These sessions are on your calendar.',
+    facts: [...shown, coach.name ? `With ${String(coach.name).split(' ')[0]}` : null].filter(Boolean),
+    actionLabel: 'View sessions',
+    actionUrl: `${env.FRONTEND_URL || ''}/client/sessions`,
+  });
+  return sendEmail({ to: [client.email], subject: headline, ...rendered }, `series-scheduled/${seriesId}/${client.id}`, env);
+}
+
+// `cancelled` is [{ id, scheduled_at }] — the sessions this operation actually
+// changed. Keyed by the first cancelled session so separate cancellations within
+// one series are distinct events.
+async function notifySeriesCancelled({ seriesId, clientId, coachId, cancelled }, env = process.env) {
+  if (!seriesId || !Array.isArray(cancelled) || !cancelled.length) return { skipped: 'missing-series' };
+  const { client, coach } = await loadPeople(clientId, coachId);
+  if (!client?.email || !coach) return { skipped: 'missing-recipient' };
+  const shown = cancelled.slice(0, 5).map((session) => formatDenver(session.scheduled_at));
+  if (cancelled.length > 5) shown.push(`…and ${cancelled.length - 5} more`);
+  const headline = `Your ${pluralize(cancelled.length, 'session')} ${cancelled.length === 1 ? 'was' : 'were'} cancelled`;
+  const rendered = renderEmail({
+    headline,
+    intro: 'These sessions are no longer on the calendar. Message your coach if you need other times.',
+    facts: [...shown, coach.name ? `With ${String(coach.name).split(' ')[0]}` : null].filter(Boolean),
+    actionLabel: 'View sessions',
+    actionUrl: `${env.FRONTEND_URL || ''}/client/sessions`,
+  });
+  return sendEmail({ to: [client.email], subject: headline, ...rendered }, `series-cancelled/${seriesId}/${cancelled[0].id}/${client.id}`, env);
 }
 
 async function notifySessionRescheduled(session, previous, env = process.env) {
@@ -290,5 +333,6 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
 module.exports = {
   configured, dispatchEmail, formatDenver, notifyBookingEvent, notifySessionCancelRequested,
   notifySessionCancelled, notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
+  notifySeriesCancelled, notifySeriesScheduled,
   renderEmail, sendDailyDigests, sendEmail, sessionFacts,
 };
