@@ -1581,11 +1581,16 @@ test('the coach client page fits a phone screen with assigned program and workou
   await page.getByTestId('tab-programs').click();
   await expect(page.getByTestId('assigned-program-card').first()).toBeVisible();
   await expect(page.getByTestId('assigned-workout-card').first()).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   // Every card action stays on screen and tappable.
-  for (const id of ['save-program-template-button', 'unassign-program-button', 'save-workout-template-button', 'unassign-workout-button']) {
-    const box = await page.getByTestId(id).first().boundingBox();
-    expect(box.x, id).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width, id).toBeLessThanOrEqual(390);
+  for (const id of ['save-program-template-button', 'unassign-program-button', 'save-workout-template-button', 'unassign-workout-button', 'edit-assigned-loads', 'coach-log-standalone-workout']) {
+    await expect(page.getByTestId(id).first()).toBeVisible();
+    for (const action of await page.getByTestId(id).all()) {
+      const box = await action.boundingBox();
+      expect(box.x, id).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width, id).toBeLessThanOrEqual(390);
+      expect(box.width, id).toBeGreaterThanOrEqual(44);
+      expect(box.height, id).toBeGreaterThanOrEqual(44);
+    }
   }
 });
