@@ -548,6 +548,12 @@ function prescribedSetCount(value) {
   return Math.max(1, match ? Number(match[0]) : 1);
 }
 
+function previewExerciseVideo(logExercise) {
+  const source = state.workoutExercises.find((row) => row.id === logExercise.source_workout_exercise_id);
+  const libraryId = logExercise.exercise_library_id || source?.exercise_library_id;
+  return source?.video_url || libraryById(libraryId)?.video_url || null;
+}
+
 function workoutLogDetails(logId) {
   const log = state.workoutLogs.find((row) => row.id === logId && !row.archived);
   if (!log) return null;
@@ -556,6 +562,8 @@ function workoutLogDetails(logId) {
     .sort((a, b) => a.position - b.position)
     .map((exercise) => ({
       ...exercise,
+      // Mirrors the API: the workout's link wins, then the library's.
+      video_url: previewExerciseVideo(exercise),
       sets: state.workoutLogSets
         .filter((set) => set.workout_log_exercise_id === exercise.id && !set.archived)
         .sort((a, b) => a.set_number - b.set_number),
