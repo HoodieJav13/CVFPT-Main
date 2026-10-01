@@ -1030,7 +1030,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         const { data } = await api.get('/programs/exercise-library');
         setCopyLibrary(data);
       }
-      setCopyEditor({ workout, form: workoutToForm(workout) });
+      // Edit the server's current copy, not this page's possibly stale one
+      // (a just-saved edit may not have reloaded yet).
+      const { data: fresh } = await api.get(`/programs/workouts/${workout.id}`);
+      setCopyEditor({ workout: fresh, form: workoutToForm(fresh) });
     } catch (err) {
       toast.error(errMsg(err));
     }

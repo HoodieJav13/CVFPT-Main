@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useCallback, useMemo } from 'react';
+import { Fragment, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, LoadingScreen, LoadErrorState, EmptyState, IconButton } from '@/components/common';
 import { Button } from '@/components/ui/button';
@@ -93,8 +93,12 @@ export default function Programs() {
   const [programs, setPrograms] = useState(null);
   const [clients, setClients] = useState([]);
   const [loadError, setLoadError] = useState(null);
+  // Only the most recently started load may apply its results, so a slow
+  // earlier response can't overwrite newer data (e.g. a just-saved workout).
+  const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     try {
       const [lib, w, p, c] = await Promise.all([
         api.get('/programs/exercise-library?include_hidden=true'),
@@ -102,12 +106,14 @@ export default function Programs() {
         api.get('/programs'),
         api.get('/clients'),
       ]);
+      if (seq !== loadSeq.current) return;
       setLibrary(lib.data);
       setWorkouts(w.data);
       setPrograms(p.data);
       setClients(c.data);
       setLoadError(null);
     } catch (e) {
+      if (seq !== loadSeq.current) return;
       const message = errMsg(e, 'Failed to load training builder');
       setLoadError(message);
       toast.error(message);
@@ -115,6 +121,13 @@ export default function Programs() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // A save response is the freshest copy of that workout: show it right away
+  // instead of waiting for the list reload (keeps list-derived fields).
+  const mergeSavedWorkout = useCallback((saved) => {
+    if (!saved?.id) return;
+    setWorkouts((current) => (current || []).map((workout) => (workout.id === saved.id ? { ...workout, ...saved } : workout)));
+  }, []);
 
   const awaitingInitialData = !library || !workouts || !programs;
   if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="coach-programs" onRetry={() => { setLoadError(null); load(); }} />;
@@ -134,7 +147,7 @@ export default function Programs() {
           <TabsTrigger className="min-h-11" value="assignments" data-testid="training-builder-tab-assignments">Assignments</TabsTrigger>
         </TabsList>
         <TabsContent value="library"><ExerciseLibraryTab library={library} reload={load} /></TabsContent>
-        <TabsContent value="workouts"><WorkoutsTab workouts={workouts} library={pickerLibrary} reload={load} /></TabsContent>
+        <TabsContent value="workouts"><WorkoutsTab workouts={workouts} library={pickerLibrary} reload={load} onSaved={mergeSavedWorkout} /></TabsContent>
         <TabsContent value="programs"><StructuredProgramsTab programs={programs} workouts={workouts} library={pickerLibrary} reload={load} /></TabsContent>
         <TabsContent value="assignments"><AssignmentsTab programs={programs} workouts={workouts} clients={clients} reload={load} /></TabsContent>
       </Tabs>
@@ -379,7 +392,7 @@ export function workoutToForm(workout) {
   };
 }
 
-function WorkoutsTab({ workouts, library, reload }) {
+function WorkoutsTab({ workouts, library, reload, onSaved }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -426,7 +439,11 @@ function WorkoutsTab({ workouts, library, reload }) {
     setSaving(true);
     try {
       if (editing) {
-        await api.put(`/programs/workouts/${editing.id}`, form);
+        const { data: saved } = await api.put(`/programs/workouts/${editing.id}`, form);
+        // Re-selecting this workout before the reload lands must open the
+        // saved version, or a second save would write the stale form back.
+        onSaved?.(saved);
+        setEditing((current) => (current ? { ...current, ...saved } : current));
         toast.success('Workout updated');
       } else {
         await api.post('/programs/workouts', form);

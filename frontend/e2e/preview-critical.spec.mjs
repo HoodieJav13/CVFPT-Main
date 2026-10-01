@@ -1079,3 +1079,40 @@ test.describe('touch device', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   });
 });
+
+test('re-opening a workout while the list reload is slow shows the saved superset, and saving again keeps it', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const reopenLower = async () => {
+    await rail.filter({ hasText: 'Upper Strength A' }).click();
+    await rail.filter({ hasText: 'Lower Strength A' }).click();
+  };
+  const save = async () => {
+    // The fixed preview toolbar overlaps the pane's Save at this width.
+    await page.getByTestId('workout-save-button').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByText('Workout updated').last()).toBeVisible();
+  };
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+
+  // From here on the workout list reload is slow (preview test harness).
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts$', ms: 2500 }])));
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  await save();
+
+  // Switch away and back before the reload lands: the saved group shows.
+  await reopenLower();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+
+  // Saving again from that form keeps the group once everything settles.
+  await save();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await page.waitForTimeout(3000);
+  await reopenLower();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+});
