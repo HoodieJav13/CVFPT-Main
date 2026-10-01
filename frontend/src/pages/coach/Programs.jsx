@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Fragment, useEffect, useState, useCallback, useMemo } from 'react';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, LoadingScreen, LoadErrorState, EmptyState, IconButton } from '@/components/common';
 import { Button } from '@/components/ui/button';
@@ -16,20 +16,25 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  AlertTriangle, Archive, BookOpen, CalendarDays, CheckCircle2, CircleAlert, Copy, Download,
-  Dumbbell, Eye, EyeOff, FileText, FileUp, Loader2, Pencil, Plus, Trash2, UserPlus, Video,
+  AlertTriangle, Archive, ArrowDown, ArrowUp, BookOpen, CalendarDays, CheckCircle2, CircleAlert, Copy, Download,
+  Dumbbell, Eye, EyeOff, FileText, FileUp, Link2, Loader2, Pencil, Plus, Trash2, Unlink, UserPlus, Video,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
 import { safeHttpUrl } from '@/lib/safeUrl';
+import {
+  canMoveExercise, exerciseMarkers, groupKindLabel, isLinkedWithNext, moveBlock, moveExercise,
+  supersetBlocks, toggleLinkWithNext, ungroupBlock,
+} from '@/lib/supersets';
 import { downloadBlob } from '@/lib/download';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAuth } from '@/context/AuthContext';
 import {
   AuthorByline, AuthorFilter, HiddenBadge, LegacyLockDialog,
 } from '@/components/training/TemplateBits';
+import { SupersetGroups } from '@/components/training/SupersetGroups';
 import {
   authorOptions, exerciseFilterOptions, filterByAuthor, filterExercises, groupVariations, isLegacyLockError,
 } from '@/lib/trainingLibrary';
@@ -42,8 +47,12 @@ const {
 } = draftTools;
 
 const EMPTY_LIBRARY = { name: '', category: '', equipment: '', primary_muscle: '', secondary_muscles: '', video_url: '', notes: '' };
-const EMPTY_EXERCISE = { id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '' };
-const EMPTY_WORKOUT = { name: '', description: '', goal: '', exercises: [{ ...EMPTY_EXERCISE }] };
+const EMPTY_EXERCISE = { id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '', superset_group: null };
+// Builder rows carry a client-only _uid so accordion state follows an
+// exercise when it is reordered (the save RPC ignores unknown keys).
+let exerciseUid = 0;
+const newExerciseRow = (fields = {}) => ({ ...EMPTY_EXERCISE, ...fields, _uid: `exercise-${++exerciseUid}` });
+const emptyWorkout = () => ({ name: '', description: '', goal: '', exercises: [newExerciseRow()] });
 const EMPTY_DRAFT_EXERCISE = {
   name: '',
   sets: '',
@@ -344,7 +353,7 @@ export function workoutToForm(workout) {
     name: workout.name || '',
     description: workout.description || '',
     goal: workout.goal || '',
-    exercises: workout.exercises.length ? workout.exercises.map((ex) => ({
+    exercises: workout.exercises.length ? workout.exercises.map((ex) => newExerciseRow({
       id: ex.id || '',
       exercise_library_id: ex.exercise_library_id || '',
       custom_name: ex.custom_name || ex.library_exercise?.name || '',
@@ -358,7 +367,8 @@ export function workoutToForm(workout) {
       client_notes: ex.client_notes || ex.notes || '',
       coach_notes: ex.coach_notes || '',
       video_url: ex.video_url || ex.library_exercise?.video_url || '',
-    })) : [{ ...EMPTY_EXERCISE }],
+      superset_group: ex.superset_group || null,
+    })) : [newExerciseRow()],
   };
 }
 
@@ -366,7 +376,7 @@ function WorkoutsTab({ workouts, library, reload }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(EMPTY_WORKOUT);
+  const [form, setForm] = useState(emptyWorkout);
   const [saving, setSaving] = useState(false);
   const [author, setAuthor] = useState('all');
   const [lock, setLock] = useState(null);
@@ -378,7 +388,7 @@ function WorkoutsTab({ workouts, library, reload }) {
 
   const openCreate = () => {
     setEditing(null);
-    setForm(EMPTY_WORKOUT);
+    setForm(emptyWorkout());
     setOpen(true);
   };
 
@@ -390,7 +400,7 @@ function WorkoutsTab({ workouts, library, reload }) {
 
   const selectCreate = () => {
     setEditing(null);
-    setForm(EMPTY_WORKOUT);
+    setForm(emptyWorkout());
     setPaneActive(true);
   };
 
@@ -415,7 +425,7 @@ function WorkoutsTab({ workouts, library, reload }) {
         await api.post('/programs/workouts', form);
         toast.success('Workout created');
         // A second submit of the same pane form would create a duplicate.
-        setForm(EMPTY_WORKOUT);
+        setForm(emptyWorkout());
         setPaneActive(false);
       }
       setOpen(false);
@@ -570,9 +580,9 @@ function WorkoutsTab({ workouts, library, reload }) {
                   </AccordionTrigger>
                   <AccordionContent className="pb-1">
                     <div className="space-y-1.5">
-                      {workout.exercises.map((ex, i) => (
-                        <p key={ex.id} className="text-sm text-muted-foreground"><span className="tabular-nums">{i + 1}.</span> {exerciseName(ex)}</p>
-                      ))}
+                      <SupersetGroups exercises={workout.exercises} innerClassName="space-y-1.5">{(ex, { marker }) => (
+                        <p className="text-sm text-muted-foreground"><span className="tabular-nums">{marker}.</span> {exerciseName(ex)}</p>
+                      )}</SupersetGroups>
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -773,11 +783,11 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
                           {day.notes && <p className="mb-2 text-xs text-muted-foreground">{day.notes}</p>}
                           {(day.workout?.exercises || []).length > 0 ? (
                             <div className="space-y-1.5">
-                              {day.workout.exercises.map((exercise, index) => (
-                                <p key={exercise.id || index} className="text-sm text-muted-foreground">
-                                  <span className="mr-2 tabular-nums">{index + 1}.</span>{exerciseName(exercise)}
+                              <SupersetGroups exercises={day.workout.exercises} innerClassName="space-y-1.5">{(exercise, { marker }) => (
+                                <p className="text-sm text-muted-foreground">
+                                  <span className="mr-2 tabular-nums">{marker}.</span>{exerciseName(exercise)}
                                 </p>
-                              ))}
+                              )}</SupersetGroups>
                             </div>
                           ) : (
                             <p className="text-xs text-muted-foreground">No exercise details available.</p>
@@ -1323,6 +1333,93 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
     }
   };
 
+  const setExercises = (exercises) => setForm({ ...form, exercises });
+  const blocks = supersetBlocks(form.exercises);
+  const markers = exerciseMarkers(form.exercises);
+  const rowValue = (exercise, index) => exercise._uid || `exercise-${index}`;
+  const rowName = (exercise, index) => exercise.custom_name || `exercise ${index + 1}`;
+
+  const renderRow = (exercise, index) => (
+    <AccordionItem value={rowValue(exercise, index)} className="rounded-xl border border-border bg-card/50 px-3" data-testid="workout-exercise-row">
+      {/* The trigger's Radix header (h3) must grow so the chevron sits by the move buttons. */}
+      <div className="flex items-center gap-1 [&>h3]:min-w-0 [&>h3]:flex-1">
+        <AccordionTrigger className="min-h-11 min-w-0 py-3 hover:no-underline">
+          <span className="flex min-w-0 items-center gap-2 text-left">
+            <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md bg-primary/15 px-1.5 text-xs font-semibold tabular-nums text-primary" data-testid="workout-exercise-marker">{markers[index]}</span>
+            <span className="truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
+            {(exercise.sets || exercise.reps) && <Badge variant="outline" className="hidden shrink-0 tabular-nums sm:inline-flex">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+          </span>
+        </AccordionTrigger>
+        <IconButton label={`Move ${rowName(exercise, index)} up`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" disabled={!canMoveExercise(form.exercises, index, -1)} onClick={() => setExercises(moveExercise(form.exercises, index, -1))} data-testid="workout-exercise-move-up-button"><ArrowUp className="h-4 w-4" /></IconButton>
+        <IconButton label={`Move ${rowName(exercise, index)} down`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" disabled={!canMoveExercise(form.exercises, index, 1)} onClick={() => setExercises(moveExercise(form.exercises, index, 1))} data-testid="workout-exercise-move-down-button"><ArrowDown className="h-4 w-4" /></IconButton>
+      </div>
+      <AccordionContent className="space-y-2 pb-3">
+        <div className="flex items-center gap-2">
+          <Input list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
+          <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setExercises(form.exercises.filter((_, i) => i !== index))} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />
+          <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />
+          <div className="min-w-0">
+            {/* Numeric authoring, serialized as canonical "Ns" text; the
+                DB fill trigger derives rest_seconds from it. */}
+            <Input
+              type="number" min="0" step="5" inputMode="numeric"
+              value={parseRestSeconds(exercise.rest) ?? ''}
+              onChange={(e) => setExercise(index, { rest: e.target.value === '' ? '' : `${Math.max(0, Number(e.target.value))}s` })}
+              placeholder="Rest (sec)"
+              aria-label="Rest in seconds"
+              data-testid="workout-exercise-rest-input"
+            />
+            {exercise.rest && parseRestSeconds(exercise.rest) === null && (
+              <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid="workout-exercise-rest-legacy">
+                Unrecognized: “{exercise.rest}”
+              </p>
+            )}
+          </div>
+          <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" />
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] gap-2">
+          <Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" />
+          <Input type="number" min="0" step="0.5" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" />
+          <Select value={exercise.default_load_unit || 'lb'} onValueChange={(value) => setExercise(index, { default_load_unit: value })}>
+            <SelectTrigger aria-label="Default load unit"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
+          </Select>
+        </div>
+        <div className="relative">
+          <Video className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" />
+        </div>
+        <Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" />
+        <Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" />
+      </AccordionContent>
+    </AccordionItem>
+  );
+
+  // Between every pair of neighbours: link them into a superset/giant set,
+  // or (inside a group) split the group at that point.
+  const renderConnector = (index) => {
+    const linked = isLinkedWithNext(form.exercises, index);
+    const pair = `${rowName(form.exercises[index], index)} and ${rowName(form.exercises[index + 1], index + 1)}`;
+    return (
+      <div className="flex justify-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="touch"
+          className={cn('h-9 rounded-full px-3 text-xs', linked ? 'text-primary' : 'text-muted-foreground hover:text-primary')}
+          onClick={() => setExercises(toggleLinkWithNext(form.exercises, index))}
+          aria-label={linked ? `Unlink ${pair}` : `Link ${pair} as a superset`}
+          data-testid={linked ? 'workout-exercise-unlink-button' : 'workout-exercise-link-button'}
+        >
+          {linked ? <><Unlink className="h-3.5 w-3.5" /> Unlink</> : <><Link2 className="h-3.5 w-3.5" /> Superset with next</>}
+        </Button>
+      </div>
+    );
+  };
+
   return (
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1335,64 +1432,43 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
           </datalist>
           <Accordion
             type="multiple"
-            defaultValue={form.exercises.length ? ['exercise-0'] : []}
-            className="space-y-3"
+            defaultValue={form.exercises.length ? [rowValue(form.exercises[0], 0)] : []}
+            className="space-y-1"
             data-testid="workout-exercises-accordion"
           >
-            {form.exercises.map((exercise, index) => (
-              <AccordionItem key={index} value={`exercise-${index}`} className="rounded-xl border border-border bg-card/50 px-3">
-                <AccordionTrigger className="min-h-11 py-3 hover:no-underline">
-                  <span className="flex min-w-0 items-center gap-2 text-left">
-                    <span className="truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
-                    {(exercise.sets || exercise.reps) && <Badge variant="outline" className="shrink-0 tabular-nums">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent className="space-y-2 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Input list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
-                    <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== index) })} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />
-                    <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />
-                    <div className="min-w-0">
-                      {/* Numeric authoring, serialized as canonical "Ns" text; the
-                          DB fill trigger derives rest_seconds from it. */}
-                      <Input
-                        type="number" min="0" step="5" inputMode="numeric"
-                        value={parseRestSeconds(exercise.rest) ?? ''}
-                        onChange={(e) => setExercise(index, { rest: e.target.value === '' ? '' : `${Math.max(0, Number(e.target.value))}s` })}
-                        placeholder="Rest (sec)"
-                        aria-label="Rest in seconds"
-                        data-testid="workout-exercise-rest-input"
-                      />
-                      {exercise.rest && parseRestSeconds(exercise.rest) === null && (
-                        <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid="workout-exercise-rest-legacy">
-                          Unrecognized: “{exercise.rest}”
-                        </p>
-                      )}
+            {blocks.map((block, blockIndex) => {
+              const rows = block.items.map(({ exercise, index }) => (
+                <Fragment key={rowValue(exercise, index)}>
+                  {renderRow(exercise, index)}
+                  {index < block.end && renderConnector(index)}
+                </Fragment>
+              ));
+              const isLastBlock = blockIndex === blocks.length - 1;
+              const kindLabel = groupKindLabel(block.kind).toLowerCase();
+              return (
+                <Fragment key={rowValue(block.items[0].exercise, block.start)}>
+                  {block.kind === 'single' ? rows : (
+                    <div className="space-y-1 rounded-2xl border border-primary/40 bg-primary/5 p-2" data-testid="workout-superset-group">
+                      <div className="flex items-center justify-between gap-2 pl-1">
+                        <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary" data-testid="workout-superset-label">
+                          <Link2 className="h-3.5 w-3.5" aria-hidden />
+                          {groupKindLabel(block.kind)} · {block.items.length} exercises
+                        </span>
+                        <span className="flex items-center">
+                          <IconButton label={`Move ${kindLabel} up`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" disabled={blockIndex === 0} onClick={() => setExercises(moveBlock(form.exercises, block.start, -1))} data-testid="workout-superset-move-up-button"><ArrowUp className="h-4 w-4" /></IconButton>
+                          <IconButton label={`Move ${kindLabel} down`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" disabled={isLastBlock} onClick={() => setExercises(moveBlock(form.exercises, block.start, 1))} data-testid="workout-superset-move-down-button"><ArrowDown className="h-4 w-4" /></IconButton>
+                          <IconButton label={`Ungroup ${kindLabel}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setExercises(ungroupBlock(form.exercises, block.start))} data-testid="workout-superset-ungroup-button"><Unlink className="h-4 w-4" /></IconButton>
+                        </span>
+                      </div>
+                      {rows}
                     </div>
-                    <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" />
-                  </div>
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] gap-2">
-                    <Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" />
-                    <Input type="number" min="0" step="0.5" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" />
-                    <Select value={exercise.default_load_unit || 'lb'} onValueChange={(value) => setExercise(index, { default_load_unit: value })}>
-                      <SelectTrigger aria-label="Default load unit"><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
-                    </Select>
-                  </div>
-                  <div className="relative">
-                    <Video className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" />
-                  </div>
-                  <Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" />
-                  <Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" />
-                </AccordionContent>
-              </AccordionItem>
-            ))}
+                  )}
+                  {!isLastBlock && renderConnector(block.end)}
+                </Fragment>
+              );
+            })}
           </Accordion>
-          <Button type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setForm({ ...form, exercises: [...form.exercises, { ...EMPTY_EXERCISE }] })} data-testid="workout-exercise-add-button">
+          <Button type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setExercises([...form.exercises, newExerciseRow()])} data-testid="workout-exercise-add-button">
             <Plus className="h-4 w-4 mr-1.5" /> Add exercise
           </Button>
           <div className="flex justify-end">

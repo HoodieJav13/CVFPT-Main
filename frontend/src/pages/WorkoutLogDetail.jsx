@@ -15,6 +15,7 @@ import { MOTION_EASINGS, WORKOUT_COMPLETION_MOTION, msToSeconds } from '@/lib/mo
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { useNotifications } from '@/context/NotificationsContext';
 import { hasQueuedCompleteFor, useWorkoutOutbox } from '@/lib/workoutOutbox';
+import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 
 // Same identity rule as the exercise-history RPC: match by library exercise
 // when linked, otherwise by the source workout exercise.
@@ -174,6 +175,7 @@ export default function WorkoutLogDetail() {
 
   const completed = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'completed').length;
   const skipped = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'skipped').length;
+  const hasGroups = log.exercises.some((exercise) => exercise.superset_group);
   const ownResponse = (log.coach_responses || []).find((response) => response.author_coach_id === user.profile?.id);
   const responseLength = Array.from(responseContent.trim()).length;
 
@@ -270,7 +272,7 @@ export default function WorkoutLogDetail() {
         </div>
       </m.section>
       <div className="space-y-3">
-        {log.exercises.map((exercise) => {
+        <SupersetGroups exercises={log.exercises}>{(exercise, { marker }) => {
           const hasTarget = exercise.prescribed_sets || exercise.prescribed_load_value != null
             || exercise.prescribed_reps || exercise.prescribed_rpe || exercise.prescribed_rest || exercise.prescribed_tempo;
           const totals = completedVolume(exercise);
@@ -288,7 +290,12 @@ export default function WorkoutLogDetail() {
           }
           return (
             <Card key={exercise.id}>
-              <CardHeader className="pb-2"><CardTitle className="font-display text-lg">{exercise.exercise_name}</CardTitle></CardHeader>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex min-w-0 items-center gap-2 font-display text-lg">
+                  {hasGroups && <ExerciseMarker marker={marker} />}
+                  <span className="min-w-0">{exercise.exercise_name}</span>
+                </CardTitle>
+              </CardHeader>
               <CardContent>
                 {hasTarget && (
                   <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" data-testid="exercise-target-line">
@@ -338,7 +345,7 @@ export default function WorkoutLogDetail() {
               </CardContent>
             </Card>
           );
-        })}
+        }}</SupersetGroups>
       </div>
       {readError && (
         <div className="mt-4 flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="coach-feedback-read-error">

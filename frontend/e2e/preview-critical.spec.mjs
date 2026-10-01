@@ -901,3 +901,50 @@ test.describe('home-screen install on Android Chrome', () => {
     await expect(page.getByTestId('install-guide')).toHaveCount(0);
   });
 });
+
+test('workout builder links supersets and giant sets and reorders exercises at mobile width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  await page.getByTestId('workout-create-button').click();
+
+  const dialog = page.getByRole('dialog');
+  const names = dialog.getByTestId('workout-exercise-name-input');
+  await names.first().fill('Bench Press');
+  for (const name of ['Chest-Supported Row', 'Curl']) {
+    await dialog.getByTestId('workout-exercise-add-button').click();
+    const rows = dialog.getByTestId('workout-exercise-row');
+    await rows.last().getByRole('button').first().click(); // expand the new row
+    await names.last().fill(name);
+  }
+  const markers = dialog.getByTestId('workout-exercise-marker');
+  const order = () => names.evaluateAll((inputs) => inputs.map((input) => input.value));
+  await expect(markers).toHaveText(['1', '2', '3']);
+
+  // Bench + Row -> superset; then + Curl -> giant set.
+  await dialog.getByTestId('workout-exercise-link-button').first().click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(markers).toHaveText(['A1', 'A2', 'B']);
+  await dialog.getByTestId('workout-exercise-link-button').click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
+  await expect(markers).toHaveText(['A1', 'A2', 'A3']);
+
+  // Reorder inside the group keeps it intact.
+  await dialog.getByLabel('Move Curl up').click();
+  await expect.poll(order).toEqual(['Bench Press', 'Curl', 'Chest-Supported Row']);
+  await expect(dialog.getByTestId('workout-superset-group')).toHaveCount(1);
+
+  // Split off the last exercise, then move it above the superset as a block.
+  await dialog.getByTestId('workout-exercise-unlink-button').nth(1).click();
+  await expect(markers).toHaveText(['A1', 'A2', 'B']);
+  await dialog.getByTestId('workout-superset-move-down-button').click();
+  await expect.poll(order).toEqual(['Chest-Supported Row', 'Bench Press', 'Curl']);
+  await expect(markers).toHaveText(['A', 'B1', 'B2']);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  if (process.env.CVF_SHOT_DIR) await dialog.screenshot({ path: `${process.env.CVF_SHOT_DIR}/builder-mobile.png` });
+
+  await dialog.getByTestId('workout-superset-ungroup-button').click();
+  await expect(dialog.getByTestId('workout-superset-group')).toHaveCount(0);
+  await expect(markers).toHaveText(['1', '2', '3']);
+});

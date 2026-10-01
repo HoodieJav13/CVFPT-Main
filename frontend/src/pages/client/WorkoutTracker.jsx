@@ -19,6 +19,8 @@ import { useVisualIntensity } from '@/lib/visualIntensity';
 import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import { formatRestSeconds } from '@/lib/rest';
 import { trackProductEvent } from '@/lib/telemetry';
+import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
+import { nextExercise } from '@/lib/supersets';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
 // database parses and backfills. The old runtime text parser is gone; text
@@ -247,7 +249,9 @@ export default function WorkoutTracker() {
   const completedCount = allSets.filter((set) => set.status === 'completed').length;
   // Previous / current / upcoming set states (design-plans/010, bold
   // direction): the first pending set is "current"; completed sets go quiet.
-  const activeExerciseId = log.exercises.find((ex) => ex.sets.some((s) => s.status !== 'completed'))?.id;
+  // Inside a superset the "current" card alternates between members.
+  const activeExerciseId = nextExercise(log.exercises)?.id;
+  const hasGroups = log.exercises.some((exercise) => exercise.superset_group);
   const isActiveSet = (exercise, set) => !sealed && set.status !== 'completed'
     && set.id === exercise.sets.find((s) => s.status !== 'completed')?.id;
   const setRowClass = (exercise, set) => {
@@ -481,15 +485,17 @@ export default function WorkoutTracker() {
       </div>
 
       <div className="space-y-4">
-        {log.exercises.map((exercise) => (
+        <SupersetGroups exercises={log.exercises}>{(exercise, { marker }) => (
           <Card
-            key={exercise.id}
             className={cn(exercise.id === activeExerciseId && !sealed && 'border-primary/35 shadow-[var(--app-elev-soft)]')}
             data-testid="tracker-exercise-card"
           >
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-2">
-                <CardTitle className="font-display text-lg">{exercise.exercise_name}</CardTitle>
+                <CardTitle className="flex min-w-0 items-center gap-2 font-display text-lg">
+                  {hasGroups && <ExerciseMarker marker={marker} />}
+                  <span className="min-w-0">{exercise.exercise_name}</span>
+                </CardTitle>
                 <Badge
                   variant="outline"
                   className={`shrink-0 tabular-nums ${exercise.sets.length && exercise.sets.every((set) => set.status === 'completed') ? 'border-success/40 bg-success/10 text-success' : 'text-muted-foreground'}`}
@@ -603,7 +609,7 @@ export default function WorkoutTracker() {
               </div>
             </CardContent>
           </Card>
-        ))}
+        )}</SupersetGroups>
       </div>
 
       <div
