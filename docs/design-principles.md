@@ -83,11 +83,12 @@ interaction durations and easing are owned by `frontend/src/index.css`.
 
 ## Signature scenery
 
-The shipped app uses `BrandBackdrop` (Sandia ridge, glow, optional photo slots;
-see `frontend/src/assets/photos/README.md`). The approved next direction is Sky
-Field (owner, 2026-10-01): the real Sandia skyline computed from elevation data,
-a sunrise light theme and a sunset dark theme, glass floating controls, and a
-single corner menu on phones. It replaces `BrandBackdrop` when it is built.
+Sky Field (owner, 2026-10-01): the real Sandia skyline computed from elevation
+data, a sunrise light theme and a sunset dark theme, glass floating controls,
+a corner menu on phones and a top bar on desktop. It is built: `SkyScene`
+draws the dashboard and sign-in sky; `BrandBackdrop` remains only behind the
+personal-record moment on Progress. Keep the scenery decorative: it never
+carries information, and every moving part stops under reduced motion.
 
 ## How visual work gets approved
 
