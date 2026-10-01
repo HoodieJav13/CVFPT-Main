@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, SessionsSkeleton, LoadErrorState, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
@@ -13,6 +13,8 @@ import { AvailabilityDrawer } from '@/components/AvailabilityEditor';
 import { SessionEditorDrawer } from '@/components/SessionEditorDrawer';
 import { SeriesBadge } from '@/components/series/SeriesBadge';
 import { CancelSessionDialog } from '@/components/series/CancelSessionDialog';
+import { useAuth } from '@/context/AuthContext';
+import { createDraftStore } from '@/lib/seriesDraftStore';
 import { SessionNotesDialog } from '@/components/SessionNotesDialog';
 import { fmtTime, fmtDay, fmtDateTime, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
@@ -69,6 +71,22 @@ export default function CoachSessions() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A recurring save that never got a confirmed answer (timeout/reload) is surfaced
+  // right away — once, as soon as the signed-in user is known — so the coach can
+  // resolve it instead of forgetting it.
+  const { user } = useAuth();
+  const checkedForPending = useRef(false);
+  useEffect(() => {
+    if (checkedForPending.current) return;
+    const userId = user?.profile?.id || user?.email;
+    if (!userId) return;
+    checkedForPending.current = true;
+    if (createDraftStore({ userId }).findPending()) {
+      setEditing(null);
+      setDrawerOpen(true);
+    }
+  }, [user]);
 
   useEffect(() => {
     const requestedView = searchParams.get('view');
