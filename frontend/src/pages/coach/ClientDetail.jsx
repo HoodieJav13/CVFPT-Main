@@ -1231,7 +1231,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                     )}
                     {assignment && day.id && (
                       <Button
-                        size="sm" variant="secondary" className="rounded-lg shrink-0"
+                        size="sm" variant="secondary" className="min-h-11 rounded-lg shrink-0 sm:min-h-0"
                         disabled={starting === `${assignment.id}-${day.id}`}
                         onClick={() => startWorkout(`${assignment.id}-${day.id}`, { program_assignment_id: assignment.id, program_day_id: day.id })}
                         data-testid="coach-log-program-workout"
