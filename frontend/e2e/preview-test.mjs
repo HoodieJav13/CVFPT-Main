@@ -5,18 +5,26 @@ import { test as base, expect } from '@playwright/test';
 // this marker to the console instead; this fixture fails any test that
 // produced one, even when the screen caught and hid the error.
 const MISSING_MOCK_MARKER = '[cvf-preview:missing-mock]';
+// A save the mock served that "Fail next save" does not know about.
+const UNLISTED_SAVE_MARKER = '[cvf-preview:unlisted-save]';
 
 export const test = base.extend({
   allowMissingMocks: [false, { option: true }],
   missingMocks: [async ({ context, allowMissingMocks }, use) => {
     const hits = [];
+    const unlistedSaves = [];
     const onConsole = (message) => {
       const text = message.text();
       if (text.startsWith(MISSING_MOCK_MARKER)) hits.push(text.slice(MISSING_MOCK_MARKER.length).trim());
+      if (text.startsWith(UNLISTED_SAVE_MARKER)) unlistedSaves.push(text.slice(UNLISTED_SAVE_MARKER.length).trim());
     };
     context.on('console', onConsole);
     await use(hits);
     context.off('console', onConsole);
+    if (unlistedSaves.length) {
+      throw new Error(`Preview save routes missing from PREVIEW_SAVE_ROUTES:\n${[...new Set(unlistedSaves)].map((hit) => `  ${hit}`).join('\n')}\n`
+        + 'Add each one to PREVIEW_SAVE_ROUTES in frontend/src/lib/previewMode.js so "Fail next save" can apply to it.');
+    }
     if (!allowMissingMocks && hits.length) {
       throw new Error(`Preview routes with no mock were requested:\n${[...new Set(hits)].map((hit) => `  ${hit}`).join('\n')}\n`
         + 'Add a mock in frontend/src/lib/previewMode.js, or list the route in PREVIEW_UNSUPPORTED with a reason.');

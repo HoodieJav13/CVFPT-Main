@@ -27,6 +27,111 @@ const PREVIEW_UNSUPPORTED = [
   { method: 'patch', pattern: /^\/sessions\/series\/[^/]+\/cancel$/, reason: 'Recurring sessions are not in preview yet' },
 ];
 
+// Every mocked route that changes fixture data: [method, pattern], in the
+// order the handler chain serves them, each pattern copied from its branch.
+// "Fail next save" consults this BEFORE the handler runs, so a simulated
+// failure never changes data, never emits a handler's events, and never hides
+// a missing mock. Add a route here when you add a save handler: a save the
+// chain serves that is missing from this table logs
+// [cvf-preview:unlisted-save], which fails the preview browser suite.
+const PREVIEW_SAVE_ROUTES = [
+  ['post', /^\/workout-logs\/start$/],
+  ['post', /^\/workout-logs\/quick-complete$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/sets\/([^/]+)\/archive$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/sets\/([^/]+)$/],
+  ['post', /^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/sets$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/notes$/],
+  ['post', /^\/workout-logs\/([^/]+)\/complete-all$/],
+  ['post', /^\/workout-logs\/([^/]+)\/abandon$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/coach-feedback\/read$/],
+  ['put', /^\/workout-logs\/([^/]+)\/coach-response$/],
+  ['post', /^\/workout-logs\/([^/]+)\/complete$/],
+  ['post', /^\/announcements$/],
+  ['patch', /^\/announcements\/([^/]+)\/read$/],
+  ['patch', /^\/announcements\/([^/]+)\/archive$/],
+  ['patch', /^\/notifications\/read-all$/],
+  ['patch', /^\/notifications\/([^/]+)\/read$/],
+  ['post', /^\/clients$/],
+  ['post', /^\/resource-categories$/],
+  ['post', /^\/resources$/],
+  ['patch', /^\/resources\/([^/]+)$/],
+  ['post', /^\/resources\/([^/]+)\/assign$/],
+  ['patch', /^\/resources\/([^/]+)\/assignments\/([^/]+)$/],
+  ['put', /^\/clients\/([^/]+)$/],
+  ['patch', /^\/clients\/([^/]+)\/invite$/],
+  ['patch', /^\/clients\/([^/]+)\/archive$/],
+  ['post', /^\/admin\/coaches$/],
+  ['patch', /^\/admin\/clients\/([^/]+)\/reassign$/],
+  ['post', /^\/sessions$/],
+  ['put', /^\/sessions\/([^/]+)$/],
+  ['patch', /^\/sessions\/([^/]+)\/complete$/],
+  ['patch', /^\/sessions\/([^/]+)\/cancel$/],
+  ['post', /^\/sessions\/([^/]+)\/notes$/],
+  ['put', /^\/sessions\/notes\/([^/]+)$/],
+  ['patch', /^\/availability\/auto-book$/],
+  ['put', /^\/availability\/windows$/],
+  ['post', /^\/availability\/overrides$/],
+  ['delete', /^\/availability\/overrides\/([^/]+)$/],
+  ['post', /^\/availability\/time-off$/],
+  ['delete', /^\/availability\/time-off\/([^/]+)$/],
+  ['post', /^\/bookings$/],
+  ['patch', /^\/bookings\/([^/]+)\/(approve|decline)$/],
+  ['post', /^\/progress\/clients\/([^/]+)\/metrics$/],
+  ['patch', /^\/progress\/metrics\/([^/]+)$/],
+  ['post', /^\/progress\/metrics\/([^/]+)\/entries$/],
+  ['put', /^\/progress\/entries\/([^/]+)$/],
+  ['patch', /^\/progress\/metrics\/([^/]+)\/archive$/],
+  ['post', /^\/check-ins\/mine$/],
+  ['post', /^\/check-ins\/clients\/([^/]+)$/],
+  ['put', /^\/check-ins\/([^/]+)$/],
+  ['post', /^\/programs\/exercise-library$/],
+  ['post', /^\/programs\/exercise-library\/import$/],
+  ['put', /^\/programs\/exercise-library\/([^/]+)$/],
+  ['patch', /^\/programs\/exercise-library\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/workouts$/],
+  ['put', /^\/programs\/workouts\/([^/]+)$/],
+  ['patch', /^\/programs\/workouts\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/workout-assignments$/],
+  ['put', /^\/programs\/workout-assignments\/([^/]+)\/loads$/],
+  ['patch', /^\/programs\/workout-assignments\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/import\/commit$/],
+  ['post', /^\/programs$/],
+  ['put', /^\/programs\/([^/]+)$/],
+  ['patch', /^\/programs\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/([^/]+)\/assign$/],
+  ['put', /^\/programs\/assignments\/([^/]+)\/loads$/],
+  ['patch', /^\/programs\/assignments\/([^/]+)\/archive$/],
+  ['post', /^\/messages\/mine$/],
+  ['patch', /^\/messages\/availability$/],
+  ['patch', /^\/sessions\/([^/]+)\/ask-cancel$/],
+  ['post', /^\/messages\/with\/([^/]+)$/],
+  ['post', /^\/waivers\/versions$/],
+  ['post', /^\/waivers\/sign$/],
+  ['post', /^\/waivers\/client\/([^/]+)\/sign-paper$/],
+];
+
+const PREVIEW_LATENCY_KEY = 'cvf_preview_latency';
+const PREVIEW_FAIL_KEY = 'cvf_preview_fail';
+// Not CHANGE_EVENT: AuthContext answers that one by replacing the user
+// object, which would re-run user-dependent effects mid-save.
+const SWITCH_EVENT = 'cvf-preview-switch-change';
+const UNLISTED_SAVE_MARKER = '[cvf-preview:unlisted-save]';
+const SPEED_MS = { slow: 1500, 'very-slow': 4000 };
+const FAIL_MODES = ['write-once', 'reads'];
+// Every key Reset removes. Anything not matched here is left alone, because a
+// local dev origin is shared with real-auth sessions.
+const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// POSTs that change no fixture data. Without this, previewing dates — or the
+// background telemetry ping every page sends — would consume "fail next
+// save" before anything is saved.
+const READ_LIKE_POSTS = [
+  /^\/telemetry\/events$/,
+  /^\/sessions\/series\/preview$/,
+  /^\/sessions\/series\/check$/,
+  /^\/programs\/import\/parse-(csv|paste|pdf)$/,
+];
+
 // The gate lives in previewFlag.js so consumers can check it without
 // pulling this whole fixture module into the production bundle.
 export { isPreviewMode } from './previewFlag';
@@ -234,6 +339,72 @@ function emitChange() {
 export function onPreviewChange(cb) {
   window.addEventListener(CHANGE_EVENT, cb);
   return () => window.removeEventListener(CHANGE_EVENT, cb);
+}
+
+function emitSwitchChange() {
+  window.dispatchEvent(new CustomEvent(SWITCH_EVENT));
+}
+
+export function onPreviewSwitchChange(cb) {
+  window.addEventListener(SWITCH_EVENT, cb);
+  return () => window.removeEventListener(SWITCH_EVENT, cb);
+}
+
+export function getPreviewSpeed() {
+  try {
+    const rules = JSON.parse(localStorage.getItem(PREVIEW_LATENCY_KEY) || '[]');
+    if (!Array.isArray(rules) || rules.length !== 1 || rules[0].path !== '.*') return 'normal';
+    return Object.keys(SPEED_MS).find((name) => SPEED_MS[name] === rules[0].ms) || 'normal';
+  } catch {
+    return 'normal';
+  }
+}
+
+export function setPreviewSpeed(speed) {
+  try {
+    if (SPEED_MS[speed]) localStorage.setItem(PREVIEW_LATENCY_KEY, JSON.stringify([{ path: '.*', ms: SPEED_MS[speed] }]));
+    else localStorage.removeItem(PREVIEW_LATENCY_KEY);
+  } catch { /* storage unavailable: the switch simply does not stick */ }
+  emitSwitchChange();
+}
+
+export function getPreviewFailMode() {
+  try {
+    const mode = localStorage.getItem(PREVIEW_FAIL_KEY);
+    return FAIL_MODES.includes(mode) ? mode : 'off';
+  } catch {
+    return 'off';
+  }
+}
+
+export function setPreviewFailMode(mode) {
+  try {
+    if (FAIL_MODES.includes(mode)) localStorage.setItem(PREVIEW_FAIL_KEY, mode);
+    else localStorage.removeItem(PREVIEW_FAIL_KEY);
+  } catch { /* storage unavailable: the switch simply does not stick */ }
+  emitSwitchChange();
+}
+
+function isPreviewOwnedKey(key) {
+  if (PREVIEW_SWITCH_KEYS.includes(key)) return true;
+  // Pending recurring saves are keyed cvf_series_pending:<user.profile.id>:<client id>.
+  if (state.coaches.some((coach) => key.startsWith(`cvf_series_pending:${coach.id}:`))) return true;
+  // Offline queue and rest timer for workouts the mock issued (real log ids are UUIDs).
+  const log = key.match(/^cvf_(?:workout_outbox|rest_timer)_(.+)$/);
+  return Boolean(log) && !UUID_RE.test(log[1]);
+}
+
+// Removes preview-owned storage only. The caller hard-loads the page, which
+// rebuilds the in-memory fixtures.
+export function resetPreview() {
+  try {
+    const owned = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && isPreviewOwnedKey(key)) owned.push(key);
+    }
+    owned.forEach((key) => localStorage.removeItem(key));
+  } catch { /* storage unavailable: the reload still rebuilds the fixtures */ }
 }
 
 export function getPreviewRole() {
@@ -957,6 +1128,19 @@ function rejectMissingMock(config, method, path) {
   });
 }
 
+function isPreviewRead(method, path) {
+  return method === 'get' || (method === 'post' && READ_LIKE_POSTS.some((pattern) => pattern.test(path)));
+}
+
+function isKnownSave(method, path) {
+  return PREVIEW_SAVE_ROUTES.some(([saveMethod, pattern]) => saveMethod === method && pattern.test(path));
+}
+
+function isPreviewGap(error) {
+  const code = error?.response?.data?.code;
+  return code === 'preview_missing_mock' || code === 'preview_unsupported';
+}
+
 function body(config) {
   if (!config.data) return {};
   if (typeof config.data === 'string') {
@@ -1015,7 +1199,7 @@ function saveCheckIn(clientId, payload, actorRole) {
 
 function previewLatencyFor(path) {
   try {
-    const rules = JSON.parse(localStorage.getItem('cvf_preview_latency') || '[]');
+    const rules = JSON.parse(localStorage.getItem(PREVIEW_LATENCY_KEY) || '[]');
     const rule = rules.find((candidate) => new RegExp(candidate.path).test(path));
     return Math.max(0, Math.min(10_000, Number(rule?.ms) || 0));
   } catch {
@@ -1025,13 +1209,9 @@ function previewLatencyFor(path) {
 
 export function installPreviewApi(api) {
   if (!isPreviewMode) return;
-  api.defaults.adapter = async (config) => {
+  const route = async (config) => {
     const method = String(config.method || 'get').toLowerCase();
     const { path, search } = pathFromConfig(config);
-    // Test-harness latency (like cvf_preview_history_failure): browser specs
-    // set cvf_preview_latency to [{ "path": "<regex>", "ms": 1500 }] to
-    // reproduce slow-network races on chosen routes.
-    await new Promise((resolve) => setTimeout(resolve, 80 + previewLatencyFor(path)));
     const payload = body(config);
     const role = getPreviewRole();
     const client = currentClient();
@@ -2264,5 +2444,52 @@ export function installPreviewApi(api) {
     }
 
     return rejectMissingMock(config, method, path);
+  };
+
+  api.defaults.adapter = async (config) => {
+    const method = String(config.method || 'get').toLowerCase();
+    const { path } = pathFromConfig(config);
+    // Latency: browser specs set cvf_preview_latency to
+    // [{ "path": "<regex>", "ms": 1500 }] to reproduce slow-network races on
+    // chosen routes; the toolbar writes one catch-all rule.
+    await new Promise((resolve) => setTimeout(resolve, 80 + previewLatencyFor(path)));
+    if (path.startsWith('/auth/')) return route(config);
+
+    const read = isPreviewRead(method, path);
+    const knownSave = !read && isKnownSave(method, path);
+    const mode = getPreviewFailMode();
+
+    // Fail next save: decided from the route table, BEFORE the handler runs,
+    // so nothing is changed and nothing is emitted. Reading and clearing the
+    // switch is synchronous, so concurrent saves cannot both consume it.
+    if (mode === 'write-once' && knownSave) {
+      setPreviewFailMode('off');
+      return fail(config, 503, 'Simulated failure (preview)');
+    }
+
+    // Fail loads: read handlers do not change fixture data, so the handler
+    // runs first purely to let a missing or unsupported route pass through.
+    if (mode === 'reads' && read) {
+      try {
+        await route(config);
+      } catch (error) {
+        if (isPreviewGap(error)) throw error;
+      }
+      return fail(config, 503, 'Simulated failure (preview)');
+    }
+
+    if (read || knownSave) return route(config);
+
+    // A save that is not in PREVIEW_SAVE_ROUTES: fine when it is a missing or
+    // unsupported route, a bug in the table when the chain actually served it.
+    const flagUnlisted = () => console.error(`${UNLISTED_SAVE_MARKER} ${method.toUpperCase()} ${path}`);
+    try {
+      const response = await route(config);
+      flagUnlisted();
+      return response;
+    } catch (error) {
+      if (!isPreviewGap(error)) flagUnlisted();
+      throw error;
+    }
   };
 }
