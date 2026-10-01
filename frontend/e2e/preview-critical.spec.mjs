@@ -982,3 +982,36 @@ test('a slow "Show more" that lands after a history refresh is discarded', async
   const hrefs = await rows.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
   expect(new Set(hrefs).size).toBe(13);
 });
+
+test('"Show more" clicked while a history refresh is loading is discarded once the refresh lands', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  const more = coachHistory.getByTestId('coach-history-show-more');
+  // The fixed preview toolbar overlaps this button at desktop width.
+  const pressMore = async () => { await more.focus(); await page.keyboard.press('Enter'); };
+  const slowHistory = (ms) => page.evaluate((delay) => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/workout-logs/client/', ms: delay }])), ms);
+  await expect(rows).toHaveCount(12);
+
+  // The refresh starts first (1.5s); "Show more" is clicked while it is
+  // still loading and lands after it (3.5s), carrying the old list's cursor.
+  await slowHistory(1500);
+  await page.getByTestId('unassign-workout-button').first().click();
+  // The toast shows as the unassign lands, right when the reload begins.
+  await expect(page.getByText('Workout unassigned')).toBeVisible();
+  await slowHistory(3500);
+  await pressMore();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+
+  // Once both have landed, the refreshed list stands on its own.
+  await page.waitForTimeout(4500);
+  await expect(rows).toHaveCount(12);
+  await expect(more).toBeEnabled();
+  await pressMore();
+  await expect(rows).toHaveCount(13);
+  const hrefs = await rows.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  expect(new Set(hrefs).size).toBe(13);
+});
