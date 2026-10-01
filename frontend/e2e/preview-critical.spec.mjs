@@ -919,3 +919,21 @@ test.describe('home-screen install on Android Chrome', () => {
     await expect(page.getByTestId('install-guide')).toHaveCount(0);
   });
 });
+
+test('the workout tracker links each exercise demo video, workout link first, then library', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  const cards = page.getByTestId('tracker-exercise-card');
+  // Goblet Squat: library video. Pallof Press: the workout's own link.
+  const squatVideo = cards.nth(0).getByTestId('tracker-exercise-video');
+  await expect(squatVideo).toHaveAttribute('href', 'https://www.youtube.com/watch?v=MeIiIdhvXT4');
+  await expect(squatVideo).toHaveAttribute('target', '_blank');
+  await expect(squatVideo).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(cards.nth(2).getByTestId('tracker-exercise-video')).toHaveAttribute('href', 'https://www.youtube.com/watch?v=ma2OjgP5XDc');
+  const box = await squatVideo.boundingBox();
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
