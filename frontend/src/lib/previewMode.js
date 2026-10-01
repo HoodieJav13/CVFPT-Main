@@ -1041,6 +1041,10 @@ export function installPreviewApi(api) {
 
     if (path === '/auth/me' || path === '/auth/login' || path === '/auth/signup') return ok({ access_token: 'preview', refresh_token: 'preview', ...getPreviewUser() }, config);
 
+    // Product telemetry is fire-and-forget from ordinary page loads. Preview
+    // accepts and discards it (the real route answers 202 the same way).
+    if (path === '/telemetry/events' && method === 'post') return ok({ accepted: true, duplicate: false }, config, 202);
+
     if (path === '/dashboard/client') return ok(dashboardClient(), config);
     if (path === '/dashboard/coach') return ok(dashboardCoach(), config);
 

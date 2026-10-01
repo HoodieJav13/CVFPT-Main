@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './preview-test.mjs';
 
 test.setTimeout(60_000);
 
