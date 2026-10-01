@@ -11,8 +11,9 @@ function setProgress(log) {
   return { done: sets.filter((set) => set.status === 'completed').length, total: sets.length };
 }
 
-// A planned rest day: the coach laid out dated workouts this week but none
-// today. Programs without dated days never produce one, so a program client
+// Nothing scheduled today: the coach laid out dated workouts this week but
+// none today. That is not an explicit recovery instruction, so the copy says
+// "no workout scheduled" rather than "recovery day". Programs without dated days never produce one, so a program client
 // is never told to rest by accident.
 function plannedRest(rhythm, today) {
   if (!rhythm?.week_total || !Array.isArray(rhythm.days)) return null;
@@ -61,6 +62,19 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
       progress,
       action: 'Resume workout',
       href: `/client/workouts/${activeLog.id}/track`,
+    };
+  }
+
+  // If the plan, the active workout or the history didn't load, today is
+  // unknown: never recommend starting a workout from partial data (it could
+  // duplicate an active workout or repeat one already done today).
+  if (!complete) {
+    return {
+      kind: 'unavailable',
+      eyebrow: 'Couldn’t load today’s plan',
+      title: 'Today’s plan',
+      description: 'This isn’t a rest day. The app couldn’t reach your training plan, so today is unknown. Check your connection and try again.',
+      action: 'Try again',
     };
   }
 
@@ -114,18 +128,8 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
     };
   }
 
-  // "Nothing to do" has three different causes that need different words:
-  // the plan didn't load, no program is assigned yet, or rest was planned.
-  if (!complete) {
-    return {
-      kind: 'unavailable',
-      eyebrow: 'Couldn’t load today’s plan',
-      title: 'Today’s plan',
-      description: 'This isn’t a rest day. The app couldn’t reach your training plan, so today is unknown. Check your connection and try again.',
-      action: 'Try again',
-    };
-  }
-
+  // "Nothing to do" has two other causes that need different words:
+  // no program is assigned yet, or nothing is scheduled today.
   if (assignments && !(assignments.programs || []).length && !(assignments.workouts || []).length) {
     return {
       kind: 'unassigned',
@@ -144,9 +148,9 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
     const nextDay = rest.next ? new Date(`${rest.next.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long' }) : null;
     return {
       kind: 'recovery',
-      eyebrow: 'Planned by your coach',
-      title: 'Recovery day',
-      description: nextDay ? `No workout planned today. Next: ${nextDay}${nextName ? ` · ${nextName}` : ''}` : 'No workout planned today.',
+      eyebrow: 'This week’s plan',
+      title: 'No workout scheduled today',
+      description: nextDay ? `Next: ${nextDay}${nextName ? ` · ${nextName}` : ''}` : 'Nothing else is scheduled this week.',
       action: 'See my program',
       href: '/client/programs',
       secondary: { action: 'Book a session', href: '/client/sessions' },

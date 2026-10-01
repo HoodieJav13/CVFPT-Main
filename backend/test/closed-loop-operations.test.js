@@ -88,6 +88,28 @@ test('client Today plan tells done, no program, planned rest and not-loaded apar
   const unavailable = chooseClientTodayPlan({ assignments: null, history: [], rhythm, complete: false });
   assert.equal(unavailable.kind, 'unavailable');
   assert.match(unavailable.description, /isn’t a rest day/);
+
+  // Nothing scheduled today is not an explicit recovery instruction.
+  assert.equal(recovery.title, 'No workout scheduled today');
+  assert.doesNotMatch(`${recovery.eyebrow} ${recovery.title} ${recovery.description}`, /recovery|planned by your coach/i);
+});
+
+test('client Today plan never recommends a start from partial data', async () => {
+  const { chooseClientTodayPlan } = await import(pathToFileURL(path.join(root, 'frontend/src/lib/clientTodayPlan.js')));
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
+  const program = { id: 'p1', program: { name: 'Foundation', days: [{ id: 'd1', workout: { name: 'Day one' } }] } };
+  const dated = { id: 'a1', assignment_mode: 'dated', assigned_for: today, workout: { name: 'Lower A' } };
+  const standalone = { id: 'a2', assignment_mode: 'active', workout: { name: 'Mobility' } };
+  // Assignments loaded but the active workout or history failed: the plan is
+  // unknown (starting could duplicate an active workout or repeat today's).
+  for (const assignments of [{ workouts: [dated], programs: [] }, { workouts: [], programs: [program] }, { workouts: [standalone], programs: [] }]) {
+    const plan = chooseClientTodayPlan({ assignments, activeLog: null, history: [], complete: false });
+    assert.equal(plan.kind, 'unavailable');
+    assert.equal(plan.source, undefined);
+  }
+  // A loaded active workout still offers Resume even if other data failed.
+  const active = chooseClientTodayPlan({ assignments: null, activeLog: { id: 'l9', workout_name: 'Lower A' }, history: [], complete: false });
+  assert.equal(active.kind, 'active');
 });
 
 test('email rendering escapes user-derived facts and is inert without owner configuration', async () => {
