@@ -67,7 +67,13 @@ export default function CornerMenu({ items, badgeFor, closedBadge, onOpenChange 
     return () => window.removeEventListener('keydown', onKey);
   }, [open, close, items.length]);
 
-  const choose = (item) => { close(false); if (item.to !== pathname) navigate(item.to); };
+  // Choosing the page you're already on just closes the menu, so focus goes
+  // back to the button; a real navigation leaves focus to the new page.
+  const choose = (item) => {
+    if (item.to === pathname) { close(); return; }
+    close(false);
+    navigate(item.to);
+  };
   const itemAt = (x, y) => {
     const index = itemRefs.current.findIndex((el) => {
       if (!el) return false;

@@ -1116,4 +1116,24 @@ test('the closed corner menu is hidden from assistive tech; the open one is moda
   await expect(fab).toHaveAttribute('aria-expanded', 'true');
   await page.mouse.click(40, 300);
   await expect(fab).toHaveAttribute('aria-expanded', 'false');
+
+  // Choosing the page you're already on closes the menu and returns focus to
+  // the button, by keyboard and by tap, without leaving the page.
+  await fab.focus();
+  await page.keyboard.press('Enter');
+  await expect(nav.getByRole('link', { name: /^Home/ })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(fab).toHaveAttribute('aria-expanded', 'false');
+  await expect(fab).toBeFocused();
+  await fab.click();
+  await nav.getByRole('link', { name: /^Home/ }).click();
+  await expect(fab).toHaveAttribute('aria-expanded', 'false');
+  await expect(fab).toBeFocused();
+  await expect(page).toHaveURL(/\/client$/);
+
+  // Choosing another page navigates there and closes the menu.
+  await fab.click();
+  await nav.getByRole('link', { name: /^Sessions/ }).click();
+  await expect(page).toHaveURL(/\/client\/sessions$/);
+  await expect(fab).toHaveAttribute('aria-expanded', 'false');
 });
