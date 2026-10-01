@@ -1190,12 +1190,13 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         return (
         <Card key={p.id} data-testid="assigned-program-card">
           <CardContent className="p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
+            {/* Phones: actions stack under the title and wrap, so the card never forces a sideways scroll. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+              <div className="min-w-0">
                 <p className="font-display font-semibold">{p.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} {p.frequency_days === 1 ? 'day' : 'days'}/week - {p.exercise_count} exercises</p>
               </div>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
                 <ExistingLoadEditor type="program" assignment={assignment} selection={p} onSaved={load} />
                 <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setTemplateTarget({ kind: 'program', id: p.id, name: `${p.name} (variation)`, parent: programTemplateParent(p), label: 'program' })} data-testid="save-program-template-button">Save as template</Button>
                 <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
@@ -1392,12 +1393,13 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
   return (
     <Card data-testid="assigned-workout-card">
       <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        {/* Phones: actions stack under the title and wrap, so the card never forces a sideways scroll. */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+          <div className="min-w-0">
             <p className="font-display font-semibold">{workout.name}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{label} - {(workout.exercises || []).length} exercises</p>
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
             {onStart && (
               <Button
                 size="sm" variant="secondary" className="rounded-lg"
