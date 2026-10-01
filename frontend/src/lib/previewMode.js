@@ -548,6 +548,12 @@ function prescribedSetCount(value) {
   return Math.max(1, match ? Number(match[0]) : 1);
 }
 
+function previewExerciseVideo(logExercise) {
+  const source = state.workoutExercises.find((row) => row.id === logExercise.source_workout_exercise_id);
+  const libraryId = logExercise.exercise_library_id || source?.exercise_library_id;
+  return source?.video_url || libraryById(libraryId)?.video_url || null;
+}
+
 // Mirrors GET /workout-logs/mine and /client/:id: an array by default, or
 // { logs, next_cursor } pages (newest first, id tie-break) with ?paged=1.
 function previewCompletedLogs(clientId, config, search) {
@@ -586,6 +592,8 @@ function workoutLogDetails(logId) {
     .sort((a, b) => a.position - b.position)
     .map((exercise) => ({
       ...exercise,
+      // Mirrors the API: the workout's link wins, then the library's.
+      video_url: previewExerciseVideo(exercise),
       sets: state.workoutLogSets
         .filter((set) => set.workout_log_exercise_id === exercise.id && !set.archived)
         .sort((a, b) => a.set_number - b.set_number),
@@ -867,8 +875,12 @@ function dashboardCoach() {
   };
 }
 
+// Responses are copies, like a real HTTP body: handing out live fixture
+// objects let later preview writes mutate what the UI already held, which
+// masked offline-sync and stale-state bugs.
 function ok(data, config, status = 200) {
-  return Promise.resolve({ data, status, statusText: 'OK', headers: {}, config });
+  const copy = data === undefined ? data : JSON.parse(JSON.stringify(data));
+  return Promise.resolve({ data: copy, status, statusText: 'OK', headers: {}, config });
 }
 
 function fail(config, status, message) {

@@ -304,6 +304,54 @@ function computeLogAttribution(log) {
   return 'mixed';
 }
 
+// Demo video for each logged exercise: the coach's per-workout link wins,
+// then the library exercise's. Only http(s) links are ever returned. The
+// snapshot has no video column, so this is resolved live (no schema change).
+function safeVideoUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveExerciseVideos(exercises, workoutExercises = [], libraryExercises = []) {
+  const bySource = new Map(workoutExercises.map((row) => [row.id, row]));
+  const libraryVideo = new Map(libraryExercises.map((row) => [row.id, row.video_url]));
+  return exercises.map((exercise) => {
+    const source = bySource.get(exercise.source_workout_exercise_id);
+    const libraryId = exercise.exercise_library_id || source?.exercise_library_id;
+    const video = safeVideoUrl(source?.video_url) || safeVideoUrl(libraryVideo.get(libraryId));
+    return { ...exercise, video_url: video };
+  });
+}
+
+async function withExerciseVideos(exercises) {
+  if (!exercises.length) return exercises;
+  const sourceIds = [...new Set(exercises.map((row) => row.source_workout_exercise_id).filter(Boolean))];
+  let sources = [];
+  if (sourceIds.length) {
+    const { data, error } = await supabaseAdmin.from('workout_exercises')
+      .select('id, video_url, exercise_library_id').in('id', sourceIds);
+    if (error) throw error;
+    sources = data || [];
+  }
+  const libraryIds = [...new Set([
+    ...exercises.map((row) => row.exercise_library_id),
+    ...sources.map((row) => row.exercise_library_id),
+  ].filter(Boolean))];
+  let library = [];
+  if (libraryIds.length) {
+    const { data, error } = await supabaseAdmin.from('exercise_library')
+      .select('id, video_url').in('id', libraryIds);
+    if (error) throw error;
+    library = data || [];
+  }
+  return resolveExerciseVideos(exercises, sources, library);
+}
+
 async function workoutLogWithDetails(id) {
   const { data: log, error } = await supabaseAdmin.from('workout_logs')
     .select('*, client:clients(id, name, coach_id, archived)')
@@ -313,10 +361,11 @@ async function workoutLogWithDetails(id) {
   const { data: coachResponses, error: responseError } = await supabaseAdmin.from('workout_coach_responses')
     .select('*').eq('workout_log_id', id).eq('archived', false);
   if (responseError) throw responseError;
-  const { data: exercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
+  const { data: loggedExercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
     .select('*').eq('workout_log_id', id).eq('archived', false).order('position');
   if (exerciseError) throw exerciseError;
-  const exerciseIds = (exercises || []).map((exercise) => exercise.id);
+  const exercises = await withExerciseVideos(loggedExercises || []);
+  const exerciseIds = exercises.map((exercise) => exercise.id);
   let sets = [];
   if (exerciseIds.length) {
     const { data, error: setError } = await supabaseAdmin.from('workout_log_sets')
@@ -955,6 +1004,7 @@ router.post('/:id/complete', async (req, res) => {
 
 module.exports = router;
 module.exports.workoutLogWithDetails = workoutLogWithDetails;
+module.exports.resolveExerciseVideos = resolveExerciseVideos;
 module.exports.canReadLog = canReadLog;
 module.exports.canWriteLog = canWriteLog;
 module.exports.actorStamp = actorStamp;
