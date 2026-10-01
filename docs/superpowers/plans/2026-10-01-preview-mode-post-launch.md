@@ -431,6 +431,8 @@ Branch: `claude/preview-controls` from `origin/main` after PR 1 has merged.
 - Console marker: `[cvf-preview:unlisted-save] METHOD /path` — a save the handler chain served that is absent from `PREVIEW_SAVE_ROUTES`. The shared fixture fails the test on it.
 - Storage: `cvf_preview_fail` holds `write-once` or `reads`; absent means off. `cvf_preview_latency` holds `[{ "path": ".*", "ms": 1500 }]` (slow) or `ms: 4000` (very slow).
 
+**PR 1 triage result (2026-10-01):** the suite hit exactly one unmocked route, `POST /telemetry/events` (18 tests). It is now mocked as 202 accept-and-discard. Because every page sends it in the background, it must count as a read here, or it would silently consume "Fail next save".
+
 **Design rule (owner review, 2026-10-01):** a simulated save failure is injected **before** the handler runs, never by running the save and undoing it. Undoing cannot retract events a handler emitted, and restoring a snapshot erases other requests' saves that completed in between. The route is therefore identified first, from `PREVIEW_SAVE_ROUTES`. Missing and unsupported routes are not in that table, so they reach the handler chain and pass through unchanged.
 
 - [ ] **Step 1: Write the failing tests**
@@ -553,7 +555,7 @@ List every branch that changes fixture data:
 grep -n "method === 'post'\|method === 'put'\|method === 'patch'\|method === 'delete'\|method !== 'get'" src/lib/previewMode.js
 ```
 
-For each line, read the branch's path condition and write one `[method, pattern]` entry. A branch testing `path === '/sessions' && method === 'post'` becomes `['post', /^\/sessions$/]`; a branch using a matcher such as `path.match(/^\/sessions\/([^/]+)\/cancel$/)` reuses that same regular expression. Leave out the three `parse-csv` / `parse-paste` / `parse-pdf` routes and anything under `/auth/` (they are reads or exempt). A branch that accepts several methods gets one entry per saving method.
+For each line, read the branch's path condition and write one `[method, pattern]` entry. A branch testing `path === '/sessions' && method === 'post'` becomes `['post', /^\/sessions$/]`; a branch using a matcher such as `path.match(/^\/sessions\/([^/]+)\/cancel$/)` reuses that same regular expression. Leave out the three `parse-csv` / `parse-paste` / `parse-pdf` routes, `POST /telemetry/events` (PR 1's triage mocked it as accept-and-discard; it changes no fixture data), and anything under `/auth/` (they are reads or exempt). A branch that accepts several methods gets one entry per saving method.
 
 Add the table below the `PREVIEW_UNSUPPORTED` list, in the same order as the chain. It starts like this — complete it for every line the grep printed:
 
@@ -596,9 +598,11 @@ const FAIL_MODES = ['write-once', 'reads'];
 // local dev origin is shared with real-auth sessions.
 const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// POSTs that only compute a result. Without this, previewing dates would
-// consume "fail next save" before anything is saved.
+// POSTs that change no fixture data. Without this, previewing dates — or the
+// background telemetry ping every page sends — would consume "fail next
+// save" before anything is saved.
 const READ_LIKE_POSTS = [
+  /^\/telemetry\/events$/,
   /^\/sessions\/series\/preview$/,
   /^\/sessions\/series\/check$/,
   /^\/programs\/import\/parse-(csv|paste|pdf)$/,
