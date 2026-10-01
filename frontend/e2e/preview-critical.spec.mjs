@@ -951,3 +951,34 @@ test('workout history pages in twelves for clients and coaches', async ({ page }
   // (Page-width overflow isn't asserted here: the coach client page already
   // overflows at 390px from the assigned-card action buttons, on main too.)
 });
+
+test('a slow "Show more" that lands after a history refresh is discarded', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  const more = coachHistory.getByTestId('coach-history-show-more');
+  // The fixed preview toolbar overlaps this button at desktop width.
+  const pressMore = async () => { await more.focus(); await page.keyboard.press('Enter'); };
+  await expect(rows).toHaveCount(12);
+
+  // "Show more" is slow (preview test harness; latency is fixed when the
+  // request starts), then an action reloads the page's history quickly.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/workout-logs/client/', ms: 2500 }])));
+  await pressMore();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await page.getByTestId('unassign-workout-button').first().click();
+  await expect(page.getByText('Workout unassigned')).toBeVisible();
+
+  // After the stale page would have landed, the refreshed list is intact:
+  // still its first 12, with its own "Show more".
+  await page.waitForTimeout(3000);
+  await expect(rows).toHaveCount(12);
+  await expect(more).toBeEnabled();
+  await pressMore();
+  await expect(rows).toHaveCount(13);
+  const hrefs = await rows.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  expect(new Set(hrefs).size).toBe(13);
+});

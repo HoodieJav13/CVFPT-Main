@@ -919,7 +919,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       setWorkouts(workoutRes.data);
       setProgramAssignments(programAssignmentRes.data);
       setWorkoutAssignments(assignmentRes.data);
-      setHistoryPage(historyRes.data);
+      setHistoryPage(historyRes);
       setLoadError(null);
     } catch (e) {
       const message = errMsg(e);

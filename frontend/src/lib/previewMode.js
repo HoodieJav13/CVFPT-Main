@@ -931,12 +931,25 @@ function saveCheckIn(clientId, payload, actorRole) {
   return existing;
 }
 
+function previewLatencyFor(path) {
+  try {
+    const rules = JSON.parse(localStorage.getItem('cvf_preview_latency') || '[]');
+    const rule = rules.find((candidate) => new RegExp(candidate.path).test(path));
+    return Math.max(0, Math.min(10_000, Number(rule?.ms) || 0));
+  } catch {
+    return 0;
+  }
+}
+
 export function installPreviewApi(api) {
   if (!isPreviewMode) return;
   api.defaults.adapter = async (config) => {
-    await new Promise((resolve) => setTimeout(resolve, 80));
     const method = String(config.method || 'get').toLowerCase();
     const { path, search } = pathFromConfig(config);
+    // Test-harness latency (like cvf_preview_history_failure): browser specs
+    // set cvf_preview_latency to [{ "path": "<regex>", "ms": 1500 }] to
+    // reproduce slow-network races on chosen routes.
+    await new Promise((resolve) => setTimeout(resolve, 80 + previewLatencyFor(path)));
     const payload = body(config);
     const role = getPreviewRole();
     const client = currentClient();

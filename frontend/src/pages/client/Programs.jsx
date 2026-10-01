@@ -39,7 +39,7 @@ export default function ClientPrograms() {
       ]);
       setAssignments(Array.isArray(assigned.data) ? { programs: assigned.data, workouts: [] } : assigned.data);
       setActiveLog(active.data);
-      setHistoryPage(logs.data);
+      setHistoryPage(logs);
       setLoadError(null);
     } catch (error) {
       const message = errMsg(error, 'Failed to load programs');
