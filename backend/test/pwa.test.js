@@ -12,6 +12,7 @@ const viteConfig = fs.readFileSync(path.join(frontend, 'vite.config.js'), 'utf8'
 const pwa = fs.readFileSync(path.join(frontend, 'src', 'lib', 'pwa.js'), 'utf8');
 const mainEntry = fs.readFileSync(path.join(frontend, 'src', 'main.jsx'), 'utf8');
 const appShell = fs.readFileSync(path.join(frontend, 'src', 'components', 'layout', 'AppShell.jsx'), 'utf8');
+const cornerMenu = fs.readFileSync(path.join(frontend, 'src', 'components', 'layout', 'CornerMenu.jsx'), 'utf8');
 
 test('manifest is installable: id/scope/standalone plus any + maskable icons', () => {
   assert.equal(manifest.id, '/');
@@ -65,13 +66,13 @@ test('registration is production-only and wired at the entry point', () => {
   assert.match(mainEntry, /initPwa\(\);/);
 });
 
-test('standalone iOS safe areas: header clears the status bar, tabs clear the home indicator', () => {
+test('standalone iOS safe areas: header clears the status bar, the corner menu clears the home indicator', () => {
   // black-translucent draws the page under the status bar, so the fixed
   // chrome must pad itself with the safe-area insets (viewport-fit=cover
   // makes env() real on notched iPhones).
   assert.match(indexHtml, /viewport-fit=cover/);
   assert.match(appShell, /pt-\[calc\(0\.75rem\+env\(safe-area-inset-top\)\)\]/);
-  assert.match(appShell, /pb-\[env\(safe-area-inset-bottom\)\]/);
+  assert.match(cornerMenu, /bottom-\[calc\(1\.25rem\+env\(safe-area-inset-bottom\)\)\]/);
   assert.match(appShell, /pb-\[calc\(6rem\+env\(safe-area-inset-bottom\)\)\]/);
 });
 

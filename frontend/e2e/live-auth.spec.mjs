@@ -179,6 +179,7 @@ test('real client auth covers check-in, booking, messaging, route protection, an
     ['programs', '/client/programs'],
     ['messages', '/client/messages'],
   ]) {
+    await page.getByTestId('mobile-menu-button').click();
     await page.getByTestId(`bottom-tab-${tab}`).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
   }
@@ -214,7 +215,7 @@ test('real coach auth covers ownership surfaces and archives created test data',
     await expect(pending.first()).toBeHidden();
   }
 
-  await page.getByTestId('sidebar-nav-clients').click();
+  await page.getByTestId('topnav-clients').click();
   await page.getByTestId('add-client-button').click();
   await page.getByTestId('client-name-input').fill(marker);
   await page.getByTestId('client-email-input').fill(email);
@@ -602,9 +603,11 @@ test('real coach auth covers ownership surfaces and archives created test data',
     ['programs', '/coach/programs'],
     ['messages', '/coach/messages'],
   ]) {
+    await page.getByTestId('mobile-menu-button').click();
     await page.getByTestId(`bottom-tab-${tab}`).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
   }
+  await page.getByTestId('mobile-menu-button').click();
   await page.getByTestId('bottom-tab-home').click();
   await page.getByTestId('dashboard-new-session-button').click();
   await expect(page.getByTestId('session-editor-drawer')).toBeVisible();

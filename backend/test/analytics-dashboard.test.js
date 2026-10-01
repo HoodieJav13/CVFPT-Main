@@ -54,17 +54,17 @@ test('coach-owned triggers are marked as ours', () => {
   assert.match(page, /analytics-reason-\$\{reason\.code\}|reason\.label/);
 });
 
-test('the page is wired into routing and the coach sidebar only', () => {
+test('the page is wired into routing and the coach desktop navigation only', () => {
   assert.match(appRoutes, /path="analytics" element=\{<CoachAnalytics \/>\}/);
   assert.match(shell, /\{ to: '\/coach\/analytics', label: 'Analytics', icon: BarChart3 \}/);
   // Analytics is a periodic review surface, not a daily tab: it must not
-  // join the six-slot mobile tab row, which renders from COACH_NAV.
+  // join the six-item phone corner menu, which renders from COACH_NAV.
   const navStart = shell.indexOf('const COACH_NAV = [');
   const navBlock = shell.slice(navStart, shell.indexOf('];', navStart));
   assert.ok(navStart !== -1, 'COACH_NAV found');
   assert.doesNotMatch(navBlock, /analytics/i);
-  assert.equal((navBlock.match(/\{ to:/g) || []).length, 6, 'mobile tab row stays at six slots');
-  assert.match(shell, /sidebarNav[\s\S]{0,160}COACH_EXTRA/);
+  assert.equal((navBlock.match(/\{ to:/g) || []).length, 6, 'phone corner menu stays at six items');
+  assert.match(shell, /desktopNav[\s\S]{0,160}COACH_EXTRA/);
 });
 
 test('stale responses cannot win: only the newest request writes state', () => {

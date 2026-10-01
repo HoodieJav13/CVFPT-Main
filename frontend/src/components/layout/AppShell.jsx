@@ -5,10 +5,11 @@ import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
   TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search, BarChart3,
   Download,
-  Mail, KeyRound, Loader2, Sunrise, Sunset, MonitorSmartphone,
+  Mail, KeyRound, Loader2, Sunrise, Sunset, MonitorSmartphone, Plus,
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
 import ClientJump from '@/components/ClientJump';
+import CornerMenu from '@/components/layout/CornerMenu';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -58,8 +59,8 @@ const COACH_EXTRA = [
 function BrandLogo({ size = 'desktop' }) {
   const [logoBroken, setLogoBroken] = useState(false);
   const classes = size === 'mobile'
-    ? 'h-8 w-8 rounded-lg text-xs'
-    : 'h-9 w-9 rounded-xl text-sm';
+    ? 'h-10 w-10 rounded-lg text-xs'
+    : 'h-11 w-11 rounded-xl text-sm drop-shadow-[0_4px_10px_rgb(0_0_0/0.18)]';
   if (logoBroken) {
     return (
       <div className={cn('flex items-center justify-center bg-primary text-primary-foreground font-display font-bold', classes)}>
@@ -119,9 +120,31 @@ export default function AppShell() {
   const previousNotificationIdentity = useRef(notificationIdentity);
   const [arrivalRevision, setArrivalRevision] = useState(0);
   const nav = isCoach ? COACH_NAV : CLIENT_NAV;
-  const sidebarNav = isCoach
+  const desktopNav = isCoach
     ? [...COACH_NAV, ...COACH_EXTRA, ...(user.role === 'admin' ? [{ to: '/admin', label: 'Admin', icon: ShieldCheck }] : [])]
     : CLIENT_NAV;
+  // The workout tracker has its own bottom controls; the corner menu stays off it.
+  const onTracker = /\/workouts\/[^/]+\/track$/.test(location.pathname);
+
+  // The top bar is clear over the sky and turns to glass once the page scrolls.
+  // Its height is published as --shell-top so a page's sky can sit under it.
+  const headerRef = useRef(null);
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const publish = () => document.documentElement.style.setProperty('--shell-top', `${el.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => { refreshNotifications(); }, [location.pathname, refreshNotifications]);
 
@@ -145,158 +168,128 @@ export default function AppShell() {
     previousDisplayedUnread.current = displayedUnread;
   }, [displayedUnread, notificationIdentity, unreadInitialized]);
 
+  const programsBadge = (testId, className) => (!isCoach && unread > 0 ? (
+    <NotificationCountBadge count={displayedUnread} arrivalRevision={arrivalRevision} className={className} testId={testId} />
+  ) : null);
+
   return (
-    <div className="min-h-dvh app-noise">
-      <div className="top-glow fixed inset-x-0 top-0 h-64 pointer-events-none" />
-      <div className="lg:grid lg:grid-cols-[250px_1fr]">
-        {/* Desktop sidebar */}
-        <aside className="hidden lg:flex lg:flex-col lg:h-dvh lg:sticky lg:top-0 border-r border-border bg-card/40 px-4 py-6 z-10">
-          <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2.5 px-2" data-testid="sidebar-brand">
-            <BrandLogo />
-            <div>
-              <p className="font-display font-semibold leading-none">CVF PT</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Fitness Done Right</p>
-            </div>
-          </Link>
-          <nav className="mt-8 space-y-1 flex-1">
-            {sidebarNav.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                data-testid={`sidebar-nav-${item.label.toLowerCase().replace(/[^a-z]+/g, '-')}`}
-                className={({ isActive }) => cn(
-                  'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors',
-                  isActive && 'bg-primary/10 text-primary'
-                )}
-              >
-                <item.icon className="h-[18px] w-[18px]" />
-                <span className="flex-1">{item.label}</span>
-                {!isCoach && item.label === 'Programs' && unread > 0 && (
-                  <NotificationCountBadge
-                    count={displayedUnread}
-                    arrivalRevision={arrivalRevision}
-                    className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground"
-                    testId="desktop-programs-feedback-count"
-                  />
-                )}
-              </NavLink>
-            ))}
-          </nav>
+    <div className="min-h-dvh overflow-x-clip">
+      <header
+        ref={headerRef}
+        className={cn(
+          'sticky top-0 z-40 flex items-center gap-3 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] transition-[background-color,box-shadow,backdrop-filter] duration-300 lg:gap-4 lg:px-8 lg:pb-4 lg:pt-4',
+          scrolled ? 'bg-background/90 shadow-[0_1px_0_hsl(var(--border)/0.7)] backdrop-blur-xl' : 'bg-transparent'
+        )}
+        data-testid="mobile-header"
+      >
+        <Link to={isCoach ? '/coach' : '/client'} className="flex shrink-0 items-center gap-2.5" data-testid="mobile-brand">
+          <BrandLogo />
+          <span className="font-display text-lg font-semibold tracking-[0.08em] lg:text-xl">CVF PT</span>
+        </Link>
+
+        {/* Desktop: wide glass tabs along the top (the sidebar is gone). */}
+        <nav aria-label="Main" className="glass-surface ml-2 hidden max-w-[52rem] flex-1 items-center gap-0.5 rounded-2xl p-1 lg:flex" data-testid="desktop-navigation">
+          {desktopNav.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              data-testid={`topnav-${item.label.toLowerCase().replace(/[^a-z]+/g, '-')}`}
+              className={({ isActive }) => cn(
+                'relative flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-semibold transition-colors',
+                isActive
+                  ? 'bg-[image:linear-gradient(180deg,hsl(var(--action-a)),hsl(var(--action-b)))] text-action-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.22)]'
+                  : 'hover:bg-foreground/5'
+              )}
+            >
+              {item.label}
+              {item.label === 'Programs' && programsBadge('desktop-programs-feedback-count', 'rounded-full bg-gold px-1.5 py-0.5 text-[10px] font-bold text-gold-foreground')}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="ml-auto flex items-center gap-2" data-testid="mobile-header-actions">
           {isCoach && (
             <button
               type="button"
               onClick={() => setJumpOpen(true)}
-              className="mb-1 flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="glass-surface relative hidden h-11 w-11 items-center justify-center rounded-2xl lg:flex"
+              aria-label="Find client (⌘K)"
+              title="Find client (⌘K)"
               data-testid="desktop-client-jump-trigger"
             >
               <Search className="h-[18px] w-[18px]" />
-              <span className="flex-1 text-left">Find client</span>
-              <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">⌘K</kbd>
+              <kbd className="absolute -bottom-1.5 -right-1.5 rounded-md border border-border bg-card px-1 text-[9px] font-semibold text-muted-foreground">⌘K</kbd>
             </button>
+          )}
+          {isCoach && (
+            <Button variant="ghost" size="icon" className="glass-surface h-11 w-11 rounded-2xl lg:hidden" onClick={() => setJumpOpen(true)} data-testid="mobile-client-jump-trigger" aria-label="Find client">
+              <Search className="h-5 w-5" />
+            </Button>
+          )}
+          {isCoach && (
+            <Link
+              to="/coach/sessions?new=1"
+              className="glass-surface flex h-11 items-center gap-1.5 rounded-2xl px-3 text-sm font-semibold lg:px-4 [background:linear-gradient(hsl(var(--primary)/0.22),hsl(var(--primary)/0.22)),hsl(var(--glass))]"
+              aria-label="New session"
+              data-testid="dashboard-new-session-button"
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              <span className="hidden sm:inline">New session</span>
+            </Link>
           )}
           {isCoach && (
             <Link
               to="/coach/notifications"
-              className="mb-2 flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="glass-surface relative hidden h-11 w-11 items-center justify-center rounded-2xl lg:flex"
+              aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
               data-testid="desktop-notifications-link"
             >
-              <span className="relative">
-                <Bell className="h-[18px] w-[18px]" />
-                {unread > 0 && <span className="absolute -right-2 -top-2 h-2.5 w-2.5 rounded-full border-2 border-background bg-primary" />}
-              </span>
-              <span className="flex-1">Notifications</span>
+              <Bell className="h-[18px] w-[18px]" />
               {unread > 0 && (
                 <NotificationCountBadge
                   count={displayedUnread}
                   arrivalRevision={arrivalRevision}
-                  className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground"
+                  className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-bold text-gold-foreground"
                   testId="desktop-notification-count"
                 />
               )}
             </Link>
           )}
-          <UserMenu user={user} logout={logout} />
-          <p className="mt-3 px-2 text-[11px] text-muted-foreground/70">Core Value Fitness - Albuquerque, NM</p>
-        </aside>
-
-        <div className="relative z-10">
-          {/* Mobile top bar */}
-          {/* pt-safe: standalone iOS draws the page under the status bar
-              (black-translucent), so the sticky header pads itself below it. */}
-          <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur" data-testid="mobile-header">
-            <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2" data-testid="mobile-brand">
-              <BrandLogo size="mobile" />
-              <span className="font-display font-semibold">CVF PT</span>
-            </Link>
-            <div className="flex items-center gap-2" data-testid="mobile-header-actions">
-              {isCoach && (
-                <Button variant="ghost" size="icon" onClick={() => setJumpOpen(true)} data-testid="mobile-client-jump-trigger" aria-label="Find client">
-                  <Search className="h-5 w-5" />
-                </Button>
+          {isCoach && (
+            <Button variant="ghost" size="icon" className="glass-surface relative h-11 w-11 rounded-2xl lg:hidden" onClick={() => navigate('/coach/notifications')} data-testid="mobile-notifications-link" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
+              <Bell className="h-5 w-5" />
+              {unread > 0 && (
+                <NotificationCountBadge
+                  count={displayedUnread}
+                  arrivalRevision={arrivalRevision}
+                  className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[9px] font-bold text-gold-foreground"
+                  testId="mobile-notification-count"
+                />
               )}
-              {isCoach && (
-                <Button variant="ghost" size="icon" className="relative" onClick={() => navigate('/coach/notifications')} data-testid="mobile-notifications-link" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
-                  <Bell className="h-5 w-5" />
-                  {unread > 0 && (
-                    <NotificationCountBadge
-                      count={displayedUnread}
-                      arrivalRevision={arrivalRevision}
-                      className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground"
-                      testId="mobile-notification-count"
-                    />
-                  )}
-                </Button>
-              )}
-              {user.role === 'admin' && (
-                <Button variant="ghost" size="icon" onClick={() => navigate('/admin')} data-testid="mobile-admin-link">
-                  <ShieldCheck className="h-5 w-5 text-primary" />
-                </Button>
-              )}
-              <UserMenu user={user} logout={logout} compact />
-            </div>
-          </header>
-
-          <main className="px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 lg:px-8 lg:pb-10 lg:pt-8 max-w-5xl mx-auto w-full">
-            <Outlet />
-          </main>
+            </Button>
+          )}
+          {user.role === 'admin' && (
+            <Button variant="ghost" size="icon" className="glass-surface h-11 w-11 rounded-2xl lg:hidden" onClick={() => navigate('/admin')} data-testid="mobile-admin-link" aria-label="Admin">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+            </Button>
+          )}
+          <UserMenu user={user} logout={logout} compact />
         </div>
-      </div>
+      </header>
 
-      {/* Mobile bottom tabs */}
-      {/* pb-safe keeps the tab row above the iPhone home indicator. */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/85 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70" data-testid="mobile-bottom-navigation">
-        <div className="grid grid-cols-6 h-16">
-          {nav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              data-testid={`bottom-tab-${item.label.toLowerCase()}`}
-              className={({ isActive }) => cn(
-                'relative flex flex-col items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground',
-                isActive && 'text-primary'
-              )}
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && <span className="absolute -top-px h-[2px] w-10 rounded-full bg-primary" />}
-                  <item.icon className="h-5 w-5" />
-                  {item.label}
-                  {!isCoach && item.label === 'Programs' && unread > 0 && (
-                    <NotificationCountBadge
-                      count={displayedUnread}
-                      arrivalRevision={arrivalRevision}
-                      className="absolute right-[calc(50%-1.4rem)] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground"
-                      testId="mobile-programs-feedback-count"
-                    />
-                  )}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </div>
-      </nav>
+      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 lg:max-w-6xl lg:px-8 lg:pb-10 lg:pt-6">
+        <Outlet />
+      </main>
+
+      {/* Phone navigation: one corner button. pb-safe keeps it above the iPhone home indicator. */}
+      {!onTracker && (
+        <CornerMenu
+          items={nav}
+          badgeFor={(item) => (item.label === 'Programs' ? programsBadge(undefined, 'ml-1 rounded-full bg-gold px-1.5 py-0.5 text-[10px] font-bold text-gold-foreground') : null)}
+          closedBadge={programsBadge('mobile-programs-feedback-count', 'absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-background bg-gold px-1 text-[10px] font-bold text-gold-foreground')}
+        />
+      )}
 
       {isCoach && <ClientJump open={jumpOpen} onOpenChange={setJumpOpen} />}
     </div>
@@ -427,7 +420,7 @@ function UserMenu({ user, logout, compact }) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className={cn('flex items-center gap-3 rounded-xl hover:bg-accent transition-colors', compact ? 'p-1' : 'px-3 py-2 w-full')}
+          className={cn('flex items-center gap-3 transition-colors', compact ? 'glass-surface h-11 w-11 justify-center rounded-full' : 'w-full rounded-xl px-3 py-2 hover:bg-accent')}
           data-testid="user-menu-trigger"
         >
           <Avatar className="h-8 w-8">
