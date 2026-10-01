@@ -1,9 +1,9 @@
 # Recurring sessions: hosted release runbook
 
-Status: **prepared, not executed.** Nothing in this document has been run against the
-hosted Supabase project, Vercel, or GitHub. Every hosted action below needs the
-owner's explicit authorization (`.agentic/PROJECT_POLICY.md`), and no step asks for
-or exposes a credential.
+Status: **hosted gates executed on 2026-10-01 under explicit owner delegation.**
+See `2026-10-01-recurring-sessions-hosted-release.md` for the evidence record. This
+checklist remains reusable; every future hosted action needs the owner's explicit
+authorization (`.agentic/PROJECT_POLICY.md`). No step asks for or exposes a credential.
 
 Feature branch: `claude/recurring-sessions` · Spec:
 `docs/superpowers/specs/2026-09-30-recurring-sessions-design.md` · Plan:
