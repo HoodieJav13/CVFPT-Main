@@ -389,7 +389,7 @@ export default function WorkoutTracker() {
       if (queued) filledCount += 1;
     });
     if (!filledCount) {
-      toast.info('Nothing to fill.');
+      toast.info('Nothing copied: no empty fields match last time.');
       return;
     }
     toast.success(`Filled ${filledCount} set${filledCount === 1 ? '' : 's'} from ${new Date(occurrence.completed_at).toLocaleDateString()}`);
@@ -490,16 +490,16 @@ export default function WorkoutTracker() {
           </Button>
         )}
         <Button
-          type="button" variant="ghost" size="touchIcon"
-          className={cn('text-muted-foreground', (restEndsAt || sealed) && 'ml-auto')}
+          type="button" variant="ghost" size="sm"
+          className={cn('min-h-11 px-2 text-xs text-muted-foreground', (restEndsAt || sealed) && 'ml-auto')}
           onClick={toggleRestAlerts}
           aria-pressed={restAlerts}
           aria-label={restAlerts ? 'Turn rest alerts off' : 'Turn rest alerts on'}
-          title={restAlerts ? 'Rest alerts on' : 'Rest alerts off'}
           data-testid="rest-alerts-toggle"
           data-rest-alerts={restAlerts ? 'on' : 'off'}
         >
           {restAlerts ? <Bell className="text-primary" aria-hidden /> : <BellOff aria-hidden />}
+          Rest alerts
         </Button>
       </div>
 

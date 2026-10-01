@@ -208,7 +208,7 @@ function ClientStatusBadges({ client }) {
       {client.auth_user_id ? (
         <Badge variant="outline" className="bg-success/15 text-success-foreground border-success/25">Account active</Badge>
       ) : client.invited ? (
-        <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Invited</Badge>
+        <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Invite sent · Signup pending</Badge>
       ) : (
         <Badge variant="outline" className="text-muted-foreground">Not invited</Badge>
       )}
@@ -356,7 +356,7 @@ function OverviewTab({ client, waiver, reload, user }) {
               <p className="font-medium text-sm">App invite</p>
               {!client.auth_user_id && (
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {client.invited ? `Sent to ${client.email || 'their email'}` : 'Emails a signup link'}
+                  {client.invited ? `Sent to ${client.email || 'their email'} · Turn off to withdraw` : 'Turn on to email a signup link'}
                 </p>
               )}
             </div>
@@ -364,6 +364,7 @@ function OverviewTab({ client, waiver, reload, user }) {
               checked={client.invited || Boolean(client.auth_user_id)}
               disabled={Boolean(client.auth_user_id)}
               onCheckedChange={toggleInvite}
+              aria-label="App invite"
               data-testid="client-invite-switch"
             />
           </div>
@@ -730,6 +731,7 @@ function ProgressTab({ clientId }) {
                     <SelectItem value="neutral">Track only — no PRs</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">Sets which entries count as personal records.</p>
               </div>
               <div className="space-y-1.5"><Label>Goal{metricForm.unit ? ` (${metricForm.unit})` : ''}</Label>
                 <Input type="number" step="any" inputMode="decimal" value={metricForm.target_value} onChange={(e) => setMetricForm({ ...metricForm, target_value: e.target.value })} placeholder="Optional target" data-testid="metric-target-input" />

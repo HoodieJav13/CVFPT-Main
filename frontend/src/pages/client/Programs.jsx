@@ -121,9 +121,9 @@ export default function ClientPrograms() {
         </div>
       )}
       <div className="space-y-5">
-        {view === 'current' && (
+        {view === 'current' && hasTrainingContent && (
           <section className="space-y-3" role="tabpanel" data-testid="client-training-current">
-            <div><h2 className="font-display text-lg font-semibold">Current program</h2><p className="text-sm text-muted-foreground">Your primary coach-built training plan.</p></div>
+            <h2 className="font-display text-lg font-semibold">Current program</h2>
             {programAssignments.length === 0
               ? <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No current program assigned.</div>
               : programAssignments.map((assignment) => <ProgramAssignmentCard key={assignment.id} assignment={assignment} starting={starting} onStart={startWorkout} />)}
@@ -140,7 +140,7 @@ export default function ClientPrograms() {
         )}
 
         {view === 'history' && <section className="space-y-3" role="tabpanel" data-testid="client-workout-history">
-          <div><h2 className="font-display text-lg font-semibold">Workout history</h2><p className="text-sm text-muted-foreground">Completed self-guided workouts.</p></div>
+          <h2 className="font-display text-lg font-semibold">Workout history</h2>
           {history.length === 0 ? (
             <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No completed workouts yet.</div>
           ) : history.map((log) => <HistoryRow key={log.id} log={log} />)}

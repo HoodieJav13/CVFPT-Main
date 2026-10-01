@@ -125,9 +125,13 @@ test('real client auth covers check-in, booking, messaging, route protection, an
   const marker = clientFlowMarker;
   await login(page, accounts.client, '/client');
   await expect(page.getByRole('heading', { name: /Today, CVF/ })).toBeVisible();
-  await expect(page.getByTestId('daily-check-in-card')).toBeVisible();
-
-  await page.getByTestId('open-check-in-button').click();
+  // The check-in has one entry point: the Today card when the check-in is
+  // today's plan, otherwise the daily check-in card.
+  const dailyCheckIn = page.getByTestId('daily-check-in-card');
+  const todayCheckIn = page.getByTestId('client-today-plan').getByRole('button', { name: 'Start check-in' });
+  await expect(dailyCheckIn.or(todayCheckIn)).toBeVisible();
+  if (await todayCheckIn.isVisible()) await todayCheckIn.click();
+  else await page.getByTestId('open-check-in-button').click();
   for (const id of ['check-in-energy', 'check-in-soreness', 'check-in-sleep', 'check-in-stress']) {
     await page.getByTestId(id).getByRole('button', { name: '3' }).click();
   }

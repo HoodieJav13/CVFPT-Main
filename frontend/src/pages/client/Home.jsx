@@ -176,18 +176,20 @@ export default function ClientHome() {
           gentle, opportunity-framed chance to be rectified — same one-tap. */}
       {rhythm?.yesterday_missed?.length > 0 && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-achievement/35 bg-achievement/10 px-4 py-3.5" data-testid="catch-up-card">
-          <p className="min-w-0 truncate text-sm font-semibold">
-            {rhythm.yesterday_missed[0].workout_name || 'Assigned workout'} <span className="font-normal text-muted-foreground">· Yesterday</span>
-          </p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{rhythm.yesterday_missed[0].workout_name || 'Assigned workout'}</p>
+            <p className="text-xs text-muted-foreground">Yesterday · Still open · Counts this week</p>
+          </div>
           <Button
-            size="touchIcon" variant="outline" className="shrink-0 rounded-xl border-achievement/40"
+            size="sm" variant="outline" className="min-h-11 shrink-0 rounded-xl border-achievement/40"
             disabled={quickCompleting}
             onClick={() => quickComplete({ workout_assignment_id: rhythm.yesterday_missed[0].id })}
-            aria-label={`I did ${rhythm.yesterday_missed[0].workout_name || 'it'} yesterday`}
-            title="I did it"
+            aria-label={`Mark ${rhythm.yesterday_missed[0].workout_name || 'yesterday’s workout'} done without logging sets`}
+            title="Mark done without logging sets"
             data-testid="catch-up-quick-complete"
           >
-            {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="!size-5" />}
+            {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden />}
+            Mark done
           </Button>
         </div>
       )}
@@ -219,14 +221,15 @@ export default function ClientHome() {
               {/* One-tap for clients who won't track sets: open app, tap, close. */}
               <Button
                 variant="outline"
-                className="h-14 w-14 shrink-0 rounded-xl"
+                className="min-h-14 shrink-0 rounded-xl px-4"
                 disabled={startingWorkout || quickCompleting}
                 onClick={() => quickComplete(todayPlan.source)}
-                aria-label="I did it — mark done without tracking sets"
-                title="I did it"
+                aria-label="Mark done without logging sets"
+                title="Mark done without logging sets"
                 data-testid="client-today-quick-complete"
               >
-                {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="!size-5" />}
+                {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden />}
+                Mark done
               </Button>
             </div>
           ) : todayPlan.kind === 'check_in' ? (
@@ -305,7 +308,7 @@ export default function ClientHome() {
             </Button>
           </CardContent>
         </Card>
-      ) : (
+      ) : todayPlan.kind === 'check_in' ? null : (
       <Card className="border-primary/25" data-testid="daily-check-in-card">
         <CardContent className="flex items-center justify-between gap-3 p-4">
           <SectionLabel>Daily check-in</SectionLabel>

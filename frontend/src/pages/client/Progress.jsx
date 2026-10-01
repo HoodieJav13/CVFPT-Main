@@ -209,7 +209,6 @@ export default function ClientProgress() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <CardTitle className="text-base font-display">{m.name}</CardTitle>
-                    {!latest && <p className="text-xs text-muted-foreground mt-0.5">No entries yet</p>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {m.latest_is_personal_best && (
