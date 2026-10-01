@@ -5,10 +5,10 @@ const PDFDocument = require('pdfkit');
 const CVF_LOCATION = 'Core Value Fitness - Albuquerque, NM';
 const LOGO_PATH = path.join(__dirname, '..', 'assets', 'cvf-logo.png');
 
-// Keep in sync with --primary in frontend/src/index.css — pdfkit can't read CSS vars.
-const teal = '#5EC4D4';
-// Keep in sync with --gold in frontend/src/index.css — pdfkit can't read CSS vars.
-const gold = '#FCF640';
+// Logo teal: keep in sync with the sunset (.dark) --primary in frontend/src/index.css — pdfkit can't read CSS vars.
+const teal = '#5CC8E0';
+// Logo gold: keep in sync with --gold in frontend/src/index.css — pdfkit can't read CSS vars.
+const gold = '#FECC2A';
 const dark = '#09111C';
 const muted = '#5F6B78';
 

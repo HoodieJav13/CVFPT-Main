@@ -1,11 +1,10 @@
-// Warm-graphite surface guard (owner decision 2026-08-13): every neutral
-// surface token lives at hue 25–45 with saturation ≤ 20% at low lightness —
-// values arithmetically incapable of reading navy (hue 200–260) or green
-// (hue 100–160). This test parses the token source directly so a future
-// edit cannot drift the ramp back toward either; accents (--primary teal,
-// --gold, --success, --destructive, charts) are deliberately unconstrained.
-// Reading across the deploy boundary is fine here: tests run from the
-// monorepo checkout, never from a deployed bundle.
+// Sky Field surface guard (owner decision 2026-10-01, replacing the
+// 2026-08-13 warm-graphite rule): the sunrise (light, :root) and sunset
+// (dark, .dark) themes both keep their neutral surfaces warm — hue 0–50, or
+// pure white — so neither can drift toward navy (hue 200–260) or green
+// (hue 100–160). Accents are the logo's own teal and gold. This test parses
+// the token source directly. Reading across the deploy boundary is fine
+// here: tests run from the monorepo checkout, never from a deployed bundle.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,49 +12,63 @@ const path = require('node:path');
 
 const css = fs.readFileSync(path.join(__dirname, '../../frontend/src/index.css'), 'utf8');
 
-function token(name) {
-  const match = css.match(new RegExp(`--${name}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`));
+function block(selector) {
+  const start = css.indexOf(`  ${selector} {\n    --background`);
+  assert.ok(start >= 0, `${selector} token block not found`);
+  return css.slice(start, css.indexOf('\n  }', start));
+}
+const LIGHT = block(':root');
+const DARK = block('.dark');
+
+function token(name, source = DARK) {
+  const match = source.match(new RegExp(`--${name}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`));
   assert.ok(match, `token --${name} not found as an H S% L% triplet`);
   return { h: Number(match[1]), s: Number(match[2]), l: Number(match[3]) };
 }
 
-const WARM_HUE = [25, 45];
-const inWarmBand = ({ h }) => h >= WARM_HUE[0] && h <= WARM_HUE[1];
+const WARM_HUE = [0, 50];
+const isWarm = ({ h, s }) => s === 0 || (h >= WARM_HUE[0] && h <= WARM_HUE[1]);
+const SURFACES = ['background', 'card', 'popover', 'secondary', 'muted', 'accent', 'border', 'input'];
 
-test('dark surface tokens sit in the warm band with capped saturation', () => {
-  for (const name of ['background', 'card', 'popover', 'secondary', 'muted', 'accent', 'border', 'input']) {
-    const value = token(name);
-    assert.ok(inWarmBand(value), `--${name} hue ${value.h} outside warm band ${WARM_HUE.join('–')}`);
-    assert.ok(value.s <= 20, `--${name} saturation ${value.s}% exceeds the 20% cap`);
-    assert.ok(value.l <= 25, `--${name} lightness ${value.l}% is not a dark surface`);
+test('sunset (dark) surfaces are warm, low-saturation and dark', () => {
+  for (const name of SURFACES) {
+    const value = token(name, DARK);
+    assert.ok(isWarm(value), `dark --${name} hue ${value.h} is not warm`);
+    assert.ok(value.s <= 20, `dark --${name} saturation ${value.s}% exceeds the 20% cap`);
+    assert.ok(value.l <= 25, `dark --${name} lightness ${value.l}% is not a dark surface`);
   }
 });
 
-test('foreground and ink tokens stay in the warm band', () => {
-  for (const name of [
-    'foreground', 'card-foreground', 'popover-foreground', 'secondary-foreground',
-    'accent-foreground', 'muted-foreground', 'signature-foreground',
-    'primary-foreground', 'gold-foreground',
-  ]) {
-    const value = token(name);
-    assert.ok(inWarmBand(value), `--${name} hue ${value.h} outside warm band ${WARM_HUE.join('–')}`);
-    assert.ok(value.s <= 30, `--${name} saturation ${value.s}% exceeds the 30% cap`);
+test('sunrise (light) surfaces are warm and light', () => {
+  for (const name of SURFACES) {
+    const value = token(name, LIGHT);
+    assert.ok(isWarm(value), `light --${name} hue ${value.h} is not warm`);
+    assert.ok(value.s <= 30, `light --${name} saturation ${value.s}% exceeds the 30% cap`);
+    assert.ok(value.l >= 78, `light --${name} lightness ${value.l}% is not a light surface`);
   }
 });
 
-test('the accent family is untouched by the surface rule', () => {
-  // Canary values: if someone "fixes" the accents into the warm band, that
-  // is a brand change, not hygiene — it should fail loudly here.
-  assert.equal(token('primary').h, 188);
-  assert.equal(token('gold').h, 58);
-  assert.equal(token('success').h, 160);
-  assert.equal(token('destructive').h, 352);
+test('text on the light theme uses ink tokens that pass contrast on white', () => {
+  // Logo teal and gold fail as text on a light ground (about 1.9:1 and 1.5:1),
+  // so light --primary is a teal ink and gold/success/achievement text reads
+  // the *-ink tokens (tailwind.config.js textColor).
+  assert.ok(token('primary', LIGHT).l <= 32, 'light --primary must be a dark teal ink');
+  for (const name of ['gold-ink', 'success-ink', 'achievement-ink']) {
+    assert.ok(token(name, LIGHT).l <= 32, `light --${name} must be dark enough to read on white`);
+  }
+  const tw = fs.readFileSync(path.join(__dirname, '../../frontend/tailwind.config.js'), 'utf8');
+  assert.match(tw, /textColor:[\s\S]*gold:[\s\S]*--gold-ink[\s\S]*success:[\s\S]*--success-ink[\s\S]*achievement:[\s\S]*--achievement-ink/);
 });
 
-test('the PWA frame colors (meta theme-color, manifest) stay in the warm band', () => {
+test('accents are the logo colours', () => {
+  assert.deepEqual(token('primary', DARK), { h: 191, s: 68, l: 62 });
+  assert.deepEqual(token('gold', DARK), { h: 46, s: 99, l: 58 });
+  assert.deepEqual(token('gold', LIGHT), { h: 46, s: 99, l: 58 });
+});
+
+test('the PWA frame colors (meta theme-color, manifest) are warm', () => {
   // The app frame — splash screen, status bar, app-switcher card — is
-  // painted from these two files, not from index.css; a palette change
-  // that forgets them greets users with the old color before first paint.
+  // painted from these two files before index.css loads.
   const html = fs.readFileSync(path.join(__dirname, '../../frontend/index.html'), 'utf8');
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../../frontend/public/site.webmanifest'), 'utf8'));
   const meta = html.match(/name="theme-color" content="(#[0-9a-fA-F]{6})"/);
@@ -76,11 +89,11 @@ test('the PWA frame colors (meta theme-color, manifest) stay in the warm band', 
       else h = 60 * ((r - g) / d + 4);
     }
     if (h < 0) h += 360;
-    assert.ok(h >= WARM_HUE[0] && h <= WARM_HUE[1], `${label} ${hex} hue ${h.toFixed(0)} outside warm band`);
+    assert.ok(h >= WARM_HUE[0] && h <= WARM_HUE[1], `${label} ${hex} hue ${h.toFixed(0)} is not warm`);
   }
 });
 
-test('PDF export hex literals equal the --primary / --gold tokens', () => {
+test('PDF export hex literals equal the logo --primary / --gold tokens', () => {
   // lib/programPdf.js cannot read CSS variables, so its teal/gold are hex
   // literals (CLAUDE.md "Brand system"). This pins them to the tokens: if
   // --primary or --gold moves, the PDF hex must move with it.
@@ -101,6 +114,6 @@ test('PDF export hex literals equal the --primary / --gold tokens', () => {
     const hex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
     return `#${hex(r)}${hex(g)}${hex(b)}`.toUpperCase();
   };
-  assert.equal(literal('teal'), hslToHex(token('primary')), 'PDF teal drifted from --primary');
-  assert.equal(literal('gold'), hslToHex(token('gold')), 'PDF gold drifted from --gold');
+  assert.equal(literal('teal'), hslToHex(token('primary', DARK)), 'PDF teal drifted from the logo-teal --primary');
+  assert.equal(literal('gold'), hslToHex(token('gold', DARK)), 'PDF gold drifted from --gold');
 });

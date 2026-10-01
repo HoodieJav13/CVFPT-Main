@@ -5,12 +5,14 @@ import { cva } from "class-variance-authority";
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,text-decoration-color,fill,stroke,transform] [transition-duration:var(--motion-duration-press)] [transition-timing-function:var(--motion-ease-out)] active:scale-[0.97] motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,text-decoration-color,fill,stroke,transform] [transition-duration:var(--motion-duration-press)] [transition-timing-function:var(--motion-ease-out)] active:scale-[0.97] active:translate-y-px motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
+        // Lit from above with a soft shadow beneath (Sky Field). Ink in the
+        // sunrise theme, logo teal in the sunset theme (--action-* tokens).
         default:
-          "bg-primary text-primary-foreground shadow hover:bg-primary/90",
+          "bg-action text-action-foreground bg-[image:linear-gradient(180deg,hsl(var(--action-a)),hsl(var(--action-b)))] shadow-[inset_0_1px_0_rgb(255_255_255/0.22),inset_0_-1px_0_rgb(0_0_0/0.18),0_10px_22px_-10px_hsl(var(--action-glow)/0.6)] hover:brightness-110",
         destructive:
           "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
         outline:

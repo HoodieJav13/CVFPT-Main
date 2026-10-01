@@ -62,6 +62,33 @@ module.exports = {
           '1': 'hsl(var(--chart-1))',
           '2': 'hsl(var(--chart-2))',
           '3': 'hsl(var(--chart-3))'
+        },
+        action: {
+          DEFAULT: 'hsl(var(--action-b))',
+          foreground: 'hsl(var(--action-foreground))',
+          icon: 'hsl(var(--action-icon))'
+        },
+        glass: {
+          DEFAULT: 'hsl(var(--glass))',
+          foreground: 'hsl(var(--glass-foreground))',
+          line: 'hsl(var(--glass-line))'
+        }
+      },
+      // Gold, success and achievement are bright fills that fail as text on
+      // the sunrise (light) ground, so their text utilities read the ink
+      // tokens instead; fills and borders keep the bright values.
+      textColor: {
+        gold: {
+          DEFAULT: 'hsl(var(--gold-ink))',
+          foreground: 'hsl(var(--gold-foreground))'
+        },
+        success: {
+          DEFAULT: 'hsl(var(--success-ink))',
+          foreground: 'hsl(var(--success-foreground))'
+        },
+        achievement: {
+          DEFAULT: 'hsl(var(--achievement-ink))',
+          foreground: 'hsl(var(--achievement-gold-foreground))'
         }
       }
     }
