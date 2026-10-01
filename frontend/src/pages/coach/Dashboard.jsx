@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { StatTile, DashboardSkeleton, LoadErrorState, StatusBadge, SectionLabel, CheckInStats } from '@/components/common';
+import { StatTile, DashboardSkeleton, LoadErrorState, StatusBadge, SectionLabel, CheckInStats, IconLink } from '@/components/common';
 import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -110,9 +110,7 @@ export default function CoachDashboard() {
       <Card className="mt-5" data-testid="coach-dashboard-today-sessions-card">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
           <SectionLabel>Today's sessions</SectionLabel>
-          <Link to="/coach/sessions" className="text-xs text-primary font-medium flex items-center" data-testid="view-all-sessions-link">
-            View all <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
+          <IconLink to="/coach/sessions" label="All sessions" data-testid="view-all-sessions-link" />
         </CardHeader>
         <CardContent className="space-y-2.5">
           {data.today_sessions.length === 0 && (
@@ -138,10 +136,7 @@ export default function CoachDashboard() {
 
       <Card className="mt-4" data-testid="coach-action-queue">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-          <div>
-            <SectionLabel>Today&apos;s priorities</SectionLabel>
-            <p className="mt-1 text-sm text-muted-foreground">Resolve the work that is waiting on you.</p>
-          </div>
+          <SectionLabel>Today&apos;s priorities</SectionLabel>
           <Link to="/coach/analytics" className="flex min-h-11 shrink-0 items-center text-xs font-medium text-primary">
             Analytics <ChevronRight className="h-3.5 w-3.5" />
           </Link>

@@ -306,8 +306,8 @@ function OverviewTab({ client, waiver, reload, user }) {
           <SectionLabel>Profile</SectionLabel>
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="rounded-lg" data-testid="edit-client-button">
-                <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
+              <Button variant="ghost" size="touchIcon" className="-my-2 rounded-lg" aria-label="Edit profile" title="Edit profile" data-testid="edit-client-button">
+                <Pencil aria-hidden />
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md" aria-describedby={undefined}>
@@ -811,7 +811,7 @@ function ProgressTab({ clientId }) {
                 <Input type="date" value={entryForm.recorded_on} onChange={(e) => setEntryForm({ ...entryForm, recorded_on: e.target.value })} data-testid="entry-date-input" /></div>
             </div>
             <div className="space-y-1.5"><Label>Notes</Label>
-              <Input value={entryForm.notes} onChange={(e) => setEntryForm({ ...entryForm, notes: e.target.value })} placeholder="PR! Great depth." data-testid="entry-notes-input" /></div>
+              <Input value={entryForm.notes} onChange={(e) => setEntryForm({ ...entryForm, notes: e.target.value })} data-testid="entry-notes-input" /></div>
             <DialogFooter>
               <Button type="submit" disabled={saving} className="rounded-xl w-full sm:w-auto" data-testid="entry-save-button">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingEntry ? 'Save changes' : 'Log entry'}
@@ -1197,8 +1197,8 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                       <p className="text-sm font-medium">{day.workout?.name || 'Workout day'}</p>
                     </div>
                     {day.workout && day.workout.is_template === false && (
-                      <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground shrink-0" onClick={() => openCopyEditor(day.workout)} data-testid="edit-client-workout-button">
-                        <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                      <Button size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground shrink-0" onClick={() => openCopyEditor(day.workout)} aria-label={`Edit ${day.workout.name || 'workout day'}`} title="Edit" data-testid="edit-client-workout-button">
+                        <Pencil aria-hidden />
                       </Button>
                     )}
                     {assignment && day.id && (
@@ -1248,7 +1248,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         />
       )}
       <section className="space-y-3 pt-3" data-testid="coach-client-workout-history">
-        <div><h3 className="font-display text-lg font-semibold">Workout history</h3><p className="text-sm text-muted-foreground">Completed self-guided workouts.</p></div>
+        <h3 className="font-display text-lg font-semibold">Workout history</h3>
         {workoutHistory.length === 0 ? <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">No completed workouts yet.</p> : workoutHistory.slice(0, 12).map((log) => (
           <Link key={log.id} to={`/coach/workouts/${log.id}`} className="flex min-h-14 items-center justify-between rounded-md border border-border bg-card/60 px-4 py-3 hover:bg-card">
             <span><span className="block font-medium">{log.workout_name}</span><span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)}</span></span>
@@ -1394,7 +1394,7 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
             )}
             <ExistingLoadEditor type="workout" assignment={assignment} selection={workout} onSaved={onReload} />
             {onEdit && workout.is_template === false && (
-              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onEdit(workout)} data-testid="edit-client-workout-button"><Pencil className="mr-1 h-3.5 w-3.5" /> Edit</Button>
+              <Button size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onEdit(workout)} aria-label={`Edit ${workout.name || 'workout'}`} title="Edit" data-testid="edit-client-workout-button"><Pencil aria-hidden /></Button>
             )}
             {onSaveTemplate && (
               <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onSaveTemplate(workout)} data-testid="save-workout-template-button">Save as template</Button>

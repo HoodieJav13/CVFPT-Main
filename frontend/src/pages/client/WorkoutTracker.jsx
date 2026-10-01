@@ -467,16 +467,16 @@ export default function WorkoutTracker() {
           {!outbox.online && <Badge variant="outline"><WifiOff className="mr-1 h-3.5 w-3.5" /> Offline</Badge>}
         </span>
         <Button
-          type="button" variant="ghost" size="sm"
-          className="ml-auto min-h-11 px-2 text-xs text-muted-foreground"
+          type="button" variant="ghost" size="touchIcon"
+          className="ml-auto text-muted-foreground"
           onClick={toggleRestAlerts}
           aria-pressed={restAlerts}
           aria-label={restAlerts ? 'Turn rest alerts off' : 'Turn rest alerts on'}
+          title={restAlerts ? 'Rest alerts on' : 'Rest alerts off'}
           data-testid="rest-alerts-toggle"
           data-rest-alerts={restAlerts ? 'on' : 'off'}
         >
-          {restAlerts ? <Bell className="mr-1 h-3.5 w-3.5 text-primary" /> : <BellOff className="mr-1 h-3.5 w-3.5" />}
-          Rest alerts {restAlerts ? 'on' : 'off'}
+          {restAlerts ? <Bell className="text-primary" aria-hidden /> : <BellOff aria-hidden />}
         </Button>
       </div>
 
@@ -567,8 +567,8 @@ export default function WorkoutTracker() {
                     <Check className="h-5 w-5" />
                   </Button>
                   {set.set_origin === 'extra' && (
-                    <Button type="button" size="sm" variant="ghost" className="col-start-2 min-h-11 w-fit text-muted-foreground" onClick={() => removeSet(exercise, set)}>
-                      <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove extra set
+                    <Button type="button" size="touchIcon" variant="ghost" className="col-start-2 text-muted-foreground" onClick={() => removeSet(exercise, set)} aria-label="Remove extra set" title="Remove extra set">
+                      <Trash2 aria-hidden />
                     </Button>
                   )}
                 </div>

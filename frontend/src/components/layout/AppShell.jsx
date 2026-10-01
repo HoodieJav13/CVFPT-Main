@@ -152,10 +152,7 @@ export default function AppShell() {
         <aside className="hidden lg:flex lg:flex-col lg:h-dvh lg:sticky lg:top-0 border-r border-border bg-card/40 px-4 py-6 z-10">
           <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2.5 px-2" data-testid="sidebar-brand">
             <BrandLogo />
-            <div>
-              <p className="font-display font-semibold leading-none">CVF PT</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Fitness Done Right</p>
-            </div>
+            <p className="font-display font-semibold leading-none">CVF PT</p>
           </Link>
           <nav className="mt-8 space-y-1 flex-1">
             {sidebarNav.map((item) => (

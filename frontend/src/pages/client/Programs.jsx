@@ -128,7 +128,7 @@ export default function ClientPrograms() {
 
         {view === 'other' && (
           <section className="space-y-3" role="tabpanel" data-testid="client-training-other">
-            <div><h2 className="font-display text-lg font-semibold">Other workouts</h2><p className="text-sm text-muted-foreground">Dated assignments and reusable standalone workouts.</p></div>
+            <h2 className="font-display text-lg font-semibold">Other workouts</h2>
             {(activeWorkouts.length > 0 || datedWorkouts.length > 0)
               ? [...activeWorkouts, ...datedWorkouts].map((assignment) => <WorkoutAssignmentCard key={assignment.id} assignment={assignment} starting={starting} onStart={startWorkout} />)
               : <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No other workouts assigned.</div>}

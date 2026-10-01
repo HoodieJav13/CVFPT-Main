@@ -96,10 +96,7 @@ export default function CheckInForm({ initial, saving, onSubmit, submitLabel = '
             <Textarea rows={2} value={form.coach_notes} onChange={(e) => setForm({ ...form, coach_notes: e.target.value })} placeholder="Response or follow-up..." data-testid="check-in-coach-notes" />
           </div>
           <div className="flex items-center justify-between rounded-xl border border-border bg-card/50 px-3 py-2.5">
-            <div>
-              <p className="text-sm font-medium">Mark reviewed</p>
-              <p className="text-xs text-muted-foreground">Remove this from the dashboard review queue.</p>
-            </div>
+            <p className="text-sm font-medium">Mark reviewed</p>
             <Switch
               checked={form.review_status === 'reviewed'}
               onCheckedChange={(checked) => setForm({ ...form, review_status: checked ? 'reviewed' : 'needs_review' })}
