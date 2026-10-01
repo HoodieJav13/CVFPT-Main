@@ -835,6 +835,65 @@ test('offline extra set keeps its edits through sync, and a sealed tracker locks
   expect(queued).toEqual(['complete']);
 });
 
+test('Same as last time keeps reps typed while history is still loading', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  // Preview data lives in memory: navigate in-app (no reload) so the first
+  // workout's history survives.
+  const startDayOne = async () => {
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/client/programs');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+    await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  };
+  const squat = page.getByTestId('tracker-exercise-card').first();
+  const reps1 = squat.getByRole('spinbutton', { name: 'Goblet Squat set 1 performed reps', exact: true });
+  const rpe1 = squat.getByRole('spinbutton', { name: 'Goblet Squat set 1 performed RPE', exact: true });
+
+  // Last time: 8 reps at RPE 7.
+  await page.goto('/client');
+  await startDayOne();
+  await reps1.fill('8');
+  await reps1.blur();
+  await rpe1.fill('7');
+  await rpe1.blur();
+  await squat.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  await page.getByRole('button', { name: 'Confirm completion' }).click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+$/);
+
+  // This time: tap "Same as last time", then type 17 reps while history is
+  // still loading (slowed by the preview test harness).
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '/exercises/[^/]+/history$', ms: 1500 }])));
+  await startDayOne();
+  const trackPath = new URL(page.url()).pathname;
+  await expect(reps1).toHaveValue('');
+  await expect(rpe1).toHaveValue('');
+  await squat.getByTestId('same-as-last-time').click();
+  await expect(squat.getByTestId('same-as-last-time')).toBeDisabled();
+  await reps1.fill('17');
+  await reps1.blur();
+  await expect(squat.getByTestId('same-as-last-time')).toBeEnabled({ timeout: 5000 });
+
+  // The typed reps survive; only the still-blank RPE comes from last time.
+  await expect(rpe1).toHaveValue('7');
+  await expect(reps1).toHaveValue('17');
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+
+  // Server copy agrees after a fresh fetch.
+  for (const target of ['/client/programs', trackPath]) {
+    await page.evaluate((path) => {
+      window.history.pushState({}, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, target);
+  }
+  await expect(reps1).toHaveValue('17');
+  await expect(rpe1).toHaveValue('7');
+});
+
 test('session conflicts surface inline, clear on relevant edits, and keep refused bookings pending', async ({ page }) => {
   // Pin "now" to a mid-month Denver midday. Fixtures are Denver-day relative
   // and pickDay(5) must not cross a month boundary, so a real clock made this
