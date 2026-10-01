@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
   TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search, BarChart3,
   Download,
-  Mail, KeyRound, Loader2,
+  Mail, KeyRound, Loader2, Sunrise, Sunset, MonitorSmartphone,
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
 import ClientJump from '@/components/ClientJump';
@@ -29,6 +29,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
+import { useTheme } from '@/lib/theme';
 
 const COACH_NAV = [
   { to: '/coach', label: 'Home', icon: LayoutDashboard, end: true },
@@ -307,6 +308,7 @@ function UserMenu({ user, logout, compact }) {
   const location = useLocation();
   const isClient = user.role === 'client';
   const { mode: installMode, start: startInstall, dialog: installGuide } = useInstallGuide();
+  const { choice: themeChoice, setChoice: setThemeChoice } = useTheme();
   const [emailHelpOpen, setEmailHelpOpen] = useState(false);
   const [digestOptOut, setDigestOptOut] = useState(false);
   const [emailPreferenceLoading, setEmailPreferenceLoading] = useState(false);
@@ -475,6 +477,26 @@ function UserMenu({ user, logout, compact }) {
             <DropdownMenuSeparator />
           </>
         )}
+        {/* Sunrise (light) / sunset (dark), following the device unless pinned. */}
+        <div className="px-2 py-1.5" role="group" aria-label="Appearance">
+          <p className="mb-1.5 text-xs text-muted-foreground">Appearance</p>
+          <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+            {[['system', 'Device', MonitorSmartphone], ['light', 'Sunrise', Sunrise], ['dark', 'Sunset', Sunset]].map(([value, label, Icon]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setThemeChoice(value)}
+                aria-pressed={themeChoice === value}
+                className={cn('flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md text-[11px] font-medium text-muted-foreground transition-colors',
+                  themeChoice === value && 'bg-card text-foreground shadow-sm')}
+                data-testid={`theme-choice-${value}`}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />{label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={openEmailPreferences} data-testid="email-preferences-item">
           <Mail className="h-4 w-4 mr-2" /> Email notifications
         </DropdownMenuItem>

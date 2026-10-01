@@ -1,14 +1,16 @@
-import { useTheme } from "next-themes"
+import { useTheme } from "@/lib/theme"
 import { Toaster as Sonner, toast } from "sonner"
 
 const Toaster = ({
   ...props
 }) => {
-  const { theme = "system" } = useTheme()
+  // Also keeps the page theme in sync with the device: the Toaster is
+  // always mounted, so this is the app-wide theme listener.
+  const { resolved } = useTheme()
 
   return (
     <Sonner
-      theme={theme}
+      theme={resolved}
       className="toaster group"
       toastOptions={{
         classNames: {

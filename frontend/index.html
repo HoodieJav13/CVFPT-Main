@@ -1,9 +1,22 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#100E0B" />
+    <meta name="theme-color" content="#F6F4EF" />
+    <!-- Sunrise/sunset theme before first paint (same rule as src/lib/theme.js). -->
+    <script>
+      (function () {
+        var c = 'system';
+        try { c = localStorage.getItem('cvf_theme') || 'system'; } catch (e) {}
+        var dark = c === 'dark' || (c !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var r = document.documentElement;
+        if (dark) r.classList.add('dark');
+        r.setAttribute('data-theme', dark ? 'dark' : 'light');
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', dark ? '#161211' : '#F6F4EF');
+      })();
+    </script>
     <meta name="description" content="CVF PT — Core Value Fitness personal training management. Fitness Done Right." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <!-- Self-hosted brand fonts: preload the latin files so the auth
