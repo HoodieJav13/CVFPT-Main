@@ -16,16 +16,27 @@ There are two hosted databases (see `CLAUDE.md` → Migrations):
 
 ## What is pending
 
-Exactly one new migration on this branch versus `main` (as of `main` at
-`8691b4c`, whose latest migration is `20260930130000_schedule_session_series.sql`,
-recorded as applied to both databases on 2026-10-01):
+Exactly one new migration on this branch versus `main`:
 
-- `supabase/migrations/20260930150000_metric_goal_measures.sql`
+- `supabase/migrations/20261001200000_metric_goal_measures.sql`
   - `alter table public.metrics add column if not exists is_goal_measure boolean not null default false;`
   - a column comment
   - `create index if not exists idx_metrics_client_goal_measure on public.metrics(client_id) where is_goal_measure = true and archived = false;`
 
 Additive only: no backfill, no data change, no dropped or renamed objects.
+
+### Ordering
+
+Release order (owner, 2026-10-01): #91 (supersets, migration
+`20261001120000_superset_groups.sql`), then #97 and the remaining UX work,
+then this PR. This file was renamed from `20260930150000_…` to
+`20261001200000_…` so it sorts after #91's; it had not been applied anywhere,
+so the rename was allowed. Before applying, it must still be the newest file
+in `supabase/migrations/` after merging the latest `main`. If anything newer
+has landed, rename it forward again in a new commit (only while it is applied
+nowhere) and update the references (`backend/test/goal-measures.test.js`,
+`frontend/e2e/live-auth.spec.mjs`, this runbook, `CLAUDE.md`). Never apply it
+with `--include-all` out of order.
 
 ## Compatibility
 
@@ -58,8 +69,9 @@ the checkout happens to be linked to.
    supabase migration list --project-ref hhzpzcxcurmhpmfgriqb
    supabase db push --project-ref hhzpzcxcurmhpmfgriqb --skip-vault --dry-run
    ```
-   Expect everything through `20260930130000` applied and only
-   `20260930150000_metric_goal_measures.sql` pending. Stop if anything else is
+   Expect every migration on `main` applied (#91's `20261001120000` included)
+   and only
+   `20261001200000_metric_goal_measures.sql` pending. Stop if anything else is
    pending or the remote has a version the repo lacks.
 2. **Apply (authorized), then confirm the ledger:**
    ```sh
@@ -117,7 +129,11 @@ the checkout happens to be linked to.
    With `VERCEL_AUTOMATION_BYPASS_SECRET` set, the Vite dev server proxies
    `/api` to `CVF_E2E_BACKEND_URL` with the bypass header (the browser stays
    same-origin); without it, the browser calls `REACT_APP_BACKEND_URL`
-   directly and the backend's CORS must allow `http://127.0.0.1:4174`. No
+   directly and the backend's CORS must allow `http://127.0.0.1:4174`. The
+   bypass secret is needed only for a protected preview: if
+   `curl -s -o /dev/null -w '%{http_code}' <backend preview>/api/health`
+   returns 200, the preview is unprotected and a missing secret is not a
+   blocker. No
    Supabase key is needed: leave `SUPABASE_SERVICE_ROLE_KEY` unset. The
    test-account logins come from local settings on the machine that runs the
    test; the Supabase CLI does not supply them. Check which variables are
@@ -161,9 +177,11 @@ the checkout happens to be linked to.
 
 5. **Confirm, apply and confirm the ledger**: steps 1–2 with
    `--project-ref dacqdoohqqcqgtpacerk`. Expect the same single pending file.
-6. **Verify the schema**: the step 3 SQL against Production (read-only). No
-   live test, test account or write against Production; the development
-   run in step 4 is the behavioral check, and the code is identical.
+6. **Verify the schema**: the step 3 SQL against Production. Applying the
+   authorized migration changes the schema; everything after it is
+   read-only verification, with no test accounts, live tests or test-data
+   writes. The development run in step 4 is the behavioral check, and the
+   code is identical.
 
 ### Release
 
