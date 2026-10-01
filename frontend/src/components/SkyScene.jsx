@@ -4,11 +4,10 @@
 // full moon in the dark theme. Decorative only (aria-hidden); everything
 // animated stops under prefers-reduced-motion.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useReducedMotion } from 'framer-motion';
 import { SANDIA_LAYERS } from '@/lib/sandiaSkyline';
 import { useTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
-
-const reduceMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // Narrow screens zoom in on Sandia Crest to Tijeras Canyon (like a longer
 // lens); wide screens show the whole range.
@@ -87,6 +86,9 @@ export default function SkyScene({ height = 420, overlap = 28, className, testId
   const ref = useRef(null);
   const width = useWidth(ref);
   const { resolved } = useTheme();
+  // Follows the OS setting live: turning reduced motion on mid-visit stops
+  // the JS-driven parallax and critters too (CSS animations stop by media query).
+  const reduce = Boolean(useReducedMotion());
   const dark = resolved === 'dark';
   const { a0, a1, exag } = frameFor(width);
   const base = height - overlap;
@@ -139,7 +141,7 @@ export default function SkyScene({ height = 420, overlap = 28, className, testId
   // Parallax: the three ridge layers move at different speeds as the page scrolls.
   const ridgeRef = useRef(null);
   useEffect(() => {
-    if (reduceMotion()) return undefined;
+    if (reduce) return undefined;
     let frame = 0;
     const onScroll = () => {
       cancelAnimationFrame(frame);
@@ -149,15 +151,19 @@ export default function SkyScene({ height = 420, overlap = 28, className, testId
       });
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => { window.removeEventListener('scroll', onScroll); cancelAnimationFrame(frame); };
-  }, [height]);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(frame);
+      ridgeRef.current?.querySelectorAll('[data-depth]').forEach((el) => { el.style.translate = ''; });
+    };
+  }, [height, reduce]);
 
   // Critters are rare by design: about one visit in three sees one, then they
   // come back at random a minute or more apart.
   const jayRef = useRef(null);
   const roadRef = useRef(null);
   useEffect(() => {
-    if (reduceMotion()) return undefined;
+    if (reduce) return undefined;
     const timers = [];
     let raf = 0;
     const send = (name) => {
@@ -185,8 +191,13 @@ export default function SkyScene({ height = 420, overlap = 28, className, testId
       timers.push(setTimeout(maybe, 60000 + Math.random() * 90000));
     };
     if (Math.random() < 0.35) timers.push(setTimeout(maybe, 8000 + Math.random() * 20000));
-    return () => { timers.forEach(clearTimeout); cancelAnimationFrame(raf); };
-  }, [dark, width, base, geometry, a0, a1]);
+    return () => {
+      timers.forEach(clearTimeout);
+      cancelAnimationFrame(raf);
+      jayRef.current?.classList.remove('is-on');
+      roadRef.current?.classList.remove('is-on');
+    };
+  }, [dark, width, base, geometry, a0, a1, reduce]);
 
   return (
     <div ref={ref} aria-hidden className={cn('sky-scene', className)} style={{ height }} data-testid={testId} data-theme-scene={dark ? 'sunset' : 'sunrise'}>
