@@ -248,3 +248,170 @@ test('suggestions never include times in the past', async () => {
   await call('/check', { body: { client_id: CLIENT_ID, duration_minutes: 60, start_date: TODAY, slots: [{ key: 'today', date: TODAY, time: '20:45' }] } });
   assert.ok(seen.every((alt) => new Date(alt.scheduled_at).getTime() > Date.now()));
 });
+
+
+// ---------- create ----------
+const { parseCreateRequest } = require('../src/lib/sessionSeries/createRequest');
+const createBody = (overrides = {}) => ({
+  request_id: REQUEST_ID, client_id: CLIENT_ID, duration_minutes: 60, location: 'CVF Studio',
+  rule: { start_date: day(14), time: '17:00', weekdays: [2, 4], interval_weeks: 1, end: { count: 3 } },
+  slots: [
+    { key: 'g1', date: day(14), time: '17:00', workout_id: WORKOUT_ID },
+    { key: 'g2', date: day(16), time: '17:00', workout_id: null },
+    { key: 'g3', date: day(21), time: '17:00' },
+  ],
+  program_id: null, assign_program: false, notify: true, ...overrides,
+});
+const createCalls = () => state.rpcCalls.filter((c) => c.name === 'schedule_session_series');
+const hashOf = (body) => requestHash(parseCreateRequest(body).normalized);
+
+test('create saves the batch, passes UTC slots in, and sends exactly one email and one push', async () => {
+  resetState(); currentUser = coachUser;
+  const result = await call('', { body: createBody() });
+  assert.equal(result.status, 201);
+  assert.equal(result.body.replayed, false);
+  assert.equal(result.body.series.id, SERIES_ID);
+  assert.equal(result.body.receipt.slots.length, 3);
+  const args = createCalls()[0].args;
+  assert.equal(args.p_coach_id, COACH_ID);
+  assert.equal(args.p_request_id, REQUEST_ID);
+  assert.equal(args.p_request_hash, hashOf(createBody()));
+  assert.equal(args.p_slots.length, 3);
+  assert.ok(args.p_slots.every((s) => /Z$/.test(s.scheduled_at)));
+  assert.equal(args.p_slots.find((s) => s.key === 'g1').workout_id, WORKOUT_ID);
+  assert.equal(args.p_location, 'CVF Studio');
+  assert.equal(state.emails.length, 1);
+  assert.equal(state.emails[0].dates.length, 3);
+  assert.equal(state.pushes, 1);
+});
+
+test('create with notify false is silent', async () => {
+  resetState(); currentUser = coachUser;
+  const result = await call('', { body: createBody({ notify: false }) });
+  assert.equal(result.status, 201);
+  assert.equal(state.emails.length, 0);
+  assert.equal(state.pushes, 0);
+});
+
+test('create validates shape, then eligibility, before any database write', async () => {
+  resetState(); currentUser = coachUser;
+  const bad = [
+    createBody({ request_id: 'nope' }),
+    createBody({ slots: [] }),
+    createBody({ duration_minutes: 5 }),
+    createBody({ notify: 'yes' }),
+    createBody({ assign_program: 'yes' }),
+    createBody({ slots: [{ key: 'a', date: day(14), time: '17:00', workout_id: 'bad' }] }),
+  ];
+  for (const body of bad) assert.equal((await call('', { body })).status, 400, JSON.stringify(body).slice(0, 80));
+  // eligibility for NEW operations:
+  assert.equal((await call('', { body: createBody({ slots: [{ key: 'a', date: day(-2), time: '17:00' }] }) })).status, 400);
+  assert.equal((await call('', { body: createBody({ rule: { ...createBody().rule, start_date: day(-2) } }) })).status, 400);
+  assert.equal((await call('', { body: createBody({ slots: [{ key: 'a', date: day(14 + 366), time: '17:00' }] }) })).status, 400);
+  state.workouts = [{ id: WORKOUT_ID, coach_id: OTHER_COACH_ID }];
+  assert.equal((await call('', { body: createBody() })).status, 400); // foreign workout
+  state.workouts = [{ id: WORKOUT_ID, coach_id: null }];            // shared workout is fine
+  assert.equal((await call('', { body: createBody({ program_id: PROGRAM_ID }) })).status, 201);
+  assert.equal(createCalls().length, 1); // only the final, valid request reached the database
+});
+
+test('create refuses clients and programs the caller cannot use', async () => {
+  resetState(); currentUser = coachUser;
+  state.clientRow = { id: CLIENT_ID, coach_id: OTHER_COACH_ID, archived: false };
+  assert.equal((await call('', { body: createBody() })).status, 404);
+  resetState(); currentUser = coachUser;
+  state.programRow = { id: PROGRAM_ID, coach_id: OTHER_COACH_ID, archived: false };
+  assert.equal((await call('', { body: createBody({ program_id: PROGRAM_ID }) })).status, 404);
+  resetState(); currentUser = coachUser;
+  state.programRow = null; // archived or missing
+  assert.equal((await call('', { body: createBody({ program_id: PROGRAM_ID, assign_program: false }) })).status, 404);
+  assert.equal(createCalls().length, 0);
+});
+
+test('an admin saves for the client\'s coach', async () => {
+  resetState(); currentUser = { role: 'admin', coach: { id: 'admin-coach' } };
+  state.clientRow = { id: CLIENT_ID, coach_id: OTHER_COACH_ID, archived: false };
+  state.workouts = [{ id: WORKOUT_ID, coach_id: OTHER_COACH_ID }];
+  const result = await call('', { body: createBody() });
+  assert.equal(result.status, 201);
+  assert.equal(createCalls()[0].args.p_coach_id, OTHER_COACH_ID);
+});
+
+test('assign_program and program_id reach the database function', async () => {
+  resetState(); currentUser = coachUser;
+  await call('', { body: createBody({ program_id: PROGRAM_ID, assign_program: true }) });
+  const args = createCalls()[0].args;
+  assert.equal(args.p_program_id, PROGRAM_ID);
+  assert.equal(args.p_assign_program, true);
+});
+
+test('save-time conflicts return 409 with every conflict by key and notify nobody', async () => {
+  resetState(); currentUser = coachUser;
+  state.rpcImpl.schedule_session_series = () => ({
+    outcome: 'conflicts',
+    conflicts: [
+      { key: 'g1', scope: 'coach', session: { id: 'x', scheduled_at: new Date(Date.now() + 14 * 86400000).toISOString() } },
+      { key: 'g2', scope: 'batch', with_key: 'g3' },
+    ],
+  });
+  const result = await call('', { body: createBody() });
+  assert.equal(result.status, 409);
+  assert.equal(result.body.conflicts.length, 2);
+  assert.equal(result.body.conflicts[0].key, 'g1');
+  assert.ok(typeof result.body.conflicts[0].display === 'string');
+  assert.equal(result.body.conflicts[1].with_key, 'g3');
+  assert.equal(state.emails.length, 0);
+  assert.equal(state.pushes, 0);
+});
+
+test('EARLY replay: a saved request is recovered even when its dates are now in the past, with no database call and no notification', async () => {
+  resetState(); currentUser = coachUser;
+  const body = createBody({
+    rule: { start_date: '2020-01-07', time: '17:00', weekdays: [2], interval_weeks: 1, end: { count: 1 } },
+    slots: [{ key: 'g1', date: '2020-01-07', time: '17:00', workout_id: null }],
+  });
+  state.existingSeries = { id: SERIES_ID, coach_id: COACH_ID, client_id: CLIENT_ID, request_id: REQUEST_ID, request_hash: hashOf(body), receipt: { slots: [{ key: 'g1', session_id: 's1' }] } };
+  const result = await call('', { body });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.replayed, true);
+  assert.equal(result.body.receipt.slots[0].key, 'g1');
+  assert.equal(state.rpcCalls.length, 0);
+  assert.equal(state.emails.length, 0);
+  assert.equal(state.pushes, 0);
+});
+
+test('replay with a different body is a request_mismatch 409; another coach\'s request id is a 404', async () => {
+  resetState(); currentUser = coachUser;
+  state.existingSeries = { id: SERIES_ID, coach_id: COACH_ID, client_id: CLIENT_ID, request_id: REQUEST_ID, request_hash: 'something-else', receipt: { slots: [] } };
+  const mismatch = await call('', { body: createBody() });
+  assert.equal(mismatch.status, 409);
+  assert.equal(mismatch.body.code, 'request_mismatch');
+  state.existingSeries = { ...state.existingSeries, coach_id: OTHER_COACH_ID, request_hash: hashOf(createBody()) };
+  assert.equal((await call('', { body: createBody() })).status, 404);
+  assert.equal(createCalls().length, 0);
+});
+
+test('DATABASE-LEVEL replay (both requests passed the early lookup) is a 200 and sends NO notification', async () => {
+  resetState(); currentUser = coachUser;
+  state.rpcImpl.schedule_session_series = (args) => ({ ...defaultCreate(args), replayed: true });
+  const result = await call('', { body: createBody() });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.replayed, true);
+  assert.equal(state.emails.length, 0);
+  assert.equal(state.pushes, 0);
+});
+
+test('a request_mismatch reported by the database function is also a 409 code request_mismatch', async () => {
+  resetState(); currentUser = coachUser;
+  state.rpcImpl.schedule_session_series = () => ({ outcome: 'request_mismatch' });
+  const result = await call('', { body: createBody() });
+  assert.equal(result.status, 409);
+  assert.equal(result.body.code, 'request_mismatch');
+});
+
+test('series routes require a coach', async () => {
+  resetState(); currentUser = { role: 'client', client: { id: CLIENT_ID } };
+  assert.equal((await call('', { body: createBody() })).status, 403);
+  assert.equal((await call('/preview', { body: previewBody() })).status, 403);
+  assert.equal((await call('/check', { body: {} })).status, 403);
+});

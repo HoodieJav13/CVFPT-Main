@@ -3,8 +3,12 @@ const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireCoach, canAccessClient } = require('../middleware/auth');
 const { validateUuid } = require('../validation/business');
+const { parseCreateRequest } = require('../lib/sessionSeries/createRequest');
+const { validateWorkoutIds } = require('../lib/sessionWorkouts');
+const { dispatchEmail, notifySeriesScheduled } = require('../services/email');
+const { dispatchPush, sendToClient } = require('../services/push');
 const {
-  parseRule, expandSeriesRule, horizonBounds, validateSlotShapes, slotHorizonError, isRealDate,
+  parseRule, expandSeriesRule, horizonBounds, validateSlotShapes, slotHorizonError, isRealDate, requestHash,
 } = require('../lib/sessionSeries/rule');
 const {
   candidateTimes, chunk, MAX_ALTERNATIVES_PER_CALL, MAX_SUGGESTIONS_PER_ROW,
@@ -158,6 +162,94 @@ router.post('/check', requireCoach, async (req, res) => {
   } catch (e) {
     logError('series check error', e);
     return res.status(500).json({ error: 'Failed to check the schedule' });
+  }
+});
+
+const MISMATCH = { error: 'This save was already used with different content — nothing was changed.', code: 'request_mismatch' };
+
+function decorateConflicts(conflicts) {
+  return (conflicts || []).map((conflict) => ({
+    ...conflict,
+    display: conflict.session?.scheduled_at ? formatDenverDisplay(conflict.session.scheduled_at) : null,
+  }));
+}
+
+// ---- POST /api/sessions/series ----
+// Order matters so a successful save is always recoverable:
+//   1. shape validation only; 2. authorized replay lookup (skips every time- and
+//   record-sensitive check); 3. eligibility checks for NEW operations; 4. the
+//   transactional RPC, which re-resolves replays under the scheduling lock.
+router.post('/', requireCoach, async (req, res) => {
+  try {
+    const parsed = parseCreateRequest(req.body);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    const request = parsed.value;
+    const hash = requestHash(parsed.normalized);
+
+    const { data: existing } = await supabaseAdmin.from('session_series').select('*')
+      .eq('request_id', request.request_id).eq('client_id', request.client_id).maybeSingle();
+    if (existing) {
+      if (req.user.role !== 'admin' && existing.coach_id !== req.user.coach.id) return res.status(404).json({ error: 'Not found' });
+      if (existing.request_hash !== hash) return res.status(409).json(MISMATCH);
+      return res.status(200).json({ series: existing, receipt: existing.receipt, replayed: true });
+    }
+
+    const resolved = await resolveClient(req, res, request.client_id);
+    if (!resolved) return;
+    const { coachId } = resolved;
+    const today = todayDateInTz();
+    if (request.rule.start_date < today) return res.status(400).json({ error: 'A series cannot start in the past' });
+    const horizon = slotHorizonError(request.slots, request.rule.start_date, today);
+    if (horizon) return res.status(400).json({ error: horizon });
+    const slots = withUtc(request.slots);
+    const past = pastError(slots, Date.now());
+    if (past) return res.status(400).json({ error: past });
+
+    if (request.program_id) {
+      const { data: program } = await supabaseAdmin.from('programs').select('id, coach_id, archived')
+        .eq('id', request.program_id).eq('archived', false).maybeSingle();
+      if (!program || (req.user.role !== 'admin' && program.coach_id !== coachId)) {
+        return res.status(404).json({ error: 'Program not found' });
+      }
+    }
+    const workouts = await validateWorkoutIds(request.slots.map((slot) => slot.workout_id), coachId);
+    if (!workouts.ok) return res.status(400).json({ error: workouts.error });
+
+    const { data, error } = await supabaseAdmin.rpc('schedule_session_series', {
+      p_request_id: request.request_id,
+      p_request_hash: hash,
+      p_coach_id: coachId,
+      p_client_id: request.client_id,
+      p_duration_minutes: request.duration_minutes,
+      p_location: request.location,
+      p_rule: request.rule,
+      p_program_id: request.program_id,
+      p_assign_program: request.assign_program,
+      p_slots: slots.map((slot) => ({ key: slot.key, scheduled_at: slot.scheduled_at, workout_id: slot.workout_id })),
+    });
+    if (error) throw error;
+
+    if (data.outcome === 'request_mismatch') return res.status(409).json(MISMATCH);
+    if (data.outcome === 'conflicts') {
+      return res.status(409).json({ error: 'Some dates are no longer available', conflicts: decorateConflicts(data.conflicts) });
+    }
+
+    const replayed = Boolean(data.replayed);
+    // Notify only for a NEW save, decided on the database function's result — never
+    // on the route's early lookup, which two simultaneous requests can both miss.
+    if (!replayed && request.notify) {
+      const dates = (data.receipt?.slots || []).map((slot) => slot.scheduled_at);
+      await dispatchEmail(() => notifySeriesScheduled({ seriesId: data.series.id, clientId: request.client_id, coachId, dates }));
+      dispatchPush(() => sendToClient(request.client_id, {
+        title: 'New sessions scheduled',
+        body: `${dates.length} session${dates.length === 1 ? '' : 's'} starting ${formatDenverDisplay(dates[0])}.`,
+        url: '/client/sessions',
+      }));
+    }
+    return res.status(replayed ? 200 : 201).json({ series: data.series, receipt: data.receipt, replayed });
+  } catch (e) {
+    logError('series create error', e);
+    return res.status(500).json({ error: 'Failed to create the series' });
   }
 });
 
