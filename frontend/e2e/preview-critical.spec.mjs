@@ -919,3 +919,35 @@ test.describe('home-screen install on Android Chrome', () => {
     await expect(page.getByTestId('install-guide')).toHaveCount(0);
   });
 });
+
+test('workout history pages in twelves for clients and coaches', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Sarah has 13 completed workouts in the preview fixtures.
+  await page.goto('/client');
+  await page.evaluate(() => {
+    localStorage.setItem('cvf_preview_role', 'client');
+    localStorage.setItem('cvf_preview_client_id', 'client_sarah');
+  });
+  await page.goto('/client/programs?view=history');
+  const history = page.getByTestId('client-workout-history');
+  await expect(history.getByTestId('workout-history-row')).toHaveCount(12);
+  await history.getByTestId('history-show-more').click();
+  await expect(history.getByTestId('workout-history-row')).toHaveCount(13);
+  await expect(history.getByTestId('history-show-more')).toHaveCount(0);
+  const clientIds = await history.getByTestId('workout-history-row').evaluateAll((rows) => rows.map((row) => row.getAttribute('href')));
+  expect(new Set(clientIds).size).toBe(13);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+
+  // Fixtures are static, so a fresh load as the coach is fine here.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_role', 'coach'));
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  await expect(rows).toHaveCount(12);
+  await coachHistory.getByTestId('coach-history-show-more').click();
+  await expect(rows).toHaveCount(13);
+  await expect(coachHistory.getByTestId('coach-history-show-more')).toHaveCount(0);
+  // (Page-width overflow isn't asserted here: the coach client page already
+  // overflows at 390px from the assigned-card action buttons, on main too.)
+});
