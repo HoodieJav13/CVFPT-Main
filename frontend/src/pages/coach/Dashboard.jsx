@@ -91,7 +91,7 @@ export default function CoachDashboard() {
     <DashboardChoreography pageKey={`coach-dashboard-${user.id || user.profile?.id || user.role}`}>
       <DashboardHero
         title={`Hey, ${firstName}`}
-        subtitle={user.role === 'admin' ? 'Admin view - all coaches' : 'Your day at CVF'}
+        subtitle={user.role === 'admin' ? 'All coaches' : null}
         testId="coach-dashboard-header"
         action={
           <Button onClick={() => navigate('/coach/sessions?new=1')} className="rounded-xl" data-testid="dashboard-new-session-button">
@@ -127,7 +127,7 @@ export default function CoachDashboard() {
                 </div>
                 <div className="min-w-0">
                   <p className="font-medium truncate">{s.client?.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{s.location || 'No location'}</p>
+                  {s.location && <p className="text-xs text-muted-foreground truncate">{s.location}</p>}
                 </div>
               </div>
               <StatusBadge status={s.status} />
@@ -149,11 +149,11 @@ export default function CoachDashboard() {
         <CardContent className="space-y-2.5">
           {attentionUnavailable && (
             <p className="rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-xs" role="status" data-testid="coach-queue-partial-note">
-              Longer-range client signals could not be loaded. Current requests, messages, check-ins, and open sessions are still shown.
+              Client trend signals couldn't load. Everything else below is current.
             </p>
           )}
           {actionQueue.length === 0 && (
-            <p className="text-sm text-muted-foreground py-2" data-testid="coach-action-queue-empty">Nothing needs your attention right now.</p>
+            <p className="text-sm text-muted-foreground py-2" data-testid="coach-action-queue-empty">All clear.</p>
           )}
           {actionQueue.map((item, index) => (
             <div
@@ -169,7 +169,7 @@ export default function CoachDashboard() {
                 <div className="min-w-0">
                   <p className="font-medium">
                     {item.kind === 'booking'
-                      ? <><span data-testid="booking-client-name">{item.detail.client?.name || 'Client'}</span> is waiting for a booking decision</>
+                      ? <><span data-testid="booking-client-name">{item.detail.client?.name || 'Client'}</span> · booking request</>
                       : item.title}
                   </p>
                   {item.kind === 'stale_session' && <p className="mt-0.5 text-xs text-muted-foreground">{fmtDateTime(item.detail.scheduled_at)} · {item.detail.duration_minutes}m</p>}

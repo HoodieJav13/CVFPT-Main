@@ -85,7 +85,7 @@ export default function ClientPrograms() {
 
   return (
     <div>
-      <PageHeader title="My training" subtitle="Your current plan, other workouts, and history" />
+      <PageHeader title="My training" />
       {activeLog && (
         <Card className="mb-5 border-primary/30 bg-primary/5" data-testid="active-workout-banner">
           <CardContent className="flex items-center justify-between gap-3 p-4">

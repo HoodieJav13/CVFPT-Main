@@ -216,7 +216,6 @@ export default function AppShell() {
             </Link>
           )}
           <UserMenu user={user} logout={logout} />
-          <p className="mt-3 px-2 text-[11px] text-muted-foreground/70">Core Value Fitness - Albuquerque, NM</p>
         </aside>
 
         <div className="relative z-10">
@@ -493,12 +492,11 @@ function UserMenu({ user, logout, compact }) {
       <DialogContent className="max-w-sm" data-testid="email-preferences-dialog">
         <DialogHeader>
           <DialogTitle>Email notifications</DialogTitle>
-          <DialogDescription>Booking and session emails stay on. You can turn the non-urgent daily summary on or off.</DialogDescription>
+          <DialogDescription>Booking and session emails always send.</DialogDescription>
         </DialogHeader>
         <div className="flex items-center justify-between gap-4 rounded-xl border border-border p-4">
           <div>
             <p className="text-sm font-medium">Turn off daily digest</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Unread messages and new assignments remain visible in the app.</p>
           </div>
           <Switch
             checked={digestOptOut}
@@ -551,10 +549,9 @@ function UserMenu({ user, logout, compact }) {
       </DialogContent>
     </Dialog>
     <Dialog open={passwordOpen} onOpenChange={(open) => { setPasswordOpen(open); if (!open) setPasswordForm({ current: '', next: '', confirm: '' }); }}>
-      <DialogContent className="max-w-sm" data-testid="change-password-dialog">
+      <DialogContent aria-describedby={undefined} className="max-w-sm" data-testid="change-password-dialog">
         <DialogHeader>
           <DialogTitle>Change password</DialogTitle>
-          <DialogDescription>Confirm your current password, then choose a new one.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submitPasswordChange} className="space-y-4">
           <div className="space-y-1.5">

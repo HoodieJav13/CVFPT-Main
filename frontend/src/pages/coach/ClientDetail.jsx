@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -206,7 +206,7 @@ function ClientStatusBadges({ client }) {
       {client.auth_user_id ? (
         <Badge variant="outline" className="bg-success/15 text-success-foreground border-success/25">Account active</Badge>
       ) : client.invited ? (
-        <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Invited - awaiting signup</Badge>
+        <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Invited</Badge>
       ) : (
         <Badge variant="outline" className="text-muted-foreground">Not invited</Badge>
       )}
@@ -310,10 +310,9 @@ function OverviewTab({ client, waiver, reload, user }) {
                 <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md" aria-describedby={undefined}>
               <DialogHeader>
                 <DialogTitle>Edit profile</DialogTitle>
-                <DialogDescription>Update this client&apos;s contact and coaching details.</DialogDescription>
               </DialogHeader>
               <form onSubmit={saveEdit} className="space-y-3.5">
                 <div className="space-y-1.5"><Label>Name</Label>
@@ -352,14 +351,12 @@ function OverviewTab({ client, waiver, reload, user }) {
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-medium text-sm">Client portal invitation</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {client.auth_user_id
-                  ? 'This client has claimed their account.'
-                  : client.invited
-                    ? `Invited - they can sign up from the invite email using ${client.email || 'their email'}.`
-                    : 'Toggle on to email the client a signup link.'}
-              </p>
+              <p className="font-medium text-sm">App invite</p>
+              {!client.auth_user_id && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {client.invited ? `Sent to ${client.email || 'their email'}` : 'Emails a signup link'}
+                </p>
+              )}
             </div>
             <Switch
               checked={client.invited || Boolean(client.auth_user_id)}
@@ -369,8 +366,7 @@ function OverviewTab({ client, waiver, reload, user }) {
             />
           </div>
           {Boolean(client.auth_user_id) && client.email && (
-            <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-              <p className="text-xs text-muted-foreground">Locked out? Email them a password reset link.</p>
+            <div className="flex items-center justify-end gap-3 border-t border-border pt-3">
               <Button variant="outline" size="sm" className="min-h-9 rounded-lg shrink-0" disabled={sendingReset}
                 onClick={sendPasswordReset} data-testid="client-send-password-reset-button">
                 {sendingReset ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send password reset'}
@@ -418,7 +414,7 @@ function OverviewTab({ client, waiver, reload, user }) {
       {user.role === 'admin' && (
         <Card>
           <CardContent className="p-4">
-            <p className="font-medium text-sm mb-2">Assigned coach (admin)</p>
+            <p className="font-medium text-sm mb-2">Assigned coach</p>
             <Select value={client.coach_id} onValueChange={reassign}>
               <SelectTrigger className="rounded-xl" data-testid="admin-reassign-client-button">
                 <SelectValue placeholder="Select coach" />
@@ -513,7 +509,7 @@ function CheckInsTab({ clientId }) {
         </Button>
       </div>
       {checkIns.length === 0 && (
-        <EmptyState icon={ClipboardCheck} title="No check-ins yet" subtitle="Client and coach check-ins will show here." testId="coach-check-ins-empty" />
+        <EmptyState icon={ClipboardCheck} title="No check-ins yet" testId="coach-check-ins-empty" />
       )}
       {checkIns.map((checkIn) => (
         <Card key={checkIn.id} data-testid="coach-check-in-card">
@@ -551,10 +547,9 @@ function CheckInsTab({ clientId }) {
       ))}
 
       <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setEditing(null); }}>
-        <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit check-in' : 'New check-in'}</DialogTitle>
-            <DialogDescription>Create or update this client&apos;s check-in details and coach notes.</DialogDescription>
           </DialogHeader>
           <CheckInForm initial={editing} saving={saving} onSubmit={save} submitLabel={editing ? 'Save changes' : 'Save check-in'} coachMode />
         </DialogContent>
@@ -714,10 +709,9 @@ function ProgressTab({ clientId }) {
               <Plus className="h-4 w-4 mr-1.5" /> New metric
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-sm" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>{editingMetric ? 'Edit metric' : 'New metric'}</DialogTitle>
-              <DialogDescription>Create or edit a tracked metric and choose which direction counts as improvement.</DialogDescription>
             </DialogHeader>
             <form onSubmit={saveMetric} className="space-y-3.5">
               <div className="space-y-1.5"><Label>Name *</Label>
@@ -734,11 +728,10 @@ function ProgressTab({ clientId }) {
                     <SelectItem value="neutral">Track only — no PRs</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">Used only to recognize genuine personal records.</p>
               </div>
               <div className="space-y-1.5"><Label>Goal{metricForm.unit ? ` (${metricForm.unit})` : ''}</Label>
                 <Input type="number" step="any" inputMode="decimal" value={metricForm.target_value} onChange={(e) => setMetricForm({ ...metricForm, target_value: e.target.value })} placeholder="Optional target" data-testid="metric-target-input" />
-                <p className="text-xs text-muted-foreground">Shown to the client as a goal line on their chart. Leave blank for no goal.</p>
+                <p className="text-xs text-muted-foreground">Shown on the client&apos;s chart.</p>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={saving} className="rounded-xl w-full sm:w-auto" data-testid="metric-save-button">
@@ -782,7 +775,7 @@ function ProgressTab({ clientId }) {
               </div>
             </CardHeader>
             <CardContent>
-              {m.entries.length > 0 ? (
+              {m.entries.length > 0 && (
                 <>
                   <MetricChart entries={m.entries} unit={m.unit} targetValue={m.target_value} />
                   <div className="mt-3 space-y-2">
@@ -799,8 +792,6 @@ function ProgressTab({ clientId }) {
                     ))}
                   </div>
                 </>
-              ) : (
-                <p className="text-sm text-muted-foreground py-4 text-center">Log the first entry to see the chart.</p>
               )}
             </CardContent>
           </Card>
@@ -808,10 +799,9 @@ function ProgressTab({ clientId }) {
       })}
 
       <Dialog open={Boolean(entryFor)} onOpenChange={(o) => { if (!o) { setEntryFor(null); setEditingEntry(null); } }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editingEntry ? 'Edit' : 'Log'} {entryFor?.name}</DialogTitle>
-            <DialogDescription>Record the value and date for this tracked metric.</DialogDescription>
           </DialogHeader>
           <form onSubmit={saveEntry} className="space-y-3.5">
             <div className="grid grid-cols-2 gap-3">
@@ -863,12 +853,12 @@ function SessionsTab({ clientId }) {
           <Plus className="h-4 w-4 mr-1.5" /> Schedule session
         </Button>
       </div>
-      {sessions.length === 0 && <EmptyState icon={CalendarDays} title="No sessions yet" subtitle="Schedule the first session for this client." />}
+      {sessions.length === 0 && <EmptyState icon={CalendarDays} title="No sessions yet" />}
       {sessions.map((s) => (
         <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="client-session-row">
           <div>
             <p className="font-medium text-sm">{fmtDay(s.scheduled_at)} - {fmtTime(s.scheduled_at)}</p>
-            <p className="text-xs text-muted-foreground">{s.duration_minutes}m - {s.location || 'No location'}</p>
+            <p className="text-xs text-muted-foreground">{s.duration_minutes}m{s.location ? ` · ${s.location}` : ''}</p>
           </div>
           <StatusBadge status={s.status} />
         </div>
@@ -1106,10 +1096,9 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
               <Plus className="h-4 w-4 mr-1.5" /> Assign training
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>Assign training</DialogTitle>
-              <DialogDescription>Choose a program and start date to assign to this client.</DialogDescription>
             </DialogHeader>
             <form onSubmit={assign} className="space-y-4">
               <Select value={assignmentType} onValueChange={(value) => { setAssignmentType(value); setExerciseLoads({}); }}>
@@ -1129,7 +1118,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                       {available.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  {available.length === 0 && <p className="text-xs text-muted-foreground">All your programs are already assigned to this client. Create more from the Programs tab.</p>}
+                  {available.length === 0 && <p className="text-xs text-muted-foreground">All programs are already assigned.</p>}
                 </>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-3">
@@ -1177,10 +1166,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       {sessionContextId && (
         <div className="flex gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2" data-testid="session-context-banner">
           <CalendarDays className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-          <p className="text-xs">Starting a workout here will link it to the selected session.</p>
+          <p className="text-xs">Workouts started here link to the selected session.</p>
         </div>
       )}
-      {noAssignments && <EmptyState icon={Dumbbell} title="No training assigned" subtitle="Assign a structured program or standalone workout to this client." />}
+      {noAssignments && <EmptyState icon={Dumbbell} title="No training assigned" />}
       {assigned.map((p) => {
         const assignment = (p.active_assignments || []).find((row) => row.client?.id === clientId);
         return (
@@ -1319,7 +1308,7 @@ function AssignmentLoadFields({ type, selection, values, onChange }) {
           );
         })}
       </div>
-      <p className="text-xs text-muted-foreground">Blank values use the workout default.</p>
+      <p className="text-xs text-muted-foreground">Blank uses the workout default.</p>
     </div>
   );
 }
@@ -1369,8 +1358,8 @@ function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <Button type="button" size="sm" variant="outline" onClick={openEditor} data-testid="edit-assigned-loads"><SlidersHorizontal className="mr-1 h-3.5 w-3.5" /> Loads</Button>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Client loads</DialogTitle><DialogDescription>Set the starting load for each exercise in this assignment.</DialogDescription></DialogHeader>
+      <DialogContent aria-describedby={undefined}>
+        <DialogHeader><DialogTitle>Client loads</DialogTitle></DialogHeader>
         <AssignmentLoadFields type={type} selection={selection} values={values} onChange={setValues} />
         <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save loads'}</Button></DialogFooter>
       </DialogContent>

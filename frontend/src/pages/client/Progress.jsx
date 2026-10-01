@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle,
@@ -188,9 +188,9 @@ export default function ClientProgress() {
 
   return (
     <div>
-      <PageHeader title="Progress" subtitle="Log values for metrics your coach is tracking" />
+      <PageHeader title="Progress" />
       {metrics.length === 0 && (
-        <EmptyState icon={TrendingUp} title="No metrics yet" subtitle="Your coach will create measurements and benchmarks here as you train." testId="client-progress-empty" />
+        <EmptyState icon={TrendingUp} title="No metrics yet" subtitle="Your coach sets these up." testId="client-progress-empty" />
       )}
       <div className="space-y-4">
         {metrics.map((m) => {
@@ -342,11 +342,10 @@ export default function ClientProgress() {
       </Drawer>
 
       <Dialog open={Boolean(entryFor)} onOpenChange={(open) => !open && closeEntry()}>
-        <DialogContent className="max-w-sm" data-testid="client-progress-entry-dialog">
+        <DialogContent aria-describedby={undefined} className="max-w-sm" data-testid="client-progress-entry-dialog">
           <DialogHeader>
             <DialogTitle>{editingEntry ? 'Edit' : 'Log'} {entryFor?.name}</DialogTitle>
-            <DialogDescription>Record the value and date your coach should use for this metric.</DialogDescription>
-          </DialogHeader>
+                      </DialogHeader>
           <form onSubmit={saveEntry} className="space-y-3.5">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
