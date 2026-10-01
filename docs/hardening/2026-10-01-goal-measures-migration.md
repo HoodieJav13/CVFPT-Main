@@ -58,23 +58,76 @@ existing screens.
    from public.metrics;
    -- expect on_count = 0
    ```
-4. **Verify hosted save and read before merging**, against the Vercel Preview
-   deployment of this branch (Preview and Production share the hosted
-   database, so use a test client):
-   - As a coach, open the test client's Progress tab, edit a metric and turn
-     on Goal measure. Save. Reload: the card shows the Goal measure badge.
-   - Coach dashboard: the client appears under Clients by goal with that
-     measure. Client home (same test client): the Your goal card shows it.
-   - Try a fourth goal measure: the switch is disabled with the limit message;
-     the API also refuses it (400, "up to 3 goal measures").
-   - Turn the flag back off and confirm the dashboards drop it.
-   - Alternative without the UI, rollback-only:
-     ```sql
-     begin;
-     update public.metrics set is_goal_measure = true where id = '<test metric id>';
-     select id, is_goal_measure from public.metrics where id = '<test metric id>';
-     rollback;
-     ```
+4. **Verify hosted save and read before merging: real auth against this
+   branch's backend.** Do not use the Vercel Preview of the *frontend* for
+   this: `frontend/vite.config.js` force-defines `REACT_APP_PREVIEW_MODE` and
+   `REACT_APP_HOSTED_DEMO` on for every `VERCEL_ENV=preview` build, so that
+   site runs on in-memory sample data and a save there never reaches the
+   database. A SQL probe alone isn't enough either: it skips sign-in, the
+   role and ownership checks in Express, the three-measure limit, and the
+   dashboard reads.
+
+   Run the real-auth Playwright test instead. It starts a local frontend with
+   preview mode forced off (`playwright.live.config.mjs`) and signs in for
+   real against the **backend** Preview deployment built from this branch's
+   head commit (the `cvfpt-backend` project; check that the deployment's
+   commit matches the head you plan to merge). Preview and Production share
+   the hosted database, so it uses only the dedicated `CVF_E2E_*` test
+   accounts; the test client must belong to the test coach and must not
+   belong to coach B.
+
+   ```sh
+   cd frontend
+   CVF_E2E_BACKEND_URL=https://<branch backend preview URL> \
+   REACT_APP_BACKEND_URL=https://<branch backend preview URL> \
+   VERCEL_AUTOMATION_BYPASS_SECRET=<only if the preview is protected> \
+   CVF_E2E_ADMIN_EMAIL=... CVF_E2E_ADMIN_PASSWORD=... \
+   CVF_E2E_COACH_EMAIL=... CVF_E2E_COACH_PASSWORD=... \
+   CVF_E2E_COACH_B_EMAIL=... CVF_E2E_COACH_B_PASSWORD=... \
+   CVF_E2E_CLIENT_EMAIL=... CVF_E2E_CLIENT_PASSWORD=... \
+   npm run test:e2e:live -- -g "hosted goal measures"
+   ```
+
+   With `VERCEL_AUTOMATION_BYPASS_SECRET` set, the Vite dev server proxies
+   `/api` to `CVF_E2E_BACKEND_URL` with the bypass header (the browser stays
+   same-origin); without it, the browser calls `REACT_APP_BACKEND_URL`
+   directly and the backend's CORS must allow `http://127.0.0.1:4174`. No
+   Supabase key is needed: leave `SUPABASE_SERVICE_ROLE_KEY` unset. The owner
+   supplies these values (or runs the command); agents don't copy or store
+   them. The test must **pass, not skip**: a skip means the `CVF_E2E_*`
+   variables were missing and nothing was verified.
+
+   What the test (`frontend/e2e/live-auth.spec.mjs`, "hosted goal measures
+   save, read back, respect the limit and ownership") checks:
+   - **Authentication and save:** the coach, client and coach B sign in through
+     `/api/auth/login`; the coach creates metrics with `is_goal_measure: true`
+     up to three for the test client (201, flag returned as `true`).
+   - **Limit:** a fourth goal measure is refused on create and on edit (400,
+     "up to 3 goal measures"); a plain metric still saves with the flag off.
+   - **Authorization:** editing the flag with no token is 401, as the client
+     is 403 (coach-only route), and as coach B, who doesn't own the client, is
+     404 (ownership masking).
+   - **Reads (API):** `GET /api/dashboard/coach` lists the client under
+     `goal_clients` with those measures; `GET /api/dashboard/client` returns
+     them in `goal.measures`.
+   - **Reads (UI, real sign-in):** the coach dashboard's Clients by goal card
+     and the client home's Your goal card show the rows.
+   - **Turn off:** clearing one flag removes it from the client dashboard.
+   - **Cleanup:** every metric it created is archived (soft delete), pass or
+     fail.
+
+   Then run the whole real-auth suite once against the same backend
+   (`npm run test:e2e:live`, same variables): this branch also changed the
+   navigation those tests drive (top bar tabs, corner menu). Record the
+   commit, backend deployment, date and pass counts with the release notes.
+
+   Optional, read-only, after the run: the SQL in step 3 should still show
+   the column and index, and the test's metrics should be archived:
+   ```sql
+   select name, is_goal_measure, archived from public.metrics
+   where name like 'CVF LIVE GOAL %' order by created_at desc limit 10;
+   -- expect archived = true on every row
+   ```
 5. **Label the PR** `migration-applied` (the `migration-guard` workflow blocks
    the merge without it; `migrations-in-flight` allows one unapplied PR).
 6. **Merge as a separate, deliberate step.** Merging auto-deploys both
@@ -83,7 +136,8 @@ existing screens.
 
 ## Not covered by the preview suite
 
-The preview browser suite runs on in-memory sample data. Its eight skipped
-tests are the real-auth suite (`frontend/e2e/live-auth.spec.mjs`, gated on
-`CVF_E2E_*`), so preview passes are not evidence about hosted auth or the
-hosted data path. Step 4 is.
+The preview browser suite, and every Vercel Preview of the frontend, runs on
+in-memory sample data. The tests it reports as skipped are the real-auth
+suite (`frontend/e2e/live-auth.spec.mjs`, gated on `CVF_E2E_*`), so preview
+passes are not evidence about hosted auth, ownership or the hosted data path.
+Step 4 is.
