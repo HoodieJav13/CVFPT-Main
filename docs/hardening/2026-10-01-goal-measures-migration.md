@@ -1,8 +1,10 @@
 # Goal measures: hosted migration runbook (pending)
 
 Branch `claude/cvf-pt-design-mockups-svkujp`. Written 2026-10-01 before any
-hosted step; nothing below has been run against the hosted database yet. The
-owner applies it; agents never handle the Supabase keys.
+hosted step; nothing below has been run against the hosted database yet.
+Applying it needs the owner's explicit authorization. Once authorized, an
+agent may run it with existing authenticated tooling (a linked Supabase CLI);
+creating, copying or retrieving credentials stays owner-only.
 
 ## What is pending
 
@@ -141,3 +143,36 @@ in-memory sample data. The tests it reports as skipped are the real-auth
 suite (`frontend/e2e/live-auth.spec.mjs`, gated on `CVF_E2E_*`), so preview
 passes are not evidence about hosted auth, ownership or the hosted data path.
 Step 4 is.
+
+## Release checklist: who does what
+
+| Step | Who |
+|---|---|
+| Draft PR, deployment URLs, CI, the `migration-applied` label, recording results | Agent |
+| Authorize the migration; arrange test access if it isn't configured | Owner |
+| Steps 1–3 (pending set, apply, schema SQL) | Agent with existing authenticated tooling, after authorization (or the owner) |
+| Step 4 (focused hosted test, then the full real-auth suite) | Agent, once the `CVF_E2E_*` test access is configured |
+| Phone checks below | Owner or another tester; the agent prepares the setup |
+| Merge | Owner only (`.agentic/PROJECT_POLICY.md`) |
+| Post-deploy checks (health, CORS, test-account dashboards) | Agent |
+
+Phone checks before release:
+
+- **Navigation (required, affects everyone):** on an iPhone with VoiceOver,
+  the corner menu announces and opens, the page behind isn't read, choosing
+  the current page returns focus to the button, and the scrub gesture closes
+  it; press-and-slide works with VoiceOver off. Sample data is enough, so the
+  branch's frontend Vercel Preview works.
+- **Focused set entry (only if it is being offered to clients):** it stays
+  opt-in (`?entry=focused`), so its phone validation can remain pending as long
+  as ordinary clients don't get it. When it is validated: keyboard open,
+  decimal RPE, blank reps reading "Not recorded", rest timer, correcting a
+  logged set, finish notes.
+- **Offline save, with its limits:** a local dev server reached from a phone
+  over the LAN tests queueing in an already-open page (airplane mode, log,
+  finish, reconnect, reload). It does not test the installed app offline: the
+  service worker is skipped in development and needs a secure context. The
+  installed-app offline path needs an HTTPS build with real data.
+- **Check icon beside Start workout (optional research):** asking two or
+  three clients what it does is useful but not a release requirement; giving
+  the button a visible label is the alternative.
