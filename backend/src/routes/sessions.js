@@ -6,6 +6,7 @@ const {
   validateOptionalText,
   validateSchedulePayload,
   validateSessionListQuery,
+  validateNotifyFlag,
   validateSessionNotePayload,
   validateTimestamp,
   validateUuid,
@@ -288,6 +289,8 @@ router.put('/:id', requireCoach, async (req, res) => {
 // PATCH /api/sessions/:id/cancel
 router.patch('/:id/cancel', requireCoach, async (req, res) => {
   try {
+    const notifyFlag = validateNotifyFlag(req.body);
+    if (!notifyFlag.ok) return res.status(400).json({ error: notifyFlag.error });
     const session = await loadSessionForCoach(req, res);
     if (!session) return;
     if (session.status === 'completed') return res.status(400).json({ error: 'Completed sessions cannot be cancelled' });
@@ -295,12 +298,14 @@ router.patch('/:id/cancel', requireCoach, async (req, res) => {
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', session.id).select('*, client:clients(id, name)').single();
     if (error) throw error;
-    await dispatchEmail(() => notifySessionCancelled(data));
-    dispatchPush(() => sendToClient(data.client_id, {
-      title: 'Session cancelled',
-      body: `${formatDenver(data.scheduled_at)} is off the calendar.`,
-      url: '/client/sessions',
-    }));
+    if (notifyFlag.value) {
+      await dispatchEmail(() => notifySessionCancelled(data));
+      dispatchPush(() => sendToClient(data.client_id, {
+        title: 'Session cancelled',
+        body: `${formatDenver(data.scheduled_at)} is off the calendar.`,
+        url: '/client/sessions',
+      }));
+    }
     return res.json(data);
   } catch (e) {
     logError('cancel session error', e);
