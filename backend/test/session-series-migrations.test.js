@@ -43,3 +43,14 @@ test('previously applied migrations are not edited by this feature', () => {
   assert.match(applied, /create or replace function public\.schedule_session\(/);
   assert.doesNotMatch(applied, /find_session_conflict/); // the original definition is untouched
 });
+
+test('check_session_slots is read-only, service-role-only, and reuses the shared helper', () => {
+  const sql = read('20260930120000_check_session_slots.sql');
+  assert.match(sql, /create or replace function public\.check_session_slots\(/);
+  assert.match(sql, /\bstable\b/);
+  assert.match(sql, /public\.find_session_conflict\(/);
+  assert.doesNotMatch(sql, /\binsert into\b|\bupdate public\.|\bdelete from\b/i);
+  assert.match(sql, /revoke execute on function public\.check_session_slots\(uuid, uuid, integer, jsonb, jsonb\) from public, anon, authenticated/);
+  assert.match(sql, /grant execute on function public\.check_session_slots\(uuid, uuid, integer, jsonb, jsonb\) to service_role/);
+  assert.doesNotMatch(sql, FORBIDDEN);
+});
