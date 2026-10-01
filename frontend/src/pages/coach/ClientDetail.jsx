@@ -87,6 +87,20 @@ export default function ClientDetail() {
 
   useEffect(() => { load(); }, [load]);
 
+  // On phones the tab strip scrolls sideways. Keep the selected tab inside
+  // the visible part (minus the 32px trailing fade) on load and on change,
+  // including deep links such as ?tab=programs from the dashboard queue.
+  const tabListRef = useRef(null);
+  useEffect(() => {
+    const list = tabListRef.current;
+    const active = list?.querySelector('[data-state="active"]');
+    if (!list || !active) return;
+    const listBox = list.getBoundingClientRect();
+    const tabBox = active.getBoundingClientRect();
+    if (tabBox.left < listBox.left) list.scrollLeft += tabBox.left - listBox.left;
+    else if (tabBox.right > listBox.right - 32) list.scrollLeft += tabBox.right - (listBox.right - 32);
+  }, [activeTab, loading, loadedId]);
+
   const hasCurrentClient = loadedId === id;
   if (!hasCurrentClient && loadError?.id === id) return <LoadErrorState message={loadError.message} scope="client-detail" onRetry={() => { setLoading(true); setLoadError(null); load(); }} />;
   if (loading || !hasCurrentClient || !client) return <LoadingScreen />;
@@ -170,12 +184,12 @@ export default function ClientDetail() {
       {/* Controlled: navigating to the same client with a different ?tab=
           (e.g. a dashboard action-queue link) must switch the visible tab. */}
       <Tabs key={client.id} value={activeTab} onValueChange={selectTab}>
-        <TabsList className="h-auto min-h-[52px] w-full snap-x justify-start overflow-x-auto rounded-xl tab-overflow-fade" aria-label="Client detail sections" data-testid="client-detail-tabs">
+        <TabsList ref={tabListRef} className="h-auto min-h-[52px] w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade" aria-label="Client detail sections" data-testid="client-detail-tabs">
           <TabsTrigger value="overview" className="min-h-11" data-testid="tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="check-ins" className="min-h-11" data-testid="tab-check-ins">Check-ins</TabsTrigger>
           <TabsTrigger value="progress" className="min-h-11" data-testid="tab-progress">Progress</TabsTrigger>
           <TabsTrigger value="sessions" className="min-h-11" data-testid="tab-sessions">Sessions</TabsTrigger>
-          <TabsTrigger value="programs" className="min-h-11 snap-start" data-testid="tab-programs">Programs</TabsTrigger>
+          <TabsTrigger value="programs" className="min-h-11" data-testid="tab-programs">Programs</TabsTrigger>
         </TabsList>
         <p className="mt-1 text-right text-[11px] text-muted-foreground sm:hidden" data-testid="client-tabs-overflow-hint">Swipe tabs for more</p>
 
