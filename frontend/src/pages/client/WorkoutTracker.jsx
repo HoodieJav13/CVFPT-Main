@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Plus, Save, Trash2, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -17,7 +17,9 @@ import { toast } from 'sonner';
 import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
-import { formatRestSeconds } from '@/lib/rest';
+import {
+  adjustRestEnd, formatRestSeconds, manualRestSeconds, REST_ADJUST_SECONDS,
+} from '@/lib/rest';
 import { trackProductEvent } from '@/lib/telemetry';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
@@ -108,7 +110,7 @@ function ExerciseHistory({ logId, exercise }) {
 // The rest timer owns its own 250ms tick so a running countdown re-renders
 // only this FAB — not every exercise card and controlled input (audit #11).
 // The opt-in end-of-rest cue lives here too, since it keys off the same tick.
-function RestTimerFab({ restEndsAt, onClear, restAlerts, attentionScale }) {
+function RestTimerFab({ restEndsAt, onClear, onAdjust, restAlerts, attentionScale }) {
   const [now, setNow] = useState(Date.now());
   const announcedRef = useRef(false);
 
@@ -156,19 +158,32 @@ function RestTimerFab({ restEndsAt, onClear, restAlerts, attentionScale }) {
 
   if (!restEndsAt) return null;
   const seconds = Math.max(0, Math.ceil((restEndsAt - now) / 1000));
+  const adjustClass = 'signature-glass h-11 w-11 rounded-full px-0 text-sm font-semibold tabular-nums text-foreground hover:bg-card/80';
   return (
     <>
-      <Button
-        type="button"
-        onClick={onClear}
-        className={`signature-glass fixed bottom-40 right-4 z-40 h-14 min-w-28 rounded-full px-4 font-display text-base font-semibold lg:bottom-24 ${complete ? 'signature-glass-success motion-attention-pop-once hover:bg-success/90' : 'text-foreground hover:bg-card/80'}`}
-        style={complete ? { '--motion-attention-scale': attentionScale } : undefined}
-        aria-label={complete ? 'Rest complete, tap to dismiss' : `Rest timer ${formatTimer(seconds)}, tap to stop`}
-        data-testid="rest-timer"
-        data-rest-state={complete ? 'complete' : 'running'}
-      >
-        <Clock3 className="h-5 w-5" /> {complete ? 'Rest complete' : formatTimer(seconds)}
-      </Button>
+      <div className="fixed bottom-40 right-4 z-40 flex items-center gap-2 lg:bottom-24">
+        {!complete && (
+          <>
+            <Button type="button" className={adjustClass} onClick={() => onAdjust(-REST_ADJUST_SECONDS)} aria-label={`Subtract ${REST_ADJUST_SECONDS} seconds of rest`} data-testid="rest-minus">
+              −{REST_ADJUST_SECONDS}
+            </Button>
+            <Button type="button" className={adjustClass} onClick={() => onAdjust(REST_ADJUST_SECONDS)} aria-label={`Add ${REST_ADJUST_SECONDS} seconds of rest`} data-testid="rest-plus">
+              +{REST_ADJUST_SECONDS}
+            </Button>
+          </>
+        )}
+        <Button
+          type="button"
+          onClick={onClear}
+          className={`signature-glass h-14 min-w-28 rounded-full px-4 font-display text-base font-semibold ${complete ? 'signature-glass-success motion-attention-pop-once hover:bg-success/90' : 'text-foreground hover:bg-card/80'}`}
+          style={complete ? { '--motion-attention-scale': attentionScale } : undefined}
+          aria-label={complete ? 'Rest complete, tap to dismiss' : `Rest timer ${formatTimer(seconds)}, tap to stop`}
+          data-testid="rest-timer"
+          data-rest-state={complete ? 'complete' : 'running'}
+        >
+          <Clock3 className="h-5 w-5" /> {complete ? 'Rest complete' : formatTimer(seconds)}
+        </Button>
+      </div>
       <div className="sr-only" aria-live="assertive" aria-atomic="true" data-testid="rest-complete-announcement">
         {complete ? 'Rest complete' : ''}
       </div>
@@ -209,6 +224,12 @@ export default function WorkoutTracker() {
     localStorage.removeItem(restStorageKey);
     setRestEndsAt(null);
   };
+  const adjustRest = (deltaSeconds) => {
+    if (!restEndsAt) return;
+    const endsAt = adjustRestEnd(restEndsAt, deltaSeconds);
+    localStorage.setItem(restStorageKey, String(endsAt));
+    setRestEndsAt(endsAt);
+  };
   useEffect(() => {
     const stored = Number(localStorage.getItem(restStorageKey));
     if (stored && stored > Date.now()) {
@@ -248,6 +269,8 @@ export default function WorkoutTracker() {
   // Previous / current / upcoming set states (design-plans/010, bold
   // direction): the first pending set is "current"; completed sets go quiet.
   const activeExerciseId = log.exercises.find((ex) => ex.sets.some((s) => s.status !== 'completed'))?.id;
+  // Manual rest defaults to the current exercise's rest (else 90s).
+  const manualRest = manualRestSeconds(log.exercises.find((ex) => ex.id === activeExerciseId) || log.exercises[0]);
   const isActiveSet = (exercise, set) => !sealed && set.status !== 'completed'
     && set.id === exercise.sets.find((s) => s.status !== 'completed')?.id;
   const setRowClass = (exercise, set) => {
@@ -466,9 +489,20 @@ export default function WorkoutTracker() {
           {outbox.saveState === 'not_saved' && <><CircleAlert className="h-3.5 w-3.5 text-gold" /> Not saved yet</>}
           {!outbox.online && <Badge variant="outline"><WifiOff className="mr-1 h-3.5 w-3.5" /> Offline</Badge>}
         </span>
+        {!restEndsAt && !sealed && (
+          <Button
+            type="button" variant="ghost" size="sm"
+            className="ml-auto min-h-11 px-2 text-xs text-muted-foreground"
+            onClick={() => startRest(manualRest)}
+            aria-label={`Start a ${formatTimer(manualRest)} rest timer`}
+            data-testid="rest-start"
+          >
+            <Timer className="mr-1 h-3.5 w-3.5" /> Rest {formatTimer(manualRest)}
+          </Button>
+        )}
         <Button
           type="button" variant="ghost" size="sm"
-          className="ml-auto min-h-11 px-2 text-xs text-muted-foreground"
+          className={cn('min-h-11 px-2 text-xs text-muted-foreground', (restEndsAt || sealed) && 'ml-auto')}
           onClick={toggleRestAlerts}
           aria-pressed={restAlerts}
           aria-label={restAlerts ? 'Turn rest alerts off' : 'Turn rest alerts on'}
@@ -637,7 +671,7 @@ export default function WorkoutTracker() {
         </div>
       </div>
 
-      <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
+      <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} onAdjust={adjustRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
 
       <Dialog open={abandonOpen} onOpenChange={setAbandonOpen}>
         <DialogContent className="max-w-sm" data-testid="workout-abandon-dialog">
