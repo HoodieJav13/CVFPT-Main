@@ -31,6 +31,8 @@ import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { CoachClientWeek } from '@/components/WeekRhythm';
 import { SaveTemplateDialog } from '@/components/training/TemplateBits';
+import { HistoryShowMore } from '@/components/training/HistoryShowMore';
+import { useHistoryPages } from '@/lib/useHistoryPages';
 import { WorkoutDialog, workoutToForm } from '@/pages/coach/Programs';
 
 export default function ClientDetail() {
@@ -873,7 +875,9 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   const [programs, setPrograms] = useState(null);
   const [workouts, setWorkouts] = useState(null);
   const [workoutAssignments, setWorkoutAssignments] = useState(null);
-  const [workoutHistory, setWorkoutHistory] = useState(null);
+  const historyPages = useHistoryPages(`/workout-logs/client/${clientId}`);
+  const workoutHistory = historyPages.items;
+  const { fetchFirst: fetchHistory, setFirstPage: setHistoryPage } = historyPages;
   const [loadError, setLoadError] = useState(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignmentType, setAssignmentType] = useState('program');
@@ -898,21 +902,21 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         api.get('/programs'),
         api.get('/programs/workouts'),
         api.get(`/programs/workout-assignments/client/${clientId}`),
-        api.get(`/workout-logs/client/${clientId}`),
+        fetchHistory(),
         api.get(`/programs/program-assignments/client/${clientId}`),
       ]);
       setPrograms(programRes.data);
       setWorkouts(workoutRes.data);
       setProgramAssignments(programAssignmentRes.data);
       setWorkoutAssignments(assignmentRes.data);
-      setWorkoutHistory(historyRes.data);
+      setHistoryPage(historyRes);
       setLoadError(null);
     } catch (e) {
       const message = errMsg(e);
       setLoadError(message);
       toast.error(message);
     }
-  }, [clientId]);
+  }, [clientId, fetchHistory, setHistoryPage]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1249,12 +1253,13 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       )}
       <section className="space-y-3 pt-3" data-testid="coach-client-workout-history">
         <h3 className="font-display text-lg font-semibold">Workout history</h3>
-        {workoutHistory.length === 0 ? <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">No completed workouts yet.</p> : workoutHistory.slice(0, 12).map((log) => (
+        {workoutHistory.length === 0 ? <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">No completed workouts yet.</p> : workoutHistory.map((log) => (
           <Link key={log.id} to={`/coach/workouts/${log.id}`} className="flex min-h-14 items-center justify-between rounded-md border border-border bg-card/60 px-4 py-3 hover:bg-card">
             <span><span className="block font-medium">{log.workout_name}</span><span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)}</span></span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
         ))}
+        <HistoryShowMore pages={historyPages} testId="coach-history-show-more" />
       </section>
     </div>
   );

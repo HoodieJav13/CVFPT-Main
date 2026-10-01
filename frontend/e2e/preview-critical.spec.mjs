@@ -767,27 +767,156 @@ test('offline finish queues completion, defers celebration, and syncs on reconne
   expect(outboxes).toBe(0);
 });
 
-test('session conflicts surface inline, clear on relevant edits, and keep refused bookings pending', async ({ page }) => {
-  // Pin "now" to a mid-month Denver midday. Fixtures are Denver-day relative
-  // and pickDay(5) must not cross a month boundary, so a real clock made this
-  // fail on evenings (UTC runner) and in the last five days of every month.
-  const now = new Date('2026-09-15T12:00:00-06:00');
-  await page.clock.setFixedTime(now);
+test('offline extra set keeps its edits through sync, and a sealed tracker locks every control', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__cvfOnline = true;
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => window.__cvfOnline });
+    window.__setOnline = (value) => {
+      window.__cvfOnline = value;
+      window.dispatchEvent(new Event(value ? 'online' : 'offline'));
+    };
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  const trackPath = new URL(page.url()).pathname;
+  const spaGo = (path) => page.evaluate((target) => {
+    window.history.pushState({}, '', target);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, path);
+
+  const squat = page.getByTestId('tracker-exercise-card').first();
+  const weight = squat.getByRole('spinbutton', { name: 'Goblet Squat set 4 weight', exact: true });
+  const reps = squat.getByRole('spinbutton', { name: 'Goblet Squat set 4 performed reps', exact: true });
+
+  // Offline: add a set, record 55 x 8, complete it.
+  await page.evaluate(() => window.__setOnline(false));
+  await squat.getByRole('button', { name: 'Add set' }).click();
+  await weight.fill('55');
+  await weight.blur();
+  await reps.fill('8');
+  await reps.blur();
+  await squat.getByRole('button', { name: 'Complete set 4' }).click();
+
+  // Reconnect: the add response must not reset the row to server defaults.
+  await page.evaluate(() => window.__setOnline(true));
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await expect(weight).toHaveValue('55');
+  await expect(reps).toHaveValue('8');
+  await expect(squat.getByRole('button', { name: 'Mark incomplete set 4' })).toBeVisible();
+
+  // And the server copy agrees: re-open the tracker from a fresh fetch.
+  await spaGo('/client/programs');
+  await spaGo(trackPath);
+  await expect(weight).toHaveValue('55');
+  await expect(reps).toHaveValue('8');
+  await expect(squat.getByRole('button', { name: 'Mark incomplete set 4' })).toBeVisible();
+
+  // Finish offline and return: every mutation control is locked.
+  await page.evaluate(() => window.__setOnline(false));
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  await page.getByRole('button', { name: 'Confirm completion' }).click();
+  await expect(page.getByTestId('waiting-to-sync-banner')).toBeVisible();
+  await spaGo(trackPath);
+  await expect(page.getByTestId('finished-locally-banner')).toBeVisible();
+  await expect(weight).toBeDisabled();
+  await expect(reps).toBeDisabled();
+  await expect(squat.getByRole('combobox', { name: 'Goblet Squat set 4 weight unit' })).toBeDisabled();
+  await expect(squat.getByRole('button', { name: 'Remove extra set' })).toBeDisabled();
+  await expect(squat.getByLabel('Exercise notes')).toBeDisabled();
+  await expect(squat.getByRole('button', { name: 'Add set' })).toBeDisabled();
+  await expect(squat.getByTestId('same-as-last-time')).toBeDisabled();
+  // Only the completion is queued behind the sealed banner.
+  const queued = await page.evaluate(() => Object.entries(localStorage)
+    .filter(([key]) => key.startsWith('cvf_workout_outbox_'))
+    .flatMap(([, value]) => JSON.parse(value).map((operation) => operation.kind)));
+  expect(queued).toEqual(['complete']);
+});
+
+test('Same as last time keeps reps typed while history is still loading', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  // Preview data lives in memory: navigate in-app (no reload) so the first
+  // workout's history survives.
+  const startDayOne = async () => {
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/client/programs');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+    await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  };
+  const squat = page.getByTestId('tracker-exercise-card').first();
+  const reps1 = squat.getByRole('spinbutton', { name: 'Goblet Squat set 1 performed reps', exact: true });
+  const rpe1 = squat.getByRole('spinbutton', { name: 'Goblet Squat set 1 performed RPE', exact: true });
+
+  // Last time: 8 reps at RPE 7.
+  await page.goto('/client');
+  await startDayOne();
+  await reps1.fill('8');
+  await reps1.blur();
+  await rpe1.fill('7');
+  await rpe1.blur();
+  await squat.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  await page.getByRole('button', { name: 'Confirm completion' }).click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+$/);
+
+  // This time: tap "Same as last time", then type 17 reps while history is
+  // still loading (slowed by the preview test harness).
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '/exercises/[^/]+/history$', ms: 1500 }])));
+  await startDayOne();
+  const trackPath = new URL(page.url()).pathname;
+  await expect(reps1).toHaveValue('');
+  await expect(rpe1).toHaveValue('');
+  await squat.getByTestId('same-as-last-time').click();
+  await expect(squat.getByTestId('same-as-last-time')).toBeDisabled();
+  await reps1.fill('17');
+  await reps1.blur();
+  await expect(squat.getByTestId('same-as-last-time')).toBeEnabled({ timeout: 5000 });
+
+  // The typed reps survive; only the still-blank RPE comes from last time.
+  await expect(rpe1).toHaveValue('7');
+  await expect(reps1).toHaveValue('17');
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+
+  // Server copy agrees after a fresh fetch.
+  for (const target of ['/client/programs', trackPath]) {
+    await page.evaluate((path) => {
+      window.history.pushState({}, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, target);
+  }
+  await expect(reps1).toHaveValue('17');
+  await expect(rpe1).toHaveValue('7');
+});
+
+async function runConflictFlow(page) {
   await usePreviewRole(page, 'coach');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/coach/sessions', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('session-create-button')).toBeVisible();
 
+  // Days are computed in the BROWSER (so a fixed browser clock and timezone stay consistent with the
+  // calendar) and chosen by the full date. Selecting by the day NUMBER alone is ambiguous at month
+  // boundaries: on Sept 30 the calendar also shows "Sunday, August 30th" as a leading day, listed first.
   const pickDay = async (offsetDays) => {
     const panel = page.getByTestId('session-datetime-input-panel');
-    const target = new Date(now);
-    target.setDate(target.getDate() + offsetDays);
-    if (target.getMonth() !== now.getMonth()) {
-      await panel.getByRole('button', { name: /next/i }).click();
-    }
-    await panel.getByRole('grid')
-      .getByRole('button', { name: new RegExp(`\\b${target.getDate()}(st|nd|rd|th)?\\b`) })
-      .first().click();
+    const { dateKey, sameMonth } = await page.evaluate((offset) => {
+      const now = new Date();
+      const target = new Date(now);
+      target.setDate(target.getDate() + offset);
+      const pad = (n) => String(n).padStart(2, '0');
+      return {
+        dateKey: `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`,
+        sameMonth: target.getMonth() === now.getMonth(),
+      };
+    }, offsetDays);
+    if (!sameMonth) await panel.getByRole('button', { name: /next/i }).click();
+    await panel.locator(`[data-day="${dateKey}"]`).getByRole('button').click();
   };
 
   // Overlapping the fixture 3:00 PM session as the same coach is a hard
@@ -820,6 +949,22 @@ test('session conflicts surface inline, clear on relevant edits, and keep refuse
   await expect(page.getByTestId('booking-conflict-note')).toBeVisible();
   await expect(page.getByTestId('booking-conflict-note')).toContainText('The request stays pending');
   await expect(page.getByTestId('sessions-booking-row')).toHaveCount(1);
+}
+
+test('session conflicts surface inline, clear on relevant edits, and keep refused bookings pending', async ({ page }) => {
+  await runConflictFlow(page);
+});
+
+// Date-boundary regression: the same flow under fixed browser clocks, including month ends where the
+// calendar shows leading days from the previous month (the reproduced failure was Sept 30).
+test.describe('session conflict flow at month boundaries', () => {
+  test.use({ timezoneId: 'America/Denver' });
+  for (const instant of ['2026-09-30T22:54:00-06:00', '2026-10-01T06:29:00-06:00', '2026-01-31T12:00:00-07:00', '2026-03-31T12:00:00-06:00']) {
+    test(`at ${instant}`, async ({ page }) => {
+      await page.clock.setFixedTime(new Date(instant));
+      await runConflictFlow(page);
+    });
+  }
 });
 
 const IPHONE_SAFARI_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
@@ -900,4 +1045,156 @@ test.describe('home-screen install on Android Chrome', () => {
     await expect.poll(() => page.evaluate(() => window.__installPrompted === true)).toBe(true);
     await expect(page.getByTestId('install-guide')).toHaveCount(0);
   });
+});
+
+test('the workout tracker links each exercise demo video, workout link first, then library', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  const cards = page.getByTestId('tracker-exercise-card');
+  // Goblet Squat: library video. Pallof Press: the workout's own link.
+  const squatVideo = cards.nth(0).getByTestId('tracker-exercise-video');
+  await expect(squatVideo).toHaveAttribute('href', 'https://www.youtube.com/watch?v=MeIiIdhvXT4');
+  await expect(squatVideo).toHaveAttribute('target', '_blank');
+  await expect(squatVideo).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(cards.nth(2).getByTestId('tracker-exercise-video')).toHaveAttribute('href', 'https://www.youtube.com/watch?v=ma2OjgP5XDc');
+  const box = await squatVideo.boundingBox();
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
+
+test('rest can be started manually and adjusted by 15 seconds while it runs', async ({ page }) => {
+  await page.clock.install();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+
+  const timer = page.getByTestId('rest-timer');
+  await expect(timer).toHaveCount(0);
+  // The current exercise (Goblet Squat) prescribes 90s.
+  const start = page.getByTestId('rest-start');
+  await expect(start).toHaveText(/Rest 1:30/);
+  await start.click();
+  await expect(timer).toHaveAttribute('data-rest-state', 'running');
+  await expect(timer).toContainText('1:30');
+  await expect(start).toHaveCount(0);
+
+  await page.getByTestId('rest-plus').click();
+  await expect(timer).toContainText('1:45');
+  await page.getByTestId('rest-minus').click();
+  await page.getByTestId('rest-minus').click();
+  await expect(timer).toContainText('1:15');
+  for (const id of ['rest-minus', 'rest-plus']) {
+    const box = await page.getByTestId(id).boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+
+  await page.clock.fastForward(76_000);
+  await expect(timer).toHaveAttribute('data-rest-state', 'complete');
+  await expect(page.getByTestId('rest-plus')).toHaveCount(0);
+  await timer.click();
+  await expect(timer).toHaveCount(0);
+  await expect(page.getByTestId('rest-start')).toBeVisible();
+});
+
+test('workout history pages in twelves for clients and coaches', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Sarah has 13 completed workouts in the preview fixtures.
+  await page.goto('/client');
+  await page.evaluate(() => {
+    localStorage.setItem('cvf_preview_role', 'client');
+    localStorage.setItem('cvf_preview_client_id', 'client_sarah');
+  });
+  await page.goto('/client/programs?view=history');
+  const history = page.getByTestId('client-workout-history');
+  await expect(history.getByTestId('workout-history-row')).toHaveCount(12);
+  await history.getByTestId('history-show-more').click();
+  await expect(history.getByTestId('workout-history-row')).toHaveCount(13);
+  await expect(history.getByTestId('history-show-more')).toHaveCount(0);
+  const clientIds = await history.getByTestId('workout-history-row').evaluateAll((rows) => rows.map((row) => row.getAttribute('href')));
+  expect(new Set(clientIds).size).toBe(13);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+
+  // Fixtures are static, so a fresh load as the coach is fine here.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_role', 'coach'));
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  await expect(rows).toHaveCount(12);
+  await coachHistory.getByTestId('coach-history-show-more').click();
+  await expect(rows).toHaveCount(13);
+  await expect(coachHistory.getByTestId('coach-history-show-more')).toHaveCount(0);
+  // (Page-width overflow isn't asserted here: the coach client page already
+  // overflows at 390px from the assigned-card action buttons, on main too.)
+});
+
+test('a slow "Show more" that lands after a history refresh is discarded', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  const more = coachHistory.getByTestId('coach-history-show-more');
+  // The fixed preview toolbar overlaps this button at desktop width.
+  const pressMore = async () => { await more.focus(); await page.keyboard.press('Enter'); };
+  await expect(rows).toHaveCount(12);
+
+  // "Show more" is slow (preview test harness; latency is fixed when the
+  // request starts), then an action reloads the page's history quickly.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/workout-logs/client/', ms: 2500 }])));
+  await pressMore();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await page.getByTestId('unassign-workout-button').first().click();
+  await expect(page.getByText('Workout unassigned')).toBeVisible();
+
+  // After the stale page would have landed, the refreshed list is intact:
+  // still its first 12, with its own "Show more".
+  await page.waitForTimeout(3000);
+  await expect(rows).toHaveCount(12);
+  await expect(more).toBeEnabled();
+  await pressMore();
+  await expect(rows).toHaveCount(13);
+  const hrefs = await rows.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  expect(new Set(hrefs).size).toBe(13);
+});
+
+test('"Show more" clicked while a history refresh is loading is discarded once the refresh lands', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  const more = coachHistory.getByTestId('coach-history-show-more');
+  // The fixed preview toolbar overlaps this button at desktop width.
+  const pressMore = async () => { await more.focus(); await page.keyboard.press('Enter'); };
+  const slowHistory = (ms) => page.evaluate((delay) => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/workout-logs/client/', ms: delay }])), ms);
+  await expect(rows).toHaveCount(12);
+
+  // The refresh starts first (1.5s); "Show more" is clicked while it is
+  // still loading and lands after it (3.5s), carrying the old list's cursor.
+  await slowHistory(1500);
+  await page.getByTestId('unassign-workout-button').first().click();
+  // The toast shows as the unassign lands, right when the reload begins.
+  await expect(page.getByText('Workout unassigned')).toBeVisible();
+  await slowHistory(3500);
+  await pressMore();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+
+  // Once both have landed, the refreshed list stands on its own.
+  await page.waitForTimeout(4500);
+  await expect(rows).toHaveCount(12);
+  await expect(more).toBeEnabled();
+  await pressMore();
+  await expect(rows).toHaveCount(13);
+  const hrefs = await rows.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  expect(new Set(hrefs).size).toBe(13);
 });

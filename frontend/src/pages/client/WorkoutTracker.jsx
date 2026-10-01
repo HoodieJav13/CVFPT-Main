@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Plus, Save, Trash2, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Play, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -17,7 +17,11 @@ import { toast } from 'sonner';
 import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
-import { formatRestSeconds } from '@/lib/rest';
+import {
+  adjustRestEnd, formatRestSeconds, manualRestSeconds, REST_ADJUST_SECONDS,
+} from '@/lib/rest';
+import { safeHttpUrl } from '@/lib/safeUrl';
+import { lastTimeFills } from '@/lib/workoutSync';
 import { trackProductEvent } from '@/lib/telemetry';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
@@ -31,10 +35,6 @@ function formatTimer(seconds) {
 
 function displayPerformed(value, suffix = '') {
   return value === null || value === undefined ? 'Not recorded' : `${value}${suffix}`;
-}
-
-function isBlank(value) {
-  return value === '' || value === null || value === undefined;
 }
 
 function ExerciseHistory({ logId, exercise }) {
@@ -108,7 +108,7 @@ function ExerciseHistory({ logId, exercise }) {
 // The rest timer owns its own 250ms tick so a running countdown re-renders
 // only this FAB — not every exercise card and controlled input (audit #11).
 // The opt-in end-of-rest cue lives here too, since it keys off the same tick.
-function RestTimerFab({ restEndsAt, onClear, restAlerts, attentionScale }) {
+function RestTimerFab({ restEndsAt, onClear, onAdjust, restAlerts, attentionScale }) {
   const [now, setNow] = useState(Date.now());
   const announcedRef = useRef(false);
 
@@ -156,19 +156,32 @@ function RestTimerFab({ restEndsAt, onClear, restAlerts, attentionScale }) {
 
   if (!restEndsAt) return null;
   const seconds = Math.max(0, Math.ceil((restEndsAt - now) / 1000));
+  const adjustClass = 'signature-glass h-11 w-11 rounded-full px-0 text-sm font-semibold tabular-nums text-foreground hover:bg-card/80';
   return (
     <>
-      <Button
-        type="button"
-        onClick={onClear}
-        className={`signature-glass fixed bottom-40 right-4 z-40 h-14 min-w-28 rounded-full px-4 font-display text-base font-semibold lg:bottom-24 ${complete ? 'signature-glass-success motion-attention-pop-once hover:bg-success/90' : 'text-foreground hover:bg-card/80'}`}
-        style={complete ? { '--motion-attention-scale': attentionScale } : undefined}
-        aria-label={complete ? 'Rest complete, tap to dismiss' : `Rest timer ${formatTimer(seconds)}, tap to stop`}
-        data-testid="rest-timer"
-        data-rest-state={complete ? 'complete' : 'running'}
-      >
-        <Clock3 className="h-5 w-5" /> {complete ? 'Rest complete' : formatTimer(seconds)}
-      </Button>
+      <div className="fixed bottom-40 right-4 z-40 flex items-center gap-2 lg:bottom-24">
+        {!complete && (
+          <>
+            <Button type="button" className={adjustClass} onClick={() => onAdjust(-REST_ADJUST_SECONDS)} aria-label={`Subtract ${REST_ADJUST_SECONDS} seconds of rest`} data-testid="rest-minus">
+              −{REST_ADJUST_SECONDS}
+            </Button>
+            <Button type="button" className={adjustClass} onClick={() => onAdjust(REST_ADJUST_SECONDS)} aria-label={`Add ${REST_ADJUST_SECONDS} seconds of rest`} data-testid="rest-plus">
+              +{REST_ADJUST_SECONDS}
+            </Button>
+          </>
+        )}
+        <Button
+          type="button"
+          onClick={onClear}
+          className={`signature-glass h-14 min-w-28 rounded-full px-4 font-display text-base font-semibold ${complete ? 'signature-glass-success motion-attention-pop-once hover:bg-success/90' : 'text-foreground hover:bg-card/80'}`}
+          style={complete ? { '--motion-attention-scale': attentionScale } : undefined}
+          aria-label={complete ? 'Rest complete, tap to dismiss' : `Rest timer ${formatTimer(seconds)}, tap to stop`}
+          data-testid="rest-timer"
+          data-rest-state={complete ? 'complete' : 'running'}
+        >
+          <Clock3 className="h-5 w-5" /> {complete ? 'Rest complete' : formatTimer(seconds)}
+        </Button>
+      </div>
       <div className="sr-only" aria-live="assertive" aria-atomic="true" data-testid="rest-complete-announcement">
         {complete ? 'Rest complete' : ''}
       </div>
@@ -183,6 +196,9 @@ export default function WorkoutTracker() {
   const isCoach = user.role === 'coach' || user.role === 'admin';
   const basePath = isCoach ? '/coach' : '/client';
   const [log, setLog] = useState(null);
+  // Latest rendered log, for handlers that resume after an await.
+  const logRef = useRef(null);
+  logRef.current = log;
   const [loadError, setLoadError] = useState(null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -208,6 +224,12 @@ export default function WorkoutTracker() {
   const clearRest = () => {
     localStorage.removeItem(restStorageKey);
     setRestEndsAt(null);
+  };
+  const adjustRest = (deltaSeconds) => {
+    if (!restEndsAt) return;
+    const endsAt = adjustRestEnd(restEndsAt, deltaSeconds);
+    localStorage.setItem(restStorageKey, String(endsAt));
+    setRestEndsAt(endsAt);
   };
   useEffect(() => {
     const stored = Number(localStorage.getItem(restStorageKey));
@@ -248,6 +270,8 @@ export default function WorkoutTracker() {
   // Previous / current / upcoming set states (design-plans/010, bold
   // direction): the first pending set is "current"; completed sets go quiet.
   const activeExerciseId = log.exercises.find((ex) => ex.sets.some((s) => s.status !== 'completed'))?.id;
+  // Manual rest defaults to the current exercise's rest (else 90s).
+  const manualRest = manualRestSeconds(log.exercises.find((ex) => ex.id === activeExerciseId) || log.exercises[0]);
   const isActiveSet = (exercise, set) => !sealed && set.status !== 'completed'
     && set.id === exercise.sets.find((s) => s.status !== 'completed')?.id;
   const setRowClass = (exercise, set) => {
@@ -353,29 +377,17 @@ export default function WorkoutTracker() {
       toast.info('No history yet.');
       return;
     }
-    const bySetNumber = new Map(occurrence.sets.map((row) => [row.set_number, row]));
+    // Re-read the exercise: anything typed while history loaded is kept.
+    const current = logRef.current?.exercises.find((row) => row.id === exercise.id) || exercise;
     let filledCount = 0;
-    for (const set of exercise.sets) {
-      const last = bySetNumber.get(set.set_number);
-      if (!last) continue;
-      const fillLoad = isBlank(set.actual_load_value) && last.actual_load_value != null;
-      const fillReps = isBlank(set.actual_reps) && last.actual_reps != null;
-      const fillRpe = isBlank(set.actual_rpe) && last.actual_rpe != null;
-      if (!fillLoad && !fillReps && !fillRpe) continue;
-      filledCount += 1;
-      const loadValue = fillLoad ? last.actual_load_value : set.actual_load_value;
-      outbox.enqueue({
-        kind: 'set', exerciseId: exercise.id, setId: set.id,
-        method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
-        data: {
-          actual_load_value: isBlank(loadValue) ? null : Number(loadValue),
-          actual_load_unit: isBlank(loadValue) ? null : ((fillLoad ? last.actual_load_unit : set.actual_load_unit) || 'lb'),
-          actual_reps: fillReps ? last.actual_reps : (isBlank(set.actual_reps) ? null : Number(set.actual_reps)),
-          actual_rpe: fillRpe ? last.actual_rpe : (isBlank(set.actual_rpe) ? null : Number(set.actual_rpe)),
-          status: set.status,
-        },
+    lastTimeFills(current.sets, occurrence).forEach(({ setId, data }) => {
+      const queued = outbox.enqueue({
+        kind: 'set', exerciseId: exercise.id, setId,
+        method: 'patch', url: `/workout-logs/${id}/sets/${setId}`,
+        data,
       });
-    }
+      if (queued) filledCount += 1;
+    });
     if (!filledCount) {
       toast.info('Nothing to fill.');
       return;
@@ -466,9 +478,20 @@ export default function WorkoutTracker() {
           {outbox.saveState === 'not_saved' && <><CircleAlert className="h-3.5 w-3.5 text-gold" /> Not saved yet</>}
           {!outbox.online && <Badge variant="outline"><WifiOff className="mr-1 h-3.5 w-3.5" /> Offline</Badge>}
         </span>
+        {!restEndsAt && !sealed && (
+          <Button
+            type="button" variant="ghost" size="sm"
+            className="ml-auto min-h-11 px-2 text-xs text-muted-foreground"
+            onClick={() => startRest(manualRest)}
+            aria-label={`Start a ${formatTimer(manualRest)} rest timer`}
+            data-testid="rest-start"
+          >
+            <Timer className="mr-1 h-3.5 w-3.5" /> Rest {formatTimer(manualRest)}
+          </Button>
+        )}
         <Button
           type="button" variant="ghost" size="touchIcon"
-          className="ml-auto text-muted-foreground"
+          className={cn('text-muted-foreground', (restEndsAt || sealed) && 'ml-auto')}
           onClick={toggleRestAlerts}
           aria-pressed={restAlerts}
           aria-label={restAlerts ? 'Turn rest alerts off' : 'Turn rest alerts on'}
@@ -509,6 +532,18 @@ export default function WorkoutTracker() {
                 {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
               </div>
               {exercise.prescribed_notes && <p className="text-xs text-muted-foreground">{exercise.prescribed_notes}</p>}
+              {safeHttpUrl(exercise.video_url) && (
+                <a
+                  href={safeHttpUrl(exercise.video_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                  aria-label={`Watch demo: ${exercise.exercise_name} (opens in a new tab)`}
+                  data-testid="tracker-exercise-video"
+                >
+                  <Play className="h-4 w-4" aria-hidden /> Watch demo
+                </a>
+              )}
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-[1.75rem_minmax(5.5rem,1fr)_3.5rem_3.5rem_2.75rem] gap-1 px-1 text-xs font-medium text-muted-foreground">
@@ -528,7 +563,7 @@ export default function WorkoutTracker() {
                       disabled={sealed}
                       aria-label={`${exercise.exercise_name} set ${set.set_number} weight`}
                     />
-                    <Select value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
+                    <Select disabled={sealed} value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
                       setLocalValue(exercise.id, set.id, 'actual_load_unit', value);
                       outbox.enqueue({
                         kind: 'set', exerciseId: exercise.id, setId: set.id,
@@ -567,7 +602,7 @@ export default function WorkoutTracker() {
                     <Check className="h-5 w-5" />
                   </Button>
                   {set.set_origin === 'extra' && (
-                    <Button type="button" size="touchIcon" variant="ghost" className="col-start-2 text-muted-foreground" onClick={() => removeSet(exercise, set)} aria-label="Remove extra set" title="Remove extra set">
+                    <Button type="button" size="touchIcon" variant="ghost" className="col-start-2 text-muted-foreground" disabled={sealed} onClick={() => removeSet(exercise, set)} aria-label="Remove extra set" title="Remove extra set">
                       <Trash2 aria-hidden />
                     </Button>
                   )}
@@ -593,7 +628,7 @@ export default function WorkoutTracker() {
               <div className="space-y-1.5">
                 <Label htmlFor={`notes-${exercise.id}`}>Exercise notes</Label>
                 <Textarea
-                  id={`notes-${exercise.id}`} rows={2} value={exercise.client_notes || ''}
+                  id={`notes-${exercise.id}`} rows={2} value={exercise.client_notes || ''} disabled={sealed}
                   onChange={(event) => {
                     setLog((current) => updateExercise(current, exercise.id, (row) => ({ ...row, client_notes: event.target.value })));
                     outbox.markDirty();
@@ -637,7 +672,7 @@ export default function WorkoutTracker() {
         </div>
       </div>
 
-      <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
+      <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} onAdjust={adjustRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
 
       <Dialog open={abandonOpen} onOpenChange={setAbandonOpen}>
         <DialogContent className="max-w-sm" data-testid="workout-abandon-dialog">

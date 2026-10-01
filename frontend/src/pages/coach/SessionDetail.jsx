@@ -9,6 +9,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SessionEditorDrawer } from '@/components/SessionEditorDrawer';
+import { SeriesBadge } from '@/components/series/SeriesBadge';
+import { CancelSessionDialog } from '@/components/series/CancelSessionDialog';
 import { SessionNotesDialog } from '@/components/SessionNotesDialog';
 import {
   ArrowLeft, Check, Dumbbell, Loader2, MapPin, Pencil, StickyNote, UserX, X,
@@ -22,7 +24,7 @@ export default function CoachSessionDetail() {
   const [session, setSession] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [acting, setActing] = useState(false);
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
@@ -48,15 +50,18 @@ export default function CoachSessionDetail() {
       toast.error(errMsg(e));
     } finally {
       setActing(false);
-      setConfirmingCancel(false);
     }
   };
 
   const complete = () => act(() => api.patch(`/sessions/${session.id}/complete`), 'Session completed');
   const markNoShow = () => act(() => api.patch(`/sessions/${session.id}/no-show`), 'Marked as a no-show');
-  const cancel = () => {
-    if (!confirmingCancel) { setConfirmingCancel(true); return; }
-    act(() => api.patch(`/sessions/${session.id}/cancel`), 'Session cancelled');
+  const confirmCancel = ({ scope, notify }) => {
+    setCancelOpen(false);
+    if (scope === 'future' && session.series_id) {
+      act(() => api.patch(`/sessions/series/${session.series_id}/cancel`, { from_session_id: session.id, notify }), 'Sessions cancelled');
+    } else {
+      act(() => api.patch(`/sessions/${session.id}/cancel`, { notify }), 'Session cancelled');
+    }
   };
 
   if (!session && loadError) return <LoadErrorState message={loadError} scope="coach-session-detail" onRetry={() => { setLoadError(null); load(); }} />;
@@ -90,6 +95,7 @@ export default function CoachSessionDetail() {
           <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">
             {fmtDay(session.scheduled_at)} <span className="text-primary">{fmtTime(session.scheduled_at)}</span>
           </h1>
+          <SeriesBadge session={session} className="mt-2" />
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
             {session.client?.name && (
               <Link
@@ -132,12 +138,12 @@ export default function CoachSessionDetail() {
               </Button>
               <Button
                 variant="ghost"
-                className={`min-h-11 rounded-xl ${confirmingCancel ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'}`}
+                className="min-h-11 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                 disabled={acting}
-                onClick={cancel}
+                onClick={() => setCancelOpen(true)}
                 data-testid="session-detail-cancel"
               >
-                {confirmingCancel ? 'Tap to confirm' : <><X className="mr-1.5 h-4 w-4" /> Cancel</>}
+                <X className="mr-1.5 h-4 w-4" /> Cancel
               </Button>
             </div>
           )}
@@ -248,6 +254,7 @@ export default function CoachSessionDetail() {
         </div>
       )}
 
+      <CancelSessionDialog session={session} open={cancelOpen} onOpenChange={setCancelOpen} busy={acting} onConfirm={confirmCancel} />
       <SessionEditorDrawer
         open={editOpen}
         onOpenChange={setEditOpen}

@@ -38,6 +38,73 @@ function decodeHistoryCursor(value) {
   }
 }
 
+// Completed-workout list paging (?paged=1). Keyset on (completed_at, id),
+// newest first. The cursor is server-issued; it is strictly validated (ISO
+// timestamp + UUID) because its values are placed in a filter expression.
+const LOG_PAGE_DEFAULT = 20;
+const LOG_PAGE_MAX = 50;
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:?\d{2})$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function decodeLogListCursor(value) {
+  if (value === undefined) return null;
+  if (typeof value !== 'string' || !value || value.length > 512) throw new Error('invalid');
+  let parsed;
+  try {
+    parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('invalid');
+  }
+  if (!parsed || Object.keys(parsed).sort().join(',') !== 'completed_at,id'
+    || typeof parsed.completed_at !== 'string' || !ISO_TIMESTAMP.test(parsed.completed_at)
+    || typeof parsed.id !== 'string' || !UUID.test(parsed.id)) throw new Error('invalid');
+  return parsed;
+}
+
+function encodeLogListCursor(row) {
+  return Buffer.from(JSON.stringify({ completed_at: row.completed_at, id: row.id })).toString('base64url');
+}
+
+function logPageSize(value) {
+  const size = Number(value);
+  return Number.isInteger(size) && size >= 1 ? Math.min(size, LOG_PAGE_MAX) : LOG_PAGE_DEFAULT;
+}
+
+async function completedLogsPage(clientId, { cursor, limit }, { db = supabaseAdmin, details = workoutLogsWithDetailsBulk } = {}) {
+  let query = db.from('workout_logs').select('id, completed_at')
+    .eq('client_id', clientId).eq('status', 'completed').eq('archived', false);
+  if (cursor) {
+    query = query.or(`completed_at.lt."${cursor.completed_at}",and(completed_at.eq."${cursor.completed_at}",id.lt.${cursor.id})`);
+  }
+  const { data, error } = await query
+    .order('completed_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1);
+  if (error) throw error;
+  const rows = data || [];
+  const page = rows.slice(0, limit);
+  return {
+    logs: await details(page.map((row) => row.id)),
+    next_cursor: rows.length > limit ? encodeLogListCursor(page[page.length - 1]) : null,
+  };
+}
+
+// The unpaged form (an array of up to 50) stays for existing callers.
+async function sendCompletedLogs(req, res, clientId) {
+  if (req.query.paged !== '1') {
+    const { data, error } = await supabaseAdmin.from('workout_logs')
+      .select('id').eq('client_id', clientId).eq('status', 'completed').eq('archived', false)
+      .order('completed_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
+  }
+  let cursor;
+  try {
+    cursor = decodeLogListCursor(req.query.cursor);
+  } catch {
+    return res.status(400).json({ error: 'Invalid history cursor' });
+  }
+  return res.json(await completedLogsPage(clientId, { cursor, limit: logPageSize(req.query.limit) }));
+}
+
 function encodeHistoryCursor(occurrence) {
   return Buffer.from(JSON.stringify({ completed_at: occurrence.completed_at, id: occurrence.workout_log_id })).toString('base64url');
 }
@@ -237,6 +304,54 @@ function computeLogAttribution(log) {
   return 'mixed';
 }
 
+// Demo video for each logged exercise: the coach's per-workout link wins,
+// then the library exercise's. Only http(s) links are ever returned. The
+// snapshot has no video column, so this is resolved live (no schema change).
+function safeVideoUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveExerciseVideos(exercises, workoutExercises = [], libraryExercises = []) {
+  const bySource = new Map(workoutExercises.map((row) => [row.id, row]));
+  const libraryVideo = new Map(libraryExercises.map((row) => [row.id, row.video_url]));
+  return exercises.map((exercise) => {
+    const source = bySource.get(exercise.source_workout_exercise_id);
+    const libraryId = exercise.exercise_library_id || source?.exercise_library_id;
+    const video = safeVideoUrl(source?.video_url) || safeVideoUrl(libraryVideo.get(libraryId));
+    return { ...exercise, video_url: video };
+  });
+}
+
+async function withExerciseVideos(exercises) {
+  if (!exercises.length) return exercises;
+  const sourceIds = [...new Set(exercises.map((row) => row.source_workout_exercise_id).filter(Boolean))];
+  let sources = [];
+  if (sourceIds.length) {
+    const { data, error } = await supabaseAdmin.from('workout_exercises')
+      .select('id, video_url, exercise_library_id').in('id', sourceIds);
+    if (error) throw error;
+    sources = data || [];
+  }
+  const libraryIds = [...new Set([
+    ...exercises.map((row) => row.exercise_library_id),
+    ...sources.map((row) => row.exercise_library_id),
+  ].filter(Boolean))];
+  let library = [];
+  if (libraryIds.length) {
+    const { data, error } = await supabaseAdmin.from('exercise_library')
+      .select('id, video_url').in('id', libraryIds);
+    if (error) throw error;
+    library = data || [];
+  }
+  return resolveExerciseVideos(exercises, sources, library);
+}
+
 async function workoutLogWithDetails(id) {
   const { data: log, error } = await supabaseAdmin.from('workout_logs')
     .select('*, client:clients(id, name, coach_id, archived)')
@@ -246,10 +361,11 @@ async function workoutLogWithDetails(id) {
   const { data: coachResponses, error: responseError } = await supabaseAdmin.from('workout_coach_responses')
     .select('*').eq('workout_log_id', id).eq('archived', false);
   if (responseError) throw responseError;
-  const { data: exercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
+  const { data: loggedExercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
     .select('*').eq('workout_log_id', id).eq('archived', false).order('position');
   if (exerciseError) throw exerciseError;
-  const exerciseIds = (exercises || []).map((exercise) => exercise.id);
+  const exercises = await withExerciseVideos(loggedExercises || []);
+  const exerciseIds = exercises.map((exercise) => exercise.id);
   let sets = [];
   if (exerciseIds.length) {
     const { data, error: setError } = await supabaseAdmin.from('workout_log_sets')
@@ -503,11 +619,7 @@ router.get('/active', requireClient, async (req, res) => {
 
 router.get('/mine', requireClient, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin.from('workout_logs')
-      .select('id').eq('client_id', req.user.client.id).eq('status', 'completed').eq('archived', false)
-      .order('completed_at', { ascending: false }).limit(50);
-    if (error) throw error;
-    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
+    return await sendCompletedLogs(req, res, req.user.client.id);
   } catch (error) {
     logError('client workout history error', error);
     return res.status(500).json({ error: 'Failed to load workout history' });
@@ -621,11 +733,7 @@ router.get('/client/:clientId', requireCoach, async (req, res) => {
     const { data: client } = await supabaseAdmin.from('clients').select('*')
       .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
     if (!client || !canAccessClient(req.user, client)) return res.status(404).json({ error: 'Client not found' });
-    const { data, error } = await supabaseAdmin.from('workout_logs').select('id')
-      .eq('client_id', client.id).eq('status', 'completed').eq('archived', false)
-      .order('completed_at', { ascending: false }).limit(50);
-    if (error) throw error;
-    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
+    return await sendCompletedLogs(req, res, client.id);
   } catch (error) {
     logError('coach workout history error', error);
     return res.status(500).json({ error: 'Failed to load workout history' });
@@ -896,6 +1004,7 @@ router.post('/:id/complete', async (req, res) => {
 
 module.exports = router;
 module.exports.workoutLogWithDetails = workoutLogWithDetails;
+module.exports.resolveExerciseVideos = resolveExerciseVideos;
 module.exports.canReadLog = canReadLog;
 module.exports.canWriteLog = canWriteLog;
 module.exports.actorStamp = actorStamp;
@@ -907,6 +1016,10 @@ module.exports.validateCoachResponseContent = validateCoachResponseContent;
 module.exports.validPerformedReps = validPerformedReps;
 module.exports.validPerformedRpe = validPerformedRpe;
 module.exports.decodeHistoryCursor = decodeHistoryCursor;
+module.exports.decodeLogListCursor = decodeLogListCursor;
+module.exports.encodeLogListCursor = encodeLogListCursor;
+module.exports.logPageSize = logPageSize;
+module.exports.completedLogsPage = completedLogsPage;
 module.exports.workoutSetUpdatePayload = workoutSetUpdatePayload;
 module.exports.updateSetAtHandlerBoundary = updateSetAtHandlerBoundary;
 module.exports.createExerciseHistoryHandler = createExerciseHistoryHandler;

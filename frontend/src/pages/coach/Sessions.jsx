@@ -1,11 +1,8 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, SessionsSkeleton, LoadErrorState, EmptyState, StatusBadge, SectionLabel } from '@/components/common';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -14,6 +11,10 @@ import {
 } from 'lucide-react';
 import { AvailabilityDrawer } from '@/components/AvailabilityEditor';
 import { SessionEditorDrawer } from '@/components/SessionEditorDrawer';
+import { SeriesBadge } from '@/components/series/SeriesBadge';
+import { CancelSessionDialog } from '@/components/series/CancelSessionDialog';
+import { useAuth } from '@/context/AuthContext';
+import { createDraftStore } from '@/lib/seriesDraftStore';
 import { SessionNotesDialog } from '@/components/SessionNotesDialog';
 import { fmtTime, fmtDay, fmtDateTime, isBeforeToday } from '@/lib/format';
 import { toast } from 'sonner';
@@ -70,6 +71,22 @@ export default function CoachSessions() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A recurring save that never got a confirmed answer (timeout/reload) is surfaced
+  // right away — once, as soon as the signed-in user is known — so the coach can
+  // resolve it instead of forgetting it.
+  const { user } = useAuth();
+  const checkedForPending = useRef(false);
+  useEffect(() => {
+    if (checkedForPending.current) return;
+    const userId = user?.profile?.id || user?.email;
+    if (!userId) return;
+    checkedForPending.current = true;
+    if (createDraftStore({ userId }).findPending()) {
+      setEditing(null);
+      setDrawerOpen(true);
+    }
+  }, [user]);
 
   useEffect(() => {
     const requestedView = searchParams.get('view');
@@ -135,12 +152,18 @@ export default function CoachSessions() {
     }
   };
 
-  const cancel = async (s) => {
+  const cancel = async (s, { scope = 'one', notify = true } = {}) => {
     if (acting) return;
     setActing(s.id);
     try {
-      await api.patch(`/sessions/${s.id}/cancel`);
-      toast.success('Session cancelled');
+      if (scope === 'future' && s.series_id) {
+        const { data } = await api.patch(`/sessions/series/${s.series_id}/cancel`, { from_session_id: s.id, notify });
+        const count = data.cancelled.length;
+        toast.success(count === 1 ? 'Session cancelled' : `${count} sessions cancelled`);
+      } else {
+        await api.patch(`/sessions/${s.id}/cancel`, { notify });
+        toast.success('Session cancelled');
+      }
       await load();
     } catch (e) {
       toast.error(errMsg(e));
@@ -274,6 +297,7 @@ export default function CoachSessions() {
                         {s.location || 'No location'}
                         {s.workout?.name ? ` · ${s.workout.name}` : ''}
                       </p>
+                      <SeriesBadge session={s} className="mt-1" />
                       {s.status === 'scheduled' && s.linked_workout_log?.status === 'active' && (
                         <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-primary" data-testid="session-live-chip">
                           <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary motion-safe:animate-pulse" /> In the gym now
@@ -355,30 +379,16 @@ export default function CoachSessions() {
       <SessionNotesDialog session={notesFor} onClose={() => setNotesFor(null)} />
       <AvailabilityDrawer open={hoursOpen} onOpenChange={setHoursOpen} />
 
-      <Dialog open={Boolean(cancelFor)} onOpenChange={(open) => !open && setCancelFor(null)}>
-        <DialogContent className="max-w-sm" data-testid="session-cancel-dialog">
-          <DialogHeader>
-            <DialogTitle>Cancel this session?</DialogTitle>
-            <DialogDescription>
-              {cancelFor && `${cancelFor.client?.name} — ${fmtDateTime(cancelFor.scheduled_at)}. The client will be notified.`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" className="min-h-11 rounded-xl" onClick={() => setCancelFor(null)} data-testid="session-cancel-keep">
-              Keep session
-            </Button>
-            <Button
-              variant="ghost"
-              className="min-h-11 rounded-xl border border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              disabled={Boolean(acting)}
-              onClick={async () => { const target = cancelFor; setCancelFor(null); await cancel(target); }}
-              data-testid="session-cancel-confirm"
-            >
-              Cancel session
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CancelSessionDialog
+        session={cancelFor}
+        open={Boolean(cancelFor)}
+        onOpenChange={(open) => !open && setCancelFor(null)}
+        busy={Boolean(acting)}
+        futureCount={cancelFor?.series_id
+          ? (sessions || []).filter((item) => item.series_id === cancelFor.series_id && item.status === 'scheduled' && item.scheduled_at >= cancelFor.scheduled_at).length
+          : undefined}
+        onConfirm={async (options) => { const target = cancelFor; setCancelFor(null); await cancel(target, options); }}
+      />
     </div>
   );
 }
