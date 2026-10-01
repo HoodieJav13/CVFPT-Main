@@ -17,15 +17,22 @@ import {
 } from '@/components/ui/select';
 import {
   AlertTriangle, Archive, ArrowDown, ArrowUp, BookOpen, CalendarDays, CheckCircle2, CircleAlert, Copy, Download,
-  Dumbbell, Eye, EyeOff, FileText, FileUp, Link2, Loader2, Pencil, Plus, Trash2, Unlink, UserPlus, Video,
+  Dumbbell, Eye, EyeOff, FileText, FileUp, GripVertical, Link2, Loader2, Pencil, Plus, Trash2, Unlink, UserPlus, Video,
 } from 'lucide-react';
+import {
+  DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import {
-  canMoveExercise, exerciseMarkers, groupKindLabel, isLinkedWithNext, moveBlock, moveExercise,
+  canMoveExercise, dropExercise, exerciseMarkers, groupKindLabel, isLinkedWithNext, moveBlock, moveExercise,
   supersetBlocks, toggleLinkWithNext, ungroupBlock,
 } from '@/lib/supersets';
 import { downloadBlob } from '@/lib/download';
@@ -1317,6 +1324,20 @@ function AssignmentsTab({ programs, workouts, clients, reload }) {
   );
 }
 
+// One draggable builder row. Only the grip starts a drag, so scrolling,
+// the accordion trigger, and inputs behave normally on touch screens.
+function SortableExerciseRow({ id, render }) {
+  const {
+    attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging,
+  } = useSortable({ id });
+  return render({
+    ref: setNodeRef,
+    style: { transform: CSS.Translate.toString(transform && { ...transform, x: 0 }), transition },
+    isDragging,
+    handle: { ref: setActivatorNodeRef, ...attributes, ...listeners },
+  });
+}
+
 // Shared editor body for the mobile dialog and the desktop pane. The
 // datalist id is prefixed so both mounts can coexist in the DOM.
 function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix = 'workout' }) {
@@ -1339,63 +1360,105 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
   const rowValue = (exercise, index) => exercise._uid || `exercise-${index}`;
   const rowName = (exercise, index) => exercise.custom_name || `exercise ${index + 1}`;
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const rowIds = form.exercises.map((exercise, index) => rowValue(exercise, index));
+  const nameForId = (rowId) => {
+    const index = rowIds.indexOf(rowId);
+    return index < 0 ? 'exercise' : rowName(form.exercises[index], index);
+  };
+  const onDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    const from = rowIds.indexOf(active.id);
+    const to = rowIds.indexOf(over.id);
+    if (from >= 0 && to >= 0) setExercises(dropExercise(form.exercises, from, to));
+  };
+  const announcements = {
+    onDragStart: ({ active }) => `Picked up ${nameForId(active.id)}. Use the arrow keys to move, space to drop.`,
+    onDragOver: ({ active, over }) => (over ? `${nameForId(active.id)} is over ${nameForId(over.id)}.` : `${nameForId(active.id)} is not over a drop position.`),
+    onDragEnd: ({ active, over }) => (over ? `Dropped ${nameForId(active.id)} at ${nameForId(over.id)}.` : `Dropped ${nameForId(active.id)}.`),
+    onDragCancel: ({ active }) => `Cancelled moving ${nameForId(active.id)}.`,
+  };
+
   const renderRow = (exercise, index) => (
-    <AccordionItem value={rowValue(exercise, index)} className="rounded-xl border border-border bg-card/50 px-3" data-testid="workout-exercise-row">
-      {/* The trigger's Radix header (h3) must grow so the chevron sits by the move buttons. */}
-      <div className="flex items-center gap-1 [&>h3]:min-w-0 [&>h3]:flex-1">
-        <AccordionTrigger className="min-h-11 min-w-0 py-3 hover:no-underline">
-          <span className="flex min-w-0 items-center gap-2 text-left">
-            <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md bg-primary/15 px-1.5 text-xs font-semibold tabular-nums text-primary" data-testid="workout-exercise-marker">{markers[index]}</span>
-            <span className="truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
-            {(exercise.sets || exercise.reps) && <Badge variant="outline" className="hidden shrink-0 tabular-nums sm:inline-flex">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
-          </span>
-        </AccordionTrigger>
-        <IconButton label={`Move ${rowName(exercise, index)} up`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" disabled={!canMoveExercise(form.exercises, index, -1)} onClick={() => setExercises(moveExercise(form.exercises, index, -1))} data-testid="workout-exercise-move-up-button"><ArrowUp className="h-4 w-4" /></IconButton>
-        <IconButton label={`Move ${rowName(exercise, index)} down`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" disabled={!canMoveExercise(form.exercises, index, 1)} onClick={() => setExercises(moveExercise(form.exercises, index, 1))} data-testid="workout-exercise-move-down-button"><ArrowDown className="h-4 w-4" /></IconButton>
-      </div>
-      <AccordionContent className="space-y-2 pb-3">
-        <div className="flex items-center gap-2">
-          <Input list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
-          <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setExercises(form.exercises.filter((_, i) => i !== index))} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
+    <SortableExerciseRow
+      id={rowValue(exercise, index)}
+      render={(drag) => (
+      <AccordionItem
+        ref={drag.ref}
+        style={drag.style}
+        value={rowValue(exercise, index)}
+        className={cn('rounded-xl border border-border bg-card/50 pl-1 pr-3', drag.isDragging && 'relative z-10 border-primary/50 shadow-[var(--app-elev-soft)]')}
+        data-testid="workout-exercise-row"
+      >
+        {/* The trigger's Radix header (h3) must grow so the chevron sits by the move buttons. */}
+        <div className="flex items-center gap-1 [&>h3]:min-w-0 [&>h3]:flex-1">
+          <button
+            type="button"
+            {...drag.handle}
+            aria-label={`Drag to reorder ${rowName(exercise, index)}`}
+            className="flex h-11 w-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+            data-testid="workout-exercise-drag-handle"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <AccordionTrigger className="min-h-11 min-w-0 py-3 hover:no-underline">
+            <span className="flex min-w-0 items-center gap-2 text-left">
+              <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md bg-primary/15 px-1.5 text-xs font-semibold tabular-nums text-primary" data-testid="workout-exercise-marker">{markers[index]}</span>
+              <span className="truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
+              {(exercise.sets || exercise.reps) && <Badge variant="outline" className="hidden shrink-0 tabular-nums sm:inline-flex">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+            </span>
+          </AccordionTrigger>
+          <IconButton label={`Move ${rowName(exercise, index)} up`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" disabled={!canMoveExercise(form.exercises, index, -1)} onClick={() => setExercises(moveExercise(form.exercises, index, -1))} data-testid="workout-exercise-move-up-button"><ArrowUp className="h-4 w-4" /></IconButton>
+          <IconButton label={`Move ${rowName(exercise, index)} down`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" disabled={!canMoveExercise(form.exercises, index, 1)} onClick={() => setExercises(moveExercise(form.exercises, index, 1))} data-testid="workout-exercise-move-down-button"><ArrowDown className="h-4 w-4" /></IconButton>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />
-          <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />
-          <div className="min-w-0">
-            {/* Numeric authoring, serialized as canonical "Ns" text; the
-                DB fill trigger derives rest_seconds from it. */}
-            <Input
-              type="number" min="0" step="5" inputMode="numeric"
-              value={parseRestSeconds(exercise.rest) ?? ''}
-              onChange={(e) => setExercise(index, { rest: e.target.value === '' ? '' : `${Math.max(0, Number(e.target.value))}s` })}
-              placeholder="Rest (sec)"
-              aria-label="Rest in seconds"
-              data-testid="workout-exercise-rest-input"
-            />
-            {exercise.rest && parseRestSeconds(exercise.rest) === null && (
-              <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid="workout-exercise-rest-legacy">
-                Unrecognized: “{exercise.rest}”
-              </p>
-            )}
+        <AccordionContent className="space-y-2 pb-3">
+          <div className="flex items-center gap-2">
+            <Input list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
+            <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setExercises(form.exercises.filter((_, i) => i !== index))} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
           </div>
-          <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" />
-        </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] gap-2">
-          <Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" />
-          <Input type="number" min="0" step="0.5" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" />
-          <Select value={exercise.default_load_unit || 'lb'} onValueChange={(value) => setExercise(index, { default_load_unit: value })}>
-            <SelectTrigger aria-label="Default load unit"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
-          </Select>
-        </div>
-        <div className="relative">
-          <Video className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" />
-        </div>
-        <Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" />
-        <Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" />
-      </AccordionContent>
-    </AccordionItem>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />
+            <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />
+            <div className="min-w-0">
+              {/* Numeric authoring, serialized as canonical "Ns" text; the
+                  DB fill trigger derives rest_seconds from it. */}
+              <Input
+                type="number" min="0" step="5" inputMode="numeric"
+                value={parseRestSeconds(exercise.rest) ?? ''}
+                onChange={(e) => setExercise(index, { rest: e.target.value === '' ? '' : `${Math.max(0, Number(e.target.value))}s` })}
+                placeholder="Rest (sec)"
+                aria-label="Rest in seconds"
+                data-testid="workout-exercise-rest-input"
+              />
+              {exercise.rest && parseRestSeconds(exercise.rest) === null && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid="workout-exercise-rest-legacy">
+                  Unrecognized: “{exercise.rest}”
+                </p>
+              )}
+            </div>
+            <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" />
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] gap-2">
+            <Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" />
+            <Input type="number" min="0" step="0.5" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" />
+            <Select value={exercise.default_load_unit || 'lb'} onValueChange={(value) => setExercise(index, { default_load_unit: value })}>
+              <SelectTrigger aria-label="Default load unit"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
+            </Select>
+          </div>
+          <div className="relative">
+            <Video className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" />
+          </div>
+          <Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" />
+          <Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" />
+        </AccordionContent>
+      </AccordionItem>
+      )}
+    />
   );
 
   // Between every pair of neighbours: link them into a superset/giant set,
@@ -1430,6 +1493,8 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
           <datalist id={`${idPrefix}-exercise-options`}>
             {library.map((exercise) => <option key={exercise.id} value={exercise.name} />)}
           </datalist>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} accessibility={{ announcements }}>
+          <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
           <Accordion
             type="multiple"
             defaultValue={form.exercises.length ? [rowValue(form.exercises[0], 0)] : []}
@@ -1460,6 +1525,9 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
                           <IconButton label={`Ungroup ${kindLabel}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setExercises(ungroupBlock(form.exercises, block.start))} data-testid="workout-superset-ungroup-button"><Unlink className="h-4 w-4" /></IconButton>
                         </span>
                       </div>
+                      <p className="pb-1 pl-1 text-[11px] text-muted-foreground" data-testid="workout-superset-rest-hint">
+                        Clients go straight to the next exercise and rest after each round, using the longest rest set in the group.
+                      </p>
                       {rows}
                     </div>
                   )}
@@ -1468,6 +1536,8 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
               );
             })}
           </Accordion>
+          </SortableContext>
+          </DndContext>
           <Button type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setExercises([...form.exercises, newExerciseRow()])} data-testid="workout-exercise-add-button">
             <Plus className="h-4 w-4 mr-1.5" /> Add exercise
           </Button>

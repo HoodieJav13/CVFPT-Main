@@ -915,7 +915,7 @@ test('workout builder links supersets and giant sets and reorders exercises at m
   for (const name of ['Chest-Supported Row', 'Curl']) {
     await dialog.getByTestId('workout-exercise-add-button').click();
     const rows = dialog.getByTestId('workout-exercise-row');
-    await rows.last().getByRole('button').first().click(); // expand the new row
+    await rows.last().locator('h3 button').click(); // expand the new row
     await names.last().fill(name);
   }
   const markers = dialog.getByTestId('workout-exercise-marker');
@@ -947,4 +947,28 @@ test('workout builder links supersets and giant sets and reorders exercises at m
   await dialog.getByTestId('workout-superset-ungroup-button').click();
   await expect(dialog.getByTestId('workout-superset-group')).toHaveCount(0);
   await expect(markers).toHaveText(['1', '2', '3']);
+
+  // Drag and drop with a pointer: Curl (3rd) dragged onto the top row.
+  const openRows = dialog.locator('[data-testid="workout-exercise-row"] h3 button[data-state="open"]');
+  while (await openRows.count()) await openRows.first().click();
+  const handles = dialog.getByTestId('workout-exercise-drag-handle');
+  const from = await handles.nth(2).boundingBox();
+  const to = await handles.nth(0).boundingBox();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, from.y - 10, { steps: 5 });
+  await page.mouse.move(to.x + to.width / 2, to.y + 4, { steps: 12 });
+  await page.mouse.up();
+  await expect(dialog.getByTestId('workout-exercise-row').locator('h3')).toHaveText([/Curl/, /Chest-Supported Row/, /Bench Press/]);
+
+  // Keyboard dragging: focus the grip, space to lift, arrow down, space to drop.
+  await handles.nth(0).focus();
+  // dnd-kit measures drop positions between keystrokes.
+  for (const key of ['Space', 'ArrowDown', 'Space']) {
+    await page.keyboard.press(key);
+    await page.waitForTimeout(250);
+  }
+  await expect(dialog.getByTestId('workout-exercise-row').locator('h3')).toHaveText([/Chest-Supported Row/, /Curl/, /Bench Press/]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  if (process.env.CVF_SHOT_DIR) await dialog.screenshot({ path: `${process.env.CVF_SHOT_DIR}/builder-drag-mobile.png` });
 });
