@@ -36,4 +36,60 @@ function dateInTz(instant, tz = DEFAULT_TZ) {
   return fmt.format(instant instanceof Date ? instant : new Date(instant));
 }
 
-module.exports = { todayRangeInTz, todayDateInTz, shiftDate, dateInTz, DEFAULT_TZ };
+/** UTC offset in minutes (negative west of UTC) for an instant in the given IANA zone. */
+function tzOffsetMinutes(instantMs, tz = DEFAULT_TZ) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' })
+    .formatToParts(new Date(instantMs));
+  const name = parts.find((part) => part.type === 'timeZoneName')?.value || 'GMT';
+  const match = name.match(/GMT([+-])(\d{2}):?(\d{2})?/);
+  if (!match) return 0;
+  return (match[1] === '-' ? -1 : 1) * (parseInt(match[2], 10) * 60 + parseInt(match[3] || '0', 10));
+}
+
+const WALL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const WALL_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/**
+ * Converts a wall-clock date + time in `tz` to a UTC ISO string, or null when
+ * the input is malformed or not a real calendar date.
+ *  - Spring-forward gap (the wall-clock time does not exist): resolves forward
+ *    by the gap, e.g. 2:30 -> 3:30.
+ *  - Fall-back ambiguity (the time happens twice): picks the first occurrence
+ *    (the earlier instant, daylight time).
+ */
+function denverWallClockToUtc(dateStr, timeStr, tz = DEFAULT_TZ) {
+  if (typeof dateStr !== 'string' || typeof timeStr !== 'string') return null;
+  const d = dateStr.match(WALL_DATE);
+  const t = timeStr.match(WALL_TIME);
+  if (!d || !t) return null;
+  const [year, month, day] = [Number(d[1]), Number(d[2]), Number(d[3])];
+  const [hour, minute] = [Number(t[1]), Number(t[2])];
+  const naive = Date.UTC(year, month - 1, day, hour, minute);
+  const check = new Date(naive);
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null;
+
+  const offsetBefore = tzOffsetMinutes(naive - 86400000, tz);
+  const offsetAfter = tzOffsetMinutes(naive + 86400000, tz);
+  const valid = [...new Set([offsetBefore, offsetAfter])]
+    .map((offset) => naive - offset * 60000)
+    .filter((utc) => naive - utc === tzOffsetMinutes(utc, tz) * 60000);
+  const instant = valid.length ? Math.min(...valid) : naive - offsetBefore * 60000;
+  return new Date(instant).toISOString();
+}
+
+/** e.g. "Tue, Oct 6, 5:00 PM" — the same shape the notification emails use. */
+function formatDenverDisplay(instant, tz = DEFAULT_TZ) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).format(instant instanceof Date ? instant : new Date(instant));
+}
+
+/** "HH:mm" (24-hour) for an instant, as seen in the given timezone. */
+function denverTimeOfDay(instant, tz = DEFAULT_TZ) {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .format(instant instanceof Date ? instant : new Date(instant));
+}
+module.exports = {
+  todayRangeInTz, todayDateInTz, shiftDate, dateInTz, DEFAULT_TZ,
+  denverWallClockToUtc, formatDenverDisplay, denverTimeOfDay,
+};

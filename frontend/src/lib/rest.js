@@ -32,3 +32,26 @@ export function formatRestSeconds(seconds) {
   const remainder = seconds % 60;
   return remainder ? `${minutes}:${String(remainder).padStart(2, '0')}` : `${minutes} min`;
 }
+
+export const DEFAULT_MANUAL_REST_SECONDS = 90;
+export const REST_ADJUST_SECONDS = 15;
+const MAX_REST_SECONDS = 36000;
+
+/**
+ * Manual "Start rest": the current exercise's structured rest, or 90s when
+ * the coach left rest blank (the auto-timer never runs in that case).
+ */
+export function manualRestSeconds(exercise) {
+  const seconds = Number(exercise?.prescribed_rest_seconds);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, MAX_REST_SECONDS) : DEFAULT_MANUAL_REST_SECONDS;
+}
+
+/**
+ * ±15s on a running timer. Subtracting past zero finishes the rest now
+ * (never an end time in the past); adding is capped at the 10-hour rest
+ * range the database also enforces.
+ */
+export function adjustRestEnd(endsAt, deltaSeconds, now = Date.now()) {
+  const next = endsAt + (deltaSeconds * 1000);
+  return Math.min(Math.max(next, now), now + (MAX_REST_SECONDS * 1000));
+}

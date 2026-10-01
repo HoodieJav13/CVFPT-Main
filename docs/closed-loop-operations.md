@@ -25,7 +25,7 @@ The repository holds no hosted-apply record for either file (the last hosted led
 
 Email remains inert until every required value is configured. After the database apply:
 
-1. Create/confirm the Resend account and verify `corevaluefitness.com`.
+1. Create/confirm the Resend account and verify `corevaluefit.com`.
 2. Add `RESEND_API_KEY`, `CRON_SECRET`, and `NOTIFY_REPLY_TO` to the **backend production project**. Keep the existing `FRONTEND_URL` value.
 3. Use a random `CRON_SECRET` of at least 16 characters. Vercel sends it as the bearer token for the digest route.
 4. Deploy the backend, then create one test booking request, approve it, and cancel its resulting test session. Confirm the expected coach/client emails and links.

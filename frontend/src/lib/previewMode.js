@@ -581,6 +581,42 @@ function prescribedSetCount(value) {
   return Math.max(1, match ? Number(match[0]) : 1);
 }
 
+function previewExerciseVideo(logExercise) {
+  const source = state.workoutExercises.find((row) => row.id === logExercise.source_workout_exercise_id);
+  const libraryId = logExercise.exercise_library_id || source?.exercise_library_id;
+  return source?.video_url || libraryById(libraryId)?.video_url || null;
+}
+
+// Mirrors GET /workout-logs/mine and /client/:id: an array by default, or
+// { logs, next_cursor } pages (newest first, id tie-break) with ?paged=1.
+function previewCompletedLogs(clientId, config, search) {
+  const param = (name) => config.params?.[name] ?? search.get(name);
+  const rows = state.workoutLogs
+    .filter((row) => row.client_id === clientId && row.status === 'completed' && !row.archived)
+    .sort((a, b) => (new Date(b.completed_at) - new Date(a.completed_at)) || b.id.localeCompare(a.id));
+  if (String(param('paged')) !== '1') return ok(rows.slice(0, 50).map((row) => workoutLogDetails(row.id)), config);
+  let start = 0;
+  const cursor = param('cursor');
+  if (cursor) {
+    let after;
+    try {
+      after = JSON.parse(atob(cursor));
+    } catch {
+      return fail(config, 400, 'Invalid history cursor');
+    }
+    start = rows.findIndex((row) => row.id === after?.id) + 1;
+    if (start === 0) return fail(config, 400, 'Invalid history cursor');
+  }
+  const requested = Number(param('limit'));
+  const limit = Number.isInteger(requested) && requested >= 1 ? Math.min(requested, 50) : 20;
+  const page = rows.slice(start, start + limit);
+  const last = page[page.length - 1];
+  return ok({
+    logs: page.map((row) => workoutLogDetails(row.id)),
+    next_cursor: start + limit < rows.length && last ? btoa(JSON.stringify({ completed_at: last.completed_at, id: last.id })) : null,
+  }, config);
+}
+
 function workoutLogDetails(logId) {
   const log = state.workoutLogs.find((row) => row.id === logId && !row.archived);
   if (!log) return null;
@@ -589,6 +625,8 @@ function workoutLogDetails(logId) {
     .sort((a, b) => a.position - b.position)
     .map((exercise) => ({
       ...exercise,
+      // Mirrors the API: the workout's link wins, then the library's.
+      video_url: previewExerciseVideo(exercise),
       sets: state.workoutLogSets
         .filter((set) => set.workout_log_exercise_id === exercise.id && !set.archived)
         .sort((a, b) => a.set_number - b.set_number),
@@ -904,8 +942,12 @@ function dashboardCoach() {
   };
 }
 
+// Responses are copies, like a real HTTP body: handing out live fixture
+// objects let later preview writes mutate what the UI already held, which
+// masked offline-sync and stale-state bugs.
 function ok(data, config, status = 200) {
-  return Promise.resolve({ data, status, statusText: 'OK', headers: {}, config });
+  const copy = data === undefined ? data : JSON.parse(JSON.stringify(data));
+  return Promise.resolve({ data: copy, status, statusText: 'OK', headers: {}, config });
 }
 
 function fail(config, status, message) {
@@ -984,14 +1026,27 @@ function applyHomeScenario(scenario) {
   }
 }
 
+function previewLatencyFor(path) {
+  try {
+    const rules = JSON.parse(localStorage.getItem('cvf_preview_latency') || '[]');
+    const rule = rules.find((candidate) => new RegExp(candidate.path).test(path));
+    return Math.max(0, Math.min(10_000, Number(rule?.ms) || 0));
+  } catch {
+    return 0;
+  }
+}
+
 export function installPreviewApi(api) {
   if (!isPreviewMode) return;
   const homeScenario = getPreviewHomeState();
   applyHomeScenario(homeScenario);
   api.defaults.adapter = async (config) => {
-    await new Promise((resolve) => setTimeout(resolve, 80));
     const method = String(config.method || 'get').toLowerCase();
     const { path, search } = pathFromConfig(config);
+    // Test-harness latency (like cvf_preview_history_failure): browser specs
+    // set cvf_preview_latency to [{ "path": "<regex>", "ms": 1500 }] to
+    // reproduce slow-network races on chosen routes.
+    await new Promise((resolve) => setTimeout(resolve, 80 + previewLatencyFor(path)));
     const payload = body(config);
     const role = getPreviewRole();
     const client = currentClient();
@@ -1076,8 +1131,7 @@ export function installPreviewApi(api) {
       return ok(active ? workoutLogDetails(active.id) : null, config);
     }
     if (path === '/workout-logs/mine' && method === 'get') {
-      return ok(state.workoutLogs.filter((row) => row.client_id === client.id && row.status === 'completed' && !row.archived)
-        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map((row) => workoutLogDetails(row.id)), config);
+      return previewCompletedLogs(client.id, config, search);
     }
     if (path === '/workout-logs/mine/completed-dates' && method === 'get') {
       return ok({
@@ -1096,8 +1150,7 @@ export function installPreviewApi(api) {
       if (role === 'client') return fail(config, 404, 'Client not found');
       const target = clientById(clientWorkoutHistory[1]);
       if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
-      return ok(state.workoutLogs.filter((row) => row.client_id === target.id && row.status === 'completed' && !row.archived)
-        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map((row) => workoutLogDetails(row.id)), config);
+      return previewCompletedLogs(target.id, config, search);
     }
     const exerciseHistory = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/history$/);
     if (exerciseHistory && method === 'get') {

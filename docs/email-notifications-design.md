@@ -116,8 +116,8 @@ send wrapper, so switching later is cheap.
 
 **Owner-only setup steps** (same rule as Supabase keys — I never handle
 keys):
-1. Create the Resend account and verify `corevaluefitness.com`, sending as
-   `CVF PT <notifications@corevaluefitness.com>`.
+1. Create the Resend account and verify `corevaluefit.com`, sending as
+   `CVF PT <notifications@corevaluefit.com>`.
 2. Add `RESEND_API_KEY` and `CRON_SECRET` env vars to the Vercel backend
    project, plus the monitored studio inbox as `NOTIFY_REPLY_TO`.
 3. Digest cron: **13:00 UTC** — 6:00 AM in Denver during winter, 7:00 AM
@@ -151,7 +151,7 @@ keys):
 1. Preferences: **Option A** — digest opt-out column migration ⚠ ships
    with the build.
 2. Coach digest **includes** booking requests pending more than 24 h.
-3. Sending domain `corevaluefitness.com`, from
-   `notifications@corevaluefitness.com`; reply-to is the monitored studio
+3. Sending domain `corevaluefit.com`, from
+   `notifications@corevaluefit.com`; reply-to is the monitored studio
    inbox.
 4. Digest cron at **13:00 UTC** (6 AM MST / 7 AM MDT).

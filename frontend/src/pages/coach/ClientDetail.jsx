@@ -31,6 +31,8 @@ import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { CoachClientWeek } from '@/components/WeekRhythm';
 import { SaveTemplateDialog } from '@/components/training/TemplateBits';
+import { HistoryShowMore } from '@/components/training/HistoryShowMore';
+import { useHistoryPages } from '@/lib/useHistoryPages';
 import { WorkoutDialog, workoutToForm } from '@/pages/coach/Programs';
 
 export default function ClientDetail() {
@@ -920,7 +922,9 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   const [programs, setPrograms] = useState(null);
   const [workouts, setWorkouts] = useState(null);
   const [workoutAssignments, setWorkoutAssignments] = useState(null);
-  const [workoutHistory, setWorkoutHistory] = useState(null);
+  const historyPages = useHistoryPages(`/workout-logs/client/${clientId}`);
+  const workoutHistory = historyPages.items;
+  const { fetchFirst: fetchHistory, setFirstPage: setHistoryPage } = historyPages;
   const [loadError, setLoadError] = useState(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignmentType, setAssignmentType] = useState('program');
@@ -945,21 +949,21 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         api.get('/programs'),
         api.get('/programs/workouts'),
         api.get(`/programs/workout-assignments/client/${clientId}`),
-        api.get(`/workout-logs/client/${clientId}`),
+        fetchHistory(),
         api.get(`/programs/program-assignments/client/${clientId}`),
       ]);
       setPrograms(programRes.data);
       setWorkouts(workoutRes.data);
       setProgramAssignments(programAssignmentRes.data);
       setWorkoutAssignments(assignmentRes.data);
-      setWorkoutHistory(historyRes.data);
+      setHistoryPage(historyRes);
       setLoadError(null);
     } catch (e) {
       const message = errMsg(e);
       setLoadError(message);
       toast.error(message);
     }
-  }, [clientId]);
+  }, [clientId, fetchHistory, setHistoryPage]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1223,12 +1227,13 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         return (
         <Card key={p.id} data-testid="assigned-program-card">
           <CardContent className="p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
+            {/* Phones: actions stack under the title and wrap, so the card never forces a sideways scroll. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+              <div className="min-w-0">
                 <p className="font-display font-semibold">{p.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} {p.frequency_days === 1 ? 'day' : 'days'}/week - {p.exercise_count} exercises</p>
               </div>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
                 <ExistingLoadEditor type="program" assignment={assignment} selection={p} onSaved={load} />
                 <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setTemplateTarget({ kind: 'program', id: p.id, name: `${p.name} (variation)`, parent: programTemplateParent(p), label: 'program' })} data-testid="save-program-template-button">Save as template</Button>
                 <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
@@ -1297,12 +1302,13 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       )}
       <section className="space-y-3 pt-3" data-testid="coach-client-workout-history">
         <div><h3 className="font-display text-lg font-semibold">Workout history</h3><p className="text-sm text-muted-foreground">Completed self-guided workouts.</p></div>
-        {workoutHistory.length === 0 ? <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">No completed workouts yet.</p> : workoutHistory.slice(0, 12).map((log) => (
+        {workoutHistory.length === 0 ? <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">No completed workouts yet.</p> : workoutHistory.map((log) => (
           <Link key={log.id} to={`/coach/workouts/${log.id}`} className="flex min-h-14 items-center justify-between rounded-md border border-border bg-card/60 px-4 py-3 hover:bg-card">
             <span><span className="block font-medium">{log.workout_name}</span><span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)}</span></span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
         ))}
+        <HistoryShowMore pages={historyPages} testId="coach-history-show-more" />
       </section>
     </div>
   );
@@ -1424,12 +1430,13 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
   return (
     <Card data-testid="assigned-workout-card">
       <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        {/* Phones: actions stack under the title and wrap, so the card never forces a sideways scroll. */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+          <div className="min-w-0">
             <p className="font-display font-semibold">{workout.name}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{label} - {(workout.exercises || []).length} exercises</p>
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
             {onStart && (
               <Button
                 size="sm" variant="secondary" className="rounded-lg"
