@@ -103,7 +103,7 @@ or token was read. Desktop browser only.
 conflict-free Mondays (Oct 5, 12, 19 at 10 AM Mountain, 60 min). Create succeeded and the
 Sessions list showed badges "Session 1 of 3", "2 of 3", "3 of 3". From session 2,
 "This and all future" (Notify off) cancelled sessions 2 and 3 and left session 1
-Scheduled, confirmed from persisted state after reload. Session 1 was then cancelled with
+Scheduled, confirmed from persisted state after returning to the Sessions list. Session 1 was then cancelled with
 "Just this one" (Notify off). No active test appointments remain; the cancelled rows remain
 as audit records.
 
@@ -123,8 +123,7 @@ hour of post-release watching.
 
 **Observed, not investigated:** both smokes captured a browser console accessibility warning,
 "Missing Description or aria-describedby for DialogContent". It is not a runtime error and
-its source was not isolated (the session editor drawer has a title but no description and is
-a plausible, unverified, pre-existing source). It was not changed.
+its source was not isolated. It was not changed.
 
 **Still untested:** live private-program assignment (covered by local and hosted
 rollback-only probes only); notification delivery (a deliberate Notify-on test with a
