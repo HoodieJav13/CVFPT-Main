@@ -6,7 +6,7 @@ const { goalMeasureSummary, MAX_GOAL_MEASURES } = require('../src/lib/progress')
 
 const root = path.join(__dirname, '..', '..');
 const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8');
-const migration = read('supabase', 'migrations', '20260930150000_metric_goal_measures.sql');
+const migration = read('supabase', 'migrations', '20261001200000_metric_goal_measures.sql');
 const routes = read('backend', 'src', 'routes', 'progress.js');
 const dashboard = read('backend', 'src', 'routes', 'dashboard.js');
 const coachDetail = read('frontend', 'src', 'pages', 'coach', 'ClientDetail.jsx');

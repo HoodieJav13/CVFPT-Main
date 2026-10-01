@@ -1139,7 +1139,7 @@ test('hosted workout completion is idempotent and notifies the assigned coach an
 });
 
 // Goal measures against a hosted backend (needs migration
-// 20260930150000_metric_goal_measures applied; see
+// 20261001200000_metric_goal_measures applied; see
 // docs/hardening/2026-10-01-goal-measures-migration.md). Real auth, real
 // ownership, real API: save, limit, read on both dashboards, role and
 // ownership boundaries, turn off, and archive everything it created.
