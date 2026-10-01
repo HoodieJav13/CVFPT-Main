@@ -767,6 +767,74 @@ test('offline finish queues completion, defers celebration, and syncs on reconne
   expect(outboxes).toBe(0);
 });
 
+test('offline extra set keeps its edits through sync, and a sealed tracker locks every control', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__cvfOnline = true;
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => window.__cvfOnline });
+    window.__setOnline = (value) => {
+      window.__cvfOnline = value;
+      window.dispatchEvent(new Event(value ? 'online' : 'offline'));
+    };
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  const trackPath = new URL(page.url()).pathname;
+  const spaGo = (path) => page.evaluate((target) => {
+    window.history.pushState({}, '', target);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, path);
+
+  const squat = page.getByTestId('tracker-exercise-card').first();
+  const weight = squat.getByRole('spinbutton', { name: 'Goblet Squat set 4 weight', exact: true });
+  const reps = squat.getByRole('spinbutton', { name: 'Goblet Squat set 4 performed reps', exact: true });
+
+  // Offline: add a set, record 55 x 8, complete it.
+  await page.evaluate(() => window.__setOnline(false));
+  await squat.getByRole('button', { name: 'Add set' }).click();
+  await weight.fill('55');
+  await weight.blur();
+  await reps.fill('8');
+  await reps.blur();
+  await squat.getByRole('button', { name: 'Complete set 4' }).click();
+
+  // Reconnect: the add response must not reset the row to server defaults.
+  await page.evaluate(() => window.__setOnline(true));
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await expect(weight).toHaveValue('55');
+  await expect(reps).toHaveValue('8');
+  await expect(squat.getByRole('button', { name: 'Mark incomplete set 4' })).toBeVisible();
+
+  // And the server copy agrees: re-open the tracker from a fresh fetch.
+  await spaGo('/client/programs');
+  await spaGo(trackPath);
+  await expect(weight).toHaveValue('55');
+  await expect(reps).toHaveValue('8');
+  await expect(squat.getByRole('button', { name: 'Mark incomplete set 4' })).toBeVisible();
+
+  // Finish offline and return: every mutation control is locked.
+  await page.evaluate(() => window.__setOnline(false));
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  await page.getByRole('button', { name: 'Confirm completion' }).click();
+  await expect(page.getByTestId('waiting-to-sync-banner')).toBeVisible();
+  await spaGo(trackPath);
+  await expect(page.getByTestId('finished-locally-banner')).toBeVisible();
+  await expect(weight).toBeDisabled();
+  await expect(reps).toBeDisabled();
+  await expect(squat.getByRole('combobox', { name: 'Goblet Squat set 4 weight unit' })).toBeDisabled();
+  await expect(squat.getByRole('button', { name: 'Remove extra set' })).toBeDisabled();
+  await expect(squat.getByLabel('Exercise notes')).toBeDisabled();
+  await expect(squat.getByRole('button', { name: 'Add set' })).toBeDisabled();
+  await expect(squat.getByTestId('same-as-last-time')).toBeDisabled();
+  // Only the completion is queued behind the sealed banner.
+  const queued = await page.evaluate(() => Object.entries(localStorage)
+    .filter(([key]) => key.startsWith('cvf_workout_outbox_'))
+    .flatMap(([, value]) => JSON.parse(value).map((operation) => operation.kind)));
+  expect(queued).toEqual(['complete']);
+});
+
 test('session conflicts surface inline, clear on relevant edits, and keep refused bookings pending', async ({ page }) => {
   // Pin "now" to a mid-month Denver midday. Fixtures are Denver-day relative
   // and pickDay(5) must not cross a month boundary, so a real clock made this

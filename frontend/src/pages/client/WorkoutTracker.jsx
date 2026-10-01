@@ -18,6 +18,7 @@ import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import { formatRestSeconds } from '@/lib/rest';
+import { lastTimeFills } from '@/lib/workoutSync';
 import { trackProductEvent } from '@/lib/telemetry';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
@@ -31,10 +32,6 @@ function formatTimer(seconds) {
 
 function displayPerformed(value, suffix = '') {
   return value === null || value === undefined ? 'Not recorded' : `${value}${suffix}`;
-}
-
-function isBlank(value) {
-  return value === '' || value === null || value === undefined;
 }
 
 function ExerciseHistory({ logId, exercise }) {
@@ -183,6 +180,9 @@ export default function WorkoutTracker() {
   const isCoach = user.role === 'coach' || user.role === 'admin';
   const basePath = isCoach ? '/coach' : '/client';
   const [log, setLog] = useState(null);
+  // Latest rendered log, for handlers that resume after an await.
+  const logRef = useRef(null);
+  logRef.current = log;
   const [loadError, setLoadError] = useState(null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -353,29 +353,17 @@ export default function WorkoutTracker() {
       toast.info('No completed history yet for this exercise.');
       return;
     }
-    const bySetNumber = new Map(occurrence.sets.map((row) => [row.set_number, row]));
+    // Re-read the exercise: anything typed while history loaded is kept.
+    const current = logRef.current?.exercises.find((row) => row.id === exercise.id) || exercise;
     let filledCount = 0;
-    for (const set of exercise.sets) {
-      const last = bySetNumber.get(set.set_number);
-      if (!last) continue;
-      const fillLoad = isBlank(set.actual_load_value) && last.actual_load_value != null;
-      const fillReps = isBlank(set.actual_reps) && last.actual_reps != null;
-      const fillRpe = isBlank(set.actual_rpe) && last.actual_rpe != null;
-      if (!fillLoad && !fillReps && !fillRpe) continue;
-      filledCount += 1;
-      const loadValue = fillLoad ? last.actual_load_value : set.actual_load_value;
-      outbox.enqueue({
-        kind: 'set', exerciseId: exercise.id, setId: set.id,
-        method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
-        data: {
-          actual_load_value: isBlank(loadValue) ? null : Number(loadValue),
-          actual_load_unit: isBlank(loadValue) ? null : ((fillLoad ? last.actual_load_unit : set.actual_load_unit) || 'lb'),
-          actual_reps: fillReps ? last.actual_reps : (isBlank(set.actual_reps) ? null : Number(set.actual_reps)),
-          actual_rpe: fillRpe ? last.actual_rpe : (isBlank(set.actual_rpe) ? null : Number(set.actual_rpe)),
-          status: set.status,
-        },
+    lastTimeFills(current.sets, occurrence).forEach(({ setId, data }) => {
+      const queued = outbox.enqueue({
+        kind: 'set', exerciseId: exercise.id, setId,
+        method: 'patch', url: `/workout-logs/${id}/sets/${setId}`,
+        data,
       });
-    }
+      if (queued) filledCount += 1;
+    });
     if (!filledCount) {
       toast.info('Nothing blank to fill — your entries are kept.');
       return;
@@ -528,7 +516,7 @@ export default function WorkoutTracker() {
                       disabled={sealed}
                       aria-label={`${exercise.exercise_name} set ${set.set_number} weight`}
                     />
-                    <Select value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
+                    <Select disabled={sealed} value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
                       setLocalValue(exercise.id, set.id, 'actual_load_unit', value);
                       outbox.enqueue({
                         kind: 'set', exerciseId: exercise.id, setId: set.id,
@@ -567,7 +555,7 @@ export default function WorkoutTracker() {
                     <Check className="h-5 w-5" />
                   </Button>
                   {set.set_origin === 'extra' && (
-                    <Button type="button" size="sm" variant="ghost" className="col-start-2 min-h-11 w-fit text-muted-foreground" onClick={() => removeSet(exercise, set)}>
+                    <Button type="button" size="sm" variant="ghost" className="col-start-2 min-h-11 w-fit text-muted-foreground" disabled={sealed} onClick={() => removeSet(exercise, set)}>
                       <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove extra set
                     </Button>
                   )}
@@ -593,7 +581,7 @@ export default function WorkoutTracker() {
               <div className="space-y-1.5">
                 <Label htmlFor={`notes-${exercise.id}`}>Exercise notes</Label>
                 <Textarea
-                  id={`notes-${exercise.id}`} rows={2} value={exercise.client_notes || ''}
+                  id={`notes-${exercise.id}`} rows={2} value={exercise.client_notes || ''} disabled={sealed}
                   onChange={(event) => {
                     setLog((current) => updateExercise(current, exercise.id, (row) => ({ ...row, client_notes: event.target.value })));
                     outbox.markDirty();
