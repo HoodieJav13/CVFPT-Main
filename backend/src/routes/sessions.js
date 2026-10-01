@@ -6,10 +6,12 @@ const {
   validateOptionalText,
   validateSchedulePayload,
   validateSessionListQuery,
+  validateNotifyFlag,
   validateSessionNotePayload,
   validateTimestamp,
   validateUuid,
 } = require('../validation/business');
+const { validateWorkoutAttachment } = require('../lib/sessionWorkouts');
 const {
   dispatchEmail, notifySessionCancelRequested, notifySessionCancelled,
   notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
@@ -21,20 +23,6 @@ const { dateInTz, todayDateInTz } = require('../utils/time');
 
 // D1b (2026-08-06): clients may self-cancel up to this long before start.
 const CLIENT_CANCEL_CUTOFF_MS = 24 * 60 * 60 * 1000;
-
-// Program 011 B: a session may carry the workout the coach plans to run.
-// Any shared template is attachable (templates belong to every coach); a
-// client instance only by its own coach (admins act as the session coach).
-// Unarchived. Returns { ok, value | error }.
-async function validateWorkoutAttachment(workoutId, coachId) {
-  if (workoutId === null) return { ok: true, value: null };
-  const idValidation = validateUuid(workoutId, 'Workout ID');
-  if (!idValidation.ok) return { ok: false, error: idValidation.error };
-  const { data: workout } = await supabaseAdmin.from('workouts').select('id, coach_id, is_template')
-    .eq('id', idValidation.value).eq('archived', false).maybeSingle();
-  if (!workout || (workout.is_template === false && workout.coach_id !== coachId)) return { ok: false, error: 'Workout not found' };
-  return { ok: true, value: workout.id };
-}
 
 async function attachWorkout(sessionId, workoutId) {
   const { error } = await supabaseAdmin.from('sessions')
@@ -95,6 +83,8 @@ async function cancelRequestedSessionIds(sessionIds) {
 
 const router = express.Router();
 router.use(requireAuth);
+// Recurring sessions: registered before the /:id routes.
+router.use('/series', require('./sessionSeries'));
 
 function conflictResponse(result) {
   const conflict = result.conflict_session || {};
@@ -128,7 +118,7 @@ router.get('/', requireCoach, async (req, res) => {
     const validation = validateSessionListQuery(req.query);
     if (!validation.ok) return res.status(400).json({ error: validation.error });
     let q = supabaseAdmin.from('sessions')
-      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name)')
+      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name), series:session_series(id, rule, created_count)')
       .eq('archived', false)
       .order('scheduled_at', { ascending: true });
     if (req.user.role !== 'admin') q = q.eq('coach_id', req.user.coach.id);
@@ -208,6 +198,12 @@ router.post('/', requireCoach, async (req, res) => {
       .eq('id', clientIdValidation.value).eq('archived', false).maybeSingle();
     if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
     const coachId = req.user.role === 'admin' ? clientRow.coach_id : req.user.coach.id;
+    let workoutToAttach = null;
+    if (Object.hasOwn(req.body || {}, 'workout_id') && req.body.workout_id !== null) {
+      const attachment = await validateWorkoutAttachment(req.body.workout_id, coachId);
+      if (!attachment.ok) return res.status(400).json({ error: attachment.error });
+      workoutToAttach = attachment.value;
+    }
     const { data, error } = await supabaseAdmin.rpc('schedule_session', {
       p_session_id: null,
       p_client_id: clientIdValidation.value,
@@ -219,11 +215,7 @@ router.post('/', requireCoach, async (req, res) => {
     });
     if (error) throw error;
     if (data.outcome !== 'scheduled') return res.status(409).json(conflictResponse(data));
-    if (Object.hasOwn(req.body || {}, 'workout_id') && req.body.workout_id !== null) {
-      const attachment = await validateWorkoutAttachment(req.body.workout_id, coachId);
-      if (!attachment.ok) return res.status(400).json({ error: attachment.error });
-      await attachWorkout(data.session.id, attachment.value);
-    }
+    if (workoutToAttach) await attachWorkout(data.session.id, workoutToAttach);
     const { data: created, error: readError } = await supabaseAdmin.from('sessions')
       .select('*, client:clients(id, name), workout:workouts(id, name)').eq('id', data.session.id).single();
     if (readError) throw readError;
@@ -254,6 +246,13 @@ router.put('/:id', requireCoach, async (req, res) => {
       updates.location = locationValidation.value;
     }
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide a session field to update' });
+    const hasWorkoutField = Object.hasOwn(req.body || {}, 'workout_id');
+    let workoutToAttach = null;
+    if (hasWorkoutField) {
+      const attachment = await validateWorkoutAttachment(req.body.workout_id, session.coach_id);
+      if (!attachment.ok) return res.status(400).json({ error: attachment.error });
+      workoutToAttach = attachment.value;
+    }
     const { data, error } = await supabaseAdmin.rpc('schedule_session', {
       p_session_id: session.id,
       p_client_id: session.client_id,
@@ -265,11 +264,7 @@ router.put('/:id', requireCoach, async (req, res) => {
     });
     if (error) throw error;
     if (data.outcome !== 'scheduled') return res.status(409).json(conflictResponse(data));
-    if (Object.hasOwn(req.body || {}, 'workout_id')) {
-      const attachment = await validateWorkoutAttachment(req.body.workout_id, session.coach_id);
-      if (!attachment.ok) return res.status(400).json({ error: attachment.error });
-      await attachWorkout(session.id, attachment.value);
-    }
+    if (hasWorkoutField) await attachWorkout(session.id, workoutToAttach);
     const { data: updated, error: readError } = await supabaseAdmin.from('sessions')
       .select('*, client:clients(id, name), workout:workouts(id, name)').eq('id', session.id).single();
     if (readError) throw readError;
@@ -296,6 +291,8 @@ router.put('/:id', requireCoach, async (req, res) => {
 // PATCH /api/sessions/:id/cancel
 router.patch('/:id/cancel', requireCoach, async (req, res) => {
   try {
+    const notifyFlag = validateNotifyFlag(req.body);
+    if (!notifyFlag.ok) return res.status(400).json({ error: notifyFlag.error });
     const session = await loadSessionForCoach(req, res);
     if (!session) return;
     if (session.status === 'completed') return res.status(400).json({ error: 'Completed sessions cannot be cancelled' });
@@ -303,12 +300,14 @@ router.patch('/:id/cancel', requireCoach, async (req, res) => {
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', session.id).select('*, client:clients(id, name)').single();
     if (error) throw error;
-    await dispatchEmail(() => notifySessionCancelled(data));
-    dispatchPush(() => sendToClient(data.client_id, {
-      title: 'Session cancelled',
-      body: `${formatDenver(data.scheduled_at)} is off the calendar.`,
-      url: '/client/sessions',
-    }));
+    if (notifyFlag.value) {
+      await dispatchEmail(() => notifySessionCancelled(data));
+      dispatchPush(() => sendToClient(data.client_id, {
+        title: 'Session cancelled',
+        body: `${formatDenver(data.scheduled_at)} is off the calendar.`,
+        url: '/client/sessions',
+      }));
+    }
     return res.json(data);
   } catch (e) {
     logError('cancel session error', e);
@@ -521,7 +520,7 @@ router.get('/:id/coach-detail', requireCoach, async (req, res) => {
     const idValidation = validateUuid(req.params.id, 'Session ID');
     if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
     const { data: session } = await supabaseAdmin.from('sessions')
-      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name, description, goal)')
+      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name, description, goal), series:session_series(id, rule, created_count)')
       .eq('id', idValidation.value).eq('archived', false).maybeSingle();
     if (!session || (req.user.role !== 'admin' && session.coach_id !== req.user.coach.id)) {
       return res.status(404).json({ error: 'Session not found' });

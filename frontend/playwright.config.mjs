@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: ['**/series-mocked.spec.mjs'], // the mocked-API series tests need a NON-preview build; see playwright.series.config.mjs
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
