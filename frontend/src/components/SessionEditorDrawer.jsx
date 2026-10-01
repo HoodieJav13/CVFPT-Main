@@ -1,10 +1,13 @@
 // Coach session editor (create + edit), shared by the Sessions list and the
-// coach session detail page. Extracted unchanged from pages/coach/Sessions.jsx.
-import { useEffect, useState } from 'react';
+// coach session detail page. Create mode can also build a recurring series
+// (see components/series/SeriesComposer).
+import { useEffect, useMemo, useState } from 'react';
 import { api, errMsg } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter,
 } from '@/components/ui/drawer';
@@ -13,19 +16,33 @@ import {
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import DateTimePicker from '@/components/DateTimePicker';
+import { SeriesComposer } from '@/components/series/SeriesComposer';
+import { createDraftStore } from '@/lib/seriesDraftStore';
 import { fmtDateTime, toLocalInputValue } from '@/lib/format';
 import { toast } from 'sonner';
 
+const EMPTY_FORM = { client_id: '', scheduled_at: '', duration_minutes: '60', location: '', workout_id: 'none' };
+
 export function SessionEditorDrawer({ open, onOpenChange, clients, editing, presetClient, onSaved }) {
-  const [form, setForm] = useState({ client_id: '', scheduled_at: '', duration_minutes: '60', location: '', workout_id: 'none' });
+  const { user } = useAuth();
+  const userId = user?.profile?.id || user?.email || 'anonymous';
+  const draftStore = useMemo(() => createDraftStore({ userId }), [userId]);
+
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(null);
   // 011 B: optional planned-workout attachment, fetched once per drawer open.
   const [workouts, setWorkouts] = useState(null);
+  // Recurring series (create mode only).
+  const [repeat, setRepeat] = useState(false);
+  const [resumeRecord, setResumeRecord] = useState(null);
+  const [composerBusy, setComposerBusy] = useState(false);
 
   useEffect(() => {
     if (open) {
       setConflict(null);
+      setRepeat(false);
+      setResumeRecord(null);
       if (editing) {
         setForm({
           client_id: editing.client_id,
@@ -35,7 +52,22 @@ export function SessionEditorDrawer({ open, onOpenChange, clients, editing, pres
           workout_id: editing.workout_id || 'none',
         });
       } else {
-        setForm({ client_id: presetClient || '', scheduled_at: '', duration_minutes: '60', location: '', workout_id: 'none' });
+        // An unfinished recurring save (timeout, reload, or a closed drawer) is resumed, never replaced.
+        const pending = draftStore.findPending();
+        if (pending) {
+          const { body } = pending.record;
+          setForm({
+            client_id: pending.clientId,
+            scheduled_at: `${body.rule.start_date}T${body.rule.time}`,
+            duration_minutes: String(body.duration_minutes),
+            location: body.location || '',
+            workout_id: 'none',
+          });
+          setResumeRecord(pending.record);
+          setRepeat(true);
+        } else {
+          setForm({ ...EMPTY_FORM, client_id: presetClient || '' });
+        }
       }
       if (workouts === null) {
         api.get('/programs/workouts')
@@ -55,6 +87,7 @@ export function SessionEditorDrawer({ open, onOpenChange, clients, editing, pres
 
   const submit = async (e) => {
     e.preventDefault();
+    if (repeat) return; // the composer owns saving in repeat mode
     if (!form.client_id || !form.scheduled_at) {
       toast.error('Client and date/time are required');
       return;
@@ -90,17 +123,20 @@ export function SessionEditorDrawer({ open, onOpenChange, clients, editing, pres
     }
   };
 
+  const locked = composerBusy; // client/date/duration are frozen while a series save is in flight or unresolved
+  const seriesReady = repeat && form.client_id && form.scheduled_at;
+
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent data-testid="session-editor-drawer">
-        <div className="mx-auto w-full max-w-md px-4 pb-6">
+        <div className="mx-auto max-h-[85vh] w-full max-w-md overflow-y-auto px-4 pb-6">
           <DrawerHeader className="px-0">
-            <DrawerTitle>{editing ? 'Edit session' : 'New session'}</DrawerTitle>
+            <DrawerTitle>{editing ? 'Edit session' : repeat ? 'New recurring sessions' : 'New session'}</DrawerTitle>
           </DrawerHeader>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Client *</Label>
-              <Select value={form.client_id} onValueChange={(v) => setField({ client_id: v })} disabled={Boolean(editing)}>
+              <Select value={form.client_id} onValueChange={(v) => setField({ client_id: v })} disabled={Boolean(editing) || locked}>
                 <SelectTrigger className="rounded-xl h-11" data-testid="session-client-select">
                   <SelectValue placeholder="Choose client..." />
                 </SelectTrigger>
@@ -110,10 +146,11 @@ export function SessionEditorDrawer({ open, onOpenChange, clients, editing, pres
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Date & time *</Label>
+              <Label>{repeat ? 'First session *' : 'Date & time *'}</Label>
               <DateTimePicker
                 value={form.scheduled_at}
                 onChange={(scheduled_at) => setField({ scheduled_at })}
+                disabled={locked}
                 data-testid="session-datetime-input"
               />
               {conflict && (
@@ -138,7 +175,7 @@ export function SessionEditorDrawer({ open, onOpenChange, clients, editing, pres
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Duration</Label>
-                <Select value={form.duration_minutes} onValueChange={(v) => setField({ duration_minutes: v })}>
+                <Select value={form.duration_minutes} onValueChange={(v) => setField({ duration_minutes: v })} disabled={locked}>
                   <SelectTrigger className="rounded-xl h-11" data-testid="session-duration-select">
                     <SelectValue />
                   </SelectTrigger>
@@ -149,29 +186,58 @@ export function SessionEditorDrawer({ open, onOpenChange, clients, editing, pres
               </div>
               <div className="space-y-1.5">
                 <Label>Location</Label>
-                <Input value={form.location} onChange={(e) => setField({ location: e.target.value })} placeholder="CVF Studio" className="rounded-xl h-11" data-testid="session-location-input" />
+                <Input value={form.location} onChange={(e) => setField({ location: e.target.value })} disabled={locked} placeholder="CVF Studio" className="rounded-xl h-11" data-testid="session-location-input" />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Planned workout</Label>
-              <Select value={form.workout_id} onValueChange={(v) => setForm((current) => ({ ...current, workout_id: v }))}>
-                <SelectTrigger className="rounded-xl h-11" data-testid="session-workout-select">
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No workout attached</SelectItem>
-                  {(workouts || []).map((workout) => (
-                    <SelectItem key={workout.id} value={workout.id}>{workout.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">The client sees the plan on their session page.</p>
-            </div>
-            <DrawerFooter className="px-0">
-              <Button type="submit" disabled={saving} className="rounded-xl h-11 font-semibold" data-testid="session-save-button">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editing ? 'Save changes' : 'Schedule session'}
-              </Button>
-            </DrawerFooter>
+
+            {!editing && (
+              <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5">
+                <Label htmlFor="session-repeat" className="font-medium">Repeat weekly</Label>
+                <Switch id="session-repeat" checked={repeat} onCheckedChange={setRepeat} disabled={locked || Boolean(resumeRecord)} data-testid="session-repeat-toggle" />
+              </div>
+            )}
+
+            {repeat ? (
+              seriesReady ? (
+                // Keyed by CLIENT only: duration, location and the first session's date/time are props, so
+                // editing them never resets the reviewed draft (see SeriesComposer for how each is handled).
+                <SeriesComposer
+                  key={resumeRecord ? 'resume' : form.client_id}
+                  clientId={form.client_id}
+                  startAt={form.scheduled_at}
+                  durationMinutes={Number(form.duration_minutes)}
+                  location={form.location}
+                  resumeRecord={resumeRecord}
+                  onBusyChange={setComposerBusy}
+                  onDone={() => { setRepeat(false); setResumeRecord(null); onSaved(); }}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">Choose a client and the first session&apos;s date and time to set up the repeat.</p>
+              )
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label>Planned workout</Label>
+                  <Select value={form.workout_id} onValueChange={(v) => setForm((current) => ({ ...current, workout_id: v }))}>
+                    <SelectTrigger className="rounded-xl h-11" data-testid="session-workout-select">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No workout attached</SelectItem>
+                      {(workouts || []).map((workout) => (
+                        <SelectItem key={workout.id} value={workout.id}>{workout.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">The client sees the plan on their session page.</p>
+                </div>
+                <DrawerFooter className="px-0">
+                  <Button type="submit" disabled={saving} className="rounded-xl h-11 font-semibold" data-testid="session-save-button">
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editing ? 'Save changes' : 'Schedule session'}
+                  </Button>
+                </DrawerFooter>
+              </>
+            )}
           </form>
         </div>
       </DrawerContent>
