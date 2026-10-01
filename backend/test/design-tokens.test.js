@@ -60,10 +60,10 @@ test('text on the light theme uses ink tokens that pass contrast on white', () =
   assert.match(tw, /textColor:[\s\S]*gold:[\s\S]*--gold-ink[\s\S]*success:[\s\S]*--success-ink[\s\S]*achievement:[\s\S]*--achievement-ink/);
 });
 
-test('accents are the logo colours', () => {
-  assert.deepEqual(token('primary', DARK), { h: 191, s: 68, l: 62 });
-  assert.deepEqual(token('gold', DARK), { h: 46, s: 99, l: 58 });
-  assert.deepEqual(token('gold', LIGHT), { h: 46, s: 99, l: 58 });
+test('accents are exactly the logo colours (#5CC9E0, #FECD2A)', () => {
+  assert.deepEqual(token('primary', DARK), { h: 190.5, s: 68, l: 62 });
+  assert.deepEqual(token('gold', DARK), { h: 46.1, s: 99.1, l: 58 });
+  assert.deepEqual(token('gold', LIGHT), { h: 46.1, s: 99.1, l: 58 });
 });
 
 test('the PWA frame colors (meta theme-color, manifest) are warm', () => {
@@ -116,4 +116,6 @@ test('PDF export hex literals equal the logo --primary / --gold tokens', () => {
   };
   assert.equal(literal('teal'), hslToHex(token('primary', DARK)), 'PDF teal drifted from the logo-teal --primary');
   assert.equal(literal('gold'), hslToHex(token('gold', DARK)), 'PDF gold drifted from --gold');
+  assert.equal(literal('teal'), '#5CC9E0', 'PDF teal is not the logo teal');
+  assert.equal(literal('gold'), '#FECD2A', 'PDF gold is not the logo gold');
 });

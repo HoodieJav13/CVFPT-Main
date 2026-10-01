@@ -75,10 +75,10 @@
     --accent-foreground: 197 26% 9%;
     --destructive: 0 72% 42%;
     --destructive-foreground: 0 0% 100%;
-    --gold: 46 99% 58%;
+    --gold: 46.1 99.1% 58%;
     --gold-foreground: 197 26% 9%;
     --gold-ink: 44 100% 24%;
-    --achievement-gold: 46 99% 58%;
+    --achievement-gold: 46.1 99.1% 58%;
     --achievement-gold-foreground: 197 26% 9%;
     --achievement-gold-bright: 46 99% 62%;
     --achievement-ink: 40 100% 27%;
@@ -131,7 +131,7 @@
     --card-foreground: 30 33% 93%;
     --popover: 13 14% 12%;
     --popover-foreground: 30 33% 93%;
-    --primary: 191 68% 62%;
+    --primary: 190.5 68% 62%;
     --primary-foreground: 196 31% 7%;
     --secondary: 14 12% 15%;
     --secondary-foreground: 30 33% 93%;
@@ -141,9 +141,9 @@
     --accent-foreground: 30 33% 93%;
     --destructive: 4 83% 65%;
     --destructive-foreground: 196 31% 7%;
-    --gold: 46 99% 58%;
+    --gold: 46.1 99.1% 58%;
     --gold-foreground: 196 31% 7%;
-    --gold-ink: 46 99% 58%;
+    --gold-ink: 46.1 99.1% 58%;
     --achievement-gold: 45 85% 58%;
     --achievement-gold-foreground: 34 19% 10%;
     --achievement-gold-bright: 45 92% 68%;
@@ -155,8 +155,8 @@
     --signature-foreground: 30 33% 97%;
     --border: 14 12% 20%;
     --input: 14 12% 22%;
-    --ring: 191 68% 62%;
-    --chart-1: 191 68% 62%;
+    --ring: 190.5 68% 62%;
+    --chart-1: 190.5 68% 62%;
     --chart-2: 168 62% 52%;
     --chart-3: 42 92% 62%;
 

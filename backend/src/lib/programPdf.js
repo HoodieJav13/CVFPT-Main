@@ -6,9 +6,9 @@ const CVF_LOCATION = 'Core Value Fitness - Albuquerque, NM';
 const LOGO_PATH = path.join(__dirname, '..', 'assets', 'cvf-logo.png');
 
 // Logo teal: keep in sync with the sunset (.dark) --primary in frontend/src/index.css — pdfkit can't read CSS vars.
-const teal = '#5CC8E0';
+const teal = '#5CC9E0';
 // Logo gold: keep in sync with --gold in frontend/src/index.css — pdfkit can't read CSS vars.
-const gold = '#FECC2A';
+const gold = '#FECD2A';
 const dark = '#09111C';
 const muted = '#5F6B78';
 
