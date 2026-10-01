@@ -637,6 +637,13 @@ function ProgressTab({ clientId }) {
     setSaving(true);
     try {
       const body = { ...metricForm, target_value: metricForm.target_value === '' ? null : Number(metricForm.target_value) };
+      // Only send the goal-measure flag when it changes (or is turned on for a
+      // new metric), so metric edits keep working against a database that
+      // doesn't have the goal-measures column yet.
+      const goalUnchanged = editingMetric
+        ? Boolean(editingMetric.is_goal_measure) === Boolean(metricForm.is_goal_measure)
+        : !metricForm.is_goal_measure;
+      if (goalUnchanged) delete body.is_goal_measure;
       if (editingMetric) {
         await api.patch(`/progress/metrics/${editingMetric.id}`, body);
         toast.success('Metric updated');

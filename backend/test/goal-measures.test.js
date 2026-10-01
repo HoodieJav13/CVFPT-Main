@@ -80,3 +80,11 @@ test('coach picks measures; both dashboards show them; preview mirrors the API',
   assert.match(preview, /is_goal_measure: payload\.is_goal_measure === true/);
   assert.match(preview, /A client can have up to 3 goal measures/);
 });
+
+test('metric edits omit the goal flag unless it changes (safe before the migration lands)', () => {
+  assert.match(coachDetail, /if \(goalUnchanged\) delete body\.is_goal_measure;/);
+  // The API only writes the column when the flag is present, and creating a
+  // metric only inserts it when it is on.
+  assert.match(routes, /'is_goal_measure' in \(req\.body \|\| \{\}\)/);
+  assert.match(routes, /\.\.\.\(is_goal_measure \? \{ is_goal_measure: true \} : \{\}\)/);
+});
