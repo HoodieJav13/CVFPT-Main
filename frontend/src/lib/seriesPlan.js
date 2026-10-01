@@ -56,6 +56,17 @@ export function assignDefault(program, clientId) {
   return Boolean(program) && !(program.active_assignments || []).some((assignment) => assignment.client?.id === clientId);
 }
 
+// Whether saving must wait for program details. Both the automatic workouts and the requested
+// assignment come from the program, so a draft that references a program must not be saved until that
+// program's details have actually loaded — a loading or failed fetch must never read as "no program".
+// Returns null (safe) or 'loading' | 'failed' | 'missing' (the program no longer exists / is archived).
+export function programGate({ programId, status, program }) {
+  if (!programId) return null;
+  if (status === 'loading') return 'loading';
+  if (status === 'failed') return 'failed';
+  return program ? null : 'missing';
+}
+
 // ---- Fallback reconstruction of the editor from a frozen create-request body ----
 // Used only for restored records that have no editor snapshot. A body cannot say which
 // candidates were deselected or which starting day was chosen, so rows return selected and

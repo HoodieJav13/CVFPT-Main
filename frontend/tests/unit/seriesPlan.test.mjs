@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   sortRows, mapWorkouts, summarizeSelection, ruleLabel, badgeLabel, shiftDate, weekdayOfDate,
-  rowsFromBody, pinsFromBody, configFromBody, assignDefault,
+  rowsFromBody, pinsFromBody, configFromBody, assignDefault, programGate,
 } from '../../src/lib/seriesPlan.js';
 
 const W1 = 'w-1'; const W2 = 'w-2'; const W3 = 'w-3';
@@ -122,4 +122,15 @@ test('fallback config: end mode, program, assign and notify come from the body; 
   const counted = body(); counted.rule.end = { count: 6 }; counted.notify = true; counted.program_id = null; counted.assign_program = false;
   const config = configFromBody(counted);
   assert.equal(config.endMode, 'count'); assert.equal(config.count, 6); assert.equal(config.programId, ''); assert.equal(config.notify, true);
+});
+
+test('programGate: a draft that references a program cannot be saved until that program has really loaded', () => {
+  const program = { id: 'p1' };
+  assert.equal(programGate({ programId: '', status: 'loading', program: null }), null);       // no program chosen: nothing to wait for
+  assert.equal(programGate({ programId: '', status: 'failed', program: null }), null);
+  assert.equal(programGate({ programId: 'p1', status: 'loading', program: null }), 'loading'); // restored draft, metadata still in flight
+  assert.equal(programGate({ programId: 'p1', status: 'failed', program: null }), 'failed');   // fetch failed: never treated as "no program"
+  assert.equal(programGate({ programId: 'p1', status: 'ready', program: null }), 'missing');   // loaded, but the program is gone/archived
+  assert.equal(programGate({ programId: 'p1', status: 'ready', program }), null);              // safe to save
+  assert.equal(programGate({ programId: 'p1', status: 'loading', program }), 'loading');       // a stale list is not trusted while reloading
 });

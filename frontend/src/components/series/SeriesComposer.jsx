@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, errMsg } from '@/lib/api';
@@ -9,7 +9,7 @@ import { SeriesPreviewList } from '@/components/series/SeriesPreviewList';
 import { createDraftStore, newRequestId } from '@/lib/seriesDraftStore';
 import { classifySaveOutcome, buildCheckBody, buildCreateBody, createSeqGuard } from '@/lib/seriesRequest';
 import {
-  assignDefault, configFromBody, mapWorkouts, pinsFromBody, rowsFromBody, shiftDate, sortRows, summarizeSelection, weekdayOfDate,
+  assignDefault, configFromBody, mapWorkouts, pinsFromBody, programGate, rowsFromBody, shiftDate, sortRows, summarizeSelection, weekdayOfDate,
 } from '@/lib/seriesPlan';
 
 const signatureOf = (rows, durationMinutes) => JSON.stringify([
@@ -45,6 +45,8 @@ export function SeriesComposer({
   const [pins, setPins] = useState({});
   const [ruleUsed, setRuleUsed] = useState(null); // the rule the current rows were generated from (display copy)
   const [programs, setPrograms] = useState([]);
+  // 'loading' | 'ready' | 'failed' — an unloaded or failed list must never be mistaken for "no program".
+  const [programsStatus, setProgramsStatus] = useState('loading');
   const [workouts, setWorkouts] = useState([]);
   const [checking, setChecking] = useState(false);
   const [checkedSignature, setCheckedSignature] = useState(null); // the selection the server last checked
@@ -65,10 +67,17 @@ export function SeriesComposer({
 
   const markChecked = (signature) => { lastChecked.current = signature; setCheckedSignature(signature); };
 
-  useEffect(() => {
-    api.get('/programs').then(({ data }) => setPrograms(data || [])).catch(() => setPrograms([]));
-    api.get('/programs/workouts').then(({ data }) => setWorkouts(data || [])).catch(() => setWorkouts([]));
+  const loadPrograms = useCallback(() => {
+    setProgramsStatus('loading');
+    api.get('/programs')
+      .then(({ data }) => { setPrograms(data || []); setProgramsStatus('ready'); })
+      .catch(() => setProgramsStatus('failed'));
   }, []);
+
+  useEffect(() => {
+    loadPrograms();
+    api.get('/programs/workouts').then(({ data }) => setWorkouts(data || [])).catch(() => setWorkouts([]));
+  }, [loadPrograms]);
 
   // A pending save for this client (reload, or the drawer was closed mid-save) is restored, not replaced.
   useEffect(() => {
@@ -98,6 +107,9 @@ export function SeriesComposer({
   // coach's choice: its default is applied when a program is explicitly chosen (chooseConfig below),
   // never as a reaction to program metadata loading or to a restored draft.
   const needsAssign = Boolean(selectedProgram) && !(selectedProgram.active_assignments || []).some((a) => a.client?.id === clientId);
+  // Automatic workouts and the requested assignment both come from the program. A draft that references a
+  // program (always true for a restored one) cannot be saved until that program has really loaded.
+  const gate = programGate({ programId: config.programId, status: programsStatus, program: selectedProgram });
 
   const programDays = useMemo(
     () => (selectedProgram?.days || []).map((day) => ({ day_number: day.day_number, workout_id: day.workout?.id || day.workout_id || null })),
@@ -251,6 +263,7 @@ export function SeriesComposer({
   };
 
   const create = () => {
+    if (gate) return; // defense in depth: the button is disabled too
     const body = buildCreateBody({
       requestId: requestIdRef.current, clientId, durationMinutes, location, rule: ruleUsed || currentRule(), rows, mapping,
       programId: config.programId, assignProgram: needsAssign && config.assignProgram, notify: config.notify,
@@ -362,8 +375,22 @@ export function SeriesComposer({
           )}
           {error && stage === 'review' && <p className="text-sm text-destructive" role="alert" data-testid="series-error">{error}</p>}
           {storageWarning}
+          {gate === 'loading' && (
+            <p className="text-sm text-muted-foreground" role="status" data-testid="series-program-loading">Loading program details…</p>
+          )}
+          {gate === 'failed' && (
+            <p className="text-sm text-destructive" role="alert" data-testid="series-program-failed">
+              Could not load the program details, so the workouts and program assignment cannot be saved yet.{' '}
+              <button type="button" className="underline" onClick={loadPrograms} data-testid="series-program-retry">Retry</button>
+            </p>
+          )}
+          {gate === 'missing' && (
+            <p className="text-sm text-destructive" role="alert" data-testid="series-program-missing">
+              That program is no longer available. Use “Change repeat settings” to choose another program or “No program”.
+            </p>
+          )}
           <Button type="button" className="min-h-11 w-full rounded-xl font-semibold"
-            disabled={checkedSignature !== signature || checking || checkFailed || anyConflict || summary.selected === 0 || stage === 'mismatch'}
+            disabled={Boolean(gate) || checkedSignature !== signature || checking || checkFailed || anyConflict || summary.selected === 0 || stage === 'mismatch'}
             onClick={create} data-testid="series-create-button">
             {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : `Create ${summary.selected} session${summary.selected === 1 ? '' : 's'}`}
           </Button>

@@ -26,6 +26,9 @@ class FakeBackend {
     this.failNextCreateWith400 = false;   // a definitive validation error
     this.attempts = [];                   // every create attempt, processed or not
     this.programsDelay = 0;               // ms before GET /programs answers (late program metadata)
+    this.programsFail = false;            // GET /programs answers 500
+    this.programsEmpty = false;           // GET /programs answers [] (the program was archived/removed)
+    this.failNextCreateWith500 = false;   // a retryable server error
     this.checkCalls = [];
   }
 
@@ -68,7 +71,8 @@ async function install(page, backend) {
     if (path === '/clients') return json(route, 200, [CLIENT]);
     if (path === '/programs') {
       if (backend.programsDelay) await new Promise((resolve) => setTimeout(resolve, backend.programsDelay));
-      return json(route, 200, [PROGRAM]);
+      if (backend.programsFail) return json(route, 500, { error: 'Failed to load programs' });
+      return json(route, 200, backend.programsEmpty ? [] : [PROGRAM]);
     }
     if (path === '/programs/workouts') return json(route, 200, WORKOUTS);
 
@@ -98,6 +102,7 @@ async function install(page, backend) {
     if (path === '/sessions/series' && method === 'POST') {
       backend.attempts.push(body);
       if (backend.dropBeforeProcessing) { backend.dropBeforeProcessing = false; return route.abort('failed'); }
+      if (backend.failNextCreateWith500) { backend.failNextCreateWith500 = false; return json(route, 500, { error: 'Failed to create the series' }); }
       if (backend.failNextCreateWith400) { backend.failNextCreateWith400 = false; return json(route, 400, { error: 'Those dates are not valid' }); }
       backend.createPosts.push(body);
       const existing = backend.created.get(body.request_id);
@@ -436,6 +441,117 @@ for (const mode of ['409', '400']) {
     expect(backend.created.size).toBe(1);
   });
 }
+
+// After a reload the program list is fetched again. Until it has really loaded, a restored draft that
+// references a program must not be savable: its automatic workouts and its opted-in assignment both come
+// from that list, and an unloaded list would silently turn them into "no workout" / "do not assign".
+async function restoreWithProgram(page, backend, { mode, delay = 0, fail = false, empty = false }) {
+  await startPreview(page, { program: 'Upper/Lower' });              // assignment defaults ON; workouts are AUTOMATIC (no pins)
+  const first = iso(daysFromNow(10));
+  if (mode === '409') backend.blocked.add(`${plusDays(first, 14)}T09:00`);
+  backend.dropBeforeProcessing = true;
+  await expect(page.getByTestId('series-create-button')).toBeEnabled();
+  await page.getByTestId('series-create-button').click();
+  await expect(page.getByTestId('series-unknown')).toBeVisible();
+  expect(backend.attempts.at(-1).assign_program).toBe(true);
+  expect(backend.attempts.at(-1).slots.map((slot) => slot.workout_id)).toEqual(['w1', 'w2', 'w1']);
+  backend.programsDelay = delay;
+  backend.programsFail = fail;
+  backend.programsEmpty = empty;
+  await page.reload();
+  await expect(page.getByTestId('series-unknown')).toBeVisible();
+  if (mode === '400') backend.failNextCreateWith400 = true;
+  // The frozen retry must work while program details are unavailable.
+  await page.getByTestId('series-retry-button').click();
+  if (mode === '409') {
+    await expect(page.getByTestId('series-row-g3')).toHaveAttribute('data-conflict', 'coach');
+    await page.getByTestId('series-suggestion-g3-10:00').click();
+  } else {
+    await expect(page.getByTestId('series-error')).toContainText('Those dates are not valid');
+  }
+}
+
+for (const mode of ['409', '400']) {
+  test(`RACE (${mode} after reload): Create is held until program details load, then saves the automatic workouts and the assignment`, async ({ page }) => {
+    const backend = new FakeBackend();
+    await install(page, backend);
+    await restoreWithProgram(page, backend, { mode, delay: 6000 });
+
+    await expect(page.getByTestId('series-program-loading')).toBeVisible();
+    await page.waitForTimeout(1500);                                    // the selection check has long finished by now
+    await expect(page.getByTestId('series-create-button')).toBeDisabled();
+
+    await expect(page.getByTestId('series-assign-checkbox')).toHaveAttribute('data-state', 'checked');   // details arrived
+    await expect(page.getByTestId('series-create-button')).toBeEnabled();
+    await page.getByTestId('series-create-button').click();
+    await expect(page.getByText('3 sessions scheduled')).toBeVisible();
+    const saved = backend.createPosts.at(-1);
+    expect(saved.assign_program).toBe(true);
+    expect(saved.program_id).toBe('prog-1');
+    expect(saved.slots.map((slot) => slot.workout_id)).toEqual(['w1', 'w2', 'w1']);
+    expect(new Set(backend.attempts.map((attempt) => attempt.request_id)).size).toBe(1);
+  });
+}
+
+test('a FAILED program fetch after reload keeps Create disabled, offers Retry, and saves correctly once the details load', async ({ page }) => {
+  const backend = new FakeBackend();
+  await install(page, backend);
+  await restoreWithProgram(page, backend, { mode: '400', fail: true });
+
+  await expect(page.getByTestId('series-program-failed')).toBeVisible();
+  await page.waitForTimeout(800);
+  await expect(page.getByTestId('series-create-button')).toBeDisabled();
+  await page.getByTestId('series-program-retry').click();               // still failing
+  await expect(page.getByTestId('series-program-failed')).toBeVisible();
+  await expect(page.getByTestId('series-create-button')).toBeDisabled();
+
+  backend.programsFail = false;
+  await page.getByTestId('series-program-retry').click();
+  await expect(page.getByTestId('series-assign-checkbox')).toHaveAttribute('data-state', 'checked');
+  await expect(page.getByTestId('series-create-button')).toBeEnabled();
+  await page.getByTestId('series-create-button').click();
+  await expect(page.getByText('3 sessions scheduled')).toBeVisible();
+  const saved = backend.createPosts.at(-1);
+  expect(saved.assign_program).toBe(true);
+  expect(saved.slots.map((slot) => slot.workout_id)).toEqual(['w1', 'w2', 'w1']);
+});
+
+test('a program that no longer exists blocks Create with an explanation; choosing "No program" is the way forward', async ({ page }) => {
+  const backend = new FakeBackend();
+  await install(page, backend);
+  await restoreWithProgram(page, backend, { mode: '400', empty: true });   // the program list now answers without it
+  await expect(page.getByTestId('series-program-missing')).toBeVisible();
+  await page.waitForTimeout(800);
+  await expect(page.getByTestId('series-create-button')).toBeDisabled();
+
+  await page.getByTestId('series-edit-rule').click();
+  await page.getByTestId('series-program-select').click();
+  await page.getByRole('option', { name: 'No program' }).click();
+  await page.getByTestId('series-back-to-dates').click();
+  await expect(page.getByTestId('series-create-button')).toBeEnabled();
+  await page.getByTestId('series-create-button').click();
+  await expect(page.getByText('3 sessions scheduled')).toBeVisible();
+  const saved = backend.createPosts.at(-1);
+  expect(saved.program_id).toBeNull();                                   // the coach's explicit choice
+  expect(saved.assign_program).toBe(false);
+  expect(saved.slots.map((slot) => slot.workout_id)).toEqual([null, null, null]);
+});
+
+test('a retryable 500 on save keeps the pending request: the form stays frozen and a reload still recovers it', async ({ page }) => {
+  const backend = new FakeBackend();
+  await install(page, backend);
+  await startPreview(page);
+  backend.failNextCreateWith500 = true;
+  await page.getByTestId('series-create-button').click();
+  await expect(page.getByTestId('series-unknown')).toBeVisible();
+  expect((await pendingKeys(page)).length).toBe(1);                     // not cleared by a server error
+  await page.reload();
+  await expect(page.getByTestId('series-unknown')).toBeVisible();
+  await page.getByTestId('series-retry-button').click();
+  await expect(page.getByText('3 sessions scheduled')).toBeVisible();
+  expect(new Set(backend.attempts.map((attempt) => attempt.request_id)).size).toBe(1);
+  expect(backend.created.size).toBe(1);
+});
 
 test('cancel this-and-future with Notify off sends the series cancel with notify:false', async ({ page }) => {
   const backend = new FakeBackend();
