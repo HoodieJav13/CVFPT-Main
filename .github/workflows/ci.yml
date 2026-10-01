@@ -44,3 +44,17 @@ jobs:
       - run: npm run test:e2e:preview
       - run: npm run test:e2e:series
       - run: npm audit --omit=dev
+
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.118.0
+      - name: Stack and isolation safety tests (fake Docker, no engine needed)
+        run: |
+          bash supabase/tests/session_series/stack_guard_test.sh
+          bash supabase/tests/session_series/isolation_guard_test.sh
+      - name: Recurring-sessions database tests (owned disposable stack)
+        run: bash supabase/tests/session_series/run.sh --down
