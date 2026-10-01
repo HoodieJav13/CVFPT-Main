@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
-const { exerciseMarkers, supersetBlocks } = require('./supersets');
+const {
+  exerciseMarkers, formatRestSeconds, roundRestSeconds, supersetBlocks,
+} = require('./supersets');
 
 const CVF_LOCATION = 'Core Value Fitness - Albuquerque, NM';
 const LOGO_PATH = path.join(__dirname, '..', 'assets', 'cvf-logo.png');
@@ -49,10 +51,12 @@ function exerciseVideo(exercise) {
   return exercise.video_url || exercise.library_exercise?.video_url || '';
 }
 
-function getExerciseText(exercise, includeCoachNotes = false) {
+// Grouped exercises omit their own rest: the group caption states the
+// once-per-round rest, matching the tracker.
+function getExerciseText(exercise, includeCoachNotes = false, { grouped = false } = {}) {
   const parts = [];
   if (exercise.sets || exercise.reps) parts.push(`${exercise.sets || '?'} x ${exercise.reps || '?'}`);
-  if (exercise.rest) parts.push(`Rest: ${exercise.rest}`);
+  if (exercise.rest && !grouped) parts.push(`Rest: ${exercise.rest}`);
   if (exercise.tempo) parts.push(`Tempo: ${exercise.tempo}`);
   if (exercise.client_notes || exercise.notes) parts.push(exercise.client_notes || exercise.notes);
   if (includeCoachNotes && exercise.coach_notes) parts.push(`Coach: ${exercise.coach_notes}`);
@@ -115,14 +119,20 @@ function drawDayBanner(doc, title, goal) {
 
 // A short caption above the first member of a superset/giant set, so a
 // printed sheet says how to perform the lettered group.
+// Captions keyed by each group's first member index, and the set of all
+// grouped indexes (whose own rest line is omitted).
 function groupCaptions(exercises) {
   const captions = new Map();
+  const grouped = new Set();
   supersetBlocks(exercises).forEach((block) => {
     if (block.kind === 'single') return;
     const label = block.kind === 'superset' ? 'Superset' : 'Giant set';
-    captions.set(block.items[0].index, `${label} - alternate these ${block.items.length}, then rest`);
+    const rest = roundRestSeconds(block.items.map((item) => item.exercise));
+    const restText = rest > 0 ? `then rest ${formatRestSeconds(rest)}` : 'then rest';
+    captions.set(block.items[0].index, `${label} - alternate these ${block.items.length}, ${restText}`);
+    block.items.forEach((item) => grouped.add(item.index));
   });
-  return captions;
+  return { captions, grouped };
 }
 
 function drawGroupCaption(doc, caption) {
@@ -165,12 +175,12 @@ function generateProgramPdf(program, user, options = {}) {
       }
 
       const markers = exerciseMarkers(workout.exercises);
-      const captions = groupCaptions(workout.exercises);
+      const { captions, grouped } = groupCaptions(workout.exercises);
       (workout.exercises || []).forEach((exercise, index) => {
         ensurePdfSpace(doc, 72 + (captions.has(index) ? 12 : 0));
         drawGroupCaption(doc, captions.get(index));
         drawExerciseTitle(doc, exercise, markers[index]);
-        const detail = getExerciseText(exercise, includeCoachNotes);
+        const detail = getExerciseText(exercise, includeCoachNotes, { grouped: grouped.has(index) });
         if (detail) doc.fillColor('#374151').font('Helvetica').fontSize(9).text(detail, 70, doc.y + 3, { width: 470, lineGap: 2 });
         const video = exerciseVideo(exercise);
         if (includeVideos && video) {
@@ -196,12 +206,12 @@ function targetLoad(exercise, loadByExercise) {
   return '';
 }
 
-function logSheetDetail(exercise, load) {
+function logSheetDetail(exercise, load, { grouped = false } = {}) {
   return [
     (exercise.sets || exercise.reps) && `${exercise.sets || '?'} x ${exercise.reps || '?'}`,
     load && `Target: ${load}`,
     exercise.target_rpe && `RPE: ${exercise.target_rpe}`,
-    exercise.rest && `Rest: ${exercise.rest}`,
+    exercise.rest && !grouped && `Rest: ${exercise.rest}`,
     exercise.tempo && `Tempo: ${exercise.tempo}`,
     exercise.client_notes || exercise.notes,
   ].filter(Boolean).join(' - ');
@@ -272,13 +282,13 @@ function generateLogSheetPdf({ title, clientName, note, sections }) {
       }
       const loadByExercise = new Map((section.loads || []).map((load) => [load.workout_exercise_id, load]));
       const markers = exerciseMarkers(exercises);
-      const captions = groupCaptions(exercises);
+      const { captions, grouped } = groupCaptions(exercises);
       exercises.forEach((exercise, index) => {
         const boxes = setBoxCount(exercise.sets);
         ensurePdfSpace(doc, exerciseBlockHeight(boxes) + (captions.has(index) ? 12 : 0));
         drawGroupCaption(doc, captions.get(index));
         drawExerciseTitle(doc, exercise, markers[index]);
-        const detail = logSheetDetail(exercise, targetLoad(exercise, loadByExercise));
+        const detail = logSheetDetail(exercise, targetLoad(exercise, loadByExercise), { grouped: grouped.has(index) });
         if (detail) doc.fillColor('#374151').font('Helvetica').fontSize(9).text(detail, 70, doc.y + 3, { width: 470, lineGap: 2 });
         const video = exerciseVideo(exercise);
         if (video) doc.fillColor(teal).fontSize(8).text(video, 70, doc.y + 3, { width: 470, underline: true });

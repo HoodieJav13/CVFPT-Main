@@ -183,3 +183,29 @@ test('drag-and-drop joins a group when dropped inside it and leaves it otherwise
   assert.deepEqual(groups(moved), ['A', 'A', null, 'B', 'B']);
   assert.equal(dropExercise(list, 1, 1), list);
 });
+
+test('PDF exports state the same once-per-round rest as the tracker', async () => {
+  const { generateProgramPdf, generateLogSheetPdf } = require('../src/lib/programPdf');
+  const { extractPdfText } = require('../src/lib/pdfText');
+  const { roundRestSeconds, formatRestSeconds } = require('../src/lib/supersets');
+  assert.equal(roundRestSeconds([{ rest_seconds: 45 }, { rest_seconds: 90 }, { rest_seconds: null }]), 90);
+  assert.equal(formatRestSeconds(90), '1:30');
+  const exercises = [
+    { custom_name: 'Back Squat', sets: '4', reps: '6', rest: '120s', rest_seconds: 120 },
+    { custom_name: 'Bench Press', sets: '3', reps: '8', rest: '45s', rest_seconds: 45, superset_group: 'A' },
+    { custom_name: 'Chest Row', sets: '3', reps: '10', rest: '90s', rest_seconds: 90, superset_group: 'A' },
+  ];
+  const toBuffer = async (pdf) => { const out = await pdf; return Buffer.isBuffer(out) ? out : Buffer.from(out); };
+  const texts = [
+    await extractPdfText(await toBuffer(generateProgramPdf({ name: 'T', days: [{ day_number: 1, workout: { name: 'Upper', exercises } }] }, { coach: { name: 'Coach' } }))),
+    await extractPdfText(await toBuffer(generateLogSheetPdf({ title: 'Log', sections: [{ title: 'Upper', exercises }] }))),
+  ];
+  for (const raw of texts) {
+    const text = raw.replace(/\s+/g, ' ');
+    assert.match(text, /SUPERSET - ALTERNATE THESE 2, THEN REST 1:30/);
+    // The straight set keeps its own rest; grouped members don't repeat theirs.
+    assert.match(text, /Rest: 120s/);
+    assert.doesNotMatch(text, /Rest: 45s/);
+    assert.doesNotMatch(text, /Rest: 90s/);
+  }
+});

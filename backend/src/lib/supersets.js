@@ -94,4 +94,21 @@ function exerciseMarkers(exercises) {
   return markers;
 }
 
-module.exports = { exerciseMarkers, normalizeSupersetGroups, supersetBlocks, supersetLabel };
+// A group rests once per round, for the longest structured rest on any
+// member — the same rule as the tracker (frontend restAfterSet).
+function roundRestSeconds(members) {
+  return (members || []).reduce((max, exercise) => Math.max(max, Number(exercise?.rest_seconds) || 0), 0);
+}
+
+// Mirrors frontend/src/lib/rest.js formatRestSeconds.
+function formatRestSeconds(seconds) {
+  if (seconds == null) return '';
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return remainder ? `${minutes}:${String(remainder).padStart(2, '0')}` : `${minutes} min`;
+}
+
+module.exports = {
+  exerciseMarkers, formatRestSeconds, normalizeSupersetGroups, roundRestSeconds, supersetBlocks, supersetLabel,
+};
