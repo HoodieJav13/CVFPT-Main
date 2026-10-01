@@ -90,4 +90,42 @@ post-deployment observation.
 Real-auth browser credentials are not configured in the release execution
 environment; that suite is not rerun and no historical result is presented as a
 release result. The optional owner first-use test with a test client and Notify off
-is separate from the rollback-only probe and is not performed on a real client.
+is separate from the rollback-only probe and is not performed on a real client; it
+was performed afterwards on a test client, as recorded below.
+
+## Post-release Production verification (2026-10-01, UTC times)
+
+Both tests used the owner's existing signed-in Chrome session at app.corevaluefit.com on
+a **test client**, with **"Notify client when saved" off** throughout. No password, cookie
+or token was read. Desktop browser only.
+
+**Authenticated smoke, 17:51–17:56.** No program selected. Preview showed three
+conflict-free Mondays (Oct 5, 12, 19 at 10 AM Mountain, 60 min). Create succeeded and the
+Sessions list showed badges "Session 1 of 3", "2 of 3", "3 of 3". From session 2,
+"This and all future" (Notify off) cancelled sessions 2 and 3 and left session 1
+Scheduled, confirmed from persisted state after returning to the Sessions list. Session 1 was then cancelled with
+"Just this one" (Notify off). No active test appointments remain; the cancelled rows remain
+as audit records.
+
+**Program-mapping smoke, about 18:02–18:04.** A shared five-day program template was
+selected. Its first three days mapped, in order, to Oct 6, 13 and 20 at 10 AM Mountain, in
+both the preview and the saved list (badges 1/3–3/3), and the first saved session's detail
+page showed that day's exercises. "Also assign this program to the client" was deliberately
+left **off**, so the live private-program assignment path was not exercised. No template
+was edited. All three sessions were cancelled afterwards (Notify off).
+
+**Logs.** A separate read-only check of the Production backend (17:58) showed the sequence
+`POST /api/sessions/series/preview` 200, `POST /api/sessions/series` 201,
+`PATCH /api/sessions/series/<id>/cancel` 200, with zero 5xx, error and fatal entries over
+the preceding hour. The scoped checks run during each smoke also showed zero error/fatal
+entries and zero 5xx. These are short observation windows right after use, not an elapsed
+hour of post-release watching.
+
+**Observed, not investigated:** both smokes captured a browser console accessibility warning,
+"Missing Description or aria-describedby for DialogContent". It is not a runtime error and
+its source was not isolated. It was not changed.
+
+**Still untested:** live private-program assignment (covered by local and hosted
+rollback-only probes only); notification delivery (a deliberate Notify-on test with a
+confirmed recipient has not been run, and delivery is best-effort); the real-auth browser
+suite (credentials unavailable). Leaked-password protection is a separate security task.
