@@ -1,5 +1,6 @@
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
+import { normalizeSupersets } from '@/lib/supersets';
 
 const {
   csvTemplate,
@@ -366,8 +367,9 @@ function workoutDetails(workoutId) {
 function replaceWorkoutExercises(workoutId, exercises = []) {
   const existing = state.workoutExercises.filter((e) => e.workout_id === workoutId);
   const retained = new Set();
-  exercises
-    .filter((exercise) => exercise.exercise_library_id || String(exercise.custom_name || '').trim())
+  // Like the API: drop blank rows, then normalize superset labels over the
+  // kept rows (contiguous runs of 2+ get letters, singletons null).
+  normalizeSupersets(exercises.filter((exercise) => exercise.exercise_library_id || String(exercise.custom_name || '').trim()))
     .forEach((exercise, index) => {
       const row = existing.find((candidate) => candidate.id === exercise.id
         && candidate.exercise_library_id === (exercise.exercise_library_id || null)
@@ -388,6 +390,7 @@ function replaceWorkoutExercises(workoutId, exercises = []) {
         client_notes: exercise.client_notes || exercise.notes || null,
         coach_notes: exercise.coach_notes || null,
         video_url: exercise.video_url || null,
+        superset_group: exercise.superset_group || null,
         position: index,
         archived: false,
       };
@@ -760,7 +763,8 @@ function startPreviewWorkout(clientId, payload) {
       prescribed_notes: exercise.notes, client_notes: null,
       prescribed_load_value: resolved?.load_value ?? null,
       prescribed_load_unit: resolved?.load_value == null ? null : (resolved.load_unit || 'lb'),
-      position: exercise.position, archived: false, created_at: createdAt, updated_at: createdAt,
+      position: exercise.position, superset_group: exercise.superset_group || null,
+      archived: false, created_at: createdAt, updated_at: createdAt,
     };
     state.workoutLogExercises.push(logExercise);
     for (let setNumber = 1; setNumber <= prescribedSetCount(exercise.sets); setNumber += 1) {
