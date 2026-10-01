@@ -149,6 +149,24 @@ export function moveExercise(exercises, index, direction) {
   return normalize(moveRange(detached, index, index, insertAt));
 }
 
+// Drag-and-drop: move the exercise at `from` to `to`. Dropped between two
+// members of one group, it joins that group; dropped next to its own group
+// it stays in it; anywhere else it becomes a straight set.
+export function dropExercise(exercises, from, to) {
+  if (from === to || from < 0 || to < 0 || from >= exercises.length || to >= exercises.length) return exercises;
+  const next = [...exercises];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  const before = next[to - 1]?.superset_group;
+  const after = next[to + 1]?.superset_group;
+  const own = moved.superset_group;
+  let group = null;
+  if (before && before === after) group = before;
+  else if (own && (before === own || after === own)) group = own;
+  next[to] = { ...moved, superset_group: group };
+  return normalize(next);
+}
+
 export function canMoveExercise(exercises, index, direction) {
   const target = index + direction;
   return target >= 0 && target < exercises.length;
@@ -168,4 +186,40 @@ export function nextExercise(exercises) {
     .map(({ exercise }) => exercise)
     .filter(pending)
     .reduce((best, exercise) => (done(exercise) < done(best) ? exercise : best));
+}
+
+function groupRestSeconds(members) {
+  return members.reduce((max, exercise) => Math.max(max, Number(exercise.prescribed_rest_seconds) || 0), 0);
+}
+
+// Rest to start after `setId` on `exerciseId` is completed. Straight sets
+// rest by their own prescription. Inside a superset/giant set the client
+// moves straight to the next exercise, and rests only once the round is
+// done: every member has caught up to this exercise's completed count (or
+// has no sets left). The round's rest is the longest rest set on any
+// member, so it works wherever the coach typed it.
+// Returns { seconds, clear }: seconds > 0 starts a timer; clear stops a
+// stale one mid-round.
+export function restAfterSet(exercises, exerciseId, setId) {
+  const block = supersetBlocks(exercises).find((candidate) => candidate.items.some(({ exercise }) => exercise.id === exerciseId));
+  if (!block) return { seconds: 0, clear: false };
+  const doneCount = (exercise) => (exercise.sets || [])
+    .filter((set) => set.status === 'completed' || (exercise.id === exerciseId && set.id === setId)).length;
+  if (block.kind === 'single') {
+    return { seconds: Number(block.items[0].exercise.prescribed_rest_seconds) || 0, clear: false };
+  }
+  const members = block.items.map(({ exercise }) => exercise);
+  const current = members.find((exercise) => exercise.id === exerciseId);
+  const round = doneCount(current);
+  const roundDone = members.every((exercise) => {
+    const done = doneCount(exercise);
+    return done >= round || done >= (exercise.sets || []).length;
+  });
+  if (!roundDone) return { seconds: 0, clear: true };
+  return { seconds: groupRestSeconds(members), clear: false };
+}
+
+// The rest a group takes after each round, for display.
+export function supersetRestSeconds(members) {
+  return groupRestSeconds(members);
 }

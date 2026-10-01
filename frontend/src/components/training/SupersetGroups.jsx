@@ -8,8 +8,9 @@ import { exerciseMarkers, groupKindLabel, supersetBlocks } from '@/lib/supersets
  * labelled teal rail. Straight sets render exactly as the caller draws them.
  * children(exercise, { index, marker, grouped }) draws one exercise; marker
  * is program-sheet notation (1, 2, 3 — or A, B1, B2 once any group exists).
+ * roundRest(members) may return a phrase like "rest 1:30" for the header.
  */
-export function SupersetGroups({ exercises, children: renderExercise, className, innerClassName = 'space-y-3' }) {
+export function SupersetGroups({ exercises, children: renderExercise, className, innerClassName = 'space-y-3', roundRest }) {
   const list = exercises || [];
   const markers = exerciseMarkers(list);
   return supersetBlocks(list).map((block) => {
@@ -34,7 +35,7 @@ export function SupersetGroups({ exercises, children: renderExercise, className,
             <Link2 className="h-3.5 w-3.5" aria-hidden />
             {label}
           </span>
-          <span>· alternate {range}, then rest</span>
+          <span>· alternate {range}, then {roundRest?.(block.items.map((item) => item.exercise)) || 'rest'}</span>
         </p>
         <div className={innerClassName}>{rendered}</div>
       </div>

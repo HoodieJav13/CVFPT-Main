@@ -20,7 +20,7 @@ import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import { formatRestSeconds } from '@/lib/rest';
 import { trackProductEvent } from '@/lib/telemetry';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
-import { nextExercise } from '@/lib/supersets';
+import { nextExercise, restAfterSet, supersetRestSeconds } from '@/lib/supersets';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
 // database parses and backfills. The old runtime text parser is gone; text
@@ -302,8 +302,11 @@ export default function WorkoutTracker() {
         actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
       },
     });
-    if (status === 'completed' && exercise.prescribed_rest_seconds > 0) {
-      startRest(exercise.prescribed_rest_seconds);
+    if (status === 'completed') {
+      // Inside a superset/giant set, rest waits for the end of the round.
+      const rest = restAfterSet(log.exercises, exercise.id, set.id);
+      if (rest.seconds > 0) startRest(rest.seconds);
+      else if (rest.clear) clearRest();
     }
   };
 
@@ -485,7 +488,10 @@ export default function WorkoutTracker() {
       </div>
 
       <div className="space-y-4">
-        <SupersetGroups exercises={log.exercises}>{(exercise, { marker }) => (
+        <SupersetGroups
+          exercises={log.exercises}
+          roundRest={(members) => (supersetRestSeconds(members) > 0 ? `rest ${formatRestSeconds(supersetRestSeconds(members))}` : null)}
+        >{(exercise, { marker, grouped }) => (
           <Card
             className={cn(exercise.id === activeExerciseId && !sealed && 'border-primary/35 shadow-[var(--app-elev-soft)]')}
             data-testid="tracker-exercise-card"
@@ -509,7 +515,8 @@ export default function WorkoutTracker() {
                 {exercise.prescribed_load_value != null && <span>Load {exercise.prescribed_load_value} {exercise.prescribed_load_unit || 'lb'}</span>}
                 {exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
                 {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
-                {(exercise.prescribed_rest_seconds != null || exercise.prescribed_rest) && (
+                {/* Grouped exercises rest once per round (shown on the group). */}
+                {!grouped && (exercise.prescribed_rest_seconds != null || exercise.prescribed_rest) && (
                   <span>Rest {exercise.prescribed_rest_seconds != null ? formatRestSeconds(exercise.prescribed_rest_seconds) : exercise.prescribed_rest}</span>
                 )}
                 {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}

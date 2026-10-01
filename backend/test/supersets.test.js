@@ -141,3 +141,45 @@ test('tracker alternates the current exercise through a superset, in order other
   assert.equal(nextExercise(log(2, 3, 2)).id, 'row');
   assert.equal(nextExercise(log(2, 3, 3)), null);
 });
+
+test('rest is skipped mid-round inside a group and taken once the round is done', async () => {
+  const { restAfterSet } = await frontendLib();
+  const ex = (id, group, rest, done, total = 3) => ({
+    id, superset_group: group, prescribed_rest_seconds: rest,
+    sets: Array.from({ length: total }, (_, i) => ({ id: `${id}-${i + 1}`, status: i < done ? 'completed' : 'pending' })),
+  });
+  // Straight set: own prescription, never clears.
+  assert.deepEqual(restAfterSet([ex('squat', null, 120, 0)], 'squat', 'squat-1'), { seconds: 120, clear: false });
+  assert.deepEqual(restAfterSet([ex('squat', null, null, 0)], 'squat', 'squat-1'), { seconds: 0, clear: false });
+  // Superset, rest typed only on A1: A1 set 1 -> no rest; A2 set 1 -> 90s.
+  assert.deepEqual(restAfterSet([ex('a1', 'A', 90, 0), ex('a2', 'A', 0, 0)], 'a1', 'a1-1'), { seconds: 0, clear: true });
+  assert.deepEqual(restAfterSet([ex('a1', 'A', 90, 1), ex('a2', 'A', 0, 0)], 'a2', 'a2-1'), { seconds: 90, clear: false });
+  // Longest rest in the group wins; order within the round doesn't matter.
+  assert.deepEqual(restAfterSet([ex('a1', 'A', 60, 0), ex('a2', 'A', 0, 1), ex('a3', 'A', 120, 1)], 'a1', 'a1-1'), { seconds: 120, clear: false });
+  // Unequal set counts: once a member is out of sets it doesn't hold the round.
+  assert.deepEqual(restAfterSet([ex('a1', 'A', 60, 3, 4), ex('a2', 'A', 0, 3, 3)], 'a1', 'a1-4'), { seconds: 60, clear: false });
+  // Unknown exercise: nothing.
+  assert.deepEqual(restAfterSet([ex('a1', 'A', 60, 0)], 'zzz', 'x'), { seconds: 0, clear: false });
+});
+
+test('drag-and-drop joins a group when dropped inside it and leaves it otherwise', async () => {
+  const { dropExercise } = await frontendLib();
+  const list = [row('a'), row('b', 'A'), row('c', 'A'), row('d', 'B'), row('e', 'B')];
+  // Drop the straight set between b and c: joins the superset (giant set).
+  let moved = dropExercise(list, 0, 1);
+  assert.deepEqual(names(moved), ['b', 'a', 'c', 'd', 'e']);
+  assert.deepEqual(groups(moved), ['A', 'A', 'A', 'B', 'B']);
+  // Reorder inside a group keeps it.
+  moved = dropExercise(list, 2, 1);
+  assert.deepEqual(names(moved), ['a', 'c', 'b', 'd', 'e']);
+  assert.deepEqual(groups(moved), [null, 'A', 'A', 'B', 'B']);
+  // Drag a member out to the top: it leaves, and the 2-group dissolves.
+  moved = dropExercise(list, 2, 0);
+  assert.deepEqual(names(moved), ['c', 'a', 'b', 'd', 'e']);
+  assert.deepEqual(groups(moved), [null, null, null, 'A', 'A']);
+  // Dropped at a boundary between two different groups: straight set.
+  moved = dropExercise(list, 0, 2);
+  assert.deepEqual(names(moved), ['b', 'c', 'a', 'd', 'e']);
+  assert.deepEqual(groups(moved), ['A', 'A', null, 'B', 'B']);
+  assert.equal(dropExercise(list, 1, 1), list);
+});
