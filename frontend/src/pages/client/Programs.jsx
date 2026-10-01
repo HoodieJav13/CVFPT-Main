@@ -14,13 +14,17 @@ import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { downloadBlob, filenameFromDisposition } from '@/lib/download';
 import { SupersetGroups } from '@/components/training/SupersetGroups';
+import { useHistoryPages } from '@/lib/useHistoryPages';
+import { HistoryShowMore } from '@/components/training/HistoryShowMore';
 
 export default function ClientPrograms() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [assignments, setAssignments] = useState(null);
   const [activeLog, setActiveLog] = useState(null);
-  const [history, setHistory] = useState(null);
+  const historyPages = useHistoryPages('/workout-logs/mine');
+  const history = historyPages.items;
+  const { fetchFirst: fetchHistory, setFirstPage: setHistoryPage } = historyPages;
   const [starting, setStarting] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const viewTracked = useRef(false);
@@ -32,18 +36,18 @@ export default function ClientPrograms() {
       const [assigned, active, logs] = await Promise.all([
         api.get('/programs/client/assigned'),
         api.get('/workout-logs/active'),
-        api.get('/workout-logs/mine'),
+        fetchHistory(),
       ]);
       setAssignments(Array.isArray(assigned.data) ? { programs: assigned.data, workouts: [] } : assigned.data);
       setActiveLog(active.data);
-      setHistory(logs.data);
+      setHistoryPage(logs);
       setLoadError(null);
     } catch (error) {
       const message = errMsg(error, 'Failed to load programs');
       setLoadError(message);
       toast.error(message);
     }
-  }, []);
+  }, [fetchHistory, setHistoryPage]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -140,7 +144,8 @@ export default function ClientPrograms() {
           <div><h2 className="font-display text-lg font-semibold">Workout history</h2><p className="text-sm text-muted-foreground">Completed self-guided workouts.</p></div>
           {history.length === 0 ? (
             <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No completed workouts yet.</div>
-          ) : history.slice(0, 12).map((log) => <HistoryRow key={log.id} log={log} />)}
+          ) : history.map((log) => <HistoryRow key={log.id} log={log} />)}
+          <HistoryShowMore pages={historyPages} />
         </section>}
       </div>
     </div>

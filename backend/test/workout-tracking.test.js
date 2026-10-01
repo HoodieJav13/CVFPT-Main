@@ -90,8 +90,11 @@ test('extra-set idempotency is scoped and recovers a concurrent duplicate insert
 test('history lists expand logs in bulk, never a per-log query loop', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/routes/workoutLogs.js'), 'utf8');
   assert.match(source, /async function workoutLogsWithDetailsBulk/);
-  // Both list endpoints route through the constant-query bulk builder.
-  assert.equal((source.match(/workoutLogsWithDetailsBulk\(\(data \|\| \[\]\)\.map\(\(row\) => row\.id\)\)/g) || []).length, 2);
+  // Both list endpoints share sendCompletedLogs, whose unpaged and paged
+  // forms both expand through the constant-query bulk builder.
+  assert.equal((source.match(/await sendCompletedLogs\(req, res, /g) || []).length, 2);
+  assert.match(source, /return res\.json\(await workoutLogsWithDetailsBulk\(\(data \|\| \[\]\)\.map\(\(row\) => row\.id\)\)\);/);
+  assert.match(source, /details = workoutLogsWithDetailsBulk/);
   // The ~4-queries-per-log sequential expansion must not come back.
   assert.doesNotMatch(source, /for \(const row of data \|\| \[\]\) result\.push\(await workoutLogWithDetails/);
 });
