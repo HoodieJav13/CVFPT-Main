@@ -129,7 +129,7 @@ export function SessionEditorDrawer({ open, onOpenChange, clients, editing, pres
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent data-testid="session-editor-drawer">
-        <div className="mx-auto w-full max-w-md px-4 pb-6">
+        <div className="mx-auto max-h-[85vh] w-full max-w-md overflow-y-auto px-4 pb-6">
           <DrawerHeader className="px-0">
             <DrawerTitle>{editing ? 'Edit session' : repeat ? 'New recurring sessions' : 'New session'}</DrawerTitle>
           </DrawerHeader>
