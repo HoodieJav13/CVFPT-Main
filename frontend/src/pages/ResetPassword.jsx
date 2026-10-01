@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CircleAlert, CheckCircle2, Loader2 } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
-import { BrandBackdrop } from '@/components/BrandBackdrop';
+import { AuthSky } from '@/components/SkyHero';
 import { AuthEntrance } from '@/components/Choreography';
 
 export default function ResetPassword() {
@@ -36,11 +36,11 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="signature-surface min-h-dvh app-noise flex items-center justify-center overflow-hidden px-4 relative">
-      <BrandBackdrop variant="auth" photoSlot="auth" />
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-10">
+      <AuthSky />
       <AuthEntrance>
         <div className="flex flex-col items-center mb-8">
-          <h1 className="font-display text-3xl font-semibold tracking-tight">Choose a new password</h1>
+          <h1 className="sky-text font-display text-3xl font-semibold tracking-tight">Choose a new password</h1>
         </div>
         <Card className="border-border/80 shadow-[var(--app-elev)]">
           <CardContent className="p-6">

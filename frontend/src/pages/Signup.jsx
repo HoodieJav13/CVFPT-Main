@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { errMsg } from '@/lib/api';
 import { postAuthPath } from '@/lib/authRedirect';
-import { BrandBackdrop } from '@/components/BrandBackdrop';
+import { AuthSky } from '@/components/SkyHero';
 import { AuthEntrance } from '@/components/Choreography';
 
 export default function Signup() {
@@ -43,8 +43,8 @@ export default function Signup() {
   };
 
   return (
-    <div className="signature-surface min-h-dvh app-noise flex items-center justify-center overflow-hidden px-4 relative">
-      <BrandBackdrop variant="auth" photoSlot="auth" />
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-10">
+      <AuthSky />
       <AuthEntrance>
         <div className="flex flex-col items-center mb-8">
           {logoBroken ? (
@@ -55,12 +55,12 @@ export default function Signup() {
             <img
               src="/logo.png"
               alt="CVF PT"
-              className="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-primary/30"
+              className="h-28 w-28 object-contain drop-shadow-[0_8px_18px_rgb(0_0_0/0.25)]"
               onError={() => setLogoBroken(true)}
             />
           )}
-          <h1 className="mt-4 font-display text-2xl font-semibold tracking-tight">Claim your account</h1>
-          <p className="mt-1 max-w-xs text-center text-sm text-[hsl(var(--signature-foreground)/0.72)]">
+          <h1 className="sky-text mt-4 font-display text-2xl font-semibold tracking-tight">Claim your account</h1>
+          <p className="mt-1 max-w-xs text-center text-sm sky-text-soft">
             Use the same email your coach has on file. You must be invited by your coach to sign up.
           </p>
         </div>

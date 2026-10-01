@@ -16,7 +16,8 @@ import {
 } from 'lucide-react';
 import { fmtDay, fmtTime, fmtDateTime, fmtDate, initials } from '@/lib/format';
 import { toast } from 'sonner';
-import { DashboardHero } from '@/components/BrandBackdrop';
+import { SkyHero, SkySheet } from '@/components/SkyHero';
+import { greetingFor } from '@/lib/greeting';
 import { DashboardChoreography } from '@/components/Choreography';
 import { chooseClientTodayPlan } from '@/lib/clientTodayPlan';
 import { WeekStrip, WeekLegend, StreakPill } from '@/components/WeekRhythm';
@@ -153,12 +154,9 @@ export default function ClientHome() {
 
   return (
     <div>
+      <SkyHero title={greetingFor(firstName)} height={360} testId="client-dashboard-header" />
+      <SkySheet>
       <DashboardChoreography pageKey={`client-dashboard-${user.id || user.profile?.id || user.role}`}>
-      <DashboardHero
-        title={`Today, ${firstName}`}
-        subtitle="Check in and make today count."
-        testId="client-dashboard-header"
-      />
 
       {/* The dominant-purpose card is the one raised, loud surface on this
           screen (design-plans/010: bold direction, owner pick 2026-08-07). It
@@ -479,6 +477,7 @@ export default function ClientHome() {
       </Card>
 
       </DashboardChoreography>
+      </SkySheet>
 
       <Dialog open={checkInOpen} onOpenChange={setCheckInOpen}>
         <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">

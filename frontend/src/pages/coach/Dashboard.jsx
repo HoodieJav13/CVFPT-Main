@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { DashboardSkeleton, LoadErrorState, StatusBadge, SectionLabel, CheckInStats } from '@/components/common';
-import { DashboardHero } from '@/components/BrandBackdrop';
+import { SkyHero, SkySheet } from '@/components/SkyHero';
+import { greetingFor } from '@/lib/greeting';
 import { DashboardChoreography } from '@/components/Choreography';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Check, Plus, ChevronRight, Dumbbell } from 'lucide-react';
+import { Check, ChevronRight, Dumbbell } from 'lucide-react';
 import { fmtTime, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
 import { buildCoachActionQueue } from '@/lib/coachActionQueue';
@@ -15,7 +16,6 @@ import { GoalMeasureRow } from '@/components/GoalMeasures';
 
 export default function CoachDashboard() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -111,22 +111,16 @@ export default function CoachDashboard() {
   ].filter(Boolean).join(' · ');
 
   return (
+    <>
+    <SkyHero
+      title={greetingFor(firstName)}
+      subtitle={user.role === 'admin' ? `${summary} · All coaches` : summary}
+      subtitleTestId="coach-day-summary"
+      height={380}
+      testId="coach-dashboard-header"
+    />
+    <SkySheet>
     <DashboardChoreography pageKey={`coach-dashboard-${user.id || user.profile?.id || user.role}`}>
-      <DashboardHero
-        title={`Hey, ${firstName}`}
-        subtitle={user.role === 'admin' ? 'Admin view - all coaches' : 'Your day at CVF'}
-        testId="coach-dashboard-header"
-        action={
-          <Button onClick={() => navigate('/coach/sessions?new=1')} className="rounded-xl" data-testid="dashboard-new-session-button">
-            <Plus className="h-4 w-4 mr-1.5" /> New session
-          </Button>
-        }
-      />
-
-      {/* One summary line replaces the four count tiles (round-2 decision,
-          2026-09-29): the counts matter, the tiles only repeated the lists. */}
-      <p className="-mt-1 mb-4 text-sm text-muted-foreground" data-testid="coach-day-summary">{summary}</p>
-
       {/* Desktop: agenda then clients-by-goal on the left, "Needs you" spanning
           the right. The 1fr second row keeps the queue's height from pushing
           the goal card away from the agenda. Phone order: agenda, queue, goals. */}
@@ -293,5 +287,7 @@ export default function CoachDashboard() {
       )}
       </div>
     </DashboardChoreography>
+    </SkySheet>
+    </>
   );
 }

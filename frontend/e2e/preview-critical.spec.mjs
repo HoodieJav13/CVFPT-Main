@@ -74,10 +74,10 @@ test('closed-loop priorities, client Today plan, and mobile primary actions stay
 test('coach preview covers dashboard, clients, sessions, builder, resources, and messages', async ({ page }) => {
   await usePreviewRole(page, 'coach');
   await page.goto('/coach');
-  await expect(page.getByRole('heading', { name: 'Hey, Marcus' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening), Marcus$/ })).toBeVisible();
   await expect(page.getByTestId('coach-dashboard-today-sessions-card')).toBeVisible();
 
-  await page.getByTestId('sidebar-nav-clients').click();
+  await page.getByTestId('topnav-clients').click();
   await expect(page.getByRole('heading', { name: 'Clients' })).toBeVisible();
   await page.getByTestId('add-client-button').click();
   await page.getByTestId('client-name-input').fill('CVF TEST Browser Client');
@@ -86,11 +86,11 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
   await expect(page.getByText('CVF TEST Browser Client added')).toBeVisible();
   await expect(page.getByText('cvf-test-browser@example.invalid')).toBeVisible();
 
-  await page.getByTestId('sidebar-nav-sessions').click();
+  await page.getByTestId('topnav-sessions').click();
   await expect(page.getByTestId('session-create-button')).toBeVisible();
   await expect(page.getByTestId('session-row').first()).toBeVisible();
 
-  await page.getByTestId('sidebar-nav-programs').click();
+  await page.getByTestId('topnav-programs').click();
   await expect(page.getByRole('heading', { name: 'Training builder' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Exercise Library' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Workout Days' })).toBeVisible();
@@ -127,7 +127,7 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
   await expect(page.getByText('Program imported to vault')).toBeVisible();
   await expect(page.getByTestId('program-card').filter({ hasText: 'CVF TEST Preview Paste Program' })).toBeVisible();
 
-  await page.getByTestId('sidebar-nav-resources').click();
+  await page.getByTestId('topnav-resources').click();
   await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
   await expect(page.getByTestId('coach-resource-card').filter({ hasText: 'Knee Recovery Basics' })).toBeVisible();
   await page.getByTestId('resource-upload-open').click();
@@ -158,7 +158,7 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
   await page.getByTestId('resource-edit-save').click();
   await expect(uploadedResource.getByText('Public — visible to all clients')).toBeVisible();
 
-  await page.getByTestId('sidebar-nav-messages').click();
+  await page.getByTestId('topnav-messages').click();
   await expect(page.getByTestId('message-thread-row').first()).toBeVisible();
 });
 
@@ -191,7 +191,7 @@ test('coach session indicators and detail page cover the workout-done confirm fl
 test('client preview covers dashboard and every client navigation destination', async ({ page }) => {
   await usePreviewRole(page, 'client');
   await page.goto('/client');
-  await expect(page.getByRole('heading', { name: 'Today, Sarah' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening), Sarah$/ })).toBeVisible();
   await expect(page.getByTestId('daily-check-in-card')).toBeVisible();
 
   await page.goto('/client/sessions');
@@ -224,8 +224,8 @@ test('client preview covers dashboard and every client navigation destination', 
   await page.goto('/client/packages');
   await expect(page).toHaveURL(/\/client$/);
   await expect(page.getByTestId('credits-summary-link')).toHaveCount(0);
-  await expect(page.getByTestId('sidebar-nav-packages-credits')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Today, Sarah' })).toBeVisible();
+  await expect(page.getByTestId('topnav-packages-credits')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening), Sarah$/ })).toBeVisible();
 
   await page.goto('/coach');
   await expect(page).toHaveURL(/\/client$/);
@@ -273,15 +273,19 @@ test('equal coach-feedback polls stay quiet and reduced motion suppresses badge 
   expect(await badge.evaluate((element) => getComputedStyle(element).animationName)).toBe('none');
 });
 
-test('brand backdrop variants, one-time dashboard motion, and genuine PR moment stay wired', async ({ page }) => {
+test('sky scene, one-time dashboard motion, and genuine PR moment stay wired', async ({ page }) => {
   await usePreviewRole(page, 'client');
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/client');
 
-  const dashboardBackdrop = page.getByTestId('brand-backdrop-dashboard');
-  await expect(dashboardBackdrop).toHaveAttribute('data-photo-state', 'fallback');
-  await expect(dashboardBackdrop).toHaveAttribute('data-intensity', 'spectacle');
-  await expect(dashboardBackdrop).toHaveAttribute('data-signature-treatment', 'poster');
-  await expect(dashboardBackdrop.locator('.brand-backdrop__photo')).toHaveCount(0);
+  // Sky Field: sunrise in the light theme, sunset in the dark theme, with the
+  // real three-layer Sandia ridge.
+  const sky = page.getByTestId('sky-scene');
+  await expect(sky).toHaveAttribute('data-theme-scene', 'sunrise');
+  await expect(sky.locator('.sky-scene__ridges path')).toHaveCount(4);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(sky).toHaveAttribute('data-theme-scene', 'sunset');
+  await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('[data-entry-motion]')).toHaveAttribute('data-entry-motion', 'enabled');
   await expect(page.locator('[data-motion-intensity]')).toHaveAttribute('data-motion-intensity', 'spectacle');
   await expect(page.locator('[data-entry-direction]')).toHaveAttribute('data-entry-direction', 'surge');
@@ -289,17 +293,17 @@ test('brand backdrop variants, one-time dashboard motion, and genuine PR moment 
 
   await page.evaluate(() => localStorage.setItem('cvfpt_visual_intensity', 'restrained'));
   await page.reload();
-  await expect(page.getByTestId('brand-backdrop-dashboard')).toHaveAttribute('data-intensity', 'spectacle');
+  await expect(page.getByTestId('sky-scene')).toBeVisible();
   await expect(page.locator('[data-motion-intensity]')).toHaveAttribute('data-motion-intensity', 'spectacle');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('cvfpt_visual_intensity'))).toBe('restrained');
 
-  await page.getByTestId('sidebar-nav-programs').click();
-  await page.getByTestId('sidebar-nav-home').click();
+  await page.getByTestId('topnav-programs').click();
+  await page.getByTestId('topnav-home').click();
   await expect(page.locator('[data-entry-motion]')).toHaveAttribute('data-entry-motion', 'skipped');
   await page.reload();
   await expect(page.locator('[data-entry-motion]')).toHaveAttribute('data-entry-motion', 'skipped');
 
-  await page.getByTestId('sidebar-nav-progress').click();
+  await page.getByTestId('topnav-progress').click();
   const bodyWeight = page.getByTestId('client-metric-card').filter({ hasText: 'Body Weight' });
   await bodyWeight.getByTestId('client-log-entry-button').click();
   await page.getByTestId('client-entry-value-input').fill('161');
@@ -348,10 +352,14 @@ test('client mobile navigation reaches critical pages', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await usePreviewRole(page, 'client');
   await page.goto('/client');
+  // One corner button opens the six places; choosing one navigates and closes it.
+  await page.getByTestId('mobile-menu-button').click();
   await expect(page.getByTestId('bottom-tab-sessions')).toBeVisible();
   await page.getByTestId('bottom-tab-sessions').click();
   await expect(page).toHaveURL(/\/client\/sessions$/);
   await expect(page.getByTestId('booking-request-button')).toBeVisible();
+  await expect(page.getByTestId('mobile-menu-button')).toHaveAttribute('aria-expanded', 'false');
+  await page.getByTestId('mobile-menu-button').click();
   await expect(page.getByTestId('bottom-tab-resources')).toBeVisible();
 });
 
