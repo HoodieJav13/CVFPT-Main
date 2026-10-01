@@ -24,3 +24,22 @@ test('schema migration adds session_series and the session link additively', () 
   assert.doesNotMatch(sql, /set not null/i); // existing columns are never tightened
   assert.doesNotMatch(sql, FORBIDDEN);
 });
+
+test('helper migration extracts the conflict predicate and keeps the scheduler contract', () => {
+  const sql = read('20260930110000_find_session_conflict_helper.sql');
+  assert.match(sql, /create or replace function public\.find_session_conflict\(/);
+  assert.match(sql, /p_exclude_session_id uuid default null/);
+  // schedule_session keeps its exact signature, lock, and now delegates to the helper.
+  assert.match(sql, /create or replace function public\.schedule_session\(\s*p_session_id uuid,\s*p_client_id uuid,\s*p_coach_id uuid,\s*p_scheduled_at timestamptz,\s*p_duration_minutes integer,\s*p_location text,\s*p_set_location boolean\s*\)/);
+  assert.match(sql, /pg_advisory_xact_lock\(hashtext\('cvf_session_scheduling'\)\)/);
+  assert.match(sql, /public\.find_session_conflict\(/);
+  assert.match(sql, /revoke execute on function public\.find_session_conflict\(uuid, uuid, timestamptz, integer, uuid\) from public, anon, authenticated/);
+  assert.match(sql, /grant execute on function public\.find_session_conflict\(uuid, uuid, timestamptz, integer, uuid\) to service_role/);
+  assert.doesNotMatch(sql, FORBIDDEN);
+});
+
+test('previously applied migrations are not edited by this feature', () => {
+  const applied = read('20260730220646_session_conflict_protection.sql');
+  assert.match(applied, /create or replace function public\.schedule_session\(/);
+  assert.doesNotMatch(applied, /find_session_conflict/); // the original definition is untouched
+});
