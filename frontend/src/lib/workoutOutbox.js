@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import { isWriteBlocked, reconcileAddedSet, rewritePendingSetId } from '@/lib/workoutSync';
 
 /**
  * Offline outbox for workout writes (docs/offline-workout-completion.md).
@@ -89,6 +90,9 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
   const queueRef = useRef(initial);
   const inFlightRef = useRef(null);
   const retryRef = useRef(null);
+  // pending-<operation> id -> real set id, for writes enqueued by a render
+  // that still held the pending id when the add landed.
+  const resolvedIdsRef = useRef(new Map());
   const syncedRef = useRef(onCompleteSynced);
   const rejectedRef = useRef(onCompleteRejected);
   syncedRef.current = onCompleteSynced;
@@ -123,15 +127,14 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
           const { data } = await api.request({ method: operation.method, url: operation.url, data: operation.data });
           if (operation.kind === 'add') {
             const pendingId = `pending-${operation.clientOperationId}`;
+            resolvedIdsRef.current.set(pendingId, data.id);
+            // Keep values edited on the pending row; the queued writes that
+            // carry them are re-pointed at the real id below.
             setLog((current) => updateExercise(current, operation.exerciseId, (exercise) => ({
               ...exercise,
-              sets: exercise.sets.map((set) => set.client_operation_id === operation.clientOperationId ? data : set),
+              sets: exercise.sets.map((set) => set.client_operation_id === operation.clientOperationId ? reconcileAddedSet(set, data) : set),
             })));
-            queueRef.current = queueRef.current.map((queued) => queued.setId === pendingId ? {
-              ...queued,
-              setId: data.id,
-              url: queued.url.replace(pendingId, data.id),
-            } : queued);
+            queueRef.current = queueRef.current.map((queued) => rewritePendingSetId(queued, pendingId, data.id));
           }
           persist(queueRef.current.filter((queued) => queued.id !== operation.id));
           if (operation.kind === 'complete') {
@@ -184,11 +187,16 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
   }, [logId, persist, setLog]);
 
   const enqueue = useCallback((operation) => {
-    const queued = { id: makeId(), attempts: 0, ...operation };
+    // A finished workout is sealed; the server would reject the write.
+    if (isWriteBlocked(queueRef.current, operation)) return false;
+    const resolvedId = operation.setId && resolvedIdsRef.current.get(operation.setId);
+    const target = resolvedId ? rewritePendingSetId(operation, operation.setId, resolvedId) : operation;
+    const queued = { id: makeId(), attempts: 0, ...target };
     persist([...queueRef.current, queued]);
     setLog((current) => applyOptimistic(current, queued));
     setSaveState('saving');
     window.setTimeout(() => flush(), 0);
+    return true;
   }, [flush, persist, setLog]);
 
   /** "Keep editing instead": a queued completion is client-local until sent. */
