@@ -33,6 +33,7 @@ function resetState() {
     cancelEmails: [],
     pushes: 0,
     sessionSelects: [],
+    queryErrors: {},   // table -> true: that table's single-row lookups return a database error
   });
 }
 
@@ -68,6 +69,7 @@ require.cache[supabasePath] = {
           order() { return chain; },
           update(values) { chain._update = values; state.sessionUpdates.push(values); return chain; },
           maybeSingle() {
+            if (state.queryErrors[table]) return Promise.resolve({ data: null, error: { message: 'connection reset by peer' } });
             const rows = { clients: state.clientRow, programs: state.programRow, session_series: state.existingSeries, sessions: state.anchorSession };
             const row = rows[table] ?? null;
             return Promise.resolve({ data: matches(row, chain._eqs) ? row : null, error: null });
@@ -478,4 +480,65 @@ test('coach list and coach detail embed the series for session rows', async () =
   await fetch(`${baseUrl}/api/sessions/${ANCHOR_ID}/coach-detail`).then((r) => r.json());
   const embeds = state.sessionSelects.filter((columns) => columns.includes('series:session_series(id, rule, created_count)'));
   assert.equal(embeds.length, 2, `selects seen: ${state.sessionSelects.join(' | ')}`);
+});
+
+// ---------- database failures are retryable server errors, never "not found" ----------
+test('a FAILED replay lookup is a retryable 500 (never a definitive 400/404), and a later successful lookup recovers the receipt', async () => {
+  resetState(); currentUser = coachUser;
+  const body = createBody({
+    rule: { start_date: '2020-01-07', time: '17:00', weekdays: [2], interval_weeks: 1, end: { count: 1 } },
+    slots: [{ key: 'g1', date: '2020-01-07', time: '17:00', workout_id: null }],   // long past
+  });
+  state.existingSeries = { id: SERIES_ID, coach_id: COACH_ID, client_id: CLIENT_ID, request_id: REQUEST_ID, request_hash: hashOf(body), receipt: { slots: [{ key: 'g1', session_id: 's1' }] } };
+  state.queryErrors.session_series = true;
+  state.queryErrors.clients = true;                       // the follow-on lookups would also fail: still not a 404
+  const failed = await call('', { body });
+  assert.equal(failed.status, 500, 'the outcome of the original save is unknown, so this must be retryable');
+  assert.equal(state.rpcCalls.length, 0, 'no eligibility checks, no writes');
+  assert.equal(state.emails.length, 0);
+  assert.equal(state.pushes, 0);
+
+  state.queryErrors = {};                                 // the database comes back
+  const recovered = await call('', { body });
+  assert.equal(recovered.status, 200);
+  assert.equal(recovered.body.replayed, true);
+  assert.equal(recovered.body.receipt.slots[0].key, 'g1');
+  assert.equal(state.rpcCalls.length, 0);
+});
+
+test('a failed CLIENT lookup is a 500 on preview, check and create; a genuinely missing client is still a 404', async () => {
+  resetState(); currentUser = coachUser;
+  state.queryErrors.clients = true;
+  assert.equal((await call('/preview', { body: previewBody() })).status, 500);
+  assert.equal((await call('/check', { body: { client_id: CLIENT_ID, duration_minutes: 60, start_date: day(14), slots: rows(1) } })).status, 500);
+  assert.equal((await call('', { body: createBody() })).status, 500);
+  assert.equal(state.rpcCalls.length, 0);
+  state.queryErrors = {};
+  state.clientRow = null;                                 // genuinely missing / archived
+  assert.equal((await call('/preview', { body: previewBody() })).status, 404);
+  assert.equal((await call('', { body: createBody() })).status, 404);
+});
+
+test('a failed PROGRAM lookup is a 500 and writes nothing; a genuinely missing program is still a 404', async () => {
+  resetState(); currentUser = coachUser;
+  state.queryErrors.programs = true;
+  assert.equal((await call('', { body: createBody({ program_id: PROGRAM_ID }) })).status, 500);
+  assert.equal(createCalls().length, 0);
+  state.queryErrors = {};
+  state.programRow = null;
+  assert.equal((await call('', { body: createBody({ program_id: PROGRAM_ID }) })).status, 404);
+  assert.equal(createCalls().length, 0);
+});
+
+test('failed series/anchor lookups on cancel are 500s that change nothing; missing ones are still 404', async () => {
+  resetState(); currentUser = coachUser; seedSeriesForCancel();
+  state.queryErrors.session_series = true;
+  assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody() })).status, 500);
+  state.queryErrors = { sessions: true };
+  assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody() })).status, 500);
+  assert.equal(state.sessionUpdates.length, 0);
+  assert.equal(state.cancelEmails.length, 0);
+  state.queryErrors = {};
+  state.existingSeries = null;
+  assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody() })).status, 404);
 });

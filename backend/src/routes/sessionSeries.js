@@ -22,8 +22,10 @@ const router = express.Router();
 async function resolveClient(req, res, rawClientId) {
   const id = validateUuid(rawClientId, 'Client ID');
   if (!id.ok) { res.status(400).json({ error: id.error }); return null; }
-  const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+  // A failed lookup is an operational error (500, retryable) — never "not found".
+  const { data: clientRow, error: clientError } = await supabaseAdmin.from('clients').select('*')
     .eq('id', id.value).eq('archived', false).maybeSingle();
+  if (clientError) throw clientError;
   if (!clientRow || !canAccessClient(req.user, clientRow)) {
     res.status(404).json({ error: 'Client not found' });
     return null;
@@ -186,8 +188,12 @@ router.post('/', requireCoach, async (req, res) => {
     const request = parsed.value;
     const hash = requestHash(parsed.normalized);
 
-    const { data: existing } = await supabaseAdmin.from('session_series').select('*')
+    // If this lookup fails we cannot know whether an earlier save committed, so it must surface as a
+    // retryable server error — falling through would turn an unknown outcome into a definitive 400/404
+    // and make the browser discard the pending request.
+    const { data: existing, error: replayError } = await supabaseAdmin.from('session_series').select('*')
       .eq('request_id', request.request_id).eq('client_id', request.client_id).maybeSingle();
+    if (replayError) throw replayError;
     if (existing) {
       if (req.user.role !== 'admin' && existing.coach_id !== req.user.coach.id) return res.status(404).json({ error: 'Not found' });
       if (existing.request_hash !== hash) return res.status(409).json(MISMATCH);
@@ -206,8 +212,9 @@ router.post('/', requireCoach, async (req, res) => {
     if (past) return res.status(400).json({ error: past });
 
     if (request.program_id) {
-      const { data: program } = await supabaseAdmin.from('programs').select('id, coach_id, archived')
+      const { data: program, error: programError } = await supabaseAdmin.from('programs').select('id, coach_id, archived')
         .eq('id', request.program_id).eq('archived', false).maybeSingle();
+      if (programError) throw programError;
       if (!program || (req.user.role !== 'admin' && program.coach_id !== coachId)) {
         return res.status(404).json({ error: 'Program not found' });
       }
@@ -267,13 +274,15 @@ router.patch('/:seriesId/cancel', requireCoach, async (req, res) => {
     const notify = validateNotifyFlag(req.body);
     if (!notify.ok) return res.status(400).json({ error: notify.error });
 
-    const { data: series } = await supabaseAdmin.from('session_series').select('*')
+    const { data: series, error: seriesError } = await supabaseAdmin.from('session_series').select('*')
       .eq('id', seriesId.value).eq('archived', false).maybeSingle();
+    if (seriesError) throw seriesError;
     if (!series || (req.user.role !== 'admin' && series.coach_id !== req.user.coach.id)) {
       return res.status(404).json({ error: 'Series not found' });
     }
-    const { data: anchor } = await supabaseAdmin.from('sessions').select('id, series_id, client_id, scheduled_at')
+    const { data: anchor, error: anchorError } = await supabaseAdmin.from('sessions').select('id, series_id, client_id, scheduled_at')
       .eq('id', anchorId.value).eq('archived', false).maybeSingle();
+    if (anchorError) throw anchorError;
     if (!anchor || anchor.series_id !== series.id || anchor.client_id !== series.client_id) {
       return res.status(404).json({ error: 'Session not found in this series' });
     }

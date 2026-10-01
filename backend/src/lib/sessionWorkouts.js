@@ -13,8 +13,9 @@ async function validateWorkoutAttachment(workoutId, coachId) {
   if (workoutId === null) return { ok: true, value: null };
   const idValidation = validateUuid(workoutId, 'Workout ID');
   if (!idValidation.ok) return { ok: false, error: idValidation.error };
-  const { data: workout } = await supabaseAdmin.from('workouts').select('id, coach_id')
+  const { data: workout, error } = await supabaseAdmin.from('workouts').select('id, coach_id')
     .eq('id', idValidation.value).eq('archived', false).maybeSingle();
+  if (error) throw error; // an operational failure is not "not found"
   if (!usable(workout, coachId)) return { ok: false, error: 'Workout not found' };
   return { ok: true, value: workout.id };
 }

@@ -21,6 +21,7 @@ function resetState() {
   state.sessionUpdates = [];
   state.rpcCalls = [];
   state.workoutQueries = 0;
+  state.workoutError = false;
 }
 
 const supabasePath = require.resolve('../src/supabase');
@@ -38,7 +39,7 @@ require.cache[supabasePath] = {
           order() { return chain; },
           update(values) { chain._update = values; if (table === 'sessions') state.sessionUpdates.push(values); return chain; },
           maybeSingle() {
-            if (table === 'workouts') return Promise.resolve({ data: state.workoutRow, error: null });
+            if (table === 'workouts') return Promise.resolve({ data: state.workoutError ? null : state.workoutRow, error: state.workoutError ? { message: 'connection reset' } : null });
             if (table === 'sessions') return Promise.resolve({ data: state.sessionRow, error: null });
             if (table === 'clients') return Promise.resolve({ data: state.clientRow, error: null });
             return Promise.resolve({ data: null, error: null });
@@ -196,5 +197,18 @@ test('update with a foreign workout returns 400 and never reschedules', async ()
   state.sessionRow = { id: SESSION_ID, client_id: CLIENT_ID, coach_id: COACH_ID, scheduled_at: FUTURE, duration_minutes: 60, status: 'scheduled', archived: false };
   const result = await send(`/api/sessions/${SESSION_ID}`, { method: 'PUT', body: { duration_minutes: 45, workout_id: WORKOUT_ID } });
   assert.equal(result.status, 400);
+  assert.equal(scheduledCalls().length, 0);
+});
+
+test('a failed workout lookup is a 500 (retryable), not "Workout not found", and nothing is scheduled', async () => {
+  resetState();
+  currentUser = coachUser;
+  state.workoutError = true;
+  const created = await send('/api/sessions', { body: createBody(WORKOUT_ID) });
+  assert.equal(created.status, 500);
+  assert.equal(scheduledCalls().length, 0);
+  state.sessionRow = { id: SESSION_ID, client_id: CLIENT_ID, coach_id: COACH_ID, scheduled_at: FUTURE, duration_minutes: 60, status: 'scheduled', archived: false };
+  const updated = await send(`/api/sessions/${SESSION_ID}`, { method: 'PUT', body: { duration_minutes: 45, workout_id: WORKOUT_ID } });
+  assert.equal(updated.status, 500);
   assert.equal(scheduledCalls().length, 0);
 });
