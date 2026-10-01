@@ -11,7 +11,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  CalendarDays, Dumbbell, ChevronRight, MapPin,
+  CalendarDays, Dumbbell, ChevronRight, MapPin, Check,
   MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2, CheckCircle2, Library,
 } from 'lucide-react';
 import { fmtDay, fmtTime, fmtDateTime, fmtDate, initials } from '@/lib/format';
@@ -189,32 +189,34 @@ export default function ClientHome() {
             </div>
           )}
           {todayPlan.source ? (
-            <>
-              <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" disabled={startingWorkout || quickCompleting} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
-                {startingWorkout ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Starting workout</span></> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
+            <div className="mt-4 flex gap-2">
+              <Button className="h-12 flex-1 rounded-2xl text-base font-semibold" disabled={startingWorkout || quickCompleting} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
+                {startingWorkout ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Starting workout</span></> : <><Play className="mr-1 h-4 w-4 fill-current" />{todayPlan.action}</>}
               </Button>
-              {/* One-tap for clients who won't track sets: open app, tap, close. */}
+              {/* One tap for clients who won't track sets: open app, tap, close. */}
               <Button
                 variant="outline"
-                className="mt-2 min-h-11 w-full rounded-xl"
+                className="h-12 w-12 shrink-0 rounded-2xl p-0"
                 disabled={startingWorkout || quickCompleting}
                 onClick={() => quickComplete(todayPlan.source)}
+                aria-label="I did it"
+                title="I did it"
                 data-testid="client-today-quick-complete"
               >
-                {quickCompleting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Recording workout</span></> : <><CheckCircle2 className="mr-1.5 h-4 w-4" /> I did it</>}
+                {quickCompleting ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Recording workout</span></> : <Check className="!size-5" strokeWidth={2.6} />}
               </Button>
-            </>
+            </div>
           ) : todayPlan.kind === 'check_in' ? (
-            <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
+            <Button className="mt-4 h-12 w-full rounded-2xl text-base font-semibold" onClick={() => setCheckInOpen(true)} data-testid="client-today-primary-action">
               <ClipboardCheck className="mr-1.5 h-4 w-4" />{todayPlan.action}
             </Button>
           ) : todayPlan.kind === 'unavailable' ? (
-            <Button className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" onClick={() => load()} data-testid="client-today-primary-action">
+            <Button className="mt-4 h-12 w-full rounded-2xl text-base font-semibold" onClick={() => load()} data-testid="client-today-primary-action">
               {todayPlan.action}
             </Button>
           ) : (
             <>
-              <Button asChild className="mt-4 min-h-14 w-full rounded-xl text-base font-semibold" data-testid="client-today-primary-action">
+              <Button asChild className="mt-4 h-12 w-full rounded-2xl text-base font-semibold" data-testid="client-today-primary-action">
                 <Link to={todayPlan.href}>{todayPlan.action}<ChevronRight className="ml-1 h-4 w-4" /></Link>
               </Button>
               {todayPlan.secondary && (
