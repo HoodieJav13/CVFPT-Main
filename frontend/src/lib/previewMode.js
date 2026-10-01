@@ -837,8 +837,12 @@ function dashboardCoach() {
   };
 }
 
+// Responses are copies, like a real HTTP body: handing out live fixture
+// objects let later preview writes mutate what the UI already held, which
+// masked offline-sync and stale-state bugs.
 function ok(data, config, status = 200) {
-  return Promise.resolve({ data, status, statusText: 'OK', headers: {}, config });
+  const copy = data === undefined ? data : JSON.parse(JSON.stringify(data));
+  return Promise.resolve({ data: copy, status, statusText: 'OK', headers: {}, config });
 }
 
 function fail(config, status, message) {
