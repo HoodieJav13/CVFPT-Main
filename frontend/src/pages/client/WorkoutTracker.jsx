@@ -389,7 +389,7 @@ export default function WorkoutTracker() {
       if (queued) filledCount += 1;
     });
     if (!filledCount) {
-      toast.info('Nothing copied: no empty fields match last time.');
+      toast.info('Nothing copied: no matching blank fields.');
       return;
     }
     toast.success(`Filled ${filledCount} set${filledCount === 1 ? '' : 's'} from ${new Date(occurrence.completed_at).toLocaleDateString()}`);
@@ -700,7 +700,7 @@ export default function WorkoutTracker() {
         <DialogContent className="signature-glass bg-card/80 sm:rounded-2xl" data-testid="workout-completion-dialog">
           <DialogHeader>
             <DialogTitle>Finish workout?</DialogTitle>
-            <DialogDescription>{completedCount} done{remainingCount ? ` · ${remainingCount} will be skipped` : ''}</DialogDescription>
+            <DialogDescription>{completedCount} {completedCount === 1 ? 'set' : 'sets'} done{remainingCount ? ` · ${remainingCount} ${remainingCount === 1 ? 'set' : 'sets'} will be skipped` : ''}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {!isCoach && <div className="space-y-1.5"><Label htmlFor="workout-feedback">Feedback for your coach</Label><Textarea id="workout-feedback" rows={4} value={feedback} onChange={(event) => setFeedback(event.target.value)} /></div>}
