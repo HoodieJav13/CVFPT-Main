@@ -151,6 +151,7 @@ function requestHash(normalizedBody) {
 }
 
 module.exports = {
+  isRealDate, isTime,
   MAX_SLOTS, HORIZON_DAYS, parseRule, expandSeriesRule, horizonBounds, validateSlotShapes,
   slotHorizonError, canonicalJson, requestHash,
 };

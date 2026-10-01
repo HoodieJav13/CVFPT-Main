@@ -83,6 +83,8 @@ async function cancelRequestedSessionIds(sessionIds) {
 
 const router = express.Router();
 router.use(requireAuth);
+// Recurring sessions: registered before the /:id routes.
+router.use('/series', require('./sessionSeries'));
 
 function conflictResponse(result) {
   const conflict = result.conflict_session || {};
