@@ -1202,8 +1202,8 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
               </div>
               <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
                 <ExistingLoadEditor type="program" assignment={assignment} selection={p} onSaved={load} />
-                <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setTemplateTarget({ kind: 'program', id: p.id, name: `${p.name} (variation)`, parent: programTemplateParent(p), label: 'program' })} data-testid="save-program-template-button">Save as template</Button>
-                <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
+                <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => setTemplateTarget({ kind: 'program', id: p.id, name: `${p.name} (variation)`, parent: programTemplateParent(p), label: 'program' })} data-testid="save-program-template-button">Save as template</Button>
+                <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
               </div>
             </div>
             <div className="divide-y divide-border">
@@ -1378,7 +1378,7 @@ function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
   if (!assignment) return null;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button type="button" size="sm" variant="outline" onClick={openEditor} data-testid="edit-assigned-loads"><SlidersHorizontal className="mr-1 h-3.5 w-3.5" /> Loads</Button>
+      <Button type="button" size="sm" variant="outline" className="min-h-11 sm:min-h-0" onClick={openEditor} data-testid="edit-assigned-loads"><SlidersHorizontal className="mr-1 h-3.5 w-3.5" /> Loads</Button>
       <DialogContent>
         <DialogHeader><DialogTitle>Client loads</DialogTitle><DialogDescription>Set the starting load for each exercise in this assignment.</DialogDescription></DialogHeader>
         <AssignmentLoadFields type={type} selection={selection} values={values} onChange={setValues} />
@@ -1406,7 +1406,7 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
           <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
             {onStart && (
               <Button
-                size="sm" variant="secondary" className="rounded-lg"
+                size="sm" variant="secondary" className="min-h-11 rounded-lg sm:min-h-0"
                 disabled={starting === assignment.id}
                 onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })}
                 data-testid="coach-log-standalone-workout"
@@ -1416,12 +1416,12 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
             )}
             <ExistingLoadEditor type="workout" assignment={assignment} selection={workout} onSaved={onReload} />
             {onEdit && workout.is_template === false && (
-              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onEdit(workout)} data-testid="edit-client-workout-button"><Pencil className="mr-1 h-3.5 w-3.5" /> Edit</Button>
+              <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onEdit(workout)} data-testid="edit-client-workout-button"><Pencil className="mr-1 h-3.5 w-3.5" /> Edit</Button>
             )}
             {onSaveTemplate && (
-              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onSaveTemplate(workout)} data-testid="save-workout-template-button">Save as template</Button>
+              <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onSaveTemplate(workout)} data-testid="save-workout-template-button">Save as template</Button>
             )}
-            <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">Unassign</Button>
+            <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">Unassign</Button>
           </div>
         </div>
         {assignment.notes && (
