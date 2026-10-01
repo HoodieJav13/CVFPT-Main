@@ -1134,3 +1134,46 @@ test('re-opening a workout while the list reload is slow shows the saved superse
   await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
   await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
 });
+
+test('switching workouts while a save is pending never retargets the editor or overwrites the other workout', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const titles = page.getByTestId('workout-exercise-row').locator('h3');
+  const pressSave = async () => {
+    // The fixed preview toolbar overlaps the pane's Save at this width.
+    await page.getByTestId('workout-save-button').focus();
+    await page.keyboard.press('Enter');
+  };
+
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  // Slow the save (PUT /programs/workouts/:id) via the preview test harness.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts/[^/]+$', ms: 2000 }])));
+  await pressSave();
+
+  // Open another workout while Lower's save is still in flight.
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await expect(titles).toHaveText([/Bench/, /Row/]);
+  await expect(page.getByText('Workout updated').first()).toBeVisible({ timeout: 6000 });
+
+  // The response must not retarget the editor: still Upper, with Upper's rows.
+  await expect(page.getByRole('heading', { name: 'Upper Strength A' })).toBeVisible();
+  await expect(titles).toHaveText([/Bench/, /Row/]);
+
+  // Saving now writes Upper, not Lower.
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await pressSave();
+  await expect(page.getByTestId('workout-save-button')).toBeDisabled();
+  await expect(page.getByTestId('workout-save-button')).toBeEnabled({ timeout: 6000 });
+  await page.waitForTimeout(1500); // let the background list reload land
+
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(titles).toHaveText([/Goblet Squat/, /Romanian Deadlift/, /Pallof/]);
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await expect(titles).toHaveText([/Bench/, /Row/]);
+  await expect(page.getByTestId('workout-superset-group')).toHaveCount(0);
+});

@@ -405,26 +405,34 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
   // Desktop two-pane (UI-6): the editor lives beside the list instead of
   // in the dialog; mobile keeps the dialog flow with the same state.
   const [paneActive, setPaneActive] = useState(false);
+  // Bumped on every selection change. A save response may only touch the
+  // editor if nothing was selected while it was in flight; otherwise it
+  // would retarget the editor (or reset the form) under another workout.
+  const selectionSeq = useRef(0);
 
   const openCreate = () => {
+    selectionSeq.current += 1;
     setEditing(null);
     setForm(emptyWorkout());
     setOpen(true);
   };
 
   const openEdit = (workout) => {
+    selectionSeq.current += 1;
     setEditing(workout);
     setForm(workoutToForm(workout));
     setOpen(true);
   };
 
   const selectCreate = () => {
+    selectionSeq.current += 1;
     setEditing(null);
     setForm(emptyWorkout());
     setPaneActive(true);
   };
 
   const selectEdit = (workout) => {
+    selectionSeq.current += 1;
     setEditing(workout);
     setForm(workoutToForm(workout));
     setPaneActive(true);
@@ -437,22 +445,28 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
       return;
     }
     setSaving(true);
+    const seq = selectionSeq.current;
+    const stillSelected = () => selectionSeq.current === seq;
     try {
       if (editing) {
         const { data: saved } = await api.put(`/programs/workouts/${editing.id}`, form);
         // Re-selecting this workout before the reload lands must open the
         // saved version, or a second save would write the stale form back.
         onSaved?.(saved);
-        setEditing((current) => (current ? { ...current, ...saved } : current));
+        // Only the workout that was saved may absorb the response.
+        setEditing((current) => (current?.id === saved.id ? { ...current, ...saved } : current));
         toast.success('Workout updated');
       } else {
         await api.post('/programs/workouts', form);
         toast.success('Workout created');
-        // A second submit of the same pane form would create a duplicate.
-        setForm(emptyWorkout());
-        setPaneActive(false);
+        // A second submit of the same pane form would create a duplicate —
+        // but don't wipe another workout the coach opened meanwhile.
+        if (stillSelected()) {
+          setForm(emptyWorkout());
+          setPaneActive(false);
+        }
       }
-      setOpen(false);
+      if (stillSelected()) setOpen(false);
       reload();
     } catch (err) {
       if (isLegacyLockError(err)) setLock({ message: err.response.data.error });
@@ -465,13 +479,16 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
   // The original is live-assigned, so the edits go to a new hidden variation instead.
   const saveVariationFromLock = async () => {
     setSaving(true);
+    const seq = selectionSeq.current;
     try {
       const { data: copy } = await api.post(`/programs/workouts/${editing.id}/save-as-template`, {});
       await api.put(`/programs/workouts/${copy.id}`, { ...form, name: variationName(form.name, editing.name) });
       toast.success('Saved as a hidden variation. Unhide it when it is ready to assign.');
       setLock(null);
-      setOpen(false);
-      setPaneActive(false);
+      if (selectionSeq.current === seq) {
+        setOpen(false);
+        setPaneActive(false);
+      }
       reload();
     } catch (err) {
       toast.error(errMsg(err));
