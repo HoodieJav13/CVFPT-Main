@@ -31,6 +31,7 @@ import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { CoachClientWeek } from '@/components/WeekRhythm';
 import { SaveTemplateDialog } from '@/components/training/TemplateBits';
+import { SupersetGroups } from '@/components/training/SupersetGroups';
 import { HistoryShowMore } from '@/components/training/HistoryShowMore';
 import { useHistoryPages } from '@/lib/useHistoryPages';
 import { WorkoutDialog, workoutToForm } from '@/pages/coach/Programs';
@@ -1033,7 +1034,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         const { data } = await api.get('/programs/exercise-library');
         setCopyLibrary(data);
       }
-      setCopyEditor({ workout, form: workoutToForm(workout) });
+      // Edit the server's current copy, not this page's possibly stale one
+      // (a just-saved edit may not have reloaded yet).
+      const { data: fresh } = await api.get(`/programs/workouts/${workout.id}`);
+      setCopyEditor({ workout: fresh, form: workoutToForm(fresh) });
     } catch (err) {
       toast.error(errMsg(err));
     }
@@ -1436,11 +1440,11 @@ function CoachExerciseRows({ exercises }) {
   if (!exercises.length) return null;
   return (
     <div className="mt-1 divide-y divide-border/70">
-      {exercises.slice(0, 6).map((exercise, index) => (
-        <div key={exercise.id || index} className="py-2">
+      <SupersetGroups exercises={exercises.slice(0, 6)} className="py-2" innerClassName="divide-y divide-border/70">{(exercise, { marker }) => (
+        <div className="py-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">
-              <span className="text-muted-foreground mr-2 tabular-nums">{index + 1}.</span>{coachExerciseName(exercise)}
+              <span className="text-muted-foreground mr-2 tabular-nums">{marker}.</span>{coachExerciseName(exercise)}
             </p>
             <span className="flex items-center gap-2 shrink-0">
               {safeHttpUrl(exercise.video_url || exercise.library_exercise?.video_url) && (
@@ -1454,7 +1458,7 @@ function CoachExerciseRows({ exercises }) {
           {(exercise.client_notes || exercise.notes) && <p className="text-xs text-muted-foreground mt-1">{exercise.client_notes || exercise.notes}</p>}
           {exercise.coach_notes && <p className="text-xs text-primary mt-1">Coach: {exercise.coach_notes}</p>}
         </div>
-      ))}
+      )}</SupersetGroups>
     </div>
   );
 }

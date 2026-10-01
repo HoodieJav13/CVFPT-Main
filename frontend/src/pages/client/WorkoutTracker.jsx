@@ -23,6 +23,8 @@ import {
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { lastTimeFills } from '@/lib/workoutSync';
 import { trackProductEvent } from '@/lib/telemetry';
+import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
+import { nextExercise, restAfterSet, supersetBlocks, supersetRestSeconds } from '@/lib/supersets';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
 // database parses and backfills. The old runtime text parser is gone; text
@@ -269,9 +271,16 @@ export default function WorkoutTracker() {
   const completedCount = allSets.filter((set) => set.status === 'completed').length;
   // Previous / current / upcoming set states (design-plans/010, bold
   // direction): the first pending set is "current"; completed sets go quiet.
-  const activeExerciseId = log.exercises.find((ex) => ex.sets.some((s) => s.status !== 'completed'))?.id;
-  // Manual rest defaults to the current exercise's rest (else 90s).
-  const manualRest = manualRestSeconds(log.exercises.find((ex) => ex.id === activeExerciseId) || log.exercises[0]);
+  // Inside a superset the "current" card alternates between members.
+  const activeExerciseId = nextExercise(log.exercises)?.id;
+  const hasGroups = log.exercises.some((exercise) => exercise.superset_group);
+  // Manual rest defaults to the current exercise's rest (else 90s); inside
+  // a superset it is the group's round rest, like the automatic timer.
+  const activeExercise = log.exercises.find((ex) => ex.id === activeExerciseId) || log.exercises[0];
+  const activeBlock = supersetBlocks(log.exercises).find((block) => block.items.some(({ exercise }) => exercise.id === activeExercise?.id));
+  const manualRest = manualRestSeconds(activeBlock && activeBlock.kind !== 'single'
+    ? { prescribed_rest_seconds: supersetRestSeconds(activeBlock.items.map(({ exercise }) => exercise)) }
+    : activeExercise);
   const isActiveSet = (exercise, set) => !sealed && set.status !== 'completed'
     && set.id === exercise.sets.find((s) => s.status !== 'completed')?.id;
   const setRowClass = (exercise, set) => {
@@ -322,8 +331,11 @@ export default function WorkoutTracker() {
         actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
       },
     });
-    if (status === 'completed' && exercise.prescribed_rest_seconds > 0) {
-      startRest(exercise.prescribed_rest_seconds);
+    if (status === 'completed') {
+      // Inside a superset/giant set, rest waits for the end of the round.
+      const rest = restAfterSet(log.exercises, exercise.id, set.id);
+      if (rest.seconds > 0) startRest(rest.seconds);
+      else if (rest.clear) clearRest();
     }
   };
 
@@ -504,15 +516,20 @@ export default function WorkoutTracker() {
       </div>
 
       <div className="space-y-4">
-        {log.exercises.map((exercise) => (
+        <SupersetGroups
+          exercises={log.exercises}
+          roundRest={(members) => (supersetRestSeconds(members) > 0 ? `rest ${formatRestSeconds(supersetRestSeconds(members))}` : null)}
+        >{(exercise, { marker, grouped }) => (
           <Card
-            key={exercise.id}
             className={cn(exercise.id === activeExerciseId && !sealed && 'border-primary/35 shadow-[var(--app-elev-soft)]')}
             data-testid="tracker-exercise-card"
           >
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-2">
-                <CardTitle className="font-display text-lg">{exercise.exercise_name}</CardTitle>
+                <CardTitle className="flex min-w-0 items-center gap-2 font-display text-lg">
+                  {hasGroups && <ExerciseMarker marker={marker} />}
+                  <span className="min-w-0">{exercise.exercise_name}</span>
+                </CardTitle>
                 <Badge
                   variant="outline"
                   className={`shrink-0 tabular-nums ${exercise.sets.length && exercise.sets.every((set) => set.status === 'completed') ? 'border-success/40 bg-success/10 text-success' : 'text-muted-foreground'}`}
@@ -526,7 +543,8 @@ export default function WorkoutTracker() {
                 {exercise.prescribed_load_value != null && <span>Load {exercise.prescribed_load_value} {exercise.prescribed_load_unit || 'lb'}</span>}
                 {exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
                 {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
-                {(exercise.prescribed_rest_seconds != null || exercise.prescribed_rest) && (
+                {/* Grouped exercises rest once per round (shown on the group). */}
+                {!grouped && (exercise.prescribed_rest_seconds != null || exercise.prescribed_rest) && (
                   <span>Rest {exercise.prescribed_rest_seconds != null ? formatRestSeconds(exercise.prescribed_rest_seconds) : exercise.prescribed_rest}</span>
                 )}
                 {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
@@ -638,7 +656,7 @@ export default function WorkoutTracker() {
               </div>
             </CardContent>
           </Card>
-        ))}
+        )}</SupersetGroups>
       </div>
 
       <div
