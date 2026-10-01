@@ -65,9 +65,11 @@ The adapter checks this list before its final fall-through. A match:
 - rejects with status **422** and `{ error: 'Not available in preview', code: 'preview_unsupported', reason }`.
   A 4xx is deliberate: several callers treat ≥ 500 as "outcome unknown" (`classifySaveOutcome` in
   `seriesRequest.js`), which would lock a form instead of reporting a definite refusal.
-- dispatches a `cvf-preview-notice` window event with `{ kind: 'unsupported', method, path, reason }`.
+- raises a preview notice `{ kind: 'unsupported', method, path, reason }`. The toolbar is lazy-loaded and a
+  page's first requests usually finish before it mounts, so notices raised with nobody subscribed are
+  queued and delivered when the toolbar subscribes (`onPreviewNotice`).
 
-`PreviewToolbar` listens for that event and shows a toast through the app's existing `<Toaster>`
+`PreviewToolbar` subscribes and shows a toast through the app's existing `<Toaster>`
 (`App.js:150`): **"Not available in preview"** with the reason as the description. A fixed toast id
 keeps repeated hits from stacking. This is what guarantees the explicit state: it appears even when
 the calling screen swallows the error. Screens that surface `errMsg(e)` will also show the same
@@ -80,7 +82,7 @@ Initial entries: the four recurring-session routes. Step 3 removes them.
 The final fall-through keeps its 404 and message, and additionally:
 
 - writes `console.error('[cvf-preview:missing-mock] METHOD /path')` — a fixed, greppable prefix;
-- dispatches `cvf-preview-notice` with `{ kind: 'missing', method, path }`, shown as a toast
+- raises a preview notice `{ kind: 'missing', method, path }`, shown as a toast
   **"Preview is missing a mock"** with the method and path, so on a phone it reads as a preview gap
   rather than an app bug.
 
@@ -117,7 +119,8 @@ Tests added:
 ### Triage
 
 Turning the detector on will surface every route the current suite already hits without a mock.
-That number is unknown until the suite runs with it. Each hit is resolved one of two ways: add the
+(Result, 2026-10-01: one route, `POST /telemetry/events`, hit by 18 tests; now mocked as
+accept-and-discard.) Each hit is resolved one of two ways: add the
 mock, or add a list entry with a reason. Step 1 is done when the suite is green with the detector on.
 
 ---
