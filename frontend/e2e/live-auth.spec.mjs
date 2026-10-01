@@ -1137,3 +1137,93 @@ test('hosted workout completion is idempotent and notifies the assigned coach an
     }
   }
 });
+
+// Goal measures against a hosted backend (needs migration
+// 20260930150000_metric_goal_measures applied; see
+// docs/hardening/2026-10-01-goal-measures-migration.md). Real auth, real
+// ownership, real API: save, limit, read on both dashboards, role and
+// ownership boundaries, turn off, and archive everything it created.
+test('hosted goal measures save, read back, respect the limit and ownership', async ({ page, request }) => {
+  const marker = `CVF LIVE GOAL ${Date.now()}`;
+  const [coachLogin, clientLogin, coachBLogin] = await Promise.all([
+    request.post(`${backendUrl}/api/auth/login`, { data: accounts.coach }),
+    request.post(`${backendUrl}/api/auth/login`, { data: accounts.client }),
+    request.post(`${backendUrl}/api/auth/login`, { data: accounts.coachB }),
+  ]);
+  expect(coachLogin.ok() && clientLogin.ok() && coachBLogin.ok()).toBeTruthy();
+  const coach = await coachLogin.json();
+  const client = await clientLogin.json();
+  const coachB = await coachBLogin.json();
+  const coachHeaders = { authorization: `Bearer ${coach.access_token}` };
+  const clientHeaders = { authorization: `Bearer ${client.access_token}` };
+  const coachBHeaders = { authorization: `Bearer ${coachB.access_token}` };
+  const clientId = client.profile.id;
+  const created = [];
+
+  try {
+    const existing = await request.get(`${backendUrl}/api/progress/clients/${clientId}/metrics`, { headers: coachHeaders });
+    expect(existing.ok()).toBeTruthy();
+    const alreadyOn = (await existing.json()).filter((metric) => metric.is_goal_measure).length;
+    expect(alreadyOn, 'test client starts with room for a goal measure').toBeLessThan(3);
+
+    // Fill the client up to three goal measures.
+    for (let i = alreadyOn; i < 3; i += 1) {
+      const response = await request.post(`${backendUrl}/api/progress/clients/${clientId}/metrics`, {
+        headers: coachHeaders, data: { name: `${marker} ${i}`, unit: 'lb', improvement_direction: 'higher', is_goal_measure: true },
+      });
+      expect(response.status()).toBe(201);
+      const row = await response.json();
+      expect(row.is_goal_measure).toBe(true);
+      created.push(row.id);
+    }
+    // A fourth is refused, on create and on edit.
+    const fourth = await request.post(`${backendUrl}/api/progress/clients/${clientId}/metrics`, {
+      headers: coachHeaders, data: { name: `${marker} over`, is_goal_measure: true },
+    });
+    expect(fourth.status()).toBe(400);
+    expect((await fourth.json()).error).toMatch(/up to 3 goal measures/);
+    const plain = await request.post(`${backendUrl}/api/progress/clients/${clientId}/metrics`, {
+      headers: coachHeaders, data: { name: `${marker} plain` },
+    });
+    expect(plain.status()).toBe(201);
+    const plainRow = await plain.json();
+    created.push(plainRow.id);
+    expect(plainRow.is_goal_measure).toBe(false);
+    const turnOn = await request.patch(`${backendUrl}/api/progress/metrics/${plainRow.id}`, { headers: coachHeaders, data: { is_goal_measure: true } });
+    expect(turnOn.status()).toBe(400);
+
+    // Boundaries: no token, the client, and a coach who doesn't own the client.
+    const target = created[0];
+    expect((await request.patch(`${backendUrl}/api/progress/metrics/${target}`, { data: { is_goal_measure: false } })).status()).toBe(401);
+    expect((await request.patch(`${backendUrl}/api/progress/metrics/${target}`, { headers: clientHeaders, data: { is_goal_measure: false } })).status()).toBe(403);
+    expect((await request.patch(`${backendUrl}/api/progress/metrics/${target}`, { headers: coachBHeaders, data: { is_goal_measure: false } })).status()).toBe(404);
+
+    // Read back on both dashboards (API).
+    const coachDash = await (await request.get(`${backendUrl}/api/dashboard/coach`, { headers: coachHeaders })).json();
+    const entry = (coachDash.goal_clients || []).find((row) => row.id === clientId);
+    expect(entry, 'client listed under clients by goal').toBeTruthy();
+    for (const id of created.slice(0, created.length - 1)) expect(entry.measures.map((m) => m.id)).toContain(id);
+    const clientDash = await (await request.get(`${backendUrl}/api/dashboard/client`, { headers: clientHeaders })).json();
+    for (const id of created.slice(0, created.length - 1)) expect(clientDash.goal.measures.map((m) => m.id)).toContain(id);
+
+    // And in the UI with real sign-in.
+    await login(page, accounts.coach, '/coach');
+    await expect(page.getByTestId('coach-goal-clients-card').getByTestId('coach-goal-client').filter({ hasText: client.profile.name })
+      .getByTestId('goal-measure-row').filter({ hasText: marker }).first()).toBeVisible();
+    await logout(page);
+    await login(page, accounts.client, '/client');
+    await expect(page.getByTestId('client-goal-card').getByTestId('goal-measure-row').filter({ hasText: marker }).first()).toBeVisible();
+    await logout(page);
+
+    // Turning one off removes it from the dashboards.
+    const off = await request.patch(`${backendUrl}/api/progress/metrics/${target}`, { headers: coachHeaders, data: { is_goal_measure: false } });
+    expect(off.ok()).toBeTruthy();
+    const after = await (await request.get(`${backendUrl}/api/dashboard/client`, { headers: clientHeaders })).json();
+    expect(after.goal.measures.map((m) => m.id)).not.toContain(target);
+  } finally {
+    for (const id of created) {
+      const archived = await request.patch(`${backendUrl}/api/progress/metrics/${id}/archive`, { headers: coachHeaders });
+      expect(archived.ok()).toBeTruthy();
+    }
+  }
+});
