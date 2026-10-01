@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+const { exerciseMarkers, supersetBlocks } = require('./supersets');
 
 const CVF_LOCATION = 'Core Value Fitness - Albuquerque, NM';
 const LOGO_PATH = path.join(__dirname, '..', 'assets', 'cvf-logo.png');
@@ -112,10 +113,28 @@ function drawDayBanner(doc, title, goal) {
   doc.y += 42;
 }
 
-function drawExerciseTitle(doc, exercise, index) {
+// A short caption above the first member of a superset/giant set, so a
+// printed sheet says how to perform the lettered group.
+function groupCaptions(exercises) {
+  const captions = new Map();
+  supersetBlocks(exercises).forEach((block) => {
+    if (block.kind === 'single') return;
+    const label = block.kind === 'superset' ? 'Superset' : 'Giant set';
+    captions.set(block.items[0].index, `${label} - alternate these ${block.items.length}, then rest`);
+  });
+  return captions;
+}
+
+function drawGroupCaption(doc, caption) {
+  if (!caption) return;
+  doc.fillColor(teal).font('Helvetica-Bold').fontSize(7).text(caption.toUpperCase(), 70, doc.y, { width: 470, characterSpacing: 0.5 });
+  doc.moveDown(0.3);
+}
+
+function drawExerciseTitle(doc, exercise, marker) {
   const top = doc.y;
   doc.circle(53, top + 8, 8).fill(teal);
-  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(8).text(String(index + 1), 45, top + 3, { width: 16, align: 'center', lineBreak: false });
+  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(marker.length > 2 ? 6 : 8).text(marker, 45, top + 3, { width: 16, align: 'center', lineBreak: false });
   doc.fillColor('#111827').font('Helvetica-Bold').fontSize(10).text(exerciseName(exercise), 70, top, { width: 470 });
 }
 
@@ -145,9 +164,12 @@ function generateProgramPdf(program, user, options = {}) {
         doc.moveDown(0.6);
       }
 
+      const markers = exerciseMarkers(workout.exercises);
+      const captions = groupCaptions(workout.exercises);
       (workout.exercises || []).forEach((exercise, index) => {
-        ensurePdfSpace(doc, 72);
-        drawExerciseTitle(doc, exercise, index);
+        ensurePdfSpace(doc, 72 + (captions.has(index) ? 12 : 0));
+        drawGroupCaption(doc, captions.get(index));
+        drawExerciseTitle(doc, exercise, markers[index]);
         const detail = getExerciseText(exercise, includeCoachNotes);
         if (detail) doc.fillColor('#374151').font('Helvetica').fontSize(9).text(detail, 70, doc.y + 3, { width: 470, lineGap: 2 });
         const video = exerciseVideo(exercise);
@@ -249,10 +271,13 @@ function generateLogSheetPdf({ title, clientName, note, sections }) {
         doc.moveDown(1);
       }
       const loadByExercise = new Map((section.loads || []).map((load) => [load.workout_exercise_id, load]));
+      const markers = exerciseMarkers(exercises);
+      const captions = groupCaptions(exercises);
       exercises.forEach((exercise, index) => {
         const boxes = setBoxCount(exercise.sets);
-        ensurePdfSpace(doc, exerciseBlockHeight(boxes));
-        drawExerciseTitle(doc, exercise, index);
+        ensurePdfSpace(doc, exerciseBlockHeight(boxes) + (captions.has(index) ? 12 : 0));
+        drawGroupCaption(doc, captions.get(index));
+        drawExerciseTitle(doc, exercise, markers[index]);
         const detail = logSheetDetail(exercise, targetLoad(exercise, loadByExercise));
         if (detail) doc.fillColor('#374151').font('Helvetica').fontSize(9).text(detail, 70, doc.y + 3, { width: 470, lineGap: 2 });
         const video = exerciseVideo(exercise);
