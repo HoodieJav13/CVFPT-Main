@@ -31,6 +31,7 @@ import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { CoachClientWeek } from '@/components/WeekRhythm';
 import { SaveTemplateDialog } from '@/components/training/TemplateBits';
+import { SupersetGroups } from '@/components/training/SupersetGroups';
 import { HistoryShowMore } from '@/components/training/HistoryShowMore';
 import { useHistoryPages } from '@/lib/useHistoryPages';
 import { WorkoutDialog, workoutToForm } from '@/pages/coach/Programs';
@@ -1042,7 +1043,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         const { data } = await api.get('/programs/exercise-library');
         setCopyLibrary(data);
       }
-      setCopyEditor({ workout, form: workoutToForm(workout) });
+      // Edit the server's current copy, not this page's possibly stale one
+      // (a just-saved edit may not have reloaded yet).
+      const { data: fresh } = await api.get(`/programs/workouts/${workout.id}`);
+      setCopyEditor({ workout: fresh, form: workoutToForm(fresh) });
     } catch (err) {
       toast.error(errMsg(err));
     }
@@ -1198,15 +1202,16 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         return (
         <Card key={p.id} data-testid="assigned-program-card">
           <CardContent className="p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
+            {/* Phones: actions stack under the title and wrap, so the card never forces a sideways scroll. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+              <div className="min-w-0">
                 <p className="font-display font-semibold">{p.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} {p.frequency_days === 1 ? 'day' : 'days'}/week - {p.exercise_count} exercises</p>
               </div>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
                 <ExistingLoadEditor type="program" assignment={assignment} selection={p} onSaved={load} />
-                <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setTemplateTarget({ kind: 'program', id: p.id, name: `${p.name} (variation)`, parent: programTemplateParent(p), label: 'program' })} data-testid="save-program-template-button">Save as template</Button>
-                <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
+                <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => setTemplateTarget({ kind: 'program', id: p.id, name: `${p.name} (variation)`, parent: programTemplateParent(p), label: 'program' })} data-testid="save-program-template-button">Save as template</Button>
+                <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
               </div>
             </div>
             <div className="divide-y divide-border">
@@ -1381,7 +1386,7 @@ function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
   if (!assignment) return null;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button type="button" size="sm" variant="outline" onClick={openEditor} data-testid="edit-assigned-loads"><SlidersHorizontal className="mr-1 h-3.5 w-3.5" /> Loads</Button>
+      <Button type="button" size="sm" variant="outline" className="min-h-11 sm:min-h-0" onClick={openEditor} data-testid="edit-assigned-loads"><SlidersHorizontal className="mr-1 h-3.5 w-3.5" /> Loads</Button>
       <DialogContent aria-describedby={undefined}>
         <DialogHeader><DialogTitle>Client loads</DialogTitle></DialogHeader>
         <AssignmentLoadFields type={type} selection={selection} values={values} onChange={setValues} />
@@ -1400,15 +1405,16 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
   return (
     <Card data-testid="assigned-workout-card">
       <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        {/* Phones: actions stack under the title and wrap, so the card never forces a sideways scroll. */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+          <div className="min-w-0">
             <p className="font-display font-semibold">{workout.name}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{label} - {(workout.exercises || []).length} exercises</p>
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
             {onStart && (
               <Button
-                size="sm" variant="secondary" className="rounded-lg"
+                size="sm" variant="secondary" className="min-h-11 rounded-lg sm:min-h-0"
                 disabled={starting === assignment.id}
                 onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })}
                 data-testid="coach-log-standalone-workout"
@@ -1421,9 +1427,9 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
               <Button size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onEdit(workout)} aria-label={`Edit ${workout.name || 'workout'}`} title="Edit" data-testid="edit-client-workout-button"><Pencil aria-hidden /></Button>
             )}
             {onSaveTemplate && (
-              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onSaveTemplate(workout)} data-testid="save-workout-template-button">Save as template</Button>
+              <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onSaveTemplate(workout)} data-testid="save-workout-template-button">Save as template</Button>
             )}
-            <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">Unassign</Button>
+            <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">Unassign</Button>
           </div>
         </div>
         {assignment.notes && (
@@ -1442,11 +1448,11 @@ function CoachExerciseRows({ exercises }) {
   if (!exercises.length) return null;
   return (
     <div className="mt-1 divide-y divide-border/70">
-      {exercises.slice(0, 6).map((exercise, index) => (
-        <div key={exercise.id || index} className="py-2">
+      <SupersetGroups exercises={exercises.slice(0, 6)} className="py-2" innerClassName="divide-y divide-border/70">{(exercise, { marker }) => (
+        <div className="py-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">
-              <span className="text-muted-foreground mr-2 tabular-nums">{index + 1}.</span>{coachExerciseName(exercise)}
+              <span className="text-muted-foreground mr-2 tabular-nums">{marker}.</span>{coachExerciseName(exercise)}
             </p>
             <span className="flex items-center gap-2 shrink-0">
               {safeHttpUrl(exercise.video_url || exercise.library_exercise?.video_url) && (
@@ -1460,7 +1466,7 @@ function CoachExerciseRows({ exercises }) {
           {(exercise.client_notes || exercise.notes) && <p className="text-xs text-muted-foreground mt-1">{exercise.client_notes || exercise.notes}</p>}
           {exercise.coach_notes && <p className="text-xs text-primary mt-1">Coach: {exercise.coach_notes}</p>}
         </div>
-      ))}
+      )}</SupersetGroups>
     </div>
   );
 }

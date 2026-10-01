@@ -36,6 +36,7 @@ const {
   validateDraft,
 } = require('../lib/programDraft.cjs');
 const { extractPdfText } = require('../lib/pdfText');
+const { normalizeSupersetGroups } = require('../lib/supersets');
 const {
   generateLogSheetPdf,
   generateProgramPdf,
@@ -445,7 +446,7 @@ router.post('/workouts', requireCoach, async (req, res) => {
       p_name: String(name).trim(),
       p_description: description || null,
       p_goal: goal || null,
-      p_exercises: Array.isArray(exercises) ? exercises : [],
+      p_exercises: Array.isArray(exercises) ? normalizeSupersetGroups(exercises) : [],
     });
     if (error) throw error;
     return res.status(201).json(await workoutWithDetails(workoutId));
@@ -482,7 +483,7 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
       p_name: name,
       p_description: 'description' in body ? body.description || null : workout.description,
       p_goal: 'goal' in body ? body.goal || null : workout.goal,
-      p_exercises: Array.isArray(body.exercises) ? body.exercises : workout.exercises,
+      p_exercises: normalizeSupersetGroups(Array.isArray(body.exercises) ? body.exercises : workout.exercises),
     });
     if (error) throw error;
     if (!workoutId) return res.status(404).json({ error: 'Workout not found' });

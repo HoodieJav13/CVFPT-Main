@@ -13,6 +13,7 @@ import { hasQueuedCompleteFor } from '@/lib/workoutOutbox';
 import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { downloadBlob, filenameFromDisposition } from '@/lib/download';
+import { SupersetGroups } from '@/components/training/SupersetGroups';
 import { useHistoryPages } from '@/lib/useHistoryPages';
 import { HistoryShowMore } from '@/components/training/HistoryShowMore';
 
@@ -237,13 +238,13 @@ function ExerciseList({ exercises, loads = [] }) {
   const loadByExercise = new Map(loads.map((load) => [load.workout_exercise_id, load]));
   return (
     <div className="mt-2 divide-y divide-border/70">
-      {exercises.map((exercise, index) => {
+      <SupersetGroups exercises={exercises} className="py-2.5" innerClassName="divide-y divide-border/70">{(exercise, { index, marker }) => {
         const assignedLoad = loadByExercise.get(exercise.id);
         const load = assignedLoad || (exercise.default_load_value !== null ? { load_value: exercise.default_load_value, load_unit: exercise.default_load_unit } : null);
         return (
           <div key={exercise.id || `${exerciseName(exercise)}-${index}`} className="py-2.5" data-testid="client-exercise-row">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-medium"><span className="mr-2 text-muted-foreground">{index + 1}.</span>{exerciseName(exercise)}</p>
+              <p className="text-sm font-medium"><span className="mr-2 text-muted-foreground">{marker}.</span>{exerciseName(exercise)}</p>
               <span className="flex shrink-0 items-center gap-2">
                 {exerciseVideo(exercise) && <a href={exerciseVideo(exercise)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"><Play className="h-3 w-3" /> Video</a>}
                 {(exercise.sets || exercise.reps) && <Badge variant="outline">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
@@ -254,7 +255,7 @@ function ExerciseList({ exercises, loads = [] }) {
             </p>
           </div>
         );
-      })}
+      }}</SupersetGroups>
     </div>
   );
 }
