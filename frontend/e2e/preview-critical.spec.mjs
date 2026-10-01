@@ -1581,9 +1581,14 @@ test('the coach client page fits a phone screen with assigned program and workou
   await page.getByTestId('tab-programs').click();
   await expect(page.getByTestId('assigned-program-card').first()).toBeVisible();
   await expect(page.getByTestId('assigned-workout-card').first()).toBeVisible();
+  // A real client copy renders both Edit placements, not just the template actions.
+  const programCopy = page.getByTestId('assigned-program-card').filter({ hasText: 'Sarah Mobility Plan' });
+  const standaloneCopy = page.getByTestId('assigned-workout-card').filter({ hasText: 'Run Prep Mobility — Sarah' });
+  await expect(programCopy.getByTestId('edit-client-workout-button')).toHaveCount(1);
+  await expect(standaloneCopy.getByTestId('edit-client-workout-button')).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   // Every card action stays on screen and tappable.
-  for (const id of ['save-program-template-button', 'unassign-program-button', 'save-workout-template-button', 'unassign-workout-button', 'edit-assigned-loads', 'coach-log-standalone-workout']) {
+  for (const id of ['save-program-template-button', 'unassign-program-button', 'save-workout-template-button', 'unassign-workout-button', 'edit-assigned-loads', 'coach-log-standalone-workout', 'coach-log-program-workout', 'edit-client-workout-button']) {
     await expect(page.getByTestId(id).first()).toBeVisible();
     for (const action of await page.getByTestId(id).all()) {
       const box = await action.boundingBox();
@@ -1592,5 +1597,18 @@ test('the coach client page fits a phone screen with assigned program and workou
       expect(box.width, id).toBeGreaterThanOrEqual(44);
       expect(box.height, id).toBeGreaterThanOrEqual(44);
     }
+  }
+  // Both Edit controls open the client-copy editor and keep its fields intact.
+  for (const card of [programCopy, standaloneCopy]) {
+    await card.getByTestId('edit-client-workout-button').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByTestId('workout-name-input')).toHaveValue('Run Prep Mobility — Sarah');
+    await expect(dialog.getByTestId('workout-exercise-row')).toHaveCount(2);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  for (const action of await page.getByTestId('coach-log-program-workout').all()) {
+    expect(await action.evaluate((el) => el.offsetHeight)).toBe(32);
   }
 });

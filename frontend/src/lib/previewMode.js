@@ -111,6 +111,8 @@ const state = {
     { id: 'workout_lower_a', coach_id: 'coach_marcus', name: 'Lower Strength A', description: 'Squat pattern, hinge, and core support.', goal: 'Lower body strength', archived: false, created_at: iso(-45), updated_at: iso(-45) },
     { id: 'workout_upper_a', coach_id: 'coach_marcus', name: 'Upper Strength A', description: 'Horizontal push/pull with clean volume.', goal: 'Upper body strength', archived: false, created_at: iso(-44), updated_at: iso(-44) },
     { id: 'workout_mobility_run', coach_id: 'coach_marcus', name: 'Run Prep Mobility', description: 'Hips, ankles, and trunk prep for running days.', goal: 'Mobility', archived: false, created_at: iso(-40), updated_at: iso(-40) },
+    // Client-specific copy, shown both as a program day and a standalone assignment.
+    { id: 'workout_sarah_mobility', coach_id: 'coach_marcus', name: 'Run Prep Mobility — Sarah', description: 'Sarah’s recovery-day copy.', goal: 'Mobility', is_template: false, client_id: 'client_sarah', source_workout_id: 'workout_mobility_run', hidden: false, archived: false, created_at: iso(-7), updated_at: iso(-7) },
   ],
   workoutExercises: [
     { id: 'wex_1', workout_id: 'workout_lower_a', exercise_library_id: 'lib_goblet_squat', custom_name: null, sets: '3', reps: '8-10', target_rpe: '7', rest: '90s', rest_seconds: 90, tempo: '3-1-1', default_load_value: 30, default_load_unit: 'lb', notes: 'Slow lower, tall chest.', video_url: null, position: 0, archived: false, created_at: iso(-45) },
@@ -120,10 +122,13 @@ const state = {
     { id: 'wex_5', workout_id: 'workout_upper_a', exercise_library_id: 'lib_cable_row', custom_name: null, sets: '3', reps: '10-12', target_rpe: '8', rest: '75s', rest_seconds: 75, tempo: '', default_load_value: 35, default_load_unit: 'lb', notes: 'Squeeze shoulder blades.', video_url: null, position: 1, archived: false, created_at: iso(-44) },
     { id: 'wex_6', workout_id: 'workout_mobility_run', exercise_library_id: 'lib_world_stretch', custom_name: null, sets: '2', reps: '5/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Move slowly.', video_url: null, position: 0, archived: false, created_at: iso(-40) },
     { id: 'wex_7', workout_id: 'workout_mobility_run', exercise_library_id: null, custom_name: 'Ankle Rocker', sets: '2', reps: '8/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Keep heel heavy.', video_url: '', position: 1, archived: false, created_at: iso(-40) },
+    { id: 'wex_sarah_1', workout_id: 'workout_sarah_mobility', exercise_library_id: 'lib_world_stretch', custom_name: null, sets: '2', reps: '5/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Move slowly.', video_url: null, position: 0, archived: false, created_at: iso(-7) },
+    { id: 'wex_sarah_2', workout_id: 'workout_sarah_mobility', exercise_library_id: null, custom_name: 'Ankle Rocker', sets: '2', reps: '8/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Keep heel heavy.', video_url: '', position: 1, archived: false, created_at: iso(-7) },
   ],
   programs: [
     { id: 'program_foundation', coach_id: 'coach_marcus', name: 'Foundation Strength - Phase 1', description: 'Three days per week focused on clean mechanics and steady volume.', frequency_days: 3, archived: false, created_at: iso(-35), updated_at: iso(-35) },
     { id: 'program_hybrid', coach_id: 'coach_marcus', name: 'Hybrid Strength - Phase 2', description: 'Four weekly touchpoints for strength, mobility, and run prep.', frequency_days: 4, archived: false, created_at: iso(-20), updated_at: iso(-20) },
+    { id: 'program_sarah_mobility', coach_id: 'coach_marcus', name: 'Sarah Mobility Plan', description: 'A recovery-day client program.', frequency_days: 1, is_template: false, client_id: 'client_sarah', source_program_id: 'program_foundation', hidden: false, archived: false, created_at: iso(-7), updated_at: iso(-7) },
   ],
   programDays: [
     { id: 'day_foundation_1', program_id: 'program_foundation', day_number: 1, workout_id: 'workout_lower_a', notes: 'Keep RPE around 7.', archived: false, created_at: iso(-35) },
@@ -133,13 +138,16 @@ const state = {
     { id: 'day_hybrid_2', program_id: 'program_hybrid', day_number: 2, workout_id: 'workout_upper_a', notes: '', archived: false, created_at: iso(-20) },
     { id: 'day_hybrid_3', program_id: 'program_hybrid', day_number: 3, workout_id: 'workout_mobility_run', notes: '', archived: false, created_at: iso(-20) },
     { id: 'day_hybrid_4', program_id: 'program_hybrid', day_number: 4, workout_id: 'workout_lower_a', notes: 'Lighter load than Day 1.', archived: false, created_at: iso(-20) },
+    { id: 'day_sarah_mobility', program_id: 'program_sarah_mobility', day_number: 1, workout_id: 'workout_sarah_mobility', notes: '', archived: false, created_at: iso(-7) },
   ],
   programAssignments: [
     { id: 'assign_sarah', program_id: 'program_foundation', client_id: 'client_sarah', notes: 'Complete twice before next session.', archived: false, created_at: iso(-18), client: { id: 'client_sarah', name: 'Sarah Martinez' } },
+    { id: 'assign_sarah_mobility', program_id: 'program_sarah_mobility', client_id: 'client_sarah', notes: 'Use on recovery days.', archived: false, created_at: iso(-7), client: { id: 'client_sarah', name: 'Sarah Martinez' } },
   ],
   workoutAssignments: [
     { id: 'work_assign_sarah_active', client_id: 'client_sarah', workout_id: 'workout_mobility_run', assignment_mode: 'active', assigned_for: null, notes: 'Use this on recovery days.', archived: false, created_at: iso(-8) },
     { id: 'work_assign_sarah_dated', client_id: 'client_sarah', workout_id: 'workout_upper_a', assignment_mode: 'dated', assigned_for: dateOnly(2), notes: 'Optional if shoulder feels good.', archived: false, created_at: iso(-2) },
+    { id: 'work_assign_sarah_copy', client_id: 'client_sarah', workout_id: 'workout_sarah_mobility', assignment_mode: 'active', assigned_for: null, notes: 'Client-specific recovery workout.', archived: false, created_at: iso(-7) },
   ],
   programAssignmentExerciseLoads: [
     { id: 'paload_squat', program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_1', workout_exercise_id: 'wex_1', load_value: 35, load_unit: 'lb', archived: false, created_at: iso(-18), updated_at: iso(-18) },
