@@ -477,7 +477,7 @@ export default function WorkoutTracker() {
       />
       {outbox.queuedComplete && (
         <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="finished-locally-banner">
-          <p className="text-sm font-medium">Finished offline — waiting to sync. Editing is locked.</p>
+          <p className="text-sm font-medium">Finished on this phone — waiting to sync. Editing is locked.</p>
           <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0" onClick={outbox.removeQueuedComplete} data-testid="keep-editing-button">
             Keep editing
           </Button>
