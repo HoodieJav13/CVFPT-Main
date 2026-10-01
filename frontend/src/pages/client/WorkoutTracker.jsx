@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Plus, Save, Trash2, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Play, Plus, Save, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -18,6 +18,7 @@ import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import { formatRestSeconds } from '@/lib/rest';
+import { safeHttpUrl } from '@/lib/safeUrl';
 import { lastTimeFills } from '@/lib/workoutSync';
 import { trackProductEvent } from '@/lib/telemetry';
 
@@ -497,6 +498,18 @@ export default function WorkoutTracker() {
                 {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
               </div>
               {exercise.prescribed_notes && <p className="text-xs text-muted-foreground">{exercise.prescribed_notes}</p>}
+              {safeHttpUrl(exercise.video_url) && (
+                <a
+                  href={safeHttpUrl(exercise.video_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                  aria-label={`Watch demo: ${exercise.exercise_name} (opens in a new tab)`}
+                  data-testid="tracker-exercise-video"
+                >
+                  <Play className="h-4 w-4" aria-hidden /> Watch demo
+                </a>
+              )}
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-[1.75rem_minmax(5.5rem,1fr)_3.5rem_3.5rem_2.75rem] gap-1 px-1 text-xs font-medium text-muted-foreground">
