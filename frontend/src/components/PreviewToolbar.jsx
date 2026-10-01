@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { ChevronDown, Settings2 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   getPreviewClientId,
   getPreviewClients,
   getPreviewRole,
   isPreviewMode,
   onPreviewChange,
+  onPreviewNotice,
   setPreviewClientId,
   setPreviewRole,
 } from '@/lib/previewMode';
@@ -54,6 +56,16 @@ export default function PreviewToolbar() {
   useEffect(() => onPreviewChange(() => {
     setRole(getPreviewRole());
     setClientId(getPreviewClientId());
+  }), []);
+
+  // Fixed ids so repeated hits replace the toast instead of stacking. This
+  // runs even when the calling screen swallowed the error.
+  useEffect(() => onPreviewNotice(({ kind, method, path, reason }) => {
+    if (kind === 'unsupported') {
+      toast.info('Not available in preview', { id: 'preview-unsupported', description: reason });
+    } else if (kind === 'missing') {
+      toast.error('Preview is missing a mock', { id: 'preview-missing-mock', description: `${String(method).toUpperCase()} ${path}` });
+    }
   }), []);
 
   if (!isPreviewMode) return null;

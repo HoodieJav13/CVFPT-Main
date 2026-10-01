@@ -14,6 +14,18 @@ const {
 const PREVIEW_ROLE_KEY = 'cvf_preview_role';
 const PREVIEW_CLIENT_KEY = 'cvf_preview_client_id';
 const CHANGE_EVENT = 'cvf-preview-change';
+// Fixed prefix read by the Playwright fixture in e2e/preview-test.mjs.
+const MISSING_MOCK_MARKER = '[cvf-preview:missing-mock]';
+
+// Routes preview deliberately does not mock. Every entry needs a reason.
+// Anything not handled and not listed here is a missing mock and fails the
+// preview browser suite.
+const PREVIEW_UNSUPPORTED = [
+  { method: 'post', pattern: /^\/sessions\/series\/preview$/, reason: 'Recurring sessions are not in preview yet' },
+  { method: 'post', pattern: /^\/sessions\/series\/check$/, reason: 'Recurring sessions are not in preview yet' },
+  { method: 'post', pattern: /^\/sessions\/series$/, reason: 'Recurring sessions are not in preview yet' },
+  { method: 'patch', pattern: /^\/sessions\/series\/[^/]+\/cancel$/, reason: 'Recurring sessions are not in preview yet' },
+];
 
 // The gate lives in previewFlag.js so consumers can check it without
 // pulling this whole fixture module into the production bundle.
@@ -899,6 +911,52 @@ function fail(config, status, message) {
   return Promise.reject({ response: { data: { error: message }, status, statusText: 'Error', headers: {}, config }, config });
 }
 
+// The toolbar that shows notices is lazy-loaded, and a page's first requests
+// usually finish before it mounts. Notices raised with nobody listening wait
+// here and are delivered to the first subscriber.
+const noticeSubscribers = new Set();
+const queuedNotices = [];
+
+function previewNotice(detail) {
+  if (!noticeSubscribers.size) {
+    queuedNotices.push(detail);
+    return;
+  }
+  noticeSubscribers.forEach((cb) => cb(detail));
+}
+
+// cb receives { kind: 'unsupported' | 'missing', method, path, reason? }.
+export function onPreviewNotice(cb) {
+  noticeSubscribers.add(cb);
+  queuedNotices.splice(0).forEach((detail) => cb(detail));
+  return () => noticeSubscribers.delete(cb);
+}
+
+// 422, not 5xx: retry-safe forms treat >= 500 as "outcome unknown" and lock.
+function rejectUnsupported(config, method, path, entry) {
+  previewNotice({ kind: 'unsupported', method, path, reason: entry.reason });
+  return Promise.reject({
+    response: {
+      data: { error: 'Not available in preview', code: 'preview_unsupported', reason: entry.reason },
+      status: 422, statusText: 'Unprocessable Entity', headers: {}, config,
+    },
+    config,
+  });
+}
+
+function rejectMissingMock(config, method, path) {
+  const label = `${method.toUpperCase()} ${path}`;
+  console.error(`${MISSING_MOCK_MARKER} ${label}`);
+  previewNotice({ kind: 'missing', method, path });
+  return Promise.reject({
+    response: {
+      data: { error: `Preview route not mocked: ${label}`, code: 'preview_missing_mock' },
+      status: 404, statusText: 'Error', headers: {}, config,
+    },
+    config,
+  });
+}
+
 function body(config) {
   if (!config.data) return {};
   if (typeof config.data === 'string') {
@@ -977,6 +1035,9 @@ export function installPreviewApi(api) {
     const payload = body(config);
     const role = getPreviewRole();
     const client = currentClient();
+
+    const unsupported = PREVIEW_UNSUPPORTED.find((entry) => entry.method === method && entry.pattern.test(path));
+    if (unsupported) return rejectUnsupported(config, method, path, unsupported);
 
     if (path === '/auth/me' || path === '/auth/login' || path === '/auth/signup') return ok({ access_token: 'preview', refresh_token: 'preview', ...getPreviewUser() }, config);
 
@@ -2198,6 +2259,6 @@ export function installPreviewApi(api) {
       return ok(row, config, 201);
     }
 
-    return fail(config, 404, `Preview route not mocked: ${method.toUpperCase()} ${path}`);
+    return rejectMissingMock(config, method, path);
   };
 }
