@@ -162,3 +162,39 @@ test('validateWorkoutAttachment null detaches without a query', async () => {
   assert.deepEqual(await validateWorkoutAttachment(null, COACH_ID), { ok: true, value: null });
   assert.equal(state.workoutQueries, 0);
 });
+
+test('create with another coach\'s workout returns 400 and never calls schedule_session', async () => {
+  resetState();
+  currentUser = coachUser;
+  state.workoutRow = { id: WORKOUT_ID, coach_id: OTHER_COACH_ID };
+  const result = await send('/api/sessions', { body: createBody(WORKOUT_ID) });
+  assert.equal(result.status, 400);
+  assert.equal(scheduledCalls().length, 0);
+});
+
+test('create with an archived or missing workout returns 400 and never schedules', async () => {
+  resetState();
+  currentUser = coachUser;
+  state.workoutRow = null; // the query filters archived = false
+  const result = await send('/api/sessions', { body: createBody(WORKOUT_ID) });
+  assert.equal(result.status, 400);
+  assert.equal(scheduledCalls().length, 0);
+});
+
+test('create with a malformed workout id returns 400 and never schedules', async () => {
+  resetState();
+  currentUser = coachUser;
+  const result = await send('/api/sessions', { body: createBody('not-a-uuid') });
+  assert.equal(result.status, 400);
+  assert.equal(scheduledCalls().length, 0);
+});
+
+test('update with a foreign workout returns 400 and never reschedules', async () => {
+  resetState();
+  currentUser = coachUser;
+  state.workoutRow = { id: WORKOUT_ID, coach_id: OTHER_COACH_ID };
+  state.sessionRow = { id: SESSION_ID, client_id: CLIENT_ID, coach_id: COACH_ID, scheduled_at: FUTURE, duration_minutes: 60, status: 'scheduled', archived: false };
+  const result = await send(`/api/sessions/${SESSION_ID}`, { method: 'PUT', body: { duration_minutes: 45, workout_id: WORKOUT_ID } });
+  assert.equal(result.status, 400);
+  assert.equal(scheduledCalls().length, 0);
+});
