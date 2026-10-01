@@ -150,7 +150,7 @@ test('validateWorkoutIds validates many ids with exactly one workouts query', as
 
 test('validateWorkoutIds rejects an unusable id and skips the query when there is nothing to check', async () => {
   resetState();
-  state.workoutList = [{ id: WORKOUT_ID, coach_id: OTHER_COACH_ID }];
+  state.workoutList = [{ id: WORKOUT_ID, coach_id: OTHER_COACH_ID, is_template: false }];
   assert.deepEqual(await validateWorkoutIds([WORKOUT_ID], COACH_ID), { ok: false, error: 'Workout not found' });
   resetState();
   assert.deepEqual(await validateWorkoutIds([null, undefined], COACH_ID), { ok: true, value: [] });
@@ -167,7 +167,7 @@ test('validateWorkoutAttachment null detaches without a query', async () => {
 test('create with another coach\'s workout returns 400 and never calls schedule_session', async () => {
   resetState();
   currentUser = coachUser;
-  state.workoutRow = { id: WORKOUT_ID, coach_id: OTHER_COACH_ID };
+  state.workoutRow = { id: WORKOUT_ID, coach_id: OTHER_COACH_ID, is_template: false };
   const result = await send('/api/sessions', { body: createBody(WORKOUT_ID) });
   assert.equal(result.status, 400);
   assert.equal(scheduledCalls().length, 0);
@@ -193,7 +193,7 @@ test('create with a malformed workout id returns 400 and never schedules', async
 test('update with a foreign workout returns 400 and never reschedules', async () => {
   resetState();
   currentUser = coachUser;
-  state.workoutRow = { id: WORKOUT_ID, coach_id: OTHER_COACH_ID };
+  state.workoutRow = { id: WORKOUT_ID, coach_id: OTHER_COACH_ID, is_template: false };
   state.sessionRow = { id: SESSION_ID, client_id: CLIENT_ID, coach_id: COACH_ID, scheduled_at: FUTURE, duration_minutes: 60, status: 'scheduled', archived: false };
   const result = await send(`/api/sessions/${SESSION_ID}`, { method: 'PUT', body: { duration_minutes: 45, workout_id: WORKOUT_ID } });
   assert.equal(result.status, 400);
@@ -211,4 +211,18 @@ test('a failed workout lookup is a 500 (retryable), not "Workout not found", and
   const updated = await send(`/api/sessions/${SESSION_ID}`, { method: 'PUT', body: { duration_minutes: 45, workout_id: WORKOUT_ID } });
   assert.equal(updated.status, 500);
   assert.equal(scheduledCalls().length, 0);
+});
+
+test('attachments accept another coach\'s shared template but refuse their client instance', async () => {
+  resetState();
+  state.workoutRow = { id: WORKOUT_ID, coach_id: OTHER_COACH_ID, is_template: true };
+  assert.equal((await validateWorkoutAttachment(WORKOUT_ID, COACH_ID)).ok, true);
+  state.workoutList = [state.workoutRow];
+  assert.equal((await validateWorkoutIds([WORKOUT_ID], COACH_ID)).ok, true);
+  state.workoutRow.is_template = false;
+  assert.equal((await validateWorkoutAttachment(WORKOUT_ID, COACH_ID)).ok, false);
+  assert.equal((await validateWorkoutIds([WORKOUT_ID], COACH_ID)).ok, false);
+  state.workoutRow.coach_id = null;
+  assert.equal((await validateWorkoutAttachment(WORKOUT_ID, COACH_ID)).ok, false);
+  assert.equal((await validateWorkoutIds([WORKOUT_ID], COACH_ID)).ok, false);
 });

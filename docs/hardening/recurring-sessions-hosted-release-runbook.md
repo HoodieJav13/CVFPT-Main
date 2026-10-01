@@ -43,24 +43,30 @@ before asking for the merge. Do not rely on a post-merge migration-first sequenc
       cause (environmental or an implementation defect) before proceeding; do not skip the check.
 - [ ] Migration diff is additions only:
       `git diff --name-status main...HEAD -- supabase/migrations` (every line starts `A`).
-- [ ] `migration-guard` is the one check expected to stay red until Gate 2 is done.
+- [ ] Migration-dependent checks may remain red until both hosted projects pass Gate 2–3 and receive their labels: `migration-guard`, and `migrations-in-flight` if another migration PR is open. All non-migration CI jobs must pass before applying these migrations; ALL checks must pass before merge.
 
 ## Gate 2 — apply the migrations to hosted Supabase (owner-authorized)
 
-Preview and Production intentionally share one hosted Supabase project, so this
-affects both. Use the owner's already-configured tooling; do not print or copy keys.
+Preview and Production use separate hosted Supabase projects (see DEPLOYMENT.md):
+
+- Development / Preview: `hhzpzcxcurmhpmfgriqb` (`CVFPT-Main`).
+- Production: `dacqdoohqqcqgtpacerk` (`cvfpt-production`).
+
+Repeat Gates 2 and 3 for EACH project before merge. Use already-configured tooling;
+do not print or copy keys. Explicit `--project-ref` targeting avoids changing the
+checkout's development link. No seeds or test-account provisioning run in Production.
 
 1. See what is pending (read-only):
    ```bash
-   supabase migration list --linked
-   supabase db push --linked --dry-run
+   supabase migration list --project-ref <target-project-ref>
+   supabase db push --project-ref <target-project-ref> --skip-vault --dry-run
    ```
    Expected: exactly the four `20260930…` files pending, nothing else.
 2. Apply, then confirm the ledger:
    ```bash
-   supabase db push --linked
-   supabase migration list --linked
-   supabase db push --linked --dry-run
+   supabase db push --project-ref <target-project-ref> --skip-vault
+   supabase migration list --project-ref <target-project-ref>
+   supabase db push --project-ref <target-project-ref> --skip-vault --dry-run
    ```
    Expected: local and remote match; the second dry run reports the remote is up to date.
    (A trailing `pg-delta` catalog-cache warning after a successful push was seen last
@@ -69,7 +75,7 @@ affects both. Use the owner's already-configured tooling; do not print or copy k
 
 ## Gate 3 — read-only verification of the hosted schema
 
-Run these with the owner-authorized SQL access. All are read-only.
+Run these with owner-authorized SQL access against EACH hosted project. All are read-only.
 
 ```sql
 -- 1. The three new functions exist, are security invoker, and are service-role-only.
@@ -162,9 +168,9 @@ select (select count(*) from public.session_series where request_id = 'f0000000-
 If the final query returns anything other than zeros, stop and report; do not delete
 rows by hand.
 
-## Gate 4 — merge (owner performs it)
+## Gate 4 — merge (owner or explicitly delegated agent performs it)
 
-- [ ] Gates 1–3 complete and recorded; `migration-applied` label added; all CI checks green.
+- [ ] Gates 1–3 complete and recorded; `migration-applied` and `prod-migration-applied` labels added; all CI checks green.
 - [ ] The owner confirms they understand merge deploys both Production projects.
 - [ ] Merge. Backend and frontend deploy from the merge commit.
 

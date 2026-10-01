@@ -162,6 +162,37 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
   await expect(page.getByTestId('message-thread-row').first()).toBeVisible();
 });
 
+test('exercise library filters narrow the list, combine with search, and clear at mobile width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await expect(page.getByTestId('exercise-library-filters')).toBeVisible();
+
+  const cards = page.getByTestId('exercise-library-card');
+  const total = await cards.count();
+  expect(total).toBeGreaterThan(1);
+  await expect(page.getByTestId('exercise-library-count')).toHaveText(`${total} exercises`);
+  await expect(page.getByTestId('exercise-library-clear-filters')).toHaveCount(0);
+
+  await page.getByTestId('exercise-library-filter-category').click();
+  const options = page.getByRole('option');
+  expect(await options.count()).toBeGreaterThan(1);
+  await options.nth(1).click();
+  const narrowed = await cards.count();
+  expect(narrowed).toBeGreaterThan(0);
+  expect(narrowed).toBeLessThanOrEqual(total);
+  await expect(page.getByTestId('exercise-library-count')).toHaveText(`Showing ${narrowed} of ${total} exercises`);
+
+  await page.getByTestId('exercise-library-search-input').fill('zzz-no-such-exercise');
+  await expect(cards).toHaveCount(0);
+  await expect(page.getByText('Nothing matches these filters. Try clearing them.')).toBeVisible();
+
+  await page.getByTestId('exercise-library-clear-filters').click();
+  await expect(cards).toHaveCount(total);
+  await expect(page.getByTestId('exercise-library-count')).toHaveText(`${total} exercises`);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
+
 test('coach session indicators and detail page cover the workout-done confirm flow', async ({ page }) => {
   await usePreviewRole(page, 'coach');
   await page.goto('/coach/sessions');
@@ -807,4 +838,84 @@ test.describe('session conflict flow at month boundaries', () => {
       await runConflictFlow(page);
     });
   }
+});
+
+const IPHONE_SAFARI_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
+const IPHONE_INSTAGRAM_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/22F76 Instagram 389.0.0.28.84 (iPhone15,2; iOS 18_5; en_US)';
+
+test('desktop clients never see the home-screen install card', async ({ page }) => {
+  await usePreviewRole(page, 'client');
+  await page.goto('/client');
+  await expect(page.getByTestId('client-dashboard-header')).toBeVisible();
+  await expect(page.getByTestId('install-card')).toHaveCount(0);
+});
+
+test.describe('home-screen install guide on iPhone Safari', () => {
+  test.use({ userAgent: IPHONE_SAFARI_UA, viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('Home card shows the Safari steps, and "Not now" hides only the card', async ({ page }) => {
+    await usePreviewRole(page, 'client');
+    await page.goto('/client');
+    const card = page.getByTestId('install-card');
+    await expect(card).toBeVisible();
+    await card.getByTestId('install-card-show-how').click();
+    const guide = page.getByTestId('install-guide');
+    await expect(guide).toHaveAttribute('data-install-mode', 'ios-safari');
+    await expect(guide).toContainText('Add to Home Screen');
+    await expect(guide.getByTestId('install-guide-copy-link')).toHaveCount(0);
+    await guide.getByTestId('install-guide-done').click();
+    await expect(guide).toHaveCount(0);
+
+    await card.getByTestId('install-card-dismiss').click();
+    await expect(card).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId('client-dashboard-header')).toBeVisible();
+    await expect(page.getByTestId('install-card')).toHaveCount(0);
+
+    // The menu entry survives "Not now" so the steps stay findable.
+    await page.getByTestId('user-menu-trigger').filter({ visible: true }).click();
+    await page.getByTestId('install-app-item').click();
+    await expect(page.getByTestId('install-guide')).toHaveAttribute('data-install-mode', 'ios-safari');
+  });
+});
+
+test.describe('home-screen install guide inside an iPhone in-app browser', () => {
+  test.use({ userAgent: IPHONE_INSTAGRAM_UA, viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('guide sends the client to Safari with a copyable link', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await usePreviewRole(page, 'client');
+    await page.goto('/client');
+    await page.getByTestId('install-card-show-how').click();
+    const guide = page.getByTestId('install-guide');
+    await expect(guide).toHaveAttribute('data-install-mode', 'ios-other');
+    await expect(guide).toContainText('open CVF PT in Safari first');
+    await guide.getByTestId('install-guide-copy-link').click();
+    await expect(page.getByText('Link copied. Paste it into Safari.')).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${new URL(page.url()).origin}/`);
+  });
+});
+
+test.describe('home-screen install on Android Chrome', () => {
+  test.use({
+    userAgent: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36',
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+  });
+
+  test('uses the native install prompt when Chrome offers one', async ({ page }) => {
+    await usePreviewRole(page, 'client');
+    await page.goto('/client');
+    await expect(page.getByTestId('install-card')).toBeVisible();
+    // Headless Chrome never fires beforeinstallprompt; simulate Chrome's event.
+    await page.evaluate(() => {
+      const event = new Event('beforeinstallprompt', { cancelable: true });
+      event.prompt = () => { window.__installPrompted = true; };
+      event.userChoice = Promise.resolve({ outcome: 'dismissed' });
+      window.dispatchEvent(event);
+    });
+    await page.getByTestId('install-card-show-how').click();
+    await expect.poll(() => page.evaluate(() => window.__installPrompted === true)).toBe(true);
+    await expect(page.getByTestId('install-guide')).toHaveCount(0);
+  });
 });

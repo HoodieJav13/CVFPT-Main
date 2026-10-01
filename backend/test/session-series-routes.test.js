@@ -311,7 +311,7 @@ test('create validates shape, then eligibility, before any database write', asyn
   assert.equal((await call('', { body: createBody({ slots: [{ key: 'a', date: day(-2), time: '17:00' }] }) })).status, 400);
   assert.equal((await call('', { body: createBody({ rule: { ...createBody().rule, start_date: day(-2) } }) })).status, 400);
   assert.equal((await call('', { body: createBody({ slots: [{ key: 'a', date: day(14 + 366), time: '17:00' }] }) })).status, 400);
-  state.workouts = [{ id: WORKOUT_ID, coach_id: OTHER_COACH_ID }];
+  state.workouts = [{ id: WORKOUT_ID, coach_id: OTHER_COACH_ID, is_template: false }];
   assert.equal((await call('', { body: createBody() })).status, 400); // foreign workout
   state.workouts = [{ id: WORKOUT_ID, coach_id: null }];            // shared workout is fine
   assert.equal((await call('', { body: createBody({ program_id: PROGRAM_ID }) })).status, 201);
@@ -323,7 +323,7 @@ test('create refuses clients and programs the caller cannot use', async () => {
   state.clientRow = { id: CLIENT_ID, coach_id: OTHER_COACH_ID, archived: false };
   assert.equal((await call('', { body: createBody() })).status, 404);
   resetState(); currentUser = coachUser;
-  state.programRow = { id: PROGRAM_ID, coach_id: OTHER_COACH_ID, archived: false };
+  state.programRow = { id: PROGRAM_ID, coach_id: OTHER_COACH_ID, archived: false, is_template: false };
   assert.equal((await call('', { body: createBody({ program_id: PROGRAM_ID }) })).status, 404);
   resetState(); currentUser = coachUser;
   state.programRow = null; // archived or missing
@@ -541,4 +541,21 @@ test('failed series/anchor lookups on cancel are 500s that change nothing; missi
   state.queryErrors = {};
   state.existingSeries = null;
   assert.equal((await call(`/${SERIES_ID}/cancel`, { method: 'PATCH', body: cancelBody() })).status, 404);
+});
+
+test('series accepts another coach\'s shared program and workout templates', async () => {
+  resetState(); currentUser = coachUser;
+  state.programRow = { id: PROGRAM_ID, coach_id: OTHER_COACH_ID, archived: false, is_template: true };
+  state.workouts = [{ id: WORKOUT_ID, coach_id: OTHER_COACH_ID, is_template: true }];
+  const result = await call('', { body: createBody({ program_id: PROGRAM_ID, assign_program: true }) });
+  assert.equal(result.status, 201);
+  assert.equal(createCalls().length, 1);
+});
+
+test('series refuses assigning a hidden program before scheduling', async () => {
+  resetState(); currentUser = coachUser;
+  state.programRow.hidden = true;
+  const result = await call('', { body: createBody({ program_id: PROGRAM_ID, assign_program: true }) });
+  assert.equal(result.status, 409);
+  assert.equal(createCalls().length, 0);
 });

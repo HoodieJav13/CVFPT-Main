@@ -2,8 +2,10 @@
 
 Status: **owner-reviewed 2026-08-01** — the four review corrections are
 applied below and the four open decisions are resolved (recorded at the
-end). The build is unblocked once the owner completes the provider setup
-steps. One migration ⚠ (digest opt-out) ships with the build.
+end). Built and merged 2026-08-01 (`6259852`, PR #49); inert until the owner
+sets the provider env values (`RESEND_API_KEY`, `CRON_SECRET`,
+`NOTIFY_REPLY_TO` — see docs/closed-loop-operations.md). One migration ⚠
+(digest opt-out, `20260801091539_email_digest_preferences.sql`) shipped with it.
 
 ## Scope (per D2)
 
@@ -114,8 +116,8 @@ send wrapper, so switching later is cheap.
 
 **Owner-only setup steps** (same rule as Supabase keys — I never handle
 keys):
-1. Create the Resend account and verify `corevaluefitness.com`, sending as
-   `CVF PT <notifications@corevaluefitness.com>`.
+1. Create the Resend account and verify `corevaluefit.com`, sending as
+   `CVF PT <notifications@corevaluefit.com>`.
 2. Add `RESEND_API_KEY` and `CRON_SECRET` env vars to the Vercel backend
    project, plus the monitored studio inbox as `NOTIFY_REPLY_TO`.
 3. Digest cron: **13:00 UTC** — 6:00 AM in Denver during winter, 7:00 AM
@@ -149,7 +151,7 @@ keys):
 1. Preferences: **Option A** — digest opt-out column migration ⚠ ships
    with the build.
 2. Coach digest **includes** booking requests pending more than 24 h.
-3. Sending domain `corevaluefitness.com`, from
-   `notifications@corevaluefitness.com`; reply-to is the monitored studio
+3. Sending domain `corevaluefit.com`, from
+   `notifications@corevaluefit.com`; reply-to is the monitored studio
    inbox.
 4. Digest cron at **13:00 UTC** (6 AM MST / 7 AM MDT).

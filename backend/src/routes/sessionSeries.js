@@ -5,6 +5,7 @@ const { requireCoach, canAccessClient } = require('../middleware/auth');
 const { validateUuid, validateNotifyFlag } = require('../validation/business');
 const { parseCreateRequest } = require('../lib/sessionSeries/createRequest');
 const { validateWorkoutIds } = require('../lib/sessionWorkouts');
+const { canAccessProgram, canAssignTemplate } = require('../security/access');
 const { dispatchEmail, notifySeriesScheduled, notifySeriesCancelled } = require('../services/email');
 const { dispatchPush, sendToClient } = require('../services/push');
 const {
@@ -212,11 +213,14 @@ router.post('/', requireCoach, async (req, res) => {
     if (past) return res.status(400).json({ error: past });
 
     if (request.program_id) {
-      const { data: program, error: programError } = await supabaseAdmin.from('programs').select('id, coach_id, archived')
+      const { data: program, error: programError } = await supabaseAdmin.from('programs').select('id, coach_id, archived, is_template, hidden')
         .eq('id', request.program_id).eq('archived', false).maybeSingle();
       if (programError) throw programError;
-      if (!program || (req.user.role !== 'admin' && program.coach_id !== coachId)) {
+      if (!program || !canAccessProgram(req.user, program)) {
         return res.status(404).json({ error: 'Program not found' });
+      }
+      if (request.assign_program && !canAssignTemplate(program)) {
+        return res.status(409).json({ error: 'This program cannot be assigned. Choose an unhidden template.' });
       }
     }
     const workouts = await validateWorkoutIds(request.slots.map((slot) => slot.workout_id), coachId);

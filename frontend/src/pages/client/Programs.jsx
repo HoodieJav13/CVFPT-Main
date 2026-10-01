@@ -6,12 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { CalendarDays, ChevronRight, Dumbbell, Loader2, Play, StickyNote } from 'lucide-react';
+import { CalendarDays, ChevronRight, Download, Dumbbell, Loader2, Play, StickyNote } from 'lucide-react';
 import { fmtDate, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
 import { hasQueuedCompleteFor } from '@/lib/workoutOutbox';
 import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
+import { downloadBlob, filenameFromDisposition } from '@/lib/download';
 
 export default function ClientPrograms() {
   const navigate = useNavigate();
@@ -153,7 +154,10 @@ function ProgramAssignmentCard({ assignment, starting, onStart }) {
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div><CardTitle className="font-display text-lg">{program.name}</CardTitle>{program.description && <p className="mt-1 text-sm text-muted-foreground">{program.description}</p>}</div>
-          <Badge variant="outline" className="w-fit">{frequency} {frequency === 1 ? 'day' : 'days'}/week</Badge>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge variant="outline" className="w-fit">{frequency} {frequency === 1 ? 'day' : 'days'}/week</Badge>
+            <DownloadPdfButton path={`/programs/client/assignments/${assignment.id}/log-sheet.pdf`} name={program.name} testId="download-program-pdf" />
+          </div>
         </div>
         {assignment.notes && <AssignmentNote>{assignment.notes}</AssignmentNote>}
       </CardHeader>
@@ -183,9 +187,12 @@ function WorkoutAssignmentCard({ assignment, starting, onStart }) {
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start justify-between gap-3">
           <div><p className="font-display font-semibold">{workout.name}</p>{(workout.goal || workout.description) && <p className="mt-1 text-sm text-muted-foreground">{workout.goal || workout.description}</p>}</div>
-          <Button size="sm" disabled={starting === assignment.id} onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })} data-testid="start-standalone-workout">
-            {starting === assignment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Start'}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <DownloadPdfButton path={`/programs/client/workout-assignments/${assignment.id}/log-sheet.pdf`} name={workout.name} testId="download-workout-pdf" />
+            <Button size="sm" disabled={starting === assignment.id} onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })} data-testid="start-standalone-workout">
+              {starting === assignment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Start'}
+            </Button>
+          </div>
         </div>
         <Badge variant="outline" className="w-fit"><CalendarDays className="mr-1 h-3.5 w-3.5" /> {label}</Badge>
         {assignment.notes && <AssignmentNote>{assignment.notes}</AssignmentNote>}
@@ -260,6 +267,28 @@ function HistoryRow({ log }) {
       </span>
       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
     </Link>
+  );
+}
+
+function DownloadPdfButton({ path, name, testId }) {
+  const [downloading, setDownloading] = useState(false);
+  const download = async () => {
+    setDownloading(true);
+    try {
+      const { data, headers } = await api.get(path, { responseType: 'blob' });
+      const fallback = `CVF-${String(name || 'Workout').replace(/[^a-z0-9]+/gi, '-')}-Log.pdf`;
+      downloadBlob(data, filenameFromDisposition(headers, fallback), 'application/pdf');
+    } catch (error) {
+      toast.error(errMsg(error, 'Could not download PDF'));
+    } finally {
+      setDownloading(false);
+    }
+  };
+  return (
+    <Button size="sm" variant="outline" disabled={downloading} onClick={download} aria-label={`Download ${name || 'workout'} as a printable PDF`} data-testid={testId}>
+      {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+      <span className="ml-1.5">PDF</span>
+    </Button>
   );
 }
 

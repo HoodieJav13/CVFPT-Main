@@ -238,8 +238,8 @@ install), and the P-RES real-email flows.
 | AUD-3 | F-2 | Admin coach menu; coach Resources edit/archive | defect | fixed — three 36 px icon buttons raised to the 44 px convention |
 | AUD-4 | Tooling | Agentation overlay (dev/preview) | defect | fixed — default placement covered the mobile tab bar and collided with the preview toolbar on desktop; offset via scoped CSS |
 | AUD-5 | Dev ergonomics | vite config | polish | fixed — hardcoded `hmr.clientPort: 443` (cloud-IDE leftover) broke local HMR and logged websocket errors on every page; now env-gated behind `CVF_DEV_TUNNEL` |
-| AUD-6 | F-1 | Poster cards (client/coach session detail, client sessions row) | polish | deferred — inline `hsl(202 35% …)` gradient literals in three files; token-derived but not tokens. Candidate for a `--poster-gradient` token; cosmetic-neutral refactor |
-| AUD-7 | C-TRK-5 | Tracker abandon | polish | deferred — uses `window.confirm` rather than the app's two-tap/dialog pattern; functional and accessible, just off-pattern |
+| AUD-6 | F-1 | Poster cards (client/coach session detail, client sessions row) | polish | closed by the desert-night pass (`6ae3721`) — the inline `hsl(202 35% …)` gradient literals are gone from all three files; card depth now comes from the single `[class*="bg-card"]` rule in index.css (`grep -rn 'hsl(202' frontend/src` is empty) |
+| AUD-7 | C-TRK-5 | Tracker abandon | polish | fixed in `9001e44` — abandon joins the app's dialog pattern (`grep -rn window.confirm frontend/src` is empty) |
 
 Everything else checked in this pass rendered correctly: session lifecycle
 chips and detail pages on both roles, cancel/ask-to-cancel around the 24 h
@@ -272,6 +272,6 @@ verified against source before fixing. 23 items: 4 P1, 9 P2, 10 P3.
 | IMP-17 | `role="status"` + `aria-live="assertive"` conflict on the rest announcement | fixed |
 | IMP-18 | Past list bare-`<p>` empty state; now the shared `EmptyState` | fixed |
 | IMP-19 | Stray empty flex child in Home's dominant card | fixed |
-| IMP-20 | index.css hygiene: fourth hardcoded gold, three color duplicates, five dead tokens, render-blocking font `@import` | deferred — dedicated token/visual-diff PR with AUD-6 |
+| IMP-20 | index.css hygiene: fourth hardcoded gold, three color duplicates, five dead tokens, render-blocking font `@import` | mostly closed by the token passes: fourth hardcoded gold (`color: hsl(45 92% 68%)`) tokenized to `--achievement-gold-bright` in `6ae3721`; five dead tokens pruned in `9728e52`; font `@import` replaced by self-hosted fonts in `c13a335`. Still open (polish, no visual change): the duplicate-triplet sub-item — as of `c8adc6d` five tokens share `37 25% 90%` and four other triplets are each defined twice |
 
-AUD-7 (`window.confirm` abandon) remains open as previously triaged.
+AUD-7 (`window.confirm` abandon) was fixed in `9001e44` (dialog pattern).

@@ -75,17 +75,17 @@ test('standalone iOS safe areas: header clears the status bar, tabs clear the ho
   assert.match(appShell, /pb-\[calc\(6rem\+env\(safe-area-inset-bottom\)\)\]/);
 });
 
-test('install entry: native prompt when available, iOS steps otherwise, dismissible', () => {
+test('install entry: native prompt when available, per-browser steps otherwise', () => {
   // beforeinstallprompt is captured (it fires before components mount) and
-  // eligibility goes quiet once installed, standalone, or dismissed.
+  // eligibility goes quiet once installed or standalone. Dismissal only hides
+  // the client Home card (install-guide.test.js), never this menu entry.
   assert.match(pwa, /beforeinstallprompt/);
   assert.match(pwa, /event\.preventDefault\(\);/);
   assert.match(pwa, /appinstalled/);
-  assert.match(pwa, /if \(installed \|\| isStandalone\(\) \|\| isDismissed\(\)\) return null;/);
-  // Menu entry routes by mode; the iOS dialog offers a persistent dismissal.
+  assert.match(pwa, /if \(installed \|\| isStandalone\(\)\) return null;/);
+  // Menu entry opens the shared guide: native prompt or the matching steps.
   assert.match(appShell, /install-app-item/);
-  assert.match(appShell, /installMode === 'prompt' \? promptInstall\(\) : setIosHelpOpen\(true\)/);
-  assert.match(appShell, /ios-install-help/);
-  assert.match(appShell, /Add to Home Screen/);
-  assert.match(appShell, /dismissInstall\(\); setIosHelpOpen\(false\);/);
+  assert.match(appShell, /useInstallGuide\(\)/);
+  assert.match(appShell, /onClick=\{startInstall\}/);
+  assert.match(appShell, /\{installGuide\}/);
 });

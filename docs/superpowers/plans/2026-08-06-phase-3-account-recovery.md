@@ -1,6 +1,14 @@
 # Phase 3: Account Recovery + Invite Email Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status: SHIPPED (2026-08-06, PR #52 `13c9c15`).** Verified on `main` @ `c8adc6d` (2026-09-14):
+> backend `8ed589a` (`backend/src/services/accountRecovery.js`, `rateLimits.js` forgot/reset/change limiters,
+> `routes/auth.js` forgot-/reset-/change-password, `routes/clients.js` invite email + `send-password-reset` +
+> auth-email sync, `backend/test/account-recovery.test.js` 12 cases); frontend `88f0b8d` (`ForgotPassword.jsx`,
+> `ResetPassword.jsx`, `App.js` routes, Login link, Signup prefill, AppShell change-password dialog,
+> ClientDetail reset action). The boxes below are historical. The owner check-in at the end (real
+> round-trip on a real inbox) has no evidence record in the repo and remains an owner action.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Close the launch blocker of zero account recovery: forgot/reset/change password flows, a real invite email, a coach-triggered rescue reset, and profile↔auth email consistency.
 
@@ -33,7 +41,7 @@
 - `sendPasswordResetEmail({ email, name }, env?)` → generates a recovery link, emails it; throws on provider/link failure.
 - `sendInviteEmail({ client, coachName }, env?)` → emails the signup link; throws on provider failure.
 
-- [ ] Implement `backend/src/services/accountRecovery.js`:
+- [x] Implement `backend/src/services/accountRecovery.js`:
 
 ```js
 const { supabaseAdmin } = require('../supabase');
@@ -77,7 +85,7 @@ module.exports = { sendInviteEmail, sendPasswordResetEmail };
 
 ### Task 2: Rate limiters
 
-- [ ] Add to `backend/src/middleware/rateLimits.js` (patterns match existing limiters) and export:
+- [x] Add to `backend/src/middleware/rateLimits.js` (patterns match existing limiters) and export:
 
 ```js
 const forgotPasswordLimiter = createRateLimiter({
@@ -93,43 +101,43 @@ const changePasswordLimiter = createRateLimiter({
 
 ### Task 3: Auth endpoints
 
-- [ ] `POST /api/auth/forgot-password { email }` — always `200 {ok:true}` for known and unknown emails; `503` when email service unconfigured; `502` when the provider rejects the send. Looks up an active coach by email, then an active *claimed* client (`auth_user_id not null`), both via escaped `ilike` (emails are stored lowercased but legacy case tolerated).
-- [ ] `POST /api/auth/reset-password { token, password }` — password ≥8; `anonClient().auth.verifyOtp({ type: 'recovery', token_hash })`; invalid/expired → `400`; then `supabaseAdmin.auth.admin.updateUserById(user.id, { password })` → `200 {ok:true}`.
-- [ ] `POST /api/auth/change-password { current_password, new_password }` — `requireAuth` + limiter; re-verifies the current password via `signInWithPassword(req.user.email, current_password)` (`401` on mismatch), then `updateUserById(req.user.authUserId, { password: new_password })`.
+- [x] `POST /api/auth/forgot-password { email }` — always `200 {ok:true}` for known and unknown emails; `503` when email service unconfigured; `502` when the provider rejects the send. Looks up an active coach by email, then an active *claimed* client (`auth_user_id not null`), both via escaped `ilike` (emails are stored lowercased but legacy case tolerated).
+- [x] `POST /api/auth/reset-password { token, password }` — password ≥8; `anonClient().auth.verifyOtp({ type: 'recovery', token_hash })`; invalid/expired → `400`; then `supabaseAdmin.auth.admin.updateUserById(user.id, { password })` → `200 {ok:true}`.
+- [x] `POST /api/auth/change-password { current_password, new_password }` — `requireAuth` + limiter; re-verifies the current password via `signInWithPassword(req.user.email, current_password)` (`401` on mismatch), then `updateUserById(req.user.authUserId, { password: new_password })`.
 
 ### Task 4: Client routes — invite email, rescue reset, email sync
 
-- [ ] `PATCH /:id/invite`: after a successful `invited: true` update with an email present, `dispatchEmail(() => sendInviteEmail(...))` and include `invite_email: 'sent' | 'unconfigured'` in the response (never fail the toggle on email failure — `dispatchEmail` already swallows).
-- [ ] `POST /:id/send-password-reset` (coach/admin, ownership via `loadClientOr404`): `400` if the client has not claimed their account or has no email; `503` if email unconfigured; otherwise `sendPasswordResetEmail` → `200 {ok:true}`.
-- [ ] `PUT /:id`: when the email changes on a *claimed* client, first `updateUserById(auth_user_id, { email, email_confirm: true })`; "already registered" → `409`; keeps login email and profile email in lockstep.
+- [x] `PATCH /:id/invite`: after a successful `invited: true` update with an email present, `dispatchEmail(() => sendInviteEmail(...))` and include `invite_email: 'sent' | 'unconfigured'` in the response (never fail the toggle on email failure — `dispatchEmail` already swallows).
+- [x] `POST /:id/send-password-reset` (coach/admin, ownership via `loadClientOr404`): `400` if the client has not claimed their account or has no email; `503` if email unconfigured; otherwise `sendPasswordResetEmail` → `200 {ok:true}`.
+- [x] `PUT /:id`: when the email changes on a *claimed* client, first `updateUserById(auth_user_id, { email, email_confirm: true })`; "already registered" → `409`; keeps login email and profile email in lockstep.
 
 ### Task 5: Mounted-route tests (`backend/test/account-recovery.test.js`)
 
 Stub `../src/supabase` (admin auth API + table chains), `../src/middleware/auth`, and `../src/services/email` via the require cache (auto-book-mounted pattern). Cases:
-- [ ] forgot-password: known coach email → 200 + one reset email whose URL carries the generated token_hash
-- [ ] forgot-password: unknown email → 200, zero emails (no enumeration)
-- [ ] forgot-password: unconfigured email service → 503, generateLink never called
-- [ ] reset-password: verifyOtp error → 400, updateUserById not called; short password → 400
-- [ ] reset-password: valid token → updateUserById called with the new password → 200
-- [ ] change-password: wrong current password → 401, no update; happy path → 200 with update
-- [ ] invite toggle: response carries `invite_email: 'sent'`, invite email addressed to the client with the signup URL
-- [ ] send-password-reset: unclaimed client → 400, no email; claimed → 200 + email
-- [ ] PUT email change on claimed client calls auth email update; duplicate → 409
+- [x] forgot-password: known coach email → 200 + one reset email whose URL carries the generated token_hash
+- [x] forgot-password: unknown email → 200, zero emails (no enumeration)
+- [x] forgot-password: unconfigured email service → 503, generateLink never called
+- [x] reset-password: verifyOtp error → 400, updateUserById not called; short password → 400
+- [x] reset-password: valid token → updateUserById called with the new password → 200
+- [x] change-password: wrong current password → 401, no update; happy path → 200 with update
+- [x] invite toggle: response carries `invite_email: 'sent'`, invite email addressed to the client with the signup URL
+- [x] send-password-reset: unclaimed client → 400, no email; claimed → 200 + email
+- [x] PUT email change on claimed client calls auth email update; duplicate → 409
 
 ### Task 6: Frontend — pages, links, menu, coach UI
 
-- [ ] `ForgotPassword.jsx`: auth-styled page (BrandBackdrop/Card like Login); email form → `api.post('/auth/forgot-password')`; success state replaces the form ("check your email"); 503 surfaces its server message.
-- [ ] `ResetPassword.jsx`: reads `?token=`; no token → invalid-link state; password+confirm (≥8, match) → `api.post('/auth/reset-password')`; success state links to `/login`; 400 shows the expired-link message with a link to request a new one.
-- [ ] `App.js`: public routes `/forgot-password`, `/reset-password`.
-- [ ] `Login.jsx`: "Forgot password?" link (to `/forgot-password`) next to the password label.
-- [ ] `Signup.jsx`: prefill email from `?email=` query param.
-- [ ] `AppShell.jsx` UserMenu: "Change password" item + dialog (current/new/confirm, `saving` guard, toast on success) following the existing email-preferences dialog pattern.
-- [ ] `ClientDetail.jsx`: invite toast reflects `invite_email` ("Invite email sent" vs. existing manual copy); claimed clients with email get a "Send password reset" action.
-- [ ] `cd frontend && npm run build` passes.
+- [x] `ForgotPassword.jsx`: auth-styled page (BrandBackdrop/Card like Login); email form → `api.post('/auth/forgot-password')`; success state replaces the form ("check your email"); 503 surfaces its server message.
+- [x] `ResetPassword.jsx`: reads `?token=`; no token → invalid-link state; password+confirm (≥8, match) → `api.post('/auth/reset-password')`; success state links to `/login`; 400 shows the expired-link message with a link to request a new one.
+- [x] `App.js`: public routes `/forgot-password`, `/reset-password`.
+- [x] `Login.jsx`: "Forgot password?" link (to `/forgot-password`) next to the password label.
+- [x] `Signup.jsx`: prefill email from `?email=` query param.
+- [x] `AppShell.jsx` UserMenu: "Change password" item + dialog (current/new/confirm, `saving` guard, toast on success) following the existing email-preferences dialog pattern.
+- [x] `ClientDetail.jsx`: invite toast reflects `invite_email` ("Invite email sent" vs. existing manual copy); claimed clients with email get a "Send password reset" action.
+- [x] `cd frontend && npm run build` passes.
 
 ### Task 7: Verify + ship
 
-- [ ] `cd backend && npm test` all green (new tests included)
-- [ ] Scoped commits (service+limiters+routes+tests; frontend), push, PR.
+- [x] `cd backend && npm test` all green (new tests included)
+- [x] Scoped commits (service+limiters+routes+tests; frontend), push, PR.
 
 **⏸ OWNER CHECK-IN (ends Phase 3):** set/verify `RESEND_API_KEY`, `NOTIFY_REPLY_TO`, `FRONTEND_URL`, `CRON_SECRET` in Vercel backend env; approve email copy; run one real round-trip — invite a test client to a real inbox, claim the account, use "Forgot password", reset, log in. Also confirm the Supabase recovery-link expiry (default 1h) is acceptable.

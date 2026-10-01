@@ -87,14 +87,43 @@ begin
   res := public.schedule_session_series(rq5, 'hash-5', c1, k2, 60, null, '{}'::jsonb, p1, true, jsonb_build_array(
     jsonb_build_object('key','p1','scheduled_at','2031-06-03T17:00:00Z')));
   if res->>'outcome' <> 'created' then raise exception 'S7 expected created: %', res; end if;
-  if (select count(*) from public.program_assignments where program_id = p1 and client_id = k2 and archived = false) <> 1 then
-    raise exception 'S7 expected one assignment';
+  if (select count(*) from public.program_assignments a join public.programs p on p.id = a.program_id where p.source_program_id = p1 and a.client_id = k2 and a.archived = false) <> 1 then
+    raise exception 'S7 expected one cloned assignment';
+  end if;
+  if not exists (select 1 from public.programs where source_program_id = p1 and client_id = k2 and not is_template)
+     or (select count(*) from public.program_days d join public.programs p on p.id = d.program_id where p.source_program_id = p1 and p.client_id = k2) <> 2 then
+    raise exception 'S7 expected a private client program with cloned days';
   end if;
   res := public.schedule_session_series('a0000000-0000-4000-8000-000000000006', 'hash-6', c1, k2, 60, null, '{}'::jsonb, p1, true, jsonb_build_array(
     jsonb_build_object('key','p2','scheduled_at','2031-06-10T17:00:00Z')));
-  if (select count(*) from public.program_assignments where program_id = p1 and client_id = k2 and archived = false) <> 1 then
+  if (select count(*) from public.program_assignments a join public.programs p on p.id = a.program_id where p.source_program_id = p1 and a.client_id = k2 and a.archived = false) <> 1 then
     raise exception 'S7 a second series must not duplicate the assignment';
   end if;
+
+  -- S7b: a legacy live-linked assignment also prevents a duplicate clone.
+  insert into public.program_assignments (program_id, client_id) values (p1, k1);
+  perform public.schedule_session_series('a0000000-0000-4000-8000-000000000007', 'hash-7', c1, k1, 60, null, '{}'::jsonb, p1, true,
+    jsonb_build_array(jsonb_build_object('key','legacy','scheduled_at','2031-06-17T17:00:00Z')));
+  if (select count(*) from public.program_assignments where program_id = p1 and client_id = k1 and archived = false) <> 1
+     or exists (select 1 from public.programs where source_program_id = p1 and client_id = k1) then
+    raise exception 'S7b legacy assignment must not create a new clone';
+  end if;
+
+  -- S7c: clone rejection (hidden template) rolls back sessions and series together.
+  update public.programs set hidden = true where id = p1;
+  begin
+    perform public.schedule_session_series('a0000000-0000-4000-8000-000000000008', 'hash-8', c1,
+      '20000000-0000-4000-8000-0000000000b3', 60, null, '{}'::jsonb, p1, true,
+      jsonb_build_array(jsonb_build_object('key','hidden','scheduled_at','2031-06-24T17:00:00Z')));
+    raise exception 'S7c expected clone rejection';
+  exception when others then
+    if sqlerrm <> 'Program not found' then raise; end if;
+  end;
+  if exists (select 1 from public.session_series where request_id = 'a0000000-0000-4000-8000-000000000008')
+     or exists (select 1 from public.sessions where coach_id = c1 and scheduled_at = '2031-06-24T17:00:00Z') then
+    raise exception 'S7c clone failure must roll back the whole batch';
+  end if;
+  update public.programs set hidden = false where id = p1;
 
   -- S8: the receipt is immutable even after sessions are rescheduled and cancelled.
   update public.sessions set scheduled_at = scheduled_at + interval '1 day' where series_id = series_id0 and series_ordinal = 1;

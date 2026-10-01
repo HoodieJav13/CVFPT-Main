@@ -1,11 +1,11 @@
 // PWA plumbing: service-worker registration and the install-prompt store.
 // The store captures Chrome's beforeinstallprompt event (which only fires
 // once, often before any component mounts) so the menu entry can trigger it
-// later; on iOS Safari there is no prompt event, so eligibility falls back
-// to "iOS browser, not already installed" and the UI shows the
-// Add-to-Home-Screen steps instead.
+// later. Without a prompt event (iOS, Samsung Internet, in-app browsers)
+// the mode names the manual Add-to-Home-Screen steps for that browser.
 import { useSyncExternalStore } from 'react';
 import { trackProductEvent } from '@/lib/telemetry';
+import { detectInstallGuide } from '@/lib/installPlatform';
 
 const DISMISS_KEY = 'cvf_install_dismissed';
 
@@ -22,11 +22,13 @@ export function isStandalone() {
   return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 
-export function isIosBrowser() {
-  if (typeof navigator === 'undefined') return false;
-  const iosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS masquerades as macOS
-  return iosDevice;
+function phoneGuide() {
+  if (typeof navigator === 'undefined') return null;
+  return detectInstallGuide({
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    maxTouchPoints: navigator.maxTouchPoints,
+  });
 }
 
 function isDismissed() {
@@ -44,29 +46,36 @@ export function dismissInstall() {
   notify();
 }
 
-// 'prompt' → native install prompt available; 'ios' → show manual steps;
-// null → nothing to offer (already installed, dismissed, or unsupported).
+// 'prompt' → native install prompt available; otherwise a manual-steps mode
+// from detectInstallGuide; null → nothing to offer (installed or desktop).
 function computeInstallMode() {
-  if (installed || isStandalone() || isDismissed()) return null;
+  if (installed || isStandalone()) return null;
   if (deferredPrompt) return 'prompt';
-  if (isIosBrowser()) return 'ios';
-  return null;
+  return phoneGuide();
+}
+
+function subscribe(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 export function useInstallMode() {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    computeInstallMode,
-    () => null
-  );
+  return useSyncExternalStore(subscribe, computeInstallMode, () => null);
 }
 
-export async function promptInstall() {
+// The client Home card: phones only, until installed or "Not now". The menu
+// entry (useInstallMode) ignores the dismissal so it stays findable.
+function computeShowInstallCard() {
+  return Boolean(computeInstallMode() && phoneGuide() && !isDismissed());
+}
+
+export function useShowInstallCard() {
+  return useSyncExternalStore(subscribe, computeShowInstallCard, () => false);
+}
+
+export async function promptInstall(source = 'native_prompt') {
   if (!deferredPrompt) return false;
-  trackProductEvent('pwa_install_requested', { source: 'native_prompt' });
+  trackProductEvent('pwa_install_requested', { source });
   const prompt = deferredPrompt;
   deferredPrompt = null;
   notify();

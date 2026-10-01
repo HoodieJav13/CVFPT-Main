@@ -1990,6 +1990,18 @@ export function installPreviewApi(api) {
       replaceProgramDays(program.id, payload.days || []);
       return ok(programDetails(program.id), config, 201);
     }
+    // Contract parity with the real API: a client's active program assignments,
+    // each with the program it points at (preview data stays live-linked).
+    const programAssignmentsForClient = path.match(/^\/programs\/program-assignments\/client\/([^/]+)$/);
+    if (programAssignmentsForClient && method === 'get') {
+      return ok(state.programAssignments
+        .filter((a) => a.client_id === programAssignmentsForClient[1] && !a.archived)
+        .map((a) => ({
+          ...a,
+          exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === a.id && !load.archived),
+          program: programDetails(a.program_id),
+        })), config);
+    }
     if (path === '/programs/client/assigned') {
       return ok({
         programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => ({

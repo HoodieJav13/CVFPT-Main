@@ -67,7 +67,7 @@ test('schedule_session_series locks before the idempotency lookup and links in a
   assert.ok(linkSessions > insertSeries, 'sessions are linked AFTER the series row exists (foreign key)');
   assert.match(sql, /public\.check_session_slots\(/);
   assert.match(sql, /public\.schedule_session\(null,/);
-  assert.match(sql, /save_program_assignment_with_loads\(null,/);
+  assert.match(sql, /assign_program_clone\(p_program_id, p_client_id,/);
   assert.match(sql, /revoke execute on function public\.schedule_session_series\(uuid, text, uuid, uuid, integer, text, jsonb, uuid, boolean, jsonb\) from public, anon, authenticated/);
   assert.match(sql, /grant execute on function public\.schedule_session_series\(uuid, text, uuid, uuid, integer, text, jsonb, uuid, boolean, jsonb\) to service_role/);
   assert.doesNotMatch(sql, FORBIDDEN);

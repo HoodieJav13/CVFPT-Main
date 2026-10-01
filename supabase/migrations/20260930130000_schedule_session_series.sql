@@ -116,10 +116,12 @@ begin
   -- 4e. Optional program assignment (skipped when the client already has it).
   if p_assign_program and p_program_id is not null then
     if not exists (
-      select 1 from public.program_assignments
-      where program_id = p_program_id and client_id = p_client_id and archived = false
+      select 1 from public.program_assignments a
+      join public.programs p on p.id = a.program_id
+      where a.client_id = p_client_id and a.archived = false and p.archived = false
+        and (a.program_id = p_program_id or p.source_program_id = p_program_id)
     ) then
-      perform public.save_program_assignment_with_loads(null, p_program_id, p_client_id, null, '[]'::jsonb);
+      perform public.assign_program_clone(p_program_id, p_client_id, null, '[]'::jsonb);
     end if;
   end if;
 
