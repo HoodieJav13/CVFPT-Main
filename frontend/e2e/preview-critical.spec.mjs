@@ -1064,3 +1064,41 @@ test('the workout tracker links each exercise demo video, workout link first, th
   expect(box.height).toBeGreaterThanOrEqual(44);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
 });
+
+test('rest can be started manually and adjusted by 15 seconds while it runs', async ({ page }) => {
+  await page.clock.install();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+
+  const timer = page.getByTestId('rest-timer');
+  await expect(timer).toHaveCount(0);
+  // The current exercise (Goblet Squat) prescribes 90s.
+  const start = page.getByTestId('rest-start');
+  await expect(start).toHaveText(/Rest 1:30/);
+  await start.click();
+  await expect(timer).toHaveAttribute('data-rest-state', 'running');
+  await expect(timer).toContainText('1:30');
+  await expect(start).toHaveCount(0);
+
+  await page.getByTestId('rest-plus').click();
+  await expect(timer).toContainText('1:45');
+  await page.getByTestId('rest-minus').click();
+  await page.getByTestId('rest-minus').click();
+  await expect(timer).toContainText('1:15');
+  for (const id of ['rest-minus', 'rest-plus']) {
+    const box = await page.getByTestId(id).boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+
+  await page.clock.fastForward(76_000);
+  await expect(timer).toHaveAttribute('data-rest-state', 'complete');
+  await expect(page.getByTestId('rest-plus')).toHaveCount(0);
+  await timer.click();
+  await expect(timer).toHaveCount(0);
+  await expect(page.getByTestId('rest-start')).toBeVisible();
+});
