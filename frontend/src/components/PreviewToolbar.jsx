@@ -4,6 +4,9 @@ import { ChevronDown, Settings2 } from 'lucide-react';
 import {
   getPreviewClientId,
   getPreviewClients,
+  getPreviewHomeState,
+  PREVIEW_HOME_STATES,
+  setPreviewHomeState,
   getPreviewRole,
   isPreviewMode,
   onPreviewChange,
@@ -130,6 +133,17 @@ export default function PreviewToolbar() {
               <option key={client.id} value={client.id}>{client.name}</option>
             ))}
           </select>
+          {role === 'client' && (
+            <select
+              value={getPreviewHomeState()}
+              onChange={(e) => { setPreviewHomeState(e.target.value); window.location.reload(); }}
+              aria-label="Preview home state (Sarah)"
+              className="h-11 rounded-lg border border-border bg-card px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:h-8"
+              data-testid="preview-home-state-select"
+            >
+              {PREVIEW_HOME_STATES.map((value) => <option key={value} value={value}>Home: {value.replace('-', ' ')}</option>)}
+            </select>
+          )}
           {role !== 'client' && (
             <label className="flex h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-2 text-xs lg:h-8" data-testid="preview-incomplete-analytics">
               <input

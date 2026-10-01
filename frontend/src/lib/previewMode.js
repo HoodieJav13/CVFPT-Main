@@ -13,6 +13,23 @@ const {
 const PREVIEW_ROLE_KEY = 'cvf_preview_role';
 const PREVIEW_CLIENT_KEY = 'cvf_preview_client_id';
 const CHANGE_EVENT = 'cvf-preview-change';
+const PREVIEW_HOME_STATE_KEY = 'cvf_preview_home_state';
+// The six client home states (round-2 decision) so each can be reviewed on
+// sample data. 'ready' is the default fixture.
+export const PREVIEW_HOME_STATES = ['ready', 'active', 'done', 'no-workout', 'unassigned', 'unavailable'];
+
+export function getPreviewHomeState() {
+  try {
+    const value = localStorage.getItem(PREVIEW_HOME_STATE_KEY);
+    return PREVIEW_HOME_STATES.includes(value) ? value : 'ready';
+  } catch {
+    return 'ready';
+  }
+}
+
+export function setPreviewHomeState(value) {
+  try { localStorage.setItem(PREVIEW_HOME_STATE_KEY, value); } catch { /* storage blocked */ }
+}
 
 // The gate lives in previewFlag.js so consumers can check it without
 // pulling this whole fixture module into the production bundle.
@@ -38,6 +55,7 @@ const state = {
   clients: [
     { id: 'client_sarah', coach_id: 'coach_marcus', name: 'Sarah Martinez', email: 'client.demo@corevaluefitness.com', phone: '505-555-0201', goals: 'Build strength and run a 10k in spring', health_notes: 'Mild left knee tendinitis', invited: true, auth_user_id: 'auth_sarah', archived: false, created_at: iso(-120), updated_at: iso(-1) },
     { id: 'client_david', coach_id: 'coach_marcus', name: 'David Chen', email: 'david.chen@example.com', phone: '505-555-0202', goals: 'Lose 20 lbs, improve energy', health_notes: 'Hypertension, cleared by physician', invited: true, auth_user_id: null, archived: false, created_at: iso(-90), updated_at: iso(-4) },
+    { id: 'client_ana', coach_id: 'coach_marcus', name: 'Ana Lucero', email: 'ana.lucero@example.com', phone: '505-555-0204', goals: 'Run a sub-25 5K and deadlift 225 by spring', health_notes: null, invited: true, auth_user_id: null, archived: false, created_at: iso(-75), updated_at: iso(-2) },
     { id: 'client_emily', coach_id: 'coach_jordan', name: 'Emily Romero', email: 'emily.romero@example.com', phone: '505-555-0203', goals: 'Postpartum strength rebuild', health_notes: 'Core progressions only', invited: false, auth_user_id: null, archived: false, created_at: iso(-60), updated_at: iso(-6) },
   ],
   announcements: [
@@ -57,6 +75,13 @@ const state = {
     { id: 'resource_assignment_sarah', resource_id: 'resource_sarah_recovery', client_id: 'client_sarah', active: true, assigned_at: iso(-12) },
   ],
   sessions: [
+    // A busy coach day (review 2026-10-01): early sessions done, one no-show,
+    // Sarah's workout done and waiting on approval, evening still to come.
+    { id: 'session_busy_1', client_id: 'client_ana', coach_id: 'coach_marcus', scheduled_at: iso(0, 6), duration_minutes: 60, location: 'CVF Studio', status: 'completed', credit_deducted: false, archived: false, created_at: iso(-10), updated_at: iso(0, 7) },
+    { id: 'session_busy_2', client_id: 'client_david', coach_id: 'coach_marcus', scheduled_at: iso(0, 8), duration_minutes: 45, location: 'CVF Studio', status: 'completed', credit_deducted: false, archived: false, created_at: iso(-10), updated_at: iso(0, 9) },
+    { id: 'session_busy_3', client_id: 'client_ana', coach_id: 'coach_marcus', scheduled_at: iso(0, 11), duration_minutes: 30, location: 'Track', status: 'no_show', credit_deducted: false, archived: false, created_at: iso(-10), updated_at: iso(0, 12) },
+    { id: 'session_busy_4', client_id: 'client_david', coach_id: 'coach_marcus', scheduled_at: iso(0, 17), duration_minutes: 45, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-10), updated_at: iso(-1) },
+    { id: 'session_busy_5', client_id: 'client_ana', coach_id: 'coach_marcus', scheduled_at: iso(0, 19), duration_minutes: 60, location: 'Track', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-10), updated_at: iso(-1) },
     { id: 'session_today', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(0, 15), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, workout_id: 'workout_upper_a', archived: false, created_at: iso(-20), updated_at: iso(-1) },
     { id: 'session_next', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(3, 10), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-18), updated_at: iso(-1) },
     { id: 'session_done', client_id: 'client_sarah', coach_id: 'coach_marcus', scheduled_at: iso(-3, 9), duration_minutes: 60, location: 'CVF Studio', status: 'completed', credit_deducted: true, archived: false, created_at: iso(-30), updated_at: iso(-3) },
@@ -86,9 +111,17 @@ const state = {
   metrics: [
     { id: 'metric_weight', client_id: 'client_sarah', name: 'Body Weight', unit: 'lbs', improvement_direction: 'lower', target_value: 155, is_goal_measure: true, archived: false, created_at: iso(-40) },
     { id: 'metric_waist', client_id: 'client_sarah', name: 'Waist', unit: 'in', improvement_direction: 'lower', target_value: null, is_goal_measure: true, archived: false, created_at: iso(-40) },
+    { id: 'metric_5k', client_id: 'client_ana', name: '5K time', unit: 'min', improvement_direction: 'lower', target_value: 25, is_goal_measure: true, archived: false, created_at: iso(-60) },
+    { id: 'metric_deadlift', client_id: 'client_ana', name: 'Deadlift 1RM', unit: 'lb', improvement_direction: 'higher', target_value: 225, is_goal_measure: true, archived: false, created_at: iso(-60) },
     { id: 'metric_mile', client_id: 'client_david', name: 'Mile Time', unit: 'min', improvement_direction: 'lower', target_value: 7, is_goal_measure: true, archived: false, created_at: iso(-30) },
   ],
   metricEntries: [
+    { id: 'entry_5k_1', metric_id: 'metric_5k', value: 27.6, notes: null, recorded_on: dateOnly(-42), archived: false, created_at: iso(-42) },
+    { id: 'entry_5k_2', metric_id: 'metric_5k', value: 26.9, notes: null, recorded_on: dateOnly(-21), archived: false, created_at: iso(-21) },
+    { id: 'entry_5k_3', metric_id: 'metric_5k', value: 26.2, notes: 'Negative split', recorded_on: dateOnly(-4), archived: false, created_at: iso(-4) },
+    { id: 'entry_dl_1', metric_id: 'metric_deadlift', value: 185, notes: null, recorded_on: dateOnly(-45), archived: false, created_at: iso(-45) },
+    { id: 'entry_dl_2', metric_id: 'metric_deadlift', value: 200, notes: null, recorded_on: dateOnly(-24), archived: false, created_at: iso(-24) },
+    { id: 'entry_dl_3', metric_id: 'metric_deadlift', value: 210, notes: null, recorded_on: dateOnly(-6), archived: false, created_at: iso(-6) },
     { id: 'entry_w1', metric_id: 'metric_weight', value: 168, notes: null, recorded_on: dateOnly(-28), archived: false, created_at: iso(-28) },
     { id: 'entry_w2', metric_id: 'metric_weight', value: 164.5, notes: 'Morning weigh-in', recorded_on: dateOnly(-14), archived: false, created_at: iso(-14) },
     { id: 'entry_w3', metric_id: 'metric_weight', value: 162, notes: null, recorded_on: dateOnly(-2), archived: false, created_at: iso(-2) },
@@ -935,8 +968,26 @@ function saveCheckIn(clientId, payload, actorRole) {
   return existing;
 }
 
+// Puts Sarah's sample data into the chosen home state (once, at startup).
+function applyHomeScenario(scenario) {
+  const sarah = 'client_sarah';
+  if (scenario === 'active' || scenario === 'done') {
+    const result = startPreviewWorkout(sarah, { program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_1' });
+    const log = result && state.workoutLogs.find((row) => row.id === result.workout_log.id);
+    if (log && scenario === 'done') { log.status = 'completed'; log.completed_at = new Date().toISOString(); }
+  }
+  if (scenario === 'no-workout' || scenario === 'unassigned') {
+    state.programAssignments.forEach((row) => { if (row.client_id === sarah) row.archived = true; });
+    state.workoutAssignments.forEach((row) => {
+      if (row.client_id === sarah && (scenario === 'unassigned' || row.assignment_mode === 'active')) row.archived = true;
+    });
+  }
+}
+
 export function installPreviewApi(api) {
   if (!isPreviewMode) return;
+  const homeScenario = getPreviewHomeState();
+  applyHomeScenario(homeScenario);
   api.defaults.adapter = async (config) => {
     await new Promise((resolve) => setTimeout(resolve, 80));
     const method = String(config.method || 'get').toLowerCase();
@@ -944,6 +995,17 @@ export function installPreviewApi(api) {
     const payload = body(config);
     const role = getPreviewRole();
     const client = currentClient();
+
+    // Fault injection for tests: globalThis.__CVF_PREVIEW_FAIL_ONCE__ lists
+    // "get /path" entries that fail once with a 503. The 'unavailable' home
+    // state keeps the workout history failing so "couldn't load" stays put.
+    const failOnce = globalThis.__CVF_PREVIEW_FAIL_ONCE__;
+    const failKey = `${method} ${path}`;
+    if (Array.isArray(failOnce) && failOnce.includes(failKey)) {
+      failOnce.splice(failOnce.indexOf(failKey), 1);
+      return fail(config, 503, 'Preview: simulated outage');
+    }
+    if (homeScenario === 'unavailable' && failKey === 'get /workout-logs/mine') return fail(config, 503, 'Preview: simulated outage');
 
     if (path === '/auth/me' || path === '/auth/login' || path === '/auth/signup') return ok({ access_token: 'preview', refresh_token: 'preview', ...getPreviewUser() }, config);
 
@@ -962,16 +1024,24 @@ export function installPreviewApi(api) {
     if ((path === '/workout-logs/week-rhythm' || /^\/workout-logs\/clients\/[^/]+\/week-rhythm$/.test(path)) && method === 'get') {
       // Deterministic demo week: Mon/Tue done, yesterday open to make up,
       // today assigned, Friday upcoming — and a 3-week streak.
-      const now2 = new Date();
+      // Dates in Albuquerque time, like the real week-rhythm endpoint (the
+      // device clock can already be on tomorrow in UTC in the evening).
+      const denverDate = (offsetDays) => new Date(Date.now() + offsetDays * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
+      const now2 = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Denver' }));
       const mondayOffset = -(((now2.getDay() + 6) % 7));
-      const day = (offset, state, assignments) => ({ date: dateOnly(mondayOffset + offset), state, assignments });
+      const day = (offset, state, assignments) => ({ date: denverDate(mondayOffset + offset), state, assignments });
       const doneA = [{ id: 'rhythm_done_a', workout_name: 'Upper Strength A', completed: true }];
       const doneB = [{ id: 'rhythm_done_b', workout_name: 'Tempo Run Prep', completed: true }];
       const makeUp = [{ id: 'work_assign_sarah_dated', workout_name: 'Upper Body A', completed: false }];
       const todayRow = [{ id: 'work_assign_sarah_active', workout_name: 'Run Prep Mobility', completed: false }];
       const upcoming = [{ id: 'rhythm_upcoming', workout_name: 'Lower Strength A', completed: false }];
       const todayIndex = ((now2.getDay() + 6) % 7);
+      if (homeScenario === 'unassigned') {
+        return ok({ week_start: denverDate(mondayOffset), days: Array.from({ length: 7 }, (_, index) => day(index, 'rest', [])), yesterday_missed: [], week_streak: 0, week_done: 0, week_total: 0 }, config);
+      }
       const days = Array.from({ length: 7 }, (_, index) => {
+        if (index === todayIndex && homeScenario === 'no-workout') return day(index, 'rest', []);
+        if (index === todayIndex && homeScenario === 'done') return day(index, 'done', todayRow.map((a) => ({ ...a, completed: true })));
         if (index === todayIndex) return day(index, 'today', todayRow);
         if (index === todayIndex - 1 && index >= 0) return day(index, 'to_make_up', makeUp);
         if (index === 0 && todayIndex !== 0) return day(0, 'done', doneA);
@@ -981,7 +1051,7 @@ export function installPreviewApi(api) {
       });
       const flat = days.flatMap((d) => d.assignments);
       return ok({
-        week_start: dateOnly(mondayOffset),
+        week_start: denverDate(mondayOffset),
         days,
         yesterday_missed: todayIndex > 0 ? makeUp.map(({ id, workout_name }) => ({ id, workout_name })) : [],
         week_streak: 3,
