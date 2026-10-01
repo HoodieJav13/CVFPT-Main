@@ -1,14 +1,24 @@
 # Goal measures: hosted migration runbook (pending)
 
-Branch `claude/cvf-pt-design-mockups-svkujp`. Written 2026-10-01 before any
-hosted step; nothing below has been run against the hosted database yet.
-Applying it needs the owner's explicit authorization. Once authorized, an
-agent may run it with existing authenticated tooling (a linked Supabase CLI);
-creating, copying or retrieving credentials stays owner-only.
+Branch `claude/cvf-pt-design-mockups-svkujp`, PR #99. Written 2026-10-01 before
+any hosted step; nothing below has been run against either hosted database yet.
+Applying it needs the owner's explicit authorization, for development and for
+production. Once authorized, an agent may run it with existing authenticated
+tooling (the Supabase CLI already configured on the owner's machine); creating,
+copying or retrieving credentials stays owner-only.
+
+There are two hosted databases (see `CLAUDE.md` → Migrations):
+
+- **Development** `hhzpzcxcurmhpmfgriqb` (`CVFPT-Main`): the linked CLI project
+  and the database behind every backend Preview, including this branch's.
+- **Production** `dacqdoohqqcqgtpacerk` (`cvfpt-production`): backend
+  Production, real users. No seeds, test accounts or test writes here.
 
 ## What is pending
 
-Exactly one new migration on this branch versus `main`:
+Exactly one new migration on this branch versus `main` (as of `main` at
+`8691b4c`, whose latest migration is `20260930130000_schedule_session_series.sql`,
+recorded as applied to both databases on 2026-10-01):
 
 - `supabase/migrations/20260930150000_metric_goal_measures.sql`
   - `alter table public.metrics add column if not exists is_goal_measure boolean not null default false;`
@@ -38,14 +48,27 @@ existing screens.
 
 ## Order of operations
 
-1. **Confirm the pending set.** `supabase migration list --linked` should show
-   every migration up to `20260929120000_shared_training_library.sql` as
-   applied remotely and only `20260930150000_metric_goal_measures.sql` as
-   local-only. Stop if anything else is pending or the remote has a version the
-   repo lacks.
-2. **Apply (owner, authorized).** `supabase db push`, then rerun
-   `supabase migration list --linked` and confirm `20260930150000` is applied.
-3. **Verify the schema** (SQL editor, read-only):
+Explicit `--project-ref` on every command, so nothing depends on which project
+the checkout happens to be linked to.
+
+### Development (`hhzpzcxcurmhpmfgriqb`)
+
+1. **Confirm the pending set** (read-only):
+   ```sh
+   supabase migration list --project-ref hhzpzcxcurmhpmfgriqb
+   supabase db push --project-ref hhzpzcxcurmhpmfgriqb --skip-vault --dry-run
+   ```
+   Expect everything through `20260930130000` applied and only
+   `20260930150000_metric_goal_measures.sql` pending. Stop if anything else is
+   pending or the remote has a version the repo lacks.
+2. **Apply (authorized), then confirm the ledger:**
+   ```sh
+   supabase db push --project-ref hhzpzcxcurmhpmfgriqb --skip-vault
+   supabase migration list --project-ref hhzpzcxcurmhpmfgriqb
+   supabase db push --project-ref hhzpzcxcurmhpmfgriqb --skip-vault --dry-run
+   ```
+   The second dry run must report the remote up to date.
+3. **Verify the schema** (read-only SQL):
    ```sql
    select column_name, data_type, is_nullable, column_default
    from information_schema.columns
@@ -58,7 +81,7 @@ existing screens.
 
    select count(*) filter (where is_goal_measure) as on_count, count(*) as total
    from public.metrics;
-   -- expect on_count = 0
+   -- expect on_count = 0 before anyone uses the feature
    ```
 4. **Verify hosted save and read before merging: real auth against this
    branch's backend.** Do not use the Vercel Preview of the *frontend* for
@@ -72,16 +95,17 @@ existing screens.
    Run the real-auth Playwright test instead. It starts a local frontend with
    preview mode forced off (`playwright.live.config.mjs`) and signs in for
    real against the **backend** Preview deployment built from this branch's
-   head commit (the `cvfpt-backend` project; check that the deployment's
-   commit matches the head you plan to merge). Preview and Production share
-   the hosted database, so it uses only the dedicated `CVF_E2E_*` test
-   accounts; the test client must belong to the test coach and must not
-   belong to coach B.
+   head commit (`https://cvfpt-backend-git-claude-cvf-pt-design-mockups-svkujp-cvf.vercel.app`;
+   check that the deployment's commit matches the head you plan to merge).
+   That Preview uses the development database, so this step verifies
+   development only. It uses only the dedicated `CVF_E2E_*` test accounts;
+   the test client must belong to the test coach and must not belong to
+   coach B. Never point it at Production.
 
    ```sh
    cd frontend
-   CVF_E2E_BACKEND_URL=https://<branch backend preview URL> \
-   REACT_APP_BACKEND_URL=https://<branch backend preview URL> \
+   CVF_E2E_BACKEND_URL=https://cvfpt-backend-git-claude-cvf-pt-design-mockups-svkujp-cvf.vercel.app \
+   REACT_APP_BACKEND_URL=https://cvfpt-backend-git-claude-cvf-pt-design-mockups-svkujp-cvf.vercel.app \
    VERCEL_AUTOMATION_BYPASS_SECRET=<only if the preview is protected> \
    CVF_E2E_ADMIN_EMAIL=... CVF_E2E_ADMIN_PASSWORD=... \
    CVF_E2E_COACH_EMAIL=... CVF_E2E_COACH_PASSWORD=... \
@@ -94,9 +118,11 @@ existing screens.
    `/api` to `CVF_E2E_BACKEND_URL` with the bypass header (the browser stays
    same-origin); without it, the browser calls `REACT_APP_BACKEND_URL`
    directly and the backend's CORS must allow `http://127.0.0.1:4174`. No
-   Supabase key is needed: leave `SUPABASE_SERVICE_ROLE_KEY` unset. The owner
-   supplies these values (or runs the command); agents don't copy or store
-   them. The test must **pass, not skip**: a skip means the `CVF_E2E_*`
+   Supabase key is needed: leave `SUPABASE_SERVICE_ROLE_KEY` unset. The
+   test-account logins come from local settings on the machine that runs the
+   test; the Supabase CLI does not supply them. Check which variables are
+   already set (names only, never values) and report only what is missing;
+   agents don't print, copy or store the values. The test must **pass, not skip**: a skip means the `CVF_E2E_*`
    variables were missing and nothing was verified.
 
    What the test (`frontend/e2e/live-auth.spec.mjs`, "hosted goal measures
@@ -130,11 +156,25 @@ existing screens.
    where name like 'CVF LIVE GOAL %' order by created_at desc limit 10;
    -- expect archived = true on every row
    ```
-5. **Label the PR** `migration-applied` (the `migration-guard` workflow blocks
-   the merge without it; `migrations-in-flight` allows one unapplied PR).
-6. **Merge as a separate, deliberate step.** Merging auto-deploys both
-   Production projects. Run the usual post-deploy checks (health, CORS, a
-   client and a coach dashboard load) afterwards.
+
+### Production (`dacqdoohqqcqgtpacerk`, authorized separately)
+
+5. **Confirm, apply and confirm the ledger**: steps 1–2 with
+   `--project-ref dacqdoohqqcqgtpacerk`. Expect the same single pending file.
+6. **Verify the schema**: the step 3 SQL against Production (read-only). No
+   live test, test account or write against Production; the development
+   run in step 4 is the behavioral check, and the code is identical.
+
+### Release
+
+7. **Label the PR** `migration-applied` after development passes steps 1–4,
+   and `prod-migration-applied` after Production passes steps 5–6. The
+   `migration-guard` workflow blocks the merge without both;
+   `migrations-in-flight` fails if another open PR also has an unapplied
+   migration.
+8. **Merge as a separate, deliberate step (owner).** Merging deploys both
+   Production projects. Afterwards: health, CORS, the rendered login page,
+   and a coach and a client dashboard load. Record the results here.
 
 ## Not covered by the preview suite
 
@@ -148,10 +188,10 @@ Step 4 is.
 
 | Step | Who |
 |---|---|
-| Draft PR, deployment URLs, CI, the `migration-applied` label, recording results | Agent |
-| Authorize the migration; arrange test access if it isn't configured | Owner |
-| Steps 1–3 (pending set, apply, schema SQL) | Agent with existing authenticated tooling, after authorization (or the owner) |
-| Step 4 (focused hosted test, then the full real-auth suite) | Agent, once the `CVF_E2E_*` test access is configured |
+| Draft PR, deployment URLs, CI, both migration labels, recording results | Agent |
+| Authorize the migration (development and Production); arrange test access if it isn't configured | Owner |
+| Steps 1–3 and 5–6 (pending set, apply, ledger, schema SQL) in each database | Agent with existing authenticated tooling, after authorization (or the owner) |
+| Step 4 (focused hosted test, then the full real-auth suite, development only) | Agent, once the `CVF_E2E_*` test access is configured |
 | Phone checks below | Owner or another tester; the agent prepares the setup |
 | Merge | Owner only (`.agentic/PROJECT_POLICY.md`) |
 | Post-deploy checks (health, CORS, test-account dashboards) | Agent |
