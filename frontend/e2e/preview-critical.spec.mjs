@@ -736,22 +736,29 @@ test('offline finish queues completion, defers celebration, and syncs on reconne
   expect(outboxes).toBe(0);
 });
 
-test('session conflicts surface inline, clear on relevant edits, and keep refused bookings pending', async ({ page }) => {
+async function runConflictFlow(page) {
   await usePreviewRole(page, 'coach');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/coach/sessions', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('session-create-button')).toBeVisible();
 
+  // Days are computed in the BROWSER (so a fixed browser clock and timezone stay consistent with the
+  // calendar) and chosen by the full date. Selecting by the day NUMBER alone is ambiguous at month
+  // boundaries: on Sept 30 the calendar also shows "Sunday, August 30th" as a leading day, listed first.
   const pickDay = async (offsetDays) => {
     const panel = page.getByTestId('session-datetime-input-panel');
-    const target = new Date();
-    target.setDate(target.getDate() + offsetDays);
-    if (target.getMonth() !== new Date().getMonth()) {
-      await panel.getByRole('button', { name: /next/i }).click();
-    }
-    await panel.getByRole('grid')
-      .getByRole('button', { name: new RegExp(`\\b${target.getDate()}(st|nd|rd|th)?\\b`) })
-      .first().click();
+    const { dateKey, sameMonth } = await page.evaluate((offset) => {
+      const now = new Date();
+      const target = new Date(now);
+      target.setDate(target.getDate() + offset);
+      const pad = (n) => String(n).padStart(2, '0');
+      return {
+        dateKey: `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`,
+        sameMonth: target.getMonth() === now.getMonth(),
+      };
+    }, offsetDays);
+    if (!sameMonth) await panel.getByRole('button', { name: /next/i }).click();
+    await panel.locator(`[data-day="${dateKey}"]`).getByRole('button').click();
   };
 
   // Overlapping the fixture 3:00 PM session as the same coach is a hard
@@ -784,4 +791,20 @@ test('session conflicts surface inline, clear on relevant edits, and keep refuse
   await expect(page.getByTestId('booking-conflict-note')).toBeVisible();
   await expect(page.getByTestId('booking-conflict-note')).toContainText('The request stays pending');
   await expect(page.getByTestId('sessions-booking-row')).toHaveCount(1);
+}
+
+test('session conflicts surface inline, clear on relevant edits, and keep refused bookings pending', async ({ page }) => {
+  await runConflictFlow(page);
+});
+
+// Date-boundary regression: the same flow under fixed browser clocks, including month ends where the
+// calendar shows leading days from the previous month (the reproduced failure was Sept 30).
+test.describe('session conflict flow at month boundaries', () => {
+  test.use({ timezoneId: 'America/Denver' });
+  for (const instant of ['2026-09-30T22:54:00-06:00', '2026-10-01T06:29:00-06:00', '2026-01-31T12:00:00-07:00', '2026-03-31T12:00:00-06:00']) {
+    test(`at ${instant}`, async ({ page }) => {
+      await page.clock.setFixedTime(new Date(instant));
+      await runConflictFlow(page);
+    });
+  }
 });
