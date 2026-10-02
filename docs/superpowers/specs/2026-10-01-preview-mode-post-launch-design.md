@@ -189,8 +189,18 @@ restoring a snapshot erases other requests' saves that completed in between.
 
 **A fault never hides a missing or unsupported route.** Those routes are not in the table, so a save
 to one reaches the handler chain and its 404 or 422 passes through unchanged, without consuming the
-switch. For "Fail loads" the read handler runs first — reads do not change fixture data — and only a
-result that is not a missing or unsupported route is replaced by the 503.
+switch.
+
+**"Fail loads" and reads that change data (as built, after review).** Most reads change nothing, so
+for those the handler runs first and only a result that is not a missing or unsupported route is
+replaced by the 503. Two reads do change data — loading a conversation (`GET /messages/mine`,
+`GET /messages/with/:id`) marks its messages read. The first implementation ran them too, so a load
+that "failed" still cleared the unread count. They are now listed in `READS_THAT_CHANGE_DATA` and
+failed *before* their handler runs; being listed is what identifies them as known routes.
+
+The assumption is enforced rather than trusted: every other read is compared before and after it
+runs (read handlers complete synchronously, so no other request can interfere), and one that changes
+fixture data without being listed logs `cvf-preview/mutating-read`, which fails the suite.
 
 **The table is kept honest by the suite.** A save the handler chain serves that is absent from the
 table logs `cvf-preview/unlisted-save`; the shared test fixture fails on it, the same way it fails

@@ -7,16 +7,20 @@ import { test as base, expect } from '@playwright/test';
 const MISSING_MOCK_MARKER = 'cvf-preview/missing-mock';
 // A save the mock served that "Fail next save" does not know about.
 const UNLISTED_SAVE_MARKER = 'cvf-preview/unlisted-save';
+// A read that changed fixture data without being declared as one that does.
+const MUTATING_READ_MARKER = 'cvf-preview/mutating-read';
 
 export const test = base.extend({
   allowMissingMocks: [false, { option: true }],
   missingMocks: [async ({ context, allowMissingMocks }, use) => {
     const hits = [];
     const unlistedSaves = [];
+    const mutatingReads = [];
     const onConsole = (message) => {
       const text = message.text();
       if (text.startsWith(MISSING_MOCK_MARKER)) hits.push(text.slice(MISSING_MOCK_MARKER.length).trim());
       if (text.startsWith(UNLISTED_SAVE_MARKER)) unlistedSaves.push(text.slice(UNLISTED_SAVE_MARKER.length).trim());
+      if (text.startsWith(MUTATING_READ_MARKER)) mutatingReads.push(text.slice(MUTATING_READ_MARKER.length).trim());
     };
     context.on('console', onConsole);
     await use(hits);
@@ -24,6 +28,11 @@ export const test = base.extend({
     if (unlistedSaves.length) {
       throw new Error(`Preview save routes missing from PREVIEW_SAVE_ROUTES:\n${[...new Set(unlistedSaves)].map((hit) => `  ${hit}`).join('\n')}\n`
         + 'Add each one to PREVIEW_SAVE_ROUTES in frontend/src/lib/previewMode.js so "Fail next save" can apply to it.');
+    }
+    if (mutatingReads.length) {
+      throw new Error(`Preview reads changed fixture data:\n${[...new Set(mutatingReads)].map((hit) => `  ${hit}`).join('\n')}\n`
+        + 'A read must not change fixture data. If the real route does (like marking messages read), list it in '
+        + 'READS_THAT_CHANGE_DATA in frontend/src/lib/previewMode.js so "Fail loads" fails it before its handler runs.');
     }
     if (!allowMissingMocks && hits.length) {
       throw new Error(`Preview routes with no mock were requested:\n${[...new Set(hits)].map((hit) => `  ${hit}`).join('\n')}\n`

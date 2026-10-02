@@ -110,12 +110,24 @@ const PREVIEW_SAVE_ROUTES = [
   ['post', /^\/waivers\/client\/([^/]+)\/sign-paper$/],
 ];
 
+// Reads that change fixture data as a side effect: loading a conversation
+// marks its messages read. "Fail loads" fails these BEFORE the handler runs,
+// so a load that failed leaves the unread state alone. Every other read is
+// checked each time it runs: one that changes fixture data without being
+// listed here logs cvf-preview/mutating-read, which fails the preview
+// browser suite.
+const READS_THAT_CHANGE_DATA = [
+  ['get', /^\/messages\/mine$/],
+  ['get', /^\/messages\/with\/([^/]+)$/],
+];
+
 const PREVIEW_LATENCY_KEY = 'cvf_preview_latency';
 const PREVIEW_FAIL_KEY = 'cvf_preview_fail';
 // Not CHANGE_EVENT: AuthContext answers that one by replacing the user
 // object, which would re-run user-dependent effects mid-save.
 const SWITCH_EVENT = 'cvf-preview-switch-change';
 const UNLISTED_SAVE_MARKER = 'cvf-preview/unlisted-save';
+const MUTATING_READ_MARKER = 'cvf-preview/mutating-read';
 const SPEED_MS = { slow: 1500, 'very-slow': 4000 };
 const FAIL_MODES = ['write-once', 'reads'];
 // Every key Reset removes. Anything not matched here is left alone, because a
@@ -1240,6 +1252,10 @@ function isPreviewRead(method, path) {
 
 function isKnownSave(method, path) {
   return PREVIEW_SAVE_ROUTES.some(([saveMethod, pattern]) => saveMethod === method && pattern.test(path));
+}
+
+function readChangesData(method, path) {
+  return READS_THAT_CHANGE_DATA.some(([readMethod, pattern]) => readMethod === method && pattern.test(path));
 }
 
 function isPreviewGap(error) {
@@ -2683,18 +2699,33 @@ export function installPreviewApi(api) {
       return fail(config, 503, 'Simulated failure (preview)');
     }
 
-    // Fail loads: read handlers do not change fixture data, so the handler
-    // runs first purely to let a missing or unsupported route pass through.
-    if (mode === 'reads' && read) {
-      try {
-        await route(config);
-      } catch (error) {
-        if (isPreviewGap(error)) throw error;
+    // A read handler runs to completion inside the route() call (none of them
+    // awaits), so comparing fixture data just before and just after cannot be
+    // disturbed by another request. This keeps READS_THAT_CHANGE_DATA honest.
+    const runCheckedRead = () => {
+      const before = JSON.stringify(state);
+      const pending = route(config);
+      if (JSON.stringify(state) !== before) console.error(`${MUTATING_READ_MARKER} ${method.toUpperCase()} ${path}`);
+      return pending;
+    };
+
+    if (read) {
+      const changesData = readChangesData(method, path);
+      if (mode !== 'reads') return changesData ? route(config) : runCheckedRead();
+      // Fail loads. A read that changes data is failed without running its
+      // handler; it is a known route by being listed. Any other read runs
+      // first, purely so a missing or unsupported route passes through.
+      if (!changesData) {
+        try {
+          await runCheckedRead();
+        } catch (error) {
+          if (isPreviewGap(error)) throw error;
+        }
       }
       return fail(config, 503, 'Simulated failure (preview)');
     }
 
-    if (read || knownSave) return route(config);
+    if (knownSave) return route(config);
 
     // A save that is not in PREVIEW_SAVE_ROUTES: fine when it is a missing or
     // unsupported route, a bug in the table when the chain actually served it.

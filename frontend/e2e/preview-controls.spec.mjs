@@ -208,3 +208,37 @@ test('on a phone the opened panel shows the test-state controls directly and fit
   await page.getByTestId('preview-toolbar-toggle').click();
   await expect(page.getByTestId('preview-modified-marker').first()).toBeVisible();
 });
+
+// Loading a conversation marks its messages read. A load that "fails" must
+// not: the handler may not run at all for reads that change data.
+test('a failed coach conversation load preserves the unread message', async ({ page }) => {
+  await openCoach(page);
+  const unreadFor = async (clientId) => (await callPreviewApi(page, 'get', '/messages/threads')).data
+    .find((row) => row.client_id === clientId).unread;
+  expect(await unreadFor('client_david')).toBe(1);
+
+  await setFail(page, 'reads');
+  expect((await callPreviewApi(page, 'get', '/messages/with/client_david')).status).toBe(503);
+  await setFail(page, null);
+  expect(await unreadFor('client_david')).toBe(1);
+
+  // A load that succeeds still marks it read, as the real app does.
+  expect((await callPreviewApi(page, 'get', '/messages/with/client_david')).status).toBe(200);
+  expect(await unreadFor('client_david')).toBe(0);
+});
+
+test('a failed client inbox load preserves the unread coach message', async ({ page }) => {
+  await usePreviewRole(page, 'client');
+  await page.goto('/client');
+  await expect(page.getByTestId('preview-toolbar')).toBeVisible();
+  await setFail(page, 'reads');
+  expect((await callPreviewApi(page, 'get', '/messages/mine')).status).toBe(503);
+  await setFail(page, null);
+
+  // Read the flag back as the coach, without reloading (a reload rebuilds the fixtures).
+  await page.evaluate(() => localStorage.setItem('cvf_preview_role', 'coach'));
+  const thread = await callPreviewApi(page, 'get', '/messages/with/client_sarah');
+  const fromCoach = thread.data.messages.find((message) => message.id === 'msg_1');
+  expect(fromCoach.sender_role).toBe('coach');
+  expect(fromCoach.read_by_recipient).toBe(false);
+});
