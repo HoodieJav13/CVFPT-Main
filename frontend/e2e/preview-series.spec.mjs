@@ -143,3 +143,56 @@ test('a reload clears a pending recurring save left by a preview coach', async (
   expect(keys).toEqual(['cvf_series_pending:3f2b8c1e-1111-4222-8333-444455556666:client_x']);
   await expect(page.getByTestId('series-unknown')).toHaveCount(0);
 });
+test('"also assign this program" gives a client without it a private, editable copy', async ({ page }) => {
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_david');
+  await page.getByTestId('tab-programs').click();
+  await expect(page.getByTestId('assigned-program-card')).toHaveCount(0);
+
+  const created = await callPreviewApi(page, 'post', '/sessions/series',
+    createBody('client_david', '55555555-5555-4555-8555-555555555555', { program_id: 'program_foundation', assign_program: true }));
+  expect(created.status).toBe(201);
+
+  // In-app navigation keeps the in-memory fixtures; a reload would rebuild them.
+  await page.getByTestId('preview-quick-link').filter({ hasText: 'Clients' }).first().click();
+  await page.getByTestId('client-row').filter({ hasText: 'David Chen' }).click();
+  await page.getByTestId('tab-programs').click();
+  const copy = page.getByTestId('assigned-program-card').filter({ hasText: 'Foundation Strength - Phase 1' });
+  await expect(copy).toHaveCount(1);
+  // Only a client copy offers Edit; a template assigned directly does not.
+  await expect(copy.getByTestId('edit-client-workout-button').first()).toBeVisible();
+});
+
+test('a client who already has the program, or a copy of it, gets no second assignment', async ({ page }) => {
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  await expect(page.getByTestId('assigned-program-card').first()).toBeVisible();
+  const before = await page.getByTestId('assigned-program-card').count();
+
+  const created = await callPreviewApi(page, 'post', '/sessions/series',
+    createBody('client_sarah', '66666666-6666-4666-8666-666666666666', { program_id: 'program_foundation', assign_program: true }));
+  expect(created.status).toBe(201);
+
+  await page.getByTestId('preview-quick-link').filter({ hasText: 'Clients' }).first().click();
+  await page.getByTestId('client-row').filter({ hasText: 'Sarah Martinez' }).click();
+  await page.getByTestId('tab-programs').click();
+  await expect(page.getByTestId('assigned-program-card').first()).toBeVisible();
+  await expect(page.getByTestId('assigned-program-card')).toHaveCount(before);
+});
+test('each program day gets its own workout copy, owned by the client\'s coach', async ({ page }) => {
+  await openCoach(page);
+  // Hybrid Strength: days 1 and 4 both use the Lower Strength A template.
+  const created = await callPreviewApi(page, 'post', '/sessions/series',
+    createBody('client_david', '88888888-8888-4888-8888-888888888888', { program_id: 'program_hybrid', assign_program: true }));
+  expect(created.status).toBe(201);
+
+  const workouts = (await callPreviewApi(page, 'get', '/programs/workouts')).data;
+  const davidCopies = workouts.filter((workout) => workout.client_id === 'client_david' && workout.is_template === false);
+  expect(davidCopies).toHaveLength(4);
+  expect(new Set(davidCopies.map((workout) => workout.id)).size).toBe(4);
+  expect(davidCopies.filter((workout) => workout.source_workout_id === 'workout_lower_a')).toHaveLength(2);
+  expect(davidCopies.every((workout) => workout.coach_id === 'coach_marcus')).toBe(true);
+  expect(davidCopies.map((workout) => workout.name).sort()).toEqual(
+    ['Lower Strength A', 'Lower Strength A', 'Run Prep Mobility', 'Upper Strength A']);
+});

@@ -911,9 +911,62 @@ function withSeries(row) {
   return series ? { ...row, series: { id: series.id, rule: series.rule, created_count: series.created_count } } : row;
 }
 
-// Implemented in the next task: mirrors assign_program_clone.
-function previewAssignProgramClone() {
-  return null;
+// Mirrors schedule_session_series step 4e and assign_program_clone
+// (supabase/migrations/20260929120000_shared_training_library.sql): skip when
+// the client already has the program or a copy sourced from it; otherwise
+// assign a private client copy. Like the real function: the source must be an
+// unhidden template, the copy keeps the template's name, the copy and its
+// workouts belong to the CLIENT'S coach, and every program day gets its OWN
+// workout copy even when two days share one template workout — so editing one
+// day never changes another.
+function previewAssignProgramClone(programId, clientId) {
+  const alreadyAssigned = state.programAssignments.some((assignment) => {
+    if (assignment.archived || assignment.client_id !== clientId) return false;
+    const program = state.programs.find((item) => item.id === assignment.program_id);
+    return Boolean(program) && !program.archived && (program.id === programId || program.source_program_id === programId);
+  });
+  if (alreadyAssigned) return null;
+  // Template fixtures omit is_template; client copies carry is_template: false.
+  const source = state.programs.find((item) => item.id === programId && !item.archived && item.is_template !== false && !item.hidden);
+  const client = clientById(clientId);
+  if (!source || !client || client.archived || !client.coach_id) return null;
+
+  const stamp = new Date().toISOString();
+  const copy = {
+    id: id('program'), coach_id: client.coach_id, name: source.name, description: source.description,
+    frequency_days: source.frequency_days, is_template: false, client_id: client.id, source_program_id: source.id,
+    hidden: false, archived: false, created_at: stamp, updated_at: stamp,
+  };
+  state.programs.push(copy);
+
+  state.programDays
+    .filter((day) => day.program_id === source.id && !day.archived)
+    .sort((first, second) => first.day_number - second.day_number)
+    .forEach((day) => {
+      const workout = state.workouts.find((item) => item.id === day.workout_id);
+      let workoutCopyId = null;
+      if (workout) {
+        workoutCopyId = id('workout');
+        state.workouts.push({
+          ...workout, id: workoutCopyId, coach_id: client.coach_id, is_template: false, client_id: client.id,
+          source_workout_id: workout.id, hidden: false, archived: false, created_at: stamp, updated_at: stamp,
+        });
+        state.workoutExercises
+          .filter((exercise) => exercise.workout_id === workout.id && !exercise.archived)
+          .forEach((exercise) => state.workoutExercises.push({ ...exercise, id: id('wex'), workout_id: workoutCopyId, created_at: stamp }));
+      }
+      state.programDays.push({
+        id: id('day'), program_id: copy.id, day_number: day.day_number, workout_id: workoutCopyId,
+        notes: day.notes, archived: false, created_at: stamp,
+      });
+    });
+
+  const assignment = {
+    id: id('assign'), program_id: copy.id, client_id: client.id, notes: null, archived: false, created_at: stamp,
+    client: { id: client.id, name: client.name },
+  };
+  state.programAssignments.push(assignment);
+  return assignment;
 }
 
 // Fixtures rebuild on every load, so a pending recurring save from an earlier
