@@ -111,6 +111,9 @@ of unreleased features and UI on Vercel preview links, design QA, and the
   state and are listed, with a reason, in `PREVIEW_UNSUPPORTED` in the mock.
   Any unexpected missing mock exercised by the preview browser suite must fail
   that suite.
+- New preview browser specs import `test` from `frontend/e2e/preview-test.mjs`,
+  not `@playwright/test`; that shared fixture enforces the missing-mock,
+  unlisted-save, and data-changing-read checks.
 - **Preview verifies UI behavior.** It does not prove real authorization,
   server validation, database behavior, or delivery of emails and push
   notifications. Use backend/database tests and relevant integration checks
