@@ -1,0 +1,21 @@
+{
+  "baselineSha": "6b97812df776243215d7578cc4787ddf0e05b8a1",
+  "layouts": 56,
+  "inlineOnlyLayouts": 28,
+  "plainTextComparisons": 7,
+  "blockedImageLayouts": 2,
+  "textAndButtonContrast": ">=4.5:1 in every layout",
+  "pageErrors": [],
+  "externalRequests": 0,
+  "screenshots": [
+    "scheduled-mobile-light.png",
+    "scheduled-desktop-light.png",
+    "scheduled-mobile-dark.png",
+    "scheduled-desktop-dark.png",
+    "cancelled-mobile-light.png",
+    "cancelled-desktop-light.png",
+    "cancelled-mobile-dark.png",
+    "cancelled-desktop-dark.png"
+  ],
+  "limitation": "Chromium rendering with real color-scheme CSS and locally fulfilled original PNG; actual Yahoo/Gmail/Outlook rendering and delivery not tested."
+}
