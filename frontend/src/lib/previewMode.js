@@ -1,6 +1,9 @@
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
 import { normalizeSupersets } from '@/lib/supersets';
+import {
+  checkSlots, expandSeriesRule, parseRule, pastError, slotHorizonError, todayInDenver,
+} from './previewSeries.js';
 
 const {
   csvTemplate,
@@ -14,6 +17,132 @@ const {
 const PREVIEW_ROLE_KEY = 'cvf_preview_role';
 const PREVIEW_CLIENT_KEY = 'cvf_preview_client_id';
 const CHANGE_EVENT = 'cvf-preview-change';
+// Fixed prefix read by the Playwright fixture in e2e/preview-test.mjs.
+const MISSING_MOCK_MARKER = 'cvf-preview/missing-mock';
+
+// Routes preview deliberately does not mock. Every entry needs a reason.
+// Anything not handled and not listed here is a missing mock and fails the
+// preview browser suite.
+const PREVIEW_UNSUPPORTED = [];
+
+// Every mocked route that changes fixture data: [method, pattern], in the
+// order the handler chain serves them, each pattern copied from its branch.
+// "Fail next save" consults this BEFORE the handler runs, so a simulated
+// failure never changes data, never emits a handler's events, and never hides
+// a missing mock. Add a route here when you add a save handler: a save the
+// chain serves that is missing from this table logs
+// cvf-preview/unlisted-save, which fails the preview browser suite.
+const PREVIEW_SAVE_ROUTES = [
+  ['post', /^\/workout-logs\/start$/],
+  ['post', /^\/workout-logs\/quick-complete$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/sets\/([^/]+)\/archive$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/sets\/([^/]+)$/],
+  ['post', /^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/sets$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/notes$/],
+  ['post', /^\/workout-logs\/([^/]+)\/complete-all$/],
+  ['post', /^\/workout-logs\/([^/]+)\/abandon$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/coach-feedback\/read$/],
+  ['put', /^\/workout-logs\/([^/]+)\/coach-response$/],
+  ['post', /^\/workout-logs\/([^/]+)\/complete$/],
+  ['post', /^\/announcements$/],
+  ['patch', /^\/announcements\/([^/]+)\/read$/],
+  ['patch', /^\/announcements\/([^/]+)\/archive$/],
+  ['patch', /^\/notifications\/read-all$/],
+  ['patch', /^\/notifications\/([^/]+)\/read$/],
+  ['post', /^\/clients$/],
+  ['post', /^\/resource-categories$/],
+  ['post', /^\/resources$/],
+  ['patch', /^\/resources\/([^/]+)$/],
+  ['post', /^\/resources\/([^/]+)\/assign$/],
+  ['patch', /^\/resources\/([^/]+)\/assignments\/([^/]+)$/],
+  ['put', /^\/clients\/([^/]+)$/],
+  ['patch', /^\/clients\/([^/]+)\/invite$/],
+  ['patch', /^\/clients\/([^/]+)\/archive$/],
+  ['post', /^\/admin\/coaches$/],
+  ['patch', /^\/admin\/clients\/([^/]+)\/reassign$/],
+  ['post', /^\/sessions\/series$/],
+  ['patch', /^\/sessions\/series\/([^/]+)\/cancel$/],
+  ['post', /^\/sessions$/],
+  ['put', /^\/sessions\/([^/]+)$/],
+  ['patch', /^\/sessions\/([^/]+)\/complete$/],
+  ['patch', /^\/sessions\/([^/]+)\/cancel$/],
+  ['post', /^\/sessions\/([^/]+)\/notes$/],
+  ['put', /^\/sessions\/notes\/([^/]+)$/],
+  ['patch', /^\/availability\/auto-book$/],
+  ['put', /^\/availability\/windows$/],
+  ['post', /^\/availability\/overrides$/],
+  ['delete', /^\/availability\/overrides\/([^/]+)$/],
+  ['post', /^\/availability\/time-off$/],
+  ['delete', /^\/availability\/time-off\/([^/]+)$/],
+  ['post', /^\/bookings$/],
+  ['patch', /^\/bookings\/([^/]+)\/(approve|decline)$/],
+  ['post', /^\/progress\/clients\/([^/]+)\/metrics$/],
+  ['patch', /^\/progress\/metrics\/([^/]+)$/],
+  ['post', /^\/progress\/metrics\/([^/]+)\/entries$/],
+  ['put', /^\/progress\/entries\/([^/]+)$/],
+  ['patch', /^\/progress\/metrics\/([^/]+)\/archive$/],
+  ['post', /^\/check-ins\/mine$/],
+  ['post', /^\/check-ins\/clients\/([^/]+)$/],
+  ['put', /^\/check-ins\/([^/]+)$/],
+  ['post', /^\/programs\/exercise-library$/],
+  ['post', /^\/programs\/exercise-library\/import$/],
+  ['put', /^\/programs\/exercise-library\/([^/]+)$/],
+  ['patch', /^\/programs\/exercise-library\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/workouts$/],
+  ['put', /^\/programs\/workouts\/([^/]+)$/],
+  ['patch', /^\/programs\/workouts\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/workout-assignments$/],
+  ['put', /^\/programs\/workout-assignments\/([^/]+)\/loads$/],
+  ['patch', /^\/programs\/workout-assignments\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/import\/commit$/],
+  ['post', /^\/programs$/],
+  ['put', /^\/programs\/([^/]+)$/],
+  ['patch', /^\/programs\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/([^/]+)\/assign$/],
+  ['put', /^\/programs\/assignments\/([^/]+)\/loads$/],
+  ['patch', /^\/programs\/assignments\/([^/]+)\/archive$/],
+  ['post', /^\/messages\/mine$/],
+  ['patch', /^\/messages\/availability$/],
+  ['patch', /^\/sessions\/([^/]+)\/ask-cancel$/],
+  ['post', /^\/messages\/with\/([^/]+)$/],
+  ['post', /^\/waivers\/versions$/],
+  ['post', /^\/waivers\/sign$/],
+  ['post', /^\/waivers\/client\/([^/]+)\/sign-paper$/],
+];
+
+// Reads that change fixture data as a side effect: loading a conversation
+// marks its messages read. "Fail loads" fails these BEFORE the handler runs,
+// so a load that failed leaves the unread state alone. Every other read is
+// checked each time it runs: one that changes fixture data without being
+// listed here logs cvf-preview/mutating-read, which fails the preview
+// browser suite.
+const READS_THAT_CHANGE_DATA = [
+  ['get', /^\/messages\/mine$/],
+  ['get', /^\/messages\/with\/([^/]+)$/],
+];
+
+const PREVIEW_LATENCY_KEY = 'cvf_preview_latency';
+const PREVIEW_FAIL_KEY = 'cvf_preview_fail';
+// Not CHANGE_EVENT: AuthContext answers that one by replacing the user
+// object, which would re-run user-dependent effects mid-save.
+const SWITCH_EVENT = 'cvf-preview-switch-change';
+const UNLISTED_SAVE_MARKER = 'cvf-preview/unlisted-save';
+const MUTATING_READ_MARKER = 'cvf-preview/mutating-read';
+const SPEED_MS = { slow: 1500, 'very-slow': 4000 };
+const FAIL_MODES = ['write-once', 'reads'];
+// Every key Reset removes. Anything not matched here is left alone, because a
+// local dev origin is shared with real-auth sessions.
+const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// POSTs that change no fixture data. Without this, previewing dates — or the
+// background telemetry ping every page sends — would consume "fail next
+// save" before anything is saved.
+const READ_LIKE_POSTS = [
+  /^\/telemetry\/events$/,
+  /^\/sessions\/series\/preview$/,
+  /^\/sessions\/series\/check$/,
+  /^\/programs\/import\/parse-(csv|paste|pdf)$/,
+];
 
 // The gate lives in previewFlag.js so consumers can check it without
 // pulling this whole fixture module into the production bundle.
@@ -65,6 +194,24 @@ const state = {
     // Jordan's client — renders as a masked busy block on Marcus's
     // studio calendar (roadmap-v3 D1).
     { id: 'session_emily', client_id: 'client_emily', coach_id: 'coach_jordan', scheduled_at: iso(1, 9), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-8), updated_at: iso(-1) },
+    // A seeded weekly series (David with Marcus): two past, four upcoming, so
+    // the badge and "this and all future" cancel are reviewable without
+    // creating one. 12:00 sits outside Marcus's availability windows and clear
+    // of session_david and the seeded time off. Not on Sarah.
+    ...[-10, -3, 4, 11, 18, 25].map((days, index) => ({
+      id: `session_david_series_${index + 1}`, client_id: 'client_david', coach_id: 'coach_marcus',
+      scheduled_at: iso(days, 12), duration_minutes: 45, location: 'CVF Studio',
+      status: days < 0 ? 'completed' : 'scheduled', credit_deducted: false,
+      series_id: 'series_david', series_ordinal: index + 1,
+      archived: false, created_at: iso(-12), updated_at: iso(-12),
+    })),
+  ],
+  sessionSeries: [
+    {
+      id: 'series_david', request_id: 'seed_series_david', request_fingerprint: 'seed', client_id: 'client_david', coach_id: 'coach_marcus',
+      rule: { start_date: dateOnly(-10), time: '12:00', weekdays: [new Date(iso(-10, 12)).getDay()], interval_weeks: 1, end: { count: 6 } },
+      created_count: 6, receipt: { slots: [] }, created_at: iso(-12),
+    },
   ],
   sessionNotes: [
     { id: 'note_1', session_id: 'session_done', coach_id: 'coach_marcus', content: 'Great pacing today. Keep squats controlled and pain-free.', shared_with_client: true, archived: false, created_at: iso(-3, 11), updated_at: iso(-3, 11) },
@@ -222,6 +369,72 @@ function emitChange() {
 export function onPreviewChange(cb) {
   window.addEventListener(CHANGE_EVENT, cb);
   return () => window.removeEventListener(CHANGE_EVENT, cb);
+}
+
+function emitSwitchChange() {
+  window.dispatchEvent(new CustomEvent(SWITCH_EVENT));
+}
+
+export function onPreviewSwitchChange(cb) {
+  window.addEventListener(SWITCH_EVENT, cb);
+  return () => window.removeEventListener(SWITCH_EVENT, cb);
+}
+
+export function getPreviewSpeed() {
+  try {
+    const rules = JSON.parse(localStorage.getItem(PREVIEW_LATENCY_KEY) || '[]');
+    if (!Array.isArray(rules) || rules.length !== 1 || rules[0].path !== '.*') return 'normal';
+    return Object.keys(SPEED_MS).find((name) => SPEED_MS[name] === rules[0].ms) || 'normal';
+  } catch {
+    return 'normal';
+  }
+}
+
+export function setPreviewSpeed(speed) {
+  try {
+    if (SPEED_MS[speed]) localStorage.setItem(PREVIEW_LATENCY_KEY, JSON.stringify([{ path: '.*', ms: SPEED_MS[speed] }]));
+    else localStorage.removeItem(PREVIEW_LATENCY_KEY);
+  } catch { /* storage unavailable: the switch simply does not stick */ }
+  emitSwitchChange();
+}
+
+export function getPreviewFailMode() {
+  try {
+    const mode = localStorage.getItem(PREVIEW_FAIL_KEY);
+    return FAIL_MODES.includes(mode) ? mode : 'off';
+  } catch {
+    return 'off';
+  }
+}
+
+export function setPreviewFailMode(mode) {
+  try {
+    if (FAIL_MODES.includes(mode)) localStorage.setItem(PREVIEW_FAIL_KEY, mode);
+    else localStorage.removeItem(PREVIEW_FAIL_KEY);
+  } catch { /* storage unavailable: the switch simply does not stick */ }
+  emitSwitchChange();
+}
+
+function isPreviewOwnedKey(key) {
+  if (PREVIEW_SWITCH_KEYS.includes(key)) return true;
+  // Pending recurring saves are keyed cvf_series_pending:<user.profile.id>:<client id>.
+  if (state.coaches.some((coach) => key.startsWith(`cvf_series_pending:${coach.id}:`))) return true;
+  // Offline queue and rest timer for workouts the mock issued (real log ids are UUIDs).
+  const log = key.match(/^cvf_(?:workout_outbox|rest_timer)_(.+)$/);
+  return Boolean(log) && !UUID_RE.test(log[1]);
+}
+
+// Removes preview-owned storage only. The caller hard-loads the page, which
+// rebuilds the in-memory fixtures.
+export function resetPreview() {
+  try {
+    const owned = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && isPreviewOwnedKey(key)) owned.push(key);
+    }
+    owned.forEach((key) => localStorage.removeItem(key));
+  } catch { /* storage unavailable: the reload still rebuilds the fixtures */ }
 }
 
 export function getPreviewRole() {
@@ -710,6 +923,94 @@ function previewCancelRequested(sessionId) {
   return (state.cancelRequestedSessions || []).includes(sessionId);
 }
 
+// Conflict-checks slots the way check_session_slots does for the UI: sessions
+// already on the calendar (coach before client), then rows of the same request.
+function previewSeriesRows(target, slots, durationMinutes) {
+  return checkSlots({
+    slots,
+    durationMinutes,
+    findExisting: (scheduledAt) => previewScheduleConflict({
+      clientId: target.id, coachId: target.coach_id, scheduledAt, durationMinutes,
+    }),
+  });
+}
+
+function withSeries(row) {
+  const series = row.series_id ? state.sessionSeries.find((item) => item.id === row.series_id) : null;
+  return series ? { ...row, series: { id: series.id, rule: series.rule, created_count: series.created_count } } : row;
+}
+
+// Mirrors schedule_session_series step 4e and assign_program_clone
+// (supabase/migrations/20260929120000_shared_training_library.sql): skip when
+// the client already has the program or a copy sourced from it; otherwise
+// assign a private client copy. Like the real function: the source must be an
+// unhidden template, the copy keeps the template's name, the copy and its
+// workouts belong to the CLIENT'S coach, and every program day gets its OWN
+// workout copy even when two days share one template workout — so editing one
+// day never changes another.
+function previewAssignProgramClone(programId, clientId) {
+  const alreadyAssigned = state.programAssignments.some((assignment) => {
+    if (assignment.archived || assignment.client_id !== clientId) return false;
+    const program = state.programs.find((item) => item.id === assignment.program_id);
+    return Boolean(program) && !program.archived && (program.id === programId || program.source_program_id === programId);
+  });
+  if (alreadyAssigned) return null;
+  // Template fixtures omit is_template; client copies carry is_template: false.
+  const source = state.programs.find((item) => item.id === programId && !item.archived && item.is_template !== false && !item.hidden);
+  const client = clientById(clientId);
+  if (!source || !client || client.archived || !client.coach_id) return null;
+
+  const stamp = new Date().toISOString();
+  const copy = {
+    id: id('program'), coach_id: client.coach_id, name: source.name, description: source.description,
+    frequency_days: source.frequency_days, is_template: false, client_id: client.id, source_program_id: source.id,
+    hidden: false, archived: false, created_at: stamp, updated_at: stamp,
+  };
+  state.programs.push(copy);
+
+  state.programDays
+    .filter((day) => day.program_id === source.id && !day.archived)
+    .sort((first, second) => first.day_number - second.day_number)
+    .forEach((day) => {
+      const workout = state.workouts.find((item) => item.id === day.workout_id);
+      let workoutCopyId = null;
+      if (workout) {
+        workoutCopyId = id('workout');
+        state.workouts.push({
+          ...workout, id: workoutCopyId, coach_id: client.coach_id, is_template: false, client_id: client.id,
+          source_workout_id: workout.id, hidden: false, archived: false, created_at: stamp, updated_at: stamp,
+        });
+        state.workoutExercises
+          .filter((exercise) => exercise.workout_id === workout.id && !exercise.archived)
+          .forEach((exercise) => state.workoutExercises.push({ ...exercise, id: id('wex'), workout_id: workoutCopyId, created_at: stamp }));
+      }
+      state.programDays.push({
+        id: id('day'), program_id: copy.id, day_number: day.day_number, workout_id: workoutCopyId,
+        notes: day.notes, archived: false, created_at: stamp,
+      });
+    });
+
+  const assignment = {
+    id: id('assign'), program_id: copy.id, client_id: client.id, notes: null, archived: false, created_at: stamp,
+    client: { id: client.id, name: client.name },
+  };
+  state.programAssignments.push(assignment);
+  return assignment;
+}
+
+// Fixtures rebuild on every load, so a pending recurring save from an earlier
+// load refers to a demo that no longer exists. Clear it before the app renders.
+function clearPreviewPendingSeries() {
+  try {
+    const stale = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && state.coaches.some((coach) => key.startsWith(`cvf_series_pending:${coach.id}:`))) stale.push(key);
+    }
+    stale.forEach((key) => localStorage.removeItem(key));
+  } catch { /* storage unavailable: nothing was persisted either */ }
+}
+
 function scheduleConflictReject(config, conflict, { approving = false } = {}) {
   const when = new Date(conflict.session.scheduled_at).toLocaleString('en-US', { timeZone: 'America/Denver' });
   const base = conflict.scope === 'client'
@@ -899,6 +1200,69 @@ function fail(config, status, message) {
   return Promise.reject({ response: { data: { error: message }, status, statusText: 'Error', headers: {}, config }, config });
 }
 
+// The toolbar that shows notices is lazy-loaded, and a page's first requests
+// usually finish before it mounts. Notices raised with nobody listening wait
+// here and are delivered to the first subscriber.
+const noticeSubscribers = new Set();
+const queuedNotices = [];
+
+function previewNotice(detail) {
+  if (!noticeSubscribers.size) {
+    queuedNotices.push(detail);
+    return;
+  }
+  noticeSubscribers.forEach((cb) => cb(detail));
+}
+
+// cb receives { kind: 'unsupported' | 'missing', method, path, reason? }.
+export function onPreviewNotice(cb) {
+  noticeSubscribers.add(cb);
+  queuedNotices.splice(0).forEach((detail) => cb(detail));
+  return () => noticeSubscribers.delete(cb);
+}
+
+// 422, not 5xx: retry-safe forms treat >= 500 as "outcome unknown" and lock.
+function rejectUnsupported(config, method, path, entry) {
+  previewNotice({ kind: 'unsupported', method, path, reason: entry.reason });
+  return Promise.reject({
+    response: {
+      data: { error: 'Not available in preview', code: 'preview_unsupported', reason: entry.reason },
+      status: 422, statusText: 'Unprocessable Entity', headers: {}, config,
+    },
+    config,
+  });
+}
+
+function rejectMissingMock(config, method, path) {
+  const label = `${method.toUpperCase()} ${path}`;
+  console.error(`${MISSING_MOCK_MARKER} ${label}`);
+  previewNotice({ kind: 'missing', method, path });
+  return Promise.reject({
+    response: {
+      data: { error: `Preview route not mocked: ${label}`, code: 'preview_missing_mock' },
+      status: 404, statusText: 'Error', headers: {}, config,
+    },
+    config,
+  });
+}
+
+function isPreviewRead(method, path) {
+  return method === 'get' || (method === 'post' && READ_LIKE_POSTS.some((pattern) => pattern.test(path)));
+}
+
+function isKnownSave(method, path) {
+  return PREVIEW_SAVE_ROUTES.some(([saveMethod, pattern]) => saveMethod === method && pattern.test(path));
+}
+
+function readChangesData(method, path) {
+  return READS_THAT_CHANGE_DATA.some(([readMethod, pattern]) => readMethod === method && pattern.test(path));
+}
+
+function isPreviewGap(error) {
+  const code = error?.response?.data?.code;
+  return code === 'preview_missing_mock' || code === 'preview_unsupported';
+}
+
 function body(config) {
   if (!config.data) return {};
   if (typeof config.data === 'string') {
@@ -957,7 +1321,7 @@ function saveCheckIn(clientId, payload, actorRole) {
 
 function previewLatencyFor(path) {
   try {
-    const rules = JSON.parse(localStorage.getItem('cvf_preview_latency') || '[]');
+    const rules = JSON.parse(localStorage.getItem(PREVIEW_LATENCY_KEY) || '[]');
     const rule = rules.find((candidate) => new RegExp(candidate.path).test(path));
     return Math.max(0, Math.min(10_000, Number(rule?.ms) || 0));
   } catch {
@@ -967,18 +1331,22 @@ function previewLatencyFor(path) {
 
 export function installPreviewApi(api) {
   if (!isPreviewMode) return;
-  api.defaults.adapter = async (config) => {
+  clearPreviewPendingSeries();
+  const route = async (config) => {
     const method = String(config.method || 'get').toLowerCase();
     const { path, search } = pathFromConfig(config);
-    // Test-harness latency (like cvf_preview_history_failure): browser specs
-    // set cvf_preview_latency to [{ "path": "<regex>", "ms": 1500 }] to
-    // reproduce slow-network races on chosen routes.
-    await new Promise((resolve) => setTimeout(resolve, 80 + previewLatencyFor(path)));
     const payload = body(config);
     const role = getPreviewRole();
     const client = currentClient();
 
+    const unsupported = PREVIEW_UNSUPPORTED.find((entry) => entry.method === method && entry.pattern.test(path));
+    if (unsupported) return rejectUnsupported(config, method, path, unsupported);
+
     if (path === '/auth/me' || path === '/auth/login' || path === '/auth/signup') return ok({ access_token: 'preview', refresh_token: 'preview', ...getPreviewUser() }, config);
+
+    // Product telemetry is fire-and-forget from ordinary page loads. Preview
+    // accepts and discards it (the real route answers 202 the same way).
+    if (path === '/telemetry/events' && method === 'post') return ok({ accepted: true, duplicate: false }, config, 202);
 
     if (path === '/dashboard/client') return ok(dashboardClient(), config);
     if (path === '/dashboard/coach') return ok(dashboardCoach(), config);
@@ -1580,6 +1948,115 @@ export function installPreviewApi(api) {
       }, config);
     }
 
+    // Recurring sessions. Shapes mirror backend/src/routes/sessionSeries.js;
+    // rule and suggestion logic is the port in previewSeries.js.
+    if (path.startsWith('/sessions/series') && role === 'client') return fail(config, 403, 'Coach access required');
+
+    if (path === '/sessions/series/preview' && method === 'post') {
+      const target = clientById(payload.client_id);
+      if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
+      const parsed = parseRule(payload, { today: todayInDenver() });
+      if (!parsed.ok) return fail(config, 400, parsed.error);
+      const expanded = expandSeriesRule(parsed.value);
+      if (expanded.exceededMax) return fail(config, 400, 'A series can have at most 52 sessions');
+      if (expanded.exceededHorizon) {
+        return fail(config, 400, 'That schedule runs past one year from the start date — reduce the count or choose an end date');
+      }
+      const rows = previewSeriesRows(target, expanded.slots, parsed.value.duration_minutes);
+      const past = pastError(rows, Date.now());
+      if (past) return fail(config, 400, past);
+      return ok({ slots: rows }, config);
+    }
+
+    if (path === '/sessions/series/check' && method === 'post') {
+      const target = clientById(payload.client_id);
+      if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
+      const horizon = slotHorizonError(payload.slots || [], payload.start_date, todayInDenver());
+      if (horizon) return fail(config, 400, horizon);
+      const rows = previewSeriesRows(target, payload.slots || [], payload.duration_minutes);
+      const past = pastError(rows, Date.now());
+      if (past) return fail(config, 400, past);
+      return ok({ seq: payload.seq, slots: rows }, config);
+    }
+
+    if (path === '/sessions/series' && method === 'post') {
+      const target = clientById(payload.client_id);
+      if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
+      const fingerprint = JSON.stringify(payload);
+      const existing = state.sessionSeries.find((item) => item.request_id === payload.request_id && item.client_id === target.id);
+      const publicSeries = ({ request_fingerprint, ...series }) => series;
+      if (existing) {
+        if (existing.request_fingerprint !== fingerprint) {
+          return Promise.reject({
+            response: {
+              data: { error: 'This save was already used with different content — nothing was changed.', code: 'request_mismatch' },
+              status: 409, statusText: 'Conflict', headers: {}, config,
+            },
+            config,
+          });
+        }
+        return ok({ series: publicSeries(existing), receipt: existing.receipt, replayed: true }, config, 200);
+      }
+      const horizon = slotHorizonError(payload.slots || [], payload.rule?.start_date, todayInDenver());
+      if (horizon) return fail(config, 400, horizon);
+      const rows = previewSeriesRows(target, payload.slots || [], payload.duration_minutes);
+      const past = pastError(rows, Date.now());
+      if (past) return fail(config, 400, past);
+      const conflicts = rows.filter((row) => row.conflict).map((row) => ({ key: row.key, ...row.conflict }));
+      if (conflicts.length) {
+        return Promise.reject({
+          response: {
+            data: { error: 'Some dates are no longer available', conflicts },
+            status: 409, statusText: 'Conflict', headers: {}, config,
+          },
+          config,
+        });
+      }
+      const stamp = new Date().toISOString();
+      const seriesId = id('series');
+      const workoutByKey = new Map((payload.slots || []).map((slot) => [slot.key, slot.workout_id || null]));
+      const receiptSlots = rows
+        .slice()
+        .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
+        .map((row, index) => {
+          // Workouts are stored exactly as sent; the server never remaps them.
+          const session = {
+            id: id('session'), client_id: target.id, coach_id: target.coach_id, scheduled_at: row.scheduled_at,
+            duration_minutes: payload.duration_minutes, location: payload.location || null, status: 'scheduled',
+            credit_deducted: false, workout_id: workoutByKey.get(row.key), series_id: seriesId, series_ordinal: index + 1,
+            archived: false, created_at: stamp, updated_at: stamp,
+          };
+          state.sessions.push(session);
+          return { key: row.key, session_id: session.id, scheduled_at: row.scheduled_at, workout_id: session.workout_id, ordinal: index + 1 };
+        });
+      const series = {
+        id: seriesId, request_id: payload.request_id, request_fingerprint: fingerprint, client_id: target.id,
+        coach_id: target.coach_id, rule: payload.rule, created_count: receiptSlots.length,
+        receipt: { slots: receiptSlots }, created_at: stamp,
+      };
+      state.sessionSeries.push(series);
+      if (payload.assign_program && payload.program_id) previewAssignProgramClone(payload.program_id, target.id);
+      // notify is accepted and ignored: preview sends nothing.
+      return ok({ series: publicSeries(series), receipt: series.receipt, replayed: false }, config, 201);
+    }
+
+    const seriesCancel = path.match(/^\/sessions\/series\/([^/]+)\/cancel$/);
+    if (seriesCancel && method === 'patch') {
+      const series = state.sessionSeries.find((item) => item.id === seriesCancel[1]);
+      if (!series || (role !== 'admin' && series.coach_id !== currentCoach().id)) return fail(config, 404, 'Series not found');
+      const anchor = state.sessions.find((row) => row.id === payload.from_session_id
+        && row.series_id === series.id && row.client_id === series.client_id);
+      if (!anchor) return fail(config, 404, 'Session not found in this series');
+      const anchorStart = new Date(anchor.scheduled_at).getTime();
+      const changed = state.sessions.filter((row) => row.series_id === series.id && row.status === 'scheduled'
+        && !row.archived && new Date(row.scheduled_at).getTime() >= anchorStart);
+      changed.forEach((row) => { row.status = 'cancelled'; row.updated_at = new Date().toISOString(); });
+      const cancelled = changed
+        .map((row) => ({ id: row.id, scheduled_at: row.scheduled_at }))
+        .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+      return ok({ cancelled }, config);
+    }
+
     // Mirrors GET /api/sessions/studio: every coach's schedule with
     // roadmap-v3 D1 masking — foreign clients arrive as anonymous busy
     // blocks; the name never reaches the page. Deliberate divergence:
@@ -1616,7 +2093,7 @@ export function installPreviewApi(api) {
       if (search.get('client_id')) rows = rows.filter((s) => s.client_id === search.get('client_id'));
       if (search.get('status')) rows = rows.filter((s) => s.status === search.get('status'));
       rows = rows.map((s) => ({
-        ...s,
+        ...withSeries(s),
         client: { id: s.client_id, name: clientById(s.client_id).name },
         coach: coachById(s.coach_id),
         workout: s.workout_id ? (state.workouts.find((w) => w.id === s.workout_id) || null) : null,
@@ -1684,7 +2161,7 @@ export function installPreviewApi(api) {
           quick_completed: Boolean(log.quick_completed),
         }));
       return ok({
-        ...row,
+        ...withSeries(row),
         client: { id: row.client_id, name: clientById(row.client_id).name },
         coach: coachById(row.coach_id),
         notes: state.sessionNotes.filter((n) => n.session_id === row.id && !n.archived),
@@ -2198,6 +2675,68 @@ export function installPreviewApi(api) {
       return ok(row, config, 201);
     }
 
-    return fail(config, 404, `Preview route not mocked: ${method.toUpperCase()} ${path}`);
+    return rejectMissingMock(config, method, path);
+  };
+
+  api.defaults.adapter = async (config) => {
+    const method = String(config.method || 'get').toLowerCase();
+    const { path } = pathFromConfig(config);
+    // Latency: browser specs set cvf_preview_latency to
+    // [{ "path": "<regex>", "ms": 1500 }] to reproduce slow-network races on
+    // chosen routes; the toolbar writes one catch-all rule.
+    await new Promise((resolve) => setTimeout(resolve, 80 + previewLatencyFor(path)));
+    if (path.startsWith('/auth/')) return route(config);
+
+    const read = isPreviewRead(method, path);
+    const knownSave = !read && isKnownSave(method, path);
+    const mode = getPreviewFailMode();
+
+    // Fail next save: decided from the route table, BEFORE the handler runs,
+    // so nothing is changed and nothing is emitted. Reading and clearing the
+    // switch is synchronous, so concurrent saves cannot both consume it.
+    if (mode === 'write-once' && knownSave) {
+      setPreviewFailMode('off');
+      return fail(config, 503, 'Simulated failure (preview)');
+    }
+
+    // A read handler runs to completion inside the route() call (none of them
+    // awaits), so comparing fixture data just before and just after cannot be
+    // disturbed by another request. This keeps READS_THAT_CHANGE_DATA honest.
+    const runCheckedRead = () => {
+      const before = JSON.stringify(state);
+      const pending = route(config);
+      if (JSON.stringify(state) !== before) console.error(`${MUTATING_READ_MARKER} ${method.toUpperCase()} ${path}`);
+      return pending;
+    };
+
+    if (read) {
+      const changesData = readChangesData(method, path);
+      if (mode !== 'reads') return changesData ? route(config) : runCheckedRead();
+      // Fail loads. A read that changes data is failed without running its
+      // handler; it is a known route by being listed. Any other read runs
+      // first, purely so a missing or unsupported route passes through.
+      if (!changesData) {
+        try {
+          await runCheckedRead();
+        } catch (error) {
+          if (isPreviewGap(error)) throw error;
+        }
+      }
+      return fail(config, 503, 'Simulated failure (preview)');
+    }
+
+    if (knownSave) return route(config);
+
+    // A save that is not in PREVIEW_SAVE_ROUTES: fine when it is a missing or
+    // unsupported route, a bug in the table when the chain actually served it.
+    const flagUnlisted = () => console.error(`${UNLISTED_SAVE_MARKER} ${method.toUpperCase()} ${path}`);
+    try {
+      const response = await route(config);
+      flagUnlisted();
+      return response;
+    } catch (error) {
+      if (!isPreviewGap(error)) flagUnlisted();
+      throw error;
+    }
   };
 }

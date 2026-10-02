@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { ChevronDown, Settings2 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   getPreviewClientId,
   getPreviewClients,
+  getPreviewFailMode,
   getPreviewRole,
+  getPreviewSpeed,
   isPreviewMode,
   onPreviewChange,
+  onPreviewNotice,
+  onPreviewSwitchChange,
+  resetPreview,
   setPreviewClientId,
+  setPreviewFailMode,
   setPreviewRole,
+  setPreviewSpeed,
 } from '@/lib/previewMode';
 import { cn } from '@/lib/utils';
 const LINKS = {
@@ -37,6 +45,8 @@ const LINKS = {
   ],
 };
 
+const CONTROL = 'h-11 rounded-lg border border-border bg-card px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:h-8';
+
 export default function PreviewToolbar() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,10 +60,34 @@ export default function PreviewToolbar() {
     try { return localStorage.getItem('cvf_preview_incomplete_analytics') === '1'; } catch { return false; }
   });
   const clients = useMemo(() => getPreviewClients(), []);
+  const [speed, setSpeed] = useState(getPreviewSpeed());
+  const [failMode, setFailMode] = useState(getPreviewFailMode());
+  // A switch left on from an earlier visit is the main way this layer could
+  // mislead, so its state is visible without opening the panel.
+  const modified = speed !== 'normal' || failMode !== 'off';
+  // On desktop the toolbar sits over page content, so the test-state controls
+  // stay folded away unless opened or in use. The phone panel is already
+  // behind its own toggle and shows them directly.
+  const [showTestStates, setShowTestStates] = useState(false);
 
   useEffect(() => onPreviewChange(() => {
     setRole(getPreviewRole());
     setClientId(getPreviewClientId());
+  }), []);
+
+  // Fixed ids so repeated hits replace the toast instead of stacking. This
+  // runs even when the calling screen swallowed the error.
+  useEffect(() => onPreviewNotice(({ kind, method, path, reason }) => {
+    if (kind === 'unsupported') {
+      toast.info('Not available in preview', { id: 'preview-unsupported', description: reason });
+    } else if (kind === 'missing') {
+      toast.error('Preview is missing a mock', { id: 'preview-missing-mock', description: `${String(method).toUpperCase()} ${path}` });
+    }
+  }), []);
+
+  useEffect(() => onPreviewSwitchChange(() => {
+    setSpeed(getPreviewSpeed());
+    setFailMode(getPreviewFailMode());
   }), []);
 
   if (!isPreviewMode) return null;
@@ -82,6 +116,12 @@ export default function PreviewToolbar() {
     window.location.assign('/coach/analytics');
   };
 
+  const reset = () => {
+    resetPreview();
+    // Hard load: fixtures live in memory and rebuild on load.
+    window.location.assign(role === 'client' ? '/client' : role === 'admin' ? '/admin' : '/coach');
+  };
+
   const links = LINKS[role] || LINKS.client;
 
   return (
@@ -94,7 +134,7 @@ export default function PreviewToolbar() {
     >
       <button
         type="button"
-        className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
+        className="relative flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
         aria-expanded={expanded}
         aria-controls="preview-toolbar-controls"
         aria-label={expanded ? 'Close preview controls' : 'Open preview controls'}
@@ -102,11 +142,12 @@ export default function PreviewToolbar() {
         data-testid="preview-toolbar-toggle"
       >
         {expanded ? <ChevronDown className="h-5 w-5" aria-hidden /> : <Settings2 className="h-5 w-5" aria-hidden />}
+        {modified && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary" aria-hidden data-testid="preview-modified-marker" />}
       </button>
       <div id="preview-toolbar-controls" className={cn(expanded ? 'block' : 'hidden', 'lg:block')}>
         <div className="flex flex-wrap items-center gap-2">
           <span className="hidden rounded-lg bg-secondary px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-secondary-foreground lg:inline-flex">
-            Preview Mode
+            Preview Mode{modified && <span data-testid="preview-modified-marker">&nbsp;· modified</span>}
           </span>
           <select
             value={role}
@@ -142,6 +183,51 @@ export default function PreviewToolbar() {
               Incomplete analytics
             </label>
           )}
+          <button
+            type="button"
+            className={`${CONTROL} hidden font-medium text-muted-foreground transition-colors hover:text-foreground lg:inline-flex lg:items-center`}
+            aria-expanded={showTestStates || modified}
+            aria-controls="preview-test-states"
+            onClick={() => setShowTestStates((current) => !current)}
+            data-testid="preview-test-states-toggle"
+          >
+            Test states
+          </button>
+          <div
+            id="preview-test-states"
+            className={cn('flex w-full flex-wrap items-center gap-2', !(showTestStates || modified) && 'lg:hidden')}
+          >
+            <select
+              value={speed}
+              onChange={(e) => setPreviewSpeed(e.target.value)}
+              aria-label="Preview network speed"
+              className={CONTROL}
+              data-testid="preview-speed-select"
+            >
+              <option value="normal">Speed: normal</option>
+              <option value="slow">Speed: slow (1.5s)</option>
+              <option value="very-slow">Speed: very slow (4s)</option>
+            </select>
+            <select
+              value={failMode}
+              onChange={(e) => setPreviewFailMode(e.target.value)}
+              aria-label="Preview simulated failures"
+              className={CONTROL}
+              data-testid="preview-fail-select"
+            >
+              <option value="off">Failures: off</option>
+              <option value="write-once">Fail next save</option>
+              <option value="reads">Fail loads</option>
+            </select>
+            <button
+              type="button"
+              onClick={reset}
+              className={`${CONTROL} font-medium text-muted-foreground transition-colors hover:text-foreground`}
+              data-testid="preview-reset-button"
+            >
+              Reset
+            </button>
+          </div>
         </div>
         <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
           {links.map(([label, to]) => {
