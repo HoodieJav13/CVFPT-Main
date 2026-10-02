@@ -95,7 +95,33 @@ Frontend and backend deploy as **two separate Vercel projects**, each rooted at 
 
 ## Preview mode
 
-`previewMode.js` is a DEV-only mock layer, double-gated, pending a keep/kill decision. Do not extend it without being asked.
+**Kept (owner decision 2026-10-01).** `frontend/src/lib/previewMode.js` is the
+fixture-backed mock API behind the preview toolbar. Its jobs are owner review
+of unreleased features and UI on Vercel preview links, design QA, and the
+`npm run test:e2e:preview` regression suite.
+
+- **Gate:** on only for local opt-in (`npm run dev:preview`) and Vercel preview
+  deployments (owner decision 2026-07-31). Vercel Production builds force-define
+  it off in `frontend/vite.config.js`; other builds stay off unless both preview
+  flags are set. Never weaken that gate.
+- **User-facing features must be reviewable in preview.** Changes ship with the
+  preview responses and fixtures needed to exercise their UI in the same PR.
+  Backend-only changes need none unless they change API behavior visible to the
+  UI. Deliberately unsupported flows show an explicit "Not available in preview"
+  state and are listed, with a reason, in `PREVIEW_UNSUPPORTED` in the mock.
+  Any unexpected missing mock exercised by the preview browser suite must fail
+  that suite.
+- **Preview verifies UI behavior.** It does not prove real authorization,
+  server validation, database behavior, or delivery of emails and push
+  notifications. Use backend/database tests and relevant integration checks
+  as evidence for those.
+- **Fixtures:** fake data only, dated relative to load time, held in memory
+  and reset on reload. Sarah is the stable baseline — keep her existing
+  fixtures; additional edge cases go on separate scenario data.
+- **Controls:** failure and slow-loading switches live in the preview toolbar
+  and are accessible on a phone, with `cvf_preview_`-prefixed storage keys.
+- Fixture ids are used by the preview browser suite — rerun it after changing
+  them.
 
 ## Conventions
 
