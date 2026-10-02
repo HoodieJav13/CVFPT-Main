@@ -196,3 +196,114 @@ test('each program day gets its own workout copy, owned by the client\'s coach',
   expect(davidCopies.map((workout) => workout.name).sort()).toEqual(
     ['Lower Strength A', 'Lower Strength A', 'Run Prep Mobility', 'Upper Strength A']);
 });
+const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d; };
+
+/** Drive the branded DateTimePicker (same helper as series-mocked.spec.mjs). */
+async function pickDateTime(page, testId, target, slotText = '9:00 AM') {
+  await page.getByTestId(testId).click();
+  const panel = page.getByTestId(`${testId}-panel`);
+  const dayName = new RegExp(`${target.toLocaleDateString('en-US', { month: 'long' })} ${target.getDate()}(st|nd|rd|th)?, ${target.getFullYear()}`);
+  for (let hops = 0; hops < 3; hops += 1) {
+    if (await panel.getByRole('button', { name: dayName }).count()) break;
+    await panel.getByRole('button', { name: /next month/i }).click();
+  }
+  await panel.getByRole('button', { name: dayName }).first().click();
+  await panel.getByTestId('time-slot').filter({ hasText: slotText }).first().click();
+  await expect(panel).toBeHidden();
+}
+
+// Opens the editor for a client, 3 weekly sessions starting 10 days out at 9:00 AM, and previews.
+async function startSeries(page, clientName) {
+  await page.getByTestId('session-create-button').click();
+  await page.getByTestId('session-client-select').click();
+  await page.getByRole('option', { name: clientName }).click();
+  await pickDateTime(page, 'session-datetime-input', daysFromNow(10), '9:00 AM');
+  await page.getByTestId('session-repeat-toggle').click();
+  await page.getByTestId('series-count-input').fill('3');
+  await page.getByTestId('series-preview-button').click();
+  await expect(page.getByTestId('series-row-g3')).toBeVisible();
+}
+
+const davidSeriesBadges = (page) => page.getByTestId('session-row').filter({ hasText: 'David Chen' }).getByTestId('series-badge');
+
+test('the seeded series shows its badge on the list and the session detail page', async ({ page }) => {
+  await openCoach(page);
+  await expect(davidSeriesBadges(page)).toHaveCount(4);
+  await expect(davidSeriesBadges(page).first()).toHaveText(/^Weekly · \w{3} · Session 3 of 6$/);
+  await page.goto('/coach/sessions/session_david_series_3');
+  await expect(page.getByTestId('series-badge')).toHaveText(/Session 3 of 6$/);
+});
+
+test('cancelling one session leaves the rest; cancelling this and all future clears them', async ({ page }) => {
+  await openCoach(page);
+  const rows = page.getByTestId('session-row').filter({ hasText: 'David Chen' }).filter({ has: page.getByTestId('series-badge') });
+  await expect(rows).toHaveCount(4);
+
+  await rows.first().getByTestId('session-actions-button').click();
+  await page.getByTestId('session-cancel-action').click();
+  await page.getByTestId('session-cancel-confirm').click();
+  await expect(rows).toHaveCount(3);
+  await expect(davidSeriesBadges(page).first()).toHaveText(/Session 4 of 6$/);
+
+  await rows.first().getByTestId('session-actions-button').click();
+  await page.getByTestId('session-cancel-action').click();
+  await page.getByTestId('session-cancel-scope-future').click();
+  await page.getByTestId('session-cancel-confirm').click();
+  await expect(rows).toHaveCount(0);
+
+  const series = (await callPreviewApi(page, 'get', '/sessions')).data.filter((row) => row.series_id === 'series_david');
+  expect(series.map((row) => row.status)).toEqual(['completed', 'completed', 'cancelled', 'cancelled', 'cancelled', 'cancelled']);
+});
+
+test('a conflicting series is fixed with suggestions and saved from the editor', async ({ page }) => {
+  await openCoach(page);
+  // David already holds the same three slots, so every row for Sarah collides with Marcus's calendar.
+  expect((await callPreviewApi(page, 'post', '/sessions/series', createBody('client_david', '77777777-7777-4777-8777-777777777777'))).status).toBe(201);
+
+  await startSeries(page, 'Sarah Martinez');
+  for (const key of ['g1', 'g2', 'g3']) {
+    await expect(page.getByTestId(`series-row-${key}`)).toHaveAttribute('data-conflict', 'coach');
+  }
+  await expect(page.getByTestId('series-create-button')).toBeDisabled();
+  for (const key of ['g1', 'g2', 'g3']) {
+    await page.getByTestId(`series-suggestion-${key}-10:00`).click();
+    await expect(page.getByTestId(`series-row-${key}`)).toHaveAttribute('data-conflict', 'none');
+  }
+  await expect(page.getByTestId('series-create-button')).toHaveText('Create 3 sessions');
+  await page.getByTestId('series-create-button').click();
+  await expect(page.getByText('3 sessions scheduled')).toBeVisible();
+  await expect(page.getByTestId('session-row').filter({ hasText: 'Sarah Martinez' }).getByTestId('series-badge')).toHaveCount(3);
+});
+
+test('fail next save is not consumed by previewing dates; Create lands in "Save status unknown" and Retry saves once', async ({ page }) => {
+  await openCoach(page);
+  await page.getByTestId('preview-test-states-toggle').click(); // desktop folds the test-state controls
+  await page.getByTestId('preview-fail-select').selectOption('write-once');
+  await startSeries(page, 'David Chen');
+  await expect(page.getByTestId('series-row-g1')).toHaveAttribute('data-conflict', 'none');
+  await expect(page.getByTestId('preview-fail-select')).toHaveValue('write-once');
+
+  await page.getByTestId('series-create-button').click();
+  await expect(page.getByTestId('series-unknown')).toContainText('Save status unknown');
+  await expect(page.getByTestId('preview-fail-select')).toHaveValue('off');
+
+  await page.getByTestId('series-retry-button').click();
+  await expect(page.getByText('3 sessions scheduled')).toBeVisible();
+  const created = (await callPreviewApi(page, 'get', '/sessions')).data.filter((row) => row.series_id && row.series_id !== 'series_david');
+  expect(created).toHaveLength(3);
+});
+
+test('after an unresolved save, a reload opens a clean demo with no recovery prompt', async ({ page }) => {
+  await openCoach(page);
+  await page.getByTestId('preview-test-states-toggle').click(); // desktop folds the test-state controls
+  await page.getByTestId('preview-fail-select').selectOption('write-once');
+  await startSeries(page, 'David Chen');
+  await page.getByTestId('series-create-button').click();
+  await expect(page.getByTestId('series-unknown')).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByTestId('session-create-button')).toBeVisible();
+  await expect(page.getByTestId('series-unknown')).toHaveCount(0);
+  const pending = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('cvf_series_pending')));
+  expect(pending).toEqual([]);
+});

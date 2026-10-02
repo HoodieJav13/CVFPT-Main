@@ -182,8 +182,25 @@ const state = {
     // Jordan's client — renders as a masked busy block on Marcus's
     // studio calendar (roadmap-v3 D1).
     { id: 'session_emily', client_id: 'client_emily', coach_id: 'coach_jordan', scheduled_at: iso(1, 9), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-8), updated_at: iso(-1) },
+    // A seeded weekly series (David with Marcus): two past, four upcoming, so
+    // the badge and "this and all future" cancel are reviewable without
+    // creating one. 12:00 sits outside Marcus's availability windows and clear
+    // of session_david and the seeded time off. Not on Sarah.
+    ...[-10, -3, 4, 11, 18, 25].map((days, index) => ({
+      id: `session_david_series_${index + 1}`, client_id: 'client_david', coach_id: 'coach_marcus',
+      scheduled_at: iso(days, 12), duration_minutes: 45, location: 'CVF Studio',
+      status: days < 0 ? 'completed' : 'scheduled', credit_deducted: false,
+      series_id: 'series_david', series_ordinal: index + 1,
+      archived: false, created_at: iso(-12), updated_at: iso(-12),
+    })),
   ],
-  sessionSeries: [],
+  sessionSeries: [
+    {
+      id: 'series_david', request_id: 'seed_series_david', request_fingerprint: 'seed', client_id: 'client_david', coach_id: 'coach_marcus',
+      rule: { start_date: dateOnly(-10), time: '12:00', weekdays: [new Date(iso(-10, 12)).getDay()], interval_weeks: 1, end: { count: 6 } },
+      created_count: 6, receipt: { slots: [] }, created_at: iso(-12),
+    },
+  ],
   sessionNotes: [
     { id: 'note_1', session_id: 'session_done', coach_id: 'coach_marcus', content: 'Great pacing today. Keep squats controlled and pain-free.', shared_with_client: true, archived: false, created_at: iso(-3, 11), updated_at: iso(-3, 11) },
   ],
