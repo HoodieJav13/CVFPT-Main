@@ -82,15 +82,6 @@ test('fail loads rejects every read until it is turned off, and saves still work
   expect((await callPreviewApi(page, 'get', '/sessions')).status).toBe(200);
 });
 
-test('an unsupported save passes through unchanged and does not consume fail next save', async ({ page }) => {
-  await openCoach(page);
-  await setFail(page, 'write-once');
-  const result = await callPreviewApi(page, 'post', '/sessions/series', {});
-  expect(result.status).toBe(422);
-  expect(result.data.code).toBe('preview_unsupported');
-  expect(await getFail(page)).toBe('write-once');
-});
-
 test.describe('faults and missing mocks', () => {
   test.use({ allowMissingMocks: true });
 

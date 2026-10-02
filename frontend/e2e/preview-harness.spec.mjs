@@ -27,14 +27,13 @@ test.describe('with missing mocks allowed', () => {
   });
 });
 
-test('a deliberately unsupported route says so and does not count as a missing mock', async ({ page, missingMocks }) => {
+// PREVIEW_UNSUPPORTED is empty now that recurring sessions are mocked, so the
+// "Not available in preview" path has no route to exercise. When a route is
+// listed again, add a test here that hits it and asserts the 422 body, the
+// toast, and an empty missing-mock list.
+test('an ordinary page load requests no unmocked route', async ({ page, missingMocks }) => {
   await usePreviewRole(page, 'coach');
   await page.goto('/coach');
-  const result = await callPreviewApi(page, 'post', '/sessions/series/preview', {});
-  expect(result.status).toBe(422);
-  expect(result.data.error).toBe('Not available in preview');
-  expect(result.data.code).toBe('preview_unsupported');
-  expect(result.data.reason).toBe('Recurring sessions are not in preview yet');
-  await expect(page.getByText('Not available in preview')).toBeVisible();
+  await expect(page.getByTestId('coach-action-queue')).toBeVisible();
   expect(missingMocks).toEqual([]);
 });

@@ -1,6 +1,9 @@
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
 import { normalizeSupersets } from '@/lib/supersets';
+import {
+  checkSlots, expandSeriesRule, parseRule, pastError, slotHorizonError, todayInDenver,
+} from './previewSeries.js';
 
 const {
   csvTemplate,
@@ -20,12 +23,7 @@ const MISSING_MOCK_MARKER = '[cvf-preview:missing-mock]';
 // Routes preview deliberately does not mock. Every entry needs a reason.
 // Anything not handled and not listed here is a missing mock and fails the
 // preview browser suite.
-const PREVIEW_UNSUPPORTED = [
-  { method: 'post', pattern: /^\/sessions\/series\/preview$/, reason: 'Recurring sessions are not in preview yet' },
-  { method: 'post', pattern: /^\/sessions\/series\/check$/, reason: 'Recurring sessions are not in preview yet' },
-  { method: 'post', pattern: /^\/sessions\/series$/, reason: 'Recurring sessions are not in preview yet' },
-  { method: 'patch', pattern: /^\/sessions\/series\/[^/]+\/cancel$/, reason: 'Recurring sessions are not in preview yet' },
-];
+const PREVIEW_UNSUPPORTED = [];
 
 // Every mocked route that changes fixture data: [method, pattern], in the
 // order the handler chain serves them, each pattern copied from its branch.
@@ -62,6 +60,8 @@ const PREVIEW_SAVE_ROUTES = [
   ['patch', /^\/clients\/([^/]+)\/archive$/],
   ['post', /^\/admin\/coaches$/],
   ['patch', /^\/admin\/clients\/([^/]+)\/reassign$/],
+  ['post', /^\/sessions\/series$/],
+  ['patch', /^\/sessions\/series\/([^/]+)\/cancel$/],
   ['post', /^\/sessions$/],
   ['put', /^\/sessions\/([^/]+)$/],
   ['patch', /^\/sessions\/([^/]+)\/complete$/],
@@ -183,6 +183,7 @@ const state = {
     // studio calendar (roadmap-v3 D1).
     { id: 'session_emily', client_id: 'client_emily', coach_id: 'coach_jordan', scheduled_at: iso(1, 9), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-8), updated_at: iso(-1) },
   ],
+  sessionSeries: [],
   sessionNotes: [
     { id: 'note_1', session_id: 'session_done', coach_id: 'coach_marcus', content: 'Great pacing today. Keep squats controlled and pain-free.', shared_with_client: true, archived: false, created_at: iso(-3, 11), updated_at: iso(-3, 11) },
   ],
@@ -893,6 +894,41 @@ function previewCancelRequested(sessionId) {
   return (state.cancelRequestedSessions || []).includes(sessionId);
 }
 
+// Conflict-checks slots the way check_session_slots does for the UI: sessions
+// already on the calendar (coach before client), then rows of the same request.
+function previewSeriesRows(target, slots, durationMinutes) {
+  return checkSlots({
+    slots,
+    durationMinutes,
+    findExisting: (scheduledAt) => previewScheduleConflict({
+      clientId: target.id, coachId: target.coach_id, scheduledAt, durationMinutes,
+    }),
+  });
+}
+
+function withSeries(row) {
+  const series = row.series_id ? state.sessionSeries.find((item) => item.id === row.series_id) : null;
+  return series ? { ...row, series: { id: series.id, rule: series.rule, created_count: series.created_count } } : row;
+}
+
+// Implemented in the next task: mirrors assign_program_clone.
+function previewAssignProgramClone() {
+  return null;
+}
+
+// Fixtures rebuild on every load, so a pending recurring save from an earlier
+// load refers to a demo that no longer exists. Clear it before the app renders.
+function clearPreviewPendingSeries() {
+  try {
+    const stale = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && state.coaches.some((coach) => key.startsWith(`cvf_series_pending:${coach.id}:`))) stale.push(key);
+    }
+    stale.forEach((key) => localStorage.removeItem(key));
+  } catch { /* storage unavailable: nothing was persisted either */ }
+}
+
 function scheduleConflictReject(config, conflict, { approving = false } = {}) {
   const when = new Date(conflict.session.scheduled_at).toLocaleString('en-US', { timeZone: 'America/Denver' });
   const base = conflict.scope === 'client'
@@ -1209,6 +1245,7 @@ function previewLatencyFor(path) {
 
 export function installPreviewApi(api) {
   if (!isPreviewMode) return;
+  clearPreviewPendingSeries();
   const route = async (config) => {
     const method = String(config.method || 'get').toLowerCase();
     const { path, search } = pathFromConfig(config);
@@ -1825,6 +1862,115 @@ export function installPreviewApi(api) {
       }, config);
     }
 
+    // Recurring sessions. Shapes mirror backend/src/routes/sessionSeries.js;
+    // rule and suggestion logic is the port in previewSeries.js.
+    if (path.startsWith('/sessions/series') && role === 'client') return fail(config, 403, 'Coach access required');
+
+    if (path === '/sessions/series/preview' && method === 'post') {
+      const target = clientById(payload.client_id);
+      if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
+      const parsed = parseRule(payload, { today: todayInDenver() });
+      if (!parsed.ok) return fail(config, 400, parsed.error);
+      const expanded = expandSeriesRule(parsed.value);
+      if (expanded.exceededMax) return fail(config, 400, 'A series can have at most 52 sessions');
+      if (expanded.exceededHorizon) {
+        return fail(config, 400, 'That schedule runs past one year from the start date — reduce the count or choose an end date');
+      }
+      const rows = previewSeriesRows(target, expanded.slots, parsed.value.duration_minutes);
+      const past = pastError(rows, Date.now());
+      if (past) return fail(config, 400, past);
+      return ok({ slots: rows }, config);
+    }
+
+    if (path === '/sessions/series/check' && method === 'post') {
+      const target = clientById(payload.client_id);
+      if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
+      const horizon = slotHorizonError(payload.slots || [], payload.start_date, todayInDenver());
+      if (horizon) return fail(config, 400, horizon);
+      const rows = previewSeriesRows(target, payload.slots || [], payload.duration_minutes);
+      const past = pastError(rows, Date.now());
+      if (past) return fail(config, 400, past);
+      return ok({ seq: payload.seq, slots: rows }, config);
+    }
+
+    if (path === '/sessions/series' && method === 'post') {
+      const target = clientById(payload.client_id);
+      if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
+      const fingerprint = JSON.stringify(payload);
+      const existing = state.sessionSeries.find((item) => item.request_id === payload.request_id && item.client_id === target.id);
+      const publicSeries = ({ request_fingerprint, ...series }) => series;
+      if (existing) {
+        if (existing.request_fingerprint !== fingerprint) {
+          return Promise.reject({
+            response: {
+              data: { error: 'This save was already used with different content — nothing was changed.', code: 'request_mismatch' },
+              status: 409, statusText: 'Conflict', headers: {}, config,
+            },
+            config,
+          });
+        }
+        return ok({ series: publicSeries(existing), receipt: existing.receipt, replayed: true }, config, 200);
+      }
+      const horizon = slotHorizonError(payload.slots || [], payload.rule?.start_date, todayInDenver());
+      if (horizon) return fail(config, 400, horizon);
+      const rows = previewSeriesRows(target, payload.slots || [], payload.duration_minutes);
+      const past = pastError(rows, Date.now());
+      if (past) return fail(config, 400, past);
+      const conflicts = rows.filter((row) => row.conflict).map((row) => ({ key: row.key, ...row.conflict }));
+      if (conflicts.length) {
+        return Promise.reject({
+          response: {
+            data: { error: 'Some dates are no longer available', conflicts },
+            status: 409, statusText: 'Conflict', headers: {}, config,
+          },
+          config,
+        });
+      }
+      const stamp = new Date().toISOString();
+      const seriesId = id('series');
+      const workoutByKey = new Map((payload.slots || []).map((slot) => [slot.key, slot.workout_id || null]));
+      const receiptSlots = rows
+        .slice()
+        .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
+        .map((row, index) => {
+          // Workouts are stored exactly as sent; the server never remaps them.
+          const session = {
+            id: id('session'), client_id: target.id, coach_id: target.coach_id, scheduled_at: row.scheduled_at,
+            duration_minutes: payload.duration_minutes, location: payload.location || null, status: 'scheduled',
+            credit_deducted: false, workout_id: workoutByKey.get(row.key), series_id: seriesId, series_ordinal: index + 1,
+            archived: false, created_at: stamp, updated_at: stamp,
+          };
+          state.sessions.push(session);
+          return { key: row.key, session_id: session.id, scheduled_at: row.scheduled_at, workout_id: session.workout_id, ordinal: index + 1 };
+        });
+      const series = {
+        id: seriesId, request_id: payload.request_id, request_fingerprint: fingerprint, client_id: target.id,
+        coach_id: target.coach_id, rule: payload.rule, created_count: receiptSlots.length,
+        receipt: { slots: receiptSlots }, created_at: stamp,
+      };
+      state.sessionSeries.push(series);
+      if (payload.assign_program && payload.program_id) previewAssignProgramClone(payload.program_id, target.id);
+      // notify is accepted and ignored: preview sends nothing.
+      return ok({ series: publicSeries(series), receipt: series.receipt, replayed: false }, config, 201);
+    }
+
+    const seriesCancel = path.match(/^\/sessions\/series\/([^/]+)\/cancel$/);
+    if (seriesCancel && method === 'patch') {
+      const series = state.sessionSeries.find((item) => item.id === seriesCancel[1]);
+      if (!series || (role !== 'admin' && series.coach_id !== currentCoach().id)) return fail(config, 404, 'Series not found');
+      const anchor = state.sessions.find((row) => row.id === payload.from_session_id
+        && row.series_id === series.id && row.client_id === series.client_id);
+      if (!anchor) return fail(config, 404, 'Session not found in this series');
+      const anchorStart = new Date(anchor.scheduled_at).getTime();
+      const changed = state.sessions.filter((row) => row.series_id === series.id && row.status === 'scheduled'
+        && !row.archived && new Date(row.scheduled_at).getTime() >= anchorStart);
+      changed.forEach((row) => { row.status = 'cancelled'; row.updated_at = new Date().toISOString(); });
+      const cancelled = changed
+        .map((row) => ({ id: row.id, scheduled_at: row.scheduled_at }))
+        .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+      return ok({ cancelled }, config);
+    }
+
     // Mirrors GET /api/sessions/studio: every coach's schedule with
     // roadmap-v3 D1 masking — foreign clients arrive as anonymous busy
     // blocks; the name never reaches the page. Deliberate divergence:
@@ -1861,7 +2007,7 @@ export function installPreviewApi(api) {
       if (search.get('client_id')) rows = rows.filter((s) => s.client_id === search.get('client_id'));
       if (search.get('status')) rows = rows.filter((s) => s.status === search.get('status'));
       rows = rows.map((s) => ({
-        ...s,
+        ...withSeries(s),
         client: { id: s.client_id, name: clientById(s.client_id).name },
         coach: coachById(s.coach_id),
         workout: s.workout_id ? (state.workouts.find((w) => w.id === s.workout_id) || null) : null,
@@ -1929,7 +2075,7 @@ export function installPreviewApi(api) {
           quick_completed: Boolean(log.quick_completed),
         }));
       return ok({
-        ...row,
+        ...withSeries(row),
         client: { id: row.client_id, name: clientById(row.client_id).name },
         coach: coachById(row.coach_id),
         notes: state.sessionNotes.filter((n) => n.session_id === row.id && !n.archived),
