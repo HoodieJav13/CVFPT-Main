@@ -18,7 +18,7 @@ const PREVIEW_ROLE_KEY = 'cvf_preview_role';
 const PREVIEW_CLIENT_KEY = 'cvf_preview_client_id';
 const CHANGE_EVENT = 'cvf-preview-change';
 // Fixed prefix read by the Playwright fixture in e2e/preview-test.mjs.
-const MISSING_MOCK_MARKER = '[cvf-preview:missing-mock]';
+const MISSING_MOCK_MARKER = 'cvf-preview/missing-mock';
 
 // Routes preview deliberately does not mock. Every entry needs a reason.
 // Anything not handled and not listed here is a missing mock and fails the
@@ -31,7 +31,7 @@ const PREVIEW_UNSUPPORTED = [];
 // failure never changes data, never emits a handler's events, and never hides
 // a missing mock. Add a route here when you add a save handler: a save the
 // chain serves that is missing from this table logs
-// [cvf-preview:unlisted-save], which fails the preview browser suite.
+// cvf-preview/unlisted-save, which fails the preview browser suite.
 const PREVIEW_SAVE_ROUTES = [
   ['post', /^\/workout-logs\/start$/],
   ['post', /^\/workout-logs\/quick-complete$/],
@@ -115,7 +115,7 @@ const PREVIEW_FAIL_KEY = 'cvf_preview_fail';
 // Not CHANGE_EVENT: AuthContext answers that one by replacing the user
 // object, which would re-run user-dependent effects mid-save.
 const SWITCH_EVENT = 'cvf-preview-switch-change';
-const UNLISTED_SAVE_MARKER = '[cvf-preview:unlisted-save]';
+const UNLISTED_SAVE_MARKER = 'cvf-preview/unlisted-save';
 const SPEED_MS = { slow: 1500, 'very-slow': 4000 };
 const FAIL_MODES = ['write-once', 'reads'];
 // Every key Reset removes. Anything not matched here is left alone, because a

@@ -4,9 +4,9 @@ import { test as base, expect } from '@playwright/test';
 // touches the network, so network listeners cannot see it. The mock writes
 // this marker to the console instead; this fixture fails any test that
 // produced one, even when the screen caught and hid the error.
-const MISSING_MOCK_MARKER = '[cvf-preview:missing-mock]';
+const MISSING_MOCK_MARKER = 'cvf-preview/missing-mock';
 // A save the mock served that "Fail next save" does not know about.
-const UNLISTED_SAVE_MARKER = '[cvf-preview:unlisted-save]';
+const UNLISTED_SAVE_MARKER = 'cvf-preview/unlisted-save';
 
 export const test = base.extend({
   allowMissingMocks: [false, { option: true }],

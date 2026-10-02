@@ -1,7 +1,7 @@
 # Preview mode for post-launch use — steps 1–3
 
 **Date:** 2026-10-01
-**Status:** Approved for implementation, revision 3 (owner review 2026-10-01).
+**Status:** Implemented in one pull request (HoodieJav13/CVFPT-Main#101), revision 4. The notes marked "As built" record where the implementation differs from the approved design.
 **Written against:** `origin/main` at `e86938d`. Line references below are to that commit.
 
 ## Why
@@ -81,7 +81,9 @@ Initial entries: the four recurring-session routes. Step 3 removes them.
 
 The final fall-through keeps its 404 and message, and additionally:
 
-- writes `console.error('[cvf-preview:missing-mock] METHOD /path')` — a fixed, greppable prefix;
+- writes `console.error('cvf-preview/missing-mock METHOD /path')` — a fixed, greppable prefix;
+  (**As built:** the marker has no square brackets or colon. The first form, `[cvf-preview:…]`, is valid
+  Tailwind arbitrary-property syntax and made Tailwind emit a junk rule into the production stylesheet.)
 - raises a preview notice `{ kind: 'missing', method, path }`, shown as a toast
   **"Preview is missing a mock"** with the method and path, so on a phone it reads as a preview gap
   rather than an app bug.
@@ -94,7 +96,7 @@ detector therefore observes the adapter's own emission:
 - New `frontend/e2e/preview-test.mjs` exports `test` and `expect`. `test` extends Playwright's with
   an **automatic** fixture that subscribes to `context.on('console')` — context-level, so it
   survives navigations and covers every page a test opens — and collects messages starting with
-  `[cvf-preview:missing-mock]`.
+  `cvf-preview/missing-mock`.
 - After each test the fixture fails the test if anything was collected, listing each method and path.
   This fires even when the screen caught and hid the error.
 - `preview-critical.spec.mjs` imports `test`/`expect` from this file instead of `@playwright/test`.
@@ -191,7 +193,7 @@ switch. For "Fail loads" the read handler runs first — reads do not change fix
 result that is not a missing or unsupported route is replaced by the 503.
 
 **The table is kept honest by the suite.** A save the handler chain serves that is absent from the
-table logs `[cvf-preview:unlisted-save]`; the shared test fixture fails on it, the same way it fails
+table logs `cvf-preview/unlisted-save`; the shared test fixture fails on it, the same way it fails
 on a missing mock.
 
 When `write-once` fires, the adapter emits a dedicated `cvf-preview-switch-change` event so the
@@ -200,6 +202,13 @@ event by replacing the user object, which would re-run user-dependent effects in
 failed save. A simulated failure does not use the missing-mock marker.
 
 503 is deliberate here: it is what puts retry-safe forms into their "outcome unknown" path.
+
+### Desktop footprint (as built)
+
+On desktop the toolbar floats over page content, and three more controls made it a row taller, which
+covered a link on the client Sessions page. The speed, failure and reset controls therefore sit behind a
+**Test states** disclosure on desktop and appear automatically while a switch is on. The phone panel,
+already behind its own toggle, shows them directly.
 
 ### Active indicator
 
@@ -229,8 +238,10 @@ earlier visit is the main way this layer could mislead, so it must be visible wi
 
 - New `frontend/src/lib/previewSeries.js` holds the series logic as pure functions with relative
   imports only, so it is testable under `node --test` like `seriesPlan.js`. `previewMode.js` imports
-  it; because `previewMode.js` itself loads only by dynamic import in preview mode, the new file stays
-  out of the production bundle the same way.
+  it, so the new file lands in the same lazily loaded `previewMode` chunk.
+  **As built:** a production build has always emitted that chunk as a separate file; it is only
+  fetched when preview mode is on. The stylesheet and the entry bundle contain no preview code,
+  and that is what the release check verifies.
 - `previewMode.js` gains the four route handlers, a `state.sessionSeries` array, series fields on
   session reads, and a seeded series. `previewMode.js` is already ~2,200 lines; keeping the logic in
   its own file is the targeted improvement, not a wider refactor.
@@ -326,7 +337,9 @@ seeded time off. If a collision shows up when the suite runs, the times move; th
 
 ### Remove the temporary exclusions
 
-The four series entries leave `PREVIEW_UNSUPPORTED`.
+The four series entries leave `PREVIEW_UNSUPPORTED`. **As built:** that leaves the list empty, so the
+"Not available in preview" path currently has no route to exercise and no browser test; the harness
+spec carries a note to add one when a route is next listed.
 
 ### Tests added to the preview suite
 
@@ -366,7 +379,7 @@ Three small PRs off current `main`, in order. Each leaves the preview suite gree
 |---|---|
 | 1 | Preview suite green with the detector on; the three new tests; production build. |
 | 2 | Preview suite; the five new control tests; production build. |
-| 3 | Frontend unit tests including `previewSeries.test.mjs`; preview suite with the seven new tests; mocked-API series suite unchanged and green; production build, with a check that no `previewSeries` code is in the production bundle. |
+| 3 | Frontend unit tests including `previewSeries.test.mjs`; preview suite with the seven new tests; mocked-API series suite unchanged and green; production build, with a check that the stylesheet and entry bundle contain no preview code. |
 
 No backend, migration or deploy-order implications: every change is under `frontend/`.
 

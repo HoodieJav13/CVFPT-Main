@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-01-preview-mode-post-launch-design.md` (revision 3). Read it before any task.
 
-**Execution (owner decision 2026-10-01):** inline, in one session, with a stop for owner review at each PR boundary — after Task 2, after Task 4, and after Task 9.
+**Execution (owner decisions 2026-10-01):** inline, in one session. All three steps ship in one pull request (HoodieJav13/CVFPT-Main#101) as separate commits, with one owner review at the end. The "PR 1 / PR 2 / PR 3" headings below are kept as the step boundaries.
 
 ## Global Constraints
 
@@ -21,7 +21,7 @@
 - No backend, migration, or schema change.
 - Sarah's existing fixtures (`client_sarah` and everything keyed to her) are not edited or removed.
 - Design tokens only in components; no hex colors. Reuse the toolbar's existing classes.
-- Exact strings: toast titles `Not available in preview` and `Preview is missing a mock`; console marker `[cvf-preview:missing-mock]`; simulated failure message `Simulated failure (preview)`; storage keys `cvf_preview_latency`, `cvf_preview_fail`.
+- Exact strings: toast titles `Not available in preview` and `Preview is missing a mock`; console marker `cvf-preview/missing-mock`; simulated failure message `Simulated failure (preview)`; storage keys `cvf_preview_latency`, `cvf_preview_fail`.
 - Status codes: unsupported route 422, missing mock 404, simulated failure 503.
 - Do not edit the "Preview mode" section of `CLAUDE.md`; the owner is amending it.
 - Commits: small and scoped; end each commit message with the session's attribution line. Do not push or open a PR without the owner asking.
@@ -78,7 +78,7 @@ import { test as base, expect } from '@playwright/test';
 // touches the network, so network listeners cannot see it. The mock writes
 // this marker to the console instead; this fixture fails any test that
 // produced one, even when the screen caught and hid the error.
-const MISSING_MOCK_MARKER = '[cvf-preview:missing-mock]';
+const MISSING_MOCK_MARKER = 'cvf-preview/missing-mock';
 
 export const test = base.extend({
   allowMissingMocks: [false, { option: true }],
@@ -184,7 +184,7 @@ Directly below `const CHANGE_EVENT = 'cvf-preview-change';` add:
 ```js
 export const PREVIEW_NOTICE_EVENT = 'cvf-preview-notice';
 // Fixed prefix read by the Playwright fixture in e2e/preview-test.mjs.
-const MISSING_MOCK_MARKER = '[cvf-preview:missing-mock]';
+const MISSING_MOCK_MARKER = 'cvf-preview/missing-mock';
 
 // Routes preview deliberately does not mock. Every entry needs a reason.
 // Anything not handled and not listed here is a missing mock and fails the
@@ -428,7 +428,7 @@ Branch: `claude/preview-controls` from `origin/main` after PR 1 has merged.
   - `setPreviewFailMode(mode: 'off' | 'write-once' | 'reads'): void`
   - `resetPreview(): void` — removes preview-owned storage keys only; does not reload.
 - Produces (`previewMode.js`, internal): `PREVIEW_SAVE_ROUTES: Array<[method: string, pattern: RegExp]>` — every mocked route that changes fixture data. Later tasks that add a save route must add its entry.
-- Console marker: `[cvf-preview:unlisted-save] METHOD /path` — a save the handler chain served that is absent from `PREVIEW_SAVE_ROUTES`. The shared fixture fails the test on it.
+- Console marker: `cvf-preview/unlisted-save METHOD /path` — a save the handler chain served that is absent from `PREVIEW_SAVE_ROUTES`. The shared fixture fails the test on it.
 - Storage: `cvf_preview_fail` holds `write-once` or `reads`; absent means off. `cvf_preview_latency` holds `[{ "path": ".*", "ms": 1500 }]` (slow) or `ms: 4000` (very slow).
 
 **PR 1 triage result (2026-10-01):** the suite hit exactly one unmocked route, `POST /telemetry/events` (18 tests). It is now mocked as 202 accept-and-discard. Because every page sends it in the background, it must count as a read here, or it would silently consume "Fail next save".
@@ -565,7 +565,7 @@ Add the table below the `PREVIEW_UNSUPPORTED` list, in the same order as the cha
 // the handler runs, so a simulated failure never changes data, never emits a
 // handler's events, and never hides a missing mock. Add a route here when you
 // add a save handler: a save the chain serves that is missing from this table
-// logs [cvf-preview:unlisted-save], which fails the preview browser suite.
+// logs cvf-preview/unlisted-save, which fails the preview browser suite.
 const PREVIEW_SAVE_ROUTES = [
   ['post', /^\/workout-logs\/start$/],
   ['post', /^\/sessions$/],
@@ -591,7 +591,7 @@ const PREVIEW_FAIL_KEY = 'cvf_preview_fail';
 // Not CHANGE_EVENT: AuthContext answers that one by replacing the user
 // object, which would re-run user-dependent effects mid-save.
 const SWITCH_EVENT = 'cvf-preview-switch-change';
-const UNLISTED_SAVE_MARKER = '[cvf-preview:unlisted-save]';
+const UNLISTED_SAVE_MARKER = 'cvf-preview/unlisted-save';
 const SPEED_MS = { slow: 1500, 'very-slow': 4000 };
 const FAIL_MODES = ['write-once', 'reads'];
 // Every key Reset removes. Anything not matched here is left alone, because a
@@ -818,7 +818,7 @@ and add below the `MISSING_MOCK_MARKER` constant:
 
 ```js
 // A save the mock served that "Fail next save" does not know about.
-const UNLISTED_SAVE_MARKER = '[cvf-preview:unlisted-save]';
+const UNLISTED_SAVE_MARKER = 'cvf-preview/unlisted-save';
 ```
 
 - [ ] **Step 8: Run the tests, then the full suite, and complete the table**
@@ -2289,21 +2289,21 @@ Run each and confirm:
 - `npm run test:e2e:series` → 19 passed, unchanged (this suite runs a non-preview build and must not be affected).
 - `npm run build` → succeeds.
 - From the repo root: `bash scripts/check-boundaries.sh frontend` → passes.
-- Production bundle check:
+- Production bundle check (as run; see the spec's "As built" notes for why it targets the stylesheet and entry bundle):
 
   ```bash
   (
-    VERCEL_ENV=production npm run build || { echo "FAIL: the production build failed"; exit 1; }
-    if grep -rlE "cvf-preview:missing-mock|Simulated failure \(preview\)" dist/assets; then
-      echo "FAIL: preview code is in the production bundle (files listed above)"
+    VERCEL_ENV=production npm run build > /dev/null 2>&1 || { echo "FAIL: the production build failed"; exit 1; }
+    if grep -lE "cvf-preview|cvf_preview_fail|Simulated failure \(preview\)|Preview route not mocked" dist/assets/*.css dist/assets/index-*.js; then
+      echo "FAIL: preview code is in the stylesheet or the entry bundle (files listed above)"
       exit 1
     fi
-    echo "clean: no preview code in the production bundle"
+    echo "clean: stylesheet and entry bundle contain no preview code"
   )
   echo "exit status: $?"
   ```
 
-  Expected: `clean: no preview code in the production bundle` and `exit status: 0`. A failed build or any matching file prints `FAIL` and a non-zero status; treat either as a failed check. If the build needs other variables to run under `VERCEL_ENV=production`, report what it asked for instead of guessing values. If preview code is found, run the same block on `origin/main` with the pattern `Preview route not mocked` to learn whether preview code was already in that bundle before this work, and report both results.
+  Expected: the `clean` line and `exit status: 0`. A failed build or any matching file prints `FAIL` and a non-zero status.
 
 - [ ] **Step 4: Commit**
 
