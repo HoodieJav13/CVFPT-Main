@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "codex/email-brand-preview": false
+    }
+  },
   "rewrites": [
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ],
