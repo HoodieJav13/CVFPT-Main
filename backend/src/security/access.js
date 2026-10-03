@@ -9,6 +9,14 @@ function isTemplate(row) {
   return row?.is_template !== false;
 }
 
+// An instance belongs to whoever coaches its client now. Rows loaded with the
+// `client_owner` embed use it, so access follows an admin reassignment; rows
+// loaded without it fall back to the coach recorded when the copy was made.
+function ownsInstance(user, row) {
+  const coachId = 'client_owner' in row ? row.client_owner?.coach_id : row.coach_id;
+  return Boolean(coachId) && coachId === user.coach?.id;
+}
+
 function canAccessClient(user, clientRow) {
   if (!user || !clientRow) return false;
   if (user.role === 'admin') return true;
@@ -19,7 +27,7 @@ function canAccessWorkout(user, workout) {
   if (!user || !workout || workout.archived) return false;
   if (user.role === 'admin') return true;
   if (user.role !== 'coach') return false;
-  return isTemplate(workout) || workout.coach_id === user.coach?.id;
+  return isTemplate(workout) || ownsInstance(user, workout);
 }
 
 // Editing follows the same rule as reading: templates are open to every coach
@@ -33,7 +41,7 @@ function canAccessProgram(user, program) {
   if (!user || !program) return false;
   if (user.role === 'admin') return true;
   if (user.role !== 'coach') return false;
-  return isTemplate(program) || program.coach_id === user.coach?.id;
+  return isTemplate(program) || ownsInstance(user, program);
 }
 
 // A template can be cloned onto a client only while it is live and unhidden.

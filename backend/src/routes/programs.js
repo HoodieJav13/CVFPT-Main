@@ -131,8 +131,12 @@ async function callOpenAiForDraft(pdfText, originalFilename) {
   return JSON.parse(text);
 }
 
+// Client instances are authorized by their client's current coach (see
+// security/access.js), so every row the access checks see carries it.
+const OWNED_ROW = '*, client_owner:clients!client_id(coach_id)';
+
 async function workoutWithDetails(workoutId) {
-  const { data: workout } = await supabaseAdmin.from('workouts').select('*')
+  const { data: workout } = await supabaseAdmin.from('workouts').select(OWNED_ROW)
     .eq('id', workoutId).eq('archived', false).maybeSingle();
   if (!workout) return null;
   const { data: exercises, error } = await supabaseAdmin
@@ -185,7 +189,7 @@ async function workoutAssignmentLoads(assignmentId) {
 // `user` scopes legacy assignments to clients the caller may see, so a shared
 // program never reveals another coach's clients. Omit it for internal use.
 async function programWithDetails(programId, user = null) {
-  const { data: program } = await supabaseAdmin.from('programs').select('*')
+  const { data: program } = await supabaseAdmin.from('programs').select(OWNED_ROW)
     .eq('id', programId).eq('archived', false).maybeSingle();
   if (!program) return null;
   const { data: days, error } = await supabaseAdmin
@@ -326,7 +330,7 @@ function rpcErrorStatus(error) {
 async function programDaysAreAccessible(user, days, options = {}) {
   const workoutIds = [...new Set((days || []).map((day) => day.workout_id).filter(Boolean))];
   if (!workoutIds.length) return true;
-  const { data, error } = await supabaseAdmin.from('workouts').select('*').in('id', workoutIds);
+  const { data, error } = await supabaseAdmin.from('workouts').select(OWNED_ROW).in('id', workoutIds);
   if (error) throw error;
   return programDaysUseAccessibleWorkouts(user, days, data || [], options);
 }
