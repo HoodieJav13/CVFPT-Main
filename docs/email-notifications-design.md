@@ -128,6 +128,15 @@ keys):
 - Minimal branded HTML: dark-on-light for email-client compatibility, logo
   header, one clear line per fact, one button deep-linking into the app
   (e.g. `/client/sessions`). Plain-text alternative part included.
+- Owner-selected appearance (2026-10-02): original CVF logo at 88px, live
+  Core Value Fitness wordmark, teal masthead/action, warm off-white reading
+  surface and optional graphite dark-mode styling. Literal colors live in
+  backend-local `emailBrand.js` with app-token parity coverage. Essential
+  presentation-table layout and spacing are inline; media queries enhance
+  narrow/dark displays. The logo URL uses only the existing action's app
+  origin and `/logo.png`; it contains no account/reset query. Live branding
+  remains when the remote image is blocked. Actual mail-client rendering
+  remains a separate release check; browser screenshots are not delivery proof.
 - Session times formatted in **America/Denver** with the day of week
   ("Thu Aug 6, 11:00 AM"), matching the in-app convention.
 - Instant session emails carry date/time, duration, location, and the other

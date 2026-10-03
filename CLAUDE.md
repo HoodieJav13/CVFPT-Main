@@ -85,6 +85,7 @@ Frontend and backend deploy as **two separate Vercel projects**, each rooted at 
 - **Surfaces are warm graphite** (owner decision 2026-08-13, "desert night", matched to the Leagues app): every neutral surface token lives at hue 25–45 with saturation ≤ 20% — arithmetically incapable of reading navy or green — and `backend/test/design-tokens.test.js` fails the suite if the ramp drifts. Cards get their gradient/depth/teal-edge from the single `[class*="bg-card"]` rule at the bottom of index.css, not per-callsite classes. Teal survives as accents and the Sandia ridge — the one deliberate cool identity element. To mint a new dark shade: keep the hue in band, keep saturation low, move only lightness.
 - **Assets:** logo at `frontend/public/logo.png` (fallback: CVF lettermark if the image 404s), Sandia ridge background at `frontend/public/backgrounds/sandia-wide-hero-bg.svg`. The shared `BrandBackdrop` owns all ridge usage and the optional build-time photo slots documented in `frontend/src/assets/photos/README.md`; the approved active target is the no-photo fallback until consented photography exists. Two unused CTA-background SVGs (`sandia-free-agent-cta-bg.svg`, `sandia-team-interest-cta-bg.svg`) also live in that folder, carried over from Leagues — not currently wired to any PT screen.
 - **PDF export** (`backend/src/lib/programPdf.js` — the coach `generateProgramPdf` and the client `generateLogSheetPdf`) cannot read CSS variables — its teal/gold are hardcoded hex literals kept manually in sync with the tokens above. If you change `--primary` or `--gold`, update the matching hex constants at the top of that file too.
+- **Notification emails** use backend-local literal colors in `backend/src/lib/emailBrand.js`, checked against the app tokens by `backend/test/email-appearance.test.js`. The shared wrapper uses the original public `/logo.png` at the action link's app origin, without copying invite/reset query data. The owner accepted the compact/stronger comparison on 2026-10-02; the selected stronger direction uses an 88px logo, live wordmark and teal masthead. Browser light/dark checks do not establish actual mail-client rendering or delivery.
 
 ## Known duplication
 
@@ -129,7 +130,7 @@ of unreleased features and UI on Vercel preview links, design QA, and the
 ## Conventions
 
 - Functional and visual changes go in **separate commits**; keep commits small and scoped.
-- Design tokens only — no hardcoded hex colors in components (PDF export is the one necessary exception — see Brand system above).
+- Design tokens only — no hardcoded hex colors in components (PDF export and email-client-compatible HTML use backend-local literals with parity checks — see Brand system above).
 - Cross-project code/assets get duplicated, never shared via a path that crosses the frontend/backend deploy boundary.
 
 ## Status (updated as of this session)
