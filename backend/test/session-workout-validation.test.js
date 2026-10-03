@@ -116,6 +116,8 @@ async function send(pathname, { method = 'POST', body } = {}) {
 const coachUser = { role: 'coach', coach: { id: COACH_ID, name: 'Coach Sam' } };
 const scheduledCalls = () => state.rpcCalls.filter((call) => call.name === 'schedule_session');
 const createBody = (workout_id) => ({ client_id: CLIENT_ID, scheduled_at: FUTURE, duration_minutes: 60, workout_id });
+// The session being written, as the routes pass it to the attachment helpers.
+const sessionContext = { user: coachUser, coachId: COACH_ID, clientId: CLIENT_ID };
 
 test('create accepts a shared (coach_id null) unarchived workout', async () => {
   resetState();
@@ -143,7 +145,7 @@ test('validateWorkoutIds validates many ids with exactly one workouts query', as
     { id: WORKOUT_ID, coach_id: COACH_ID },
     { id: WORKOUT_ID_2, coach_id: null },
   ];
-  const result = await validateWorkoutIds([WORKOUT_ID, WORKOUT_ID_2, WORKOUT_ID, null, undefined], COACH_ID);
+  const result = await validateWorkoutIds([WORKOUT_ID, WORKOUT_ID_2, WORKOUT_ID, null, undefined], sessionContext);
   assert.deepEqual(result, { ok: true, value: [WORKOUT_ID, WORKOUT_ID_2] });
   assert.equal(state.workoutQueries, 1);
 });
@@ -151,16 +153,16 @@ test('validateWorkoutIds validates many ids with exactly one workouts query', as
 test('validateWorkoutIds rejects an unusable id and skips the query when there is nothing to check', async () => {
   resetState();
   state.workoutList = [{ id: WORKOUT_ID, coach_id: OTHER_COACH_ID, is_template: false }];
-  assert.deepEqual(await validateWorkoutIds([WORKOUT_ID], COACH_ID), { ok: false, error: 'Workout not found' });
+  assert.deepEqual(await validateWorkoutIds([WORKOUT_ID], sessionContext), { ok: false, error: 'Workout not found' });
   resetState();
-  assert.deepEqual(await validateWorkoutIds([null, undefined], COACH_ID), { ok: true, value: [] });
+  assert.deepEqual(await validateWorkoutIds([null, undefined], sessionContext), { ok: true, value: [] });
   assert.equal(state.workoutQueries, 0);
-  assert.equal((await validateWorkoutIds(['nope'], COACH_ID)).ok, false);
+  assert.equal((await validateWorkoutIds(['nope'], sessionContext)).ok, false);
 });
 
 test('validateWorkoutAttachment null detaches without a query', async () => {
   resetState();
-  assert.deepEqual(await validateWorkoutAttachment(null, COACH_ID), { ok: true, value: null });
+  assert.deepEqual(await validateWorkoutAttachment(null, sessionContext), { ok: true, value: null });
   assert.equal(state.workoutQueries, 0);
 });
 
@@ -216,13 +218,13 @@ test('a failed workout lookup is a 500 (retryable), not "Workout not found", and
 test('attachments accept another coach\'s shared template but refuse their client instance', async () => {
   resetState();
   state.workoutRow = { id: WORKOUT_ID, coach_id: OTHER_COACH_ID, is_template: true };
-  assert.equal((await validateWorkoutAttachment(WORKOUT_ID, COACH_ID)).ok, true);
+  assert.equal((await validateWorkoutAttachment(WORKOUT_ID, sessionContext)).ok, true);
   state.workoutList = [state.workoutRow];
-  assert.equal((await validateWorkoutIds([WORKOUT_ID], COACH_ID)).ok, true);
+  assert.equal((await validateWorkoutIds([WORKOUT_ID], sessionContext)).ok, true);
   state.workoutRow.is_template = false;
-  assert.equal((await validateWorkoutAttachment(WORKOUT_ID, COACH_ID)).ok, false);
-  assert.equal((await validateWorkoutIds([WORKOUT_ID], COACH_ID)).ok, false);
+  assert.equal((await validateWorkoutAttachment(WORKOUT_ID, sessionContext)).ok, false);
+  assert.equal((await validateWorkoutIds([WORKOUT_ID], sessionContext)).ok, false);
   state.workoutRow.coach_id = null;
-  assert.equal((await validateWorkoutAttachment(WORKOUT_ID, COACH_ID)).ok, false);
-  assert.equal((await validateWorkoutIds([WORKOUT_ID], COACH_ID)).ok, false);
+  assert.equal((await validateWorkoutAttachment(WORKOUT_ID, sessionContext)).ok, false);
+  assert.equal((await validateWorkoutIds([WORKOUT_ID], sessionContext)).ok, false);
 });
