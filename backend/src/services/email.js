@@ -48,6 +48,10 @@ function renderEmail({ headline, intro, facts = [], actionLabel, actionUrl, foot
     if (action.protocol === 'https:' || action.protocol === 'http:') logoUrl = new URL('/logo.png', action.origin).href;
   } catch { /* Relative or malformed links keep the live wordmark alone. */ }
   const logo = logoUrl ? `<td width="88" style="vertical-align:middle;padding-right:16px"><img src="${escapeHtml(logoUrl)}" width="88" height="88" alt="CVF" style="display:block;width:88px;height:88px;border:0;border-radius:4px;background:${brand.logoBacking};color:${brand.ink};font:700 18px Arial,sans-serif"></td>` : '';
+  // Yahoo dark theme recolored these teal-backed text elements independently
+  // of their background. Inline text-fill preserves their intended ink in
+  // supporting clients; color remains the fallback. Keep adaptive body copy
+  // outside this rule. An actual Yahoo retest is still required before release.
   const footerHtml = footer ? `<p class="email-copy" style="margin:22px 0 0;font-size:14px;line-height:21px;color:${brand.border}">${escapeHtml(footer)}${footerUrl ? ` <a class="email-footer-link" href="${escapeHtml(footerUrl)}" style="color:${brand.ink};text-decoration:underline">${escapeHtml(footerLabel)}</a>` : ''}</p>` : '';
   return {
     text,
@@ -74,13 +78,13 @@ function renderEmail({ headline, intro, facts = [], actionLabel, actionUrl, foot
 <!--[if mso]><table role="presentation" width="560" align="center" cellspacing="0" cellpadding="0"><tr><td><![endif]-->
 <table role="presentation" width="100%" align="center" cellspacing="0" cellpadding="0" style="max-width:560px;margin:0 auto;border:1px solid ${brand.border};border-radius:12px;overflow:hidden;border-collapse:separate;border-spacing:0">
 <tr><td class="email-masthead" bgcolor="${brand.teal}" style="padding:20px 22px;background:${brand.teal};color:${brand.ink};border-bottom:6px solid ${brand.graphite}">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0"><tr>${logo}<td style="vertical-align:middle"><div style="font-size:22px;line-height:26px;font-weight:700">Core Value<br>Fitness</div><div style="font-size:13px;line-height:20px;margin-top:7px;letter-spacing:.06em">PERSONAL TRAINING</div></td></tr></table>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0"><tr>${logo}<td style="vertical-align:middle"><div style="color:${brand.ink};-webkit-text-fill-color:${brand.ink};font-size:22px;line-height:26px;font-weight:700">Core Value<br>Fitness</div><div style="color:${brand.ink};-webkit-text-fill-color:${brand.ink};font-size:13px;line-height:20px;margin-top:7px;letter-spacing:.06em">PERSONAL TRAINING</div></td></tr></table>
 </td></tr>
 <tr><td class="email-content" bgcolor="${brand.paper}" style="padding:26px 24px 28px;background:${brand.paper};color:${brand.ink}">
 <h1 style="font-size:24px;line-height:30px;margin:0 0 14px;font-weight:700">${escapeHtml(headline)}</h1>
 <p class="email-copy" style="font-size:16px;line-height:24px;color:${brand.border};margin:0 0 18px">${escapeHtml(intro)}</p>
 ${facts.length ? `<ul style="margin:0 0 22px;padding-left:21px;font-size:16px;line-height:24px">${factHtml}</ul>` : ''}
-<table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0"><tr><td class="email-action" bgcolor="${brand.teal}" style="background:${brand.teal};border-radius:7px;mso-padding-alt:14px 18px"><a class="email-action" href="${escapeHtml(actionUrl)}" style="display:inline-block;padding:14px 18px;min-height:20px;font-size:16px;line-height:20px;font-weight:700;background:${brand.teal};color:${brand.ink};border-radius:7px;text-decoration:none">${escapeHtml(actionLabel)}</a></td></tr></table>
+<table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0"><tr><td class="email-action" bgcolor="${brand.teal}" style="background:${brand.teal};border-radius:7px;mso-padding-alt:14px 18px"><a class="email-action" href="${escapeHtml(actionUrl)}" style="display:inline-block;padding:14px 18px;min-height:20px;font-size:16px;line-height:20px;font-weight:700;background:${brand.teal};color:${brand.ink};-webkit-text-fill-color:${brand.ink};border-radius:7px;text-decoration:none">${escapeHtml(actionLabel)}</a></td></tr></table>
 ${footerHtml}
 </td></tr></table>
 <!--[if mso]></td></tr></table><![endif]-->
