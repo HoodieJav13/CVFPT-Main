@@ -6,6 +6,8 @@ const { todayDateInTz, dateInTz } = require('../utils/time');
 const { addDays, buildWeekRhythm } = require('../lib/rhythm');
 const { dispatchPush, sendToCoaches } = require('../services/push');
 
+const { actualMetrics, trackingType } = require('../lib/workoutMetrics');
+
 const router = express.Router();
 router.use(requireAuth);
 
@@ -109,7 +111,7 @@ function encodeHistoryCursor(occurrence) {
   return Buffer.from(JSON.stringify({ completed_at: occurrence.completed_at, id: occurrence.workout_log_id })).toString('base64url');
 }
 
-function workoutSetUpdatePayload(body, set, now = new Date().toISOString()) {
+function workoutSetUpdatePayload(body, set, now = new Date().toISOString(), exercise = {}) {
   const status = body.status === 'completed' ? 'completed' : body.status === 'pending' ? 'pending' : set.status;
   const loadValue = Object.hasOwn(body, 'actual_load_value') ? body.actual_load_value : set.actual_load_value;
   const loadUnit = Object.hasOwn(body, 'actual_load_unit') ? body.actual_load_unit : set.actual_load_unit;
@@ -118,7 +120,9 @@ function workoutSetUpdatePayload(body, set, now = new Date().toISOString()) {
   const actualRpe = Object.hasOwn(body, 'actual_rpe') ? body.actual_rpe : set.actual_rpe;
   if (!validPerformedReps(actualReps)) throw Object.assign(new Error('Reps must be a nonnegative whole number or null'), { status: 400 });
   if (!validPerformedRpe(actualRpe)) throw Object.assign(new Error('RPE must be 1 through 10 in 0.5 increments or null'), { status: 400 });
+  if (trackingType(exercise) !== 'reps_weight' && actualReps != null) throw Object.assign(new Error('Reps do not match the exercise tracking type'), { status: 400 });
   return {
+    ...actualMetrics(body, set, exercise),
     status,
     actual_load_value: loadValue === '' || loadValue === null ? null : Number(loadValue),
     actual_load_unit: loadValue === '' || loadValue === null ? null : loadUnit,
@@ -129,8 +133,8 @@ function workoutSetUpdatePayload(body, set, now = new Date().toISOString()) {
   };
 }
 
-async function updateSetAtHandlerBoundary({ body, set, mutate, now }) {
-  const payload = workoutSetUpdatePayload(body, set, now);
+async function updateSetAtHandlerBoundary({ body, set, exercise, mutate, now }) {
+  const payload = workoutSetUpdatePayload(body, set, now, exercise);
   return mutate(payload);
 }
 
@@ -472,7 +476,7 @@ async function requireWritableActiveLog(req, res) {
 
 function createExerciseHistoryHandler({
   findLog = workoutLogWithDetails,
-  runHistory = (args) => supabaseAdmin.rpc('get_workout_exercise_history', args),
+  runHistory = (args) => supabaseAdmin.rpc('get_workout_exercise_history_v2', args),
 } = {}) {
   return async function exerciseHistoryHandler(req, res) {
     let cursor;
@@ -513,6 +517,7 @@ function createExerciseHistoryHandler({
           workout_log_id: row.workout_log_id,
           completed_at: row.completed_at,
           exercise_name: row.exercise_name,
+          tracking_type: row.tracking_type ?? 'reps_weight',
           sets: [],
         });
         grouped.get(row.workout_log_id).sets.push({
@@ -521,6 +526,10 @@ function createExerciseHistoryHandler({
           actual_load_unit: row.actual_load_unit,
           actual_reps: row.actual_reps,
           actual_rpe: row.actual_rpe,
+          actual_duration_value: row.actual_duration_value ?? null,
+          actual_duration_unit: row.actual_duration_unit ?? null,
+          actual_distance_value: row.actual_distance_value ?? null,
+          actual_distance_unit: row.actual_distance_unit ?? null,
         });
       }
       const allOccurrences = [...grouped.values()]
@@ -782,7 +791,7 @@ router.patch('/:id/sets/:setId', async (req, res) => {
     const set = log.exercises.flatMap((exercise) => exercise.sets).find((row) => row.id === req.params.setId);
     if (!set || !exerciseIds.has(set.workout_log_exercise_id)) return res.status(404).json({ error: 'Workout set not found' });
     const { data, error } = await updateSetAtHandlerBoundary({
-      body: req.body || {}, set,
+      body: req.body || {}, set, exercise: log.exercises.find((row) => row.id === set.workout_log_exercise_id),
       mutate: (payload) => supabaseAdmin.from('workout_log_sets').update({ ...payload, ...actorStamp(req.user) })
         .eq('id', set.id).eq('archived', false).select().single(),
     });

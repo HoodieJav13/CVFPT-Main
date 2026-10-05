@@ -35,7 +35,8 @@ test('migration adds constrained labels, snapshots them, and writes/copies them 
 });
 
 test('both workout write routes normalize labels before save_workout', () => {
-  assert.equal((routes.match(/normalizeSupersetGroups\(/g) || []).length, 2);
+  assert.equal((routes.match(/normalizeSupersetGroups\(/g) || []).length, 1);
+  assert.equal((routes.match(/p_exercises:.*trackingExercises\(/g) || []).length, 2);
 });
 
 test('normalization: contiguous runs of 2+ get sequential letters, singletons become null', () => {

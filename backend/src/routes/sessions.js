@@ -68,13 +68,16 @@ async function attachLinkedLogs(sessions) {
 async function workoutPlanExercises(workoutId) {
   if (!workoutId) return [];
   const { data: exercises } = await supabaseAdmin.from('workout_exercises')
-    .select('id, custom_name, sets, reps, rest, client_notes, position, library_exercise:exercise_library(name)')
+    .select('id, custom_name, sets, reps, tracking_type, duration_value, duration_unit, distance_value, distance_unit, rest, client_notes, position, library_exercise:exercise_library(name)')
     .eq('workout_id', workoutId).eq('archived', false).order('position');
   return (exercises || []).map((exercise) => ({
     id: exercise.id,
     name: exercise.library_exercise?.name || exercise.custom_name || 'Exercise',
     sets: exercise.sets,
     reps: exercise.reps,
+    tracking_type: exercise.tracking_type ?? 'reps_weight',
+    duration_value: exercise.duration_value ?? null, duration_unit: exercise.duration_unit ?? null,
+    distance_value: exercise.distance_value ?? null, distance_unit: exercise.distance_unit ?? null,
     rest: exercise.rest,
     client_notes: exercise.client_notes,
   }));

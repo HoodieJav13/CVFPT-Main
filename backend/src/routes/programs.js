@@ -37,6 +37,15 @@ const {
 } = require('../lib/programDraft.cjs');
 const { extractPdfText } = require('../lib/pdfText');
 const { normalizeSupersetGroups } = require('../lib/supersets');
+const { normalizeTracking } = require('../lib/workoutMetrics');
+
+function trackingExercises(exercises, previous = []) {
+  const old = new Map(previous.map((row) => [row.id, row]));
+  return normalizeSupersetGroups(exercises.map((row) => {
+    const merged = { ...old.get(row.id), ...row };
+    return { ...row, ...normalizeTracking(merged) };
+  }));
+}
 const {
   generateLogSheetPdf,
   generateProgramPdf,
@@ -450,11 +459,12 @@ router.post('/workouts', requireCoach, async (req, res) => {
       p_name: String(name).trim(),
       p_description: description || null,
       p_goal: goal || null,
-      p_exercises: Array.isArray(exercises) ? normalizeSupersetGroups(exercises) : [],
+      p_exercises: Array.isArray(exercises) ? trackingExercises(exercises) : [],
     });
     if (error) throw error;
     return res.status(201).json(await workoutWithDetails(workoutId));
   } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
     logError('create workout error', e);
     return res.status(500).json({ error: 'Failed to create workout' });
   }
@@ -487,12 +497,13 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
       p_name: name,
       p_description: 'description' in body ? body.description || null : workout.description,
       p_goal: 'goal' in body ? body.goal || null : workout.goal,
-      p_exercises: normalizeSupersetGroups(Array.isArray(body.exercises) ? body.exercises : workout.exercises),
+      p_exercises: trackingExercises(Array.isArray(body.exercises) ? body.exercises : workout.exercises, workout.exercises),
     });
     if (error) throw error;
     if (!workoutId) return res.status(404).json({ error: 'Workout not found' });
     return res.json(await workoutWithDetails(workoutId));
   } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
     logError('update workout error', e);
     return res.status(500).json({ error: 'Failed to update workout' });
   }

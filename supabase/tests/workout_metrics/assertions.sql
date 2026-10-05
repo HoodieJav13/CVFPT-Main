@@ -1,0 +1,62 @@
+\set ON_ERROR_STOP on
+begin;
+create function pg_temp.assert(ok boolean, name text) returns void language plpgsql as $$ begin if ok is distinct from true then raise exception 'FAIL: %', name; end if; raise notice 'PASS: %', name; end $$;
+select pg_temp.assert((select tracking_type = 'reps_weight' and prescribed_reps = '99 prescribed' from public.workout_log_exercises where id = '80000000-0000-4000-8000-000000000001'), 'legacy completed snapshot keeps mode and prescriptions');
+select pg_temp.assert((select actual_load_value = 42.5 and actual_load_unit = 'lb' and actual_duration_value is null and actual_distance_value is null from public.workout_log_sets where id = '90000000-0000-4000-8000-000000000001'), 'legacy completed weight history survives migration');
+select pg_temp.assert(not public.valid_workout_metric(null, 's', 'duration') and not public.valid_workout_metric(1, null, 'distance') and not public.valid_workout_metric('NaN', 's', 'duration') and not public.valid_workout_metric('Infinity', 'm', 'distance'), 'pairs and nonfinite metrics rejected');
+select pg_temp.assert(public.valid_workout_metric(1440, 'min', 'duration') and not public.valid_workout_metric(1441, 'min', 'duration') and public.valid_workout_metric(1000, 'km', 'distance') and not public.valid_workout_metric(1001, 'km', 'distance'), 'unit-aware maximums enforced');
+select pg_temp.assert(not has_function_privilege('anon', 'public.get_workout_exercise_history_v2(uuid,uuid,uuid,timestamptz,uuid,integer)', 'EXECUTE') and not has_function_privilege('authenticated', 'public.get_workout_exercise_history_v2(uuid,uuid,uuid,timestamptz,uuid,integer)', 'EXECUTE') and has_function_privilege('service_role', 'public.get_workout_exercise_history_v2(uuid,uuid,uuid,timestamptz,uuid,integer)', 'EXECUTE'), 'extended history service-role-only');
+select pg_temp.assert((select bool_and(relrowsecurity) from pg_class where oid in ('public.workout_exercises'::regclass, 'public.workout_log_exercises'::regclass, 'public.workout_log_sets'::regclass)), 'existing RLS remains enabled');
+do $$
+declare
+  coach uuid := '10000000-0000-4000-8000-000000000001';
+  client uuid := '20000000-0000-4000-8000-000000000001';
+  workout uuid; assignment uuid; log_id uuid; exercise_id uuid; set_id uuid; copy_id uuid; program_id uuid; assigned_program uuid; day_id uuid; session_id uuid; result jsonb; import_result jsonb; receipt jsonb; body jsonb;
+begin
+  body := '[{"custom_name":"Hold","sets":"1","tracking_type":"duration","duration_value":45,"duration_unit":"s"},{"custom_name":"Carry","sets":"1","tracking_type":"distance","distance_value":100,"distance_unit":"yd"},{"custom_name":"Run","sets":"2","tracking_type":"duration_distance","duration_value":12.5,"duration_unit":"min","distance_value":1.25,"distance_unit":"mi"}]';
+  workout := public.save_workout(null, coach, 'Metrics', null, null, body);
+  perform pg_temp.assert((select count(*)=3 from public.workout_exercises where workout_id=workout and tracking_type <> 'reps_weight'), 'save_workout writes all explicit modes');
+  begin
+    perform public.save_workout(null, coach, 'Invalid', null, null, '[{"custom_name":"Bad","tracking_type":"duration","duration_value":45,"duration_unit":"m"}]');
+    raise exception 'invalid metric unexpectedly saved';
+  exception when check_violation then null; end;
+  perform pg_temp.assert(not exists(select from public.workouts where name='Invalid'), 'invalid save is atomic');
+  assignment := public.assign_workout_clone(workout, client, 'active', null, null, '[]');
+  select workout_id into copy_id from public.workout_assignments where id=assignment;
+  perform pg_temp.assert(copy_id<>workout and (select count(*)=3 from public.workout_exercises where workout_id=copy_id and tracking_type<>'reps_weight'), 'assignment clones typed private workout');
+  insert into public.sessions(client_id, coach_id, scheduled_at, workout_id) values(client,coach,now(),copy_id) returning id into session_id;
+  result := public.start_workout_log_v2(client,null,null,assignment,'client',null,session_id);
+  log_id := (result->>'workout_log_id')::uuid;
+  perform pg_temp.assert(result->>'outcome'='started' and (select l.session_id is not null from public.workout_logs l where id=log_id), 'start attaches session and snapshots types');
+  perform pg_temp.assert((select count(*)=3 from public.workout_log_exercises where workout_log_id=log_id and tracking_type<>'reps_weight'), 'all tracking modes snapshotted');
+  perform pg_temp.assert((select bool_and(actual_duration_value is null and actual_distance_value is null) from public.workout_log_sets s join public.workout_log_exercises e on e.id=s.workout_log_exercise_id where e.workout_log_id=log_id), 'targets never become performed values');
+  select id into exercise_id from public.workout_log_exercises where workout_log_id=log_id and exercise_name='Run';
+  select id into set_id from public.workout_log_sets where workout_log_exercise_id=exercise_id and set_number=1;
+  update public.workout_log_sets set actual_duration_value=12.5, actual_duration_unit='min', actual_distance_value=1.25, actual_distance_unit='mi', status='completed',completed_at=now() where id=set_id;
+  update public.workout_exercises set duration_value=20 where workout_id=copy_id and custom_name='Run';
+  perform pg_temp.assert((select prescribed_duration_value=12.5 from public.workout_log_exercises where id=exercise_id), 'active snapshot unaffected by edited source');
+  result := public.start_workout_log_v2(client,null,null,assignment,'client',null,session_id);
+  perform pg_temp.assert(result->>'outcome'='resumed' and (result->>'workout_log_id')::uuid=log_id and (select count(*)=4 from public.workout_log_sets s join public.workout_log_exercises e on e.id=s.workout_log_exercise_id where e.workout_log_id=log_id), 'repeated start resumes without duplicate sets');
+  begin update public.workout_log_sets set actual_reps=8 where id=set_id; raise exception 'reps unexpectedly accepted'; exception when check_violation then null; end;
+  begin update public.workout_log_sets set actual_distance_unit='s' where id=set_id; raise exception 'invalid unit accepted'; exception when check_violation then null; end;
+  begin update public.workout_log_sets s set actual_distance_value=4,actual_distance_unit='m' from public.workout_log_exercises e where s.workout_log_exercise_id=e.id and e.workout_log_id=log_id and e.tracking_type='duration'; raise exception 'wrong mode accepted'; exception when check_violation then null; end;
+  perform pg_temp.assert((select actual_reps is null and actual_distance_unit='mi' from public.workout_log_sets where id=set_id), 'invalid edits preserve prior data');
+  perform public.complete_workout_log_v2(log_id,client,'synthetic','',null);
+  perform pg_temp.assert(public.complete_workout_log_v2(log_id,client,'repeated','',null)=log_id, 'repeated completion idempotent');
+  perform pg_temp.assert((select count(*)=1 from public.get_workout_exercise_history_v2(client,null,(select source_workout_exercise_id from public.workout_log_exercises where id=exercise_id),null,null,11) where tracking_type='duration_distance' and actual_duration_value=12.5 and actual_duration_unit='min' and actual_distance_value=1.25 and actual_distance_unit='mi'), 'history returns completed performed metrics with units');
+  begin update public.workout_log_sets set actual_duration_value=99 where id=set_id; raise exception 'completed edit accepted'; exception when raise_exception then if sqlerrm='completed edit accepted' then raise; end if; end;
+  perform pg_temp.assert((select actual_duration_value=12.5 from public.workout_log_sets where id=set_id), 'completed metric values immutable');
+  -- A completed log still reads its original mode after a source changes.
+  update public.workout_exercises set tracking_type='distance',duration_value=null,duration_unit=null where workout_id=copy_id and custom_name='Run';
+  perform pg_temp.assert((select tracking_type='duration_distance' from public.workout_log_exercises where id=exercise_id), 'completed mode remains original');
+  result := public.clone_workout(copy_id,coach,null,true,null);
+  perform pg_temp.assert((select count(*)=3 from public.workout_exercises where workout_id=(result->>'workout_id')::uuid and tracking_type<>'reps_weight'), 'save-as-template retains typed targets');
+  program_id := public.save_program(null,coach,false,'Typed program',null,1,jsonb_build_array(jsonb_build_object('day_number',1,'workout_id',workout)));
+  assigned_program := public.assign_program_clone(program_id,client,null,'[]');
+  select pd.id into day_id from public.program_assignments pa join public.program_days pd on pd.program_id=pa.program_id where pa.id=assigned_program;
+  result := public.start_workout_log_v2(client,assigned_program,day_id,null,'coach',coach,null);
+  perform pg_temp.assert((select count(*)=3 from public.workout_log_exercises where workout_log_id=(result->>'workout_log_id')::uuid and tracking_type<>'reps_weight'), 'private program/day flow snapshots typed targets');
+  import_result := public.commit_program_import(coach,'manual',jsonb_build_object('program',jsonb_build_object('name','Typed import','frequency_days',1),'days',jsonb_build_array(jsonb_build_object('day_number',1,'name','Imported','exercises',jsonb_build_array(jsonb_build_object('name','Import hold','tracking_type','duration','duration_value',45,'duration_unit','s'))))));
+  perform pg_temp.assert(exists(select from public.program_days pd join public.workout_exercises we on we.workout_id=pd.workout_id where pd.program_id=(import_result->>'program_id')::uuid and we.tracking_type='duration' and we.duration_unit='s'), 'import commit retains explicit metadata');
+end $$;
+rollback;

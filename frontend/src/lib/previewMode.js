@@ -1,3 +1,4 @@
+import { actualMetrics, normalizeTracking, trackingType } from './workoutMetrics.js';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
 import { normalizeSupersets } from '@/lib/supersets';
@@ -255,6 +256,7 @@ const state = {
     { id: 'lib_world_stretch', name: 'World Greatest Stretch', category: 'Mobility', equipment: 'Bodyweight', primary_muscle: 'Hips', secondary_muscles: 'Thoracic spine, Hamstrings', video_url: 'https://www.youtube.com/watch?v=aiN-2yAIkec', notes: 'Move slowly and breathe.', archived: false, created_at: iso(-50), updated_at: iso(-50) },
   ],
   workouts: [
+    { id: 'workout_metrics', coach_id: 'coach_marcus', name: 'Duration & distance practice', is_template: true, hidden: false, archived: false, created_at: iso(-1), updated_at: iso(-1) },
     { id: 'workout_lower_a', coach_id: 'coach_marcus', name: 'Lower Strength A', description: 'Squat pattern, hinge, and core support.', goal: 'Lower body strength', archived: false, created_at: iso(-45), updated_at: iso(-45) },
     { id: 'workout_upper_a', coach_id: 'coach_marcus', name: 'Upper Strength A', description: 'Horizontal push/pull with clean volume.', goal: 'Upper body strength', archived: false, created_at: iso(-44), updated_at: iso(-44) },
     { id: 'workout_mobility_run', coach_id: 'coach_marcus', name: 'Run Prep Mobility', description: 'Hips, ankles, and trunk prep for running days.', goal: 'Mobility', archived: false, created_at: iso(-40), updated_at: iso(-40) },
@@ -262,6 +264,11 @@ const state = {
     { id: 'workout_sarah_mobility', coach_id: 'coach_marcus', name: 'Run Prep Mobility — Sarah', description: 'Sarah’s recovery-day copy.', goal: 'Mobility', is_template: false, client_id: 'client_sarah', source_workout_id: 'workout_mobility_run', hidden: false, archived: false, created_at: iso(-7), updated_at: iso(-7) },
   ],
   workoutExercises: [
+    ...[
+      { custom_name: 'Timed hold', tracking_type: 'duration', duration_value: 45, duration_unit: 's' },
+      { custom_name: 'Carry', tracking_type: 'distance', distance_value: 100, distance_unit: 'yd' },
+      { custom_name: 'Run', tracking_type: 'duration_distance', duration_value: 12.5, duration_unit: 'min', distance_value: 1.25, distance_unit: 'mi' },
+    ].map((exercise, index) => ({ id: `wex_metrics_${index}`, workout_id: 'workout_metrics', exercise_library_id: null, sets: '1', reps: null, default_load_value: null, default_load_unit: null, rest: null, position: index, archived: false, ...exercise })),
     { id: 'wex_1', workout_id: 'workout_lower_a', exercise_library_id: 'lib_goblet_squat', custom_name: null, sets: '3', reps: '8-10', target_rpe: '7', rest: '90s', rest_seconds: 90, tempo: '3-1-1', default_load_value: 30, default_load_unit: 'lb', notes: 'Slow lower, tall chest.', video_url: null, position: 0, archived: false, created_at: iso(-45) },
     { id: 'wex_2', workout_id: 'workout_lower_a', exercise_library_id: 'lib_rdl', custom_name: null, sets: '3', reps: '8', target_rpe: '7-8', rest: '90s', rest_seconds: 90, tempo: '3-0-1', default_load_value: 40, default_load_unit: 'lb', notes: 'Stop when hamstrings limit range.', video_url: null, position: 1, archived: false, created_at: iso(-45) },
     { id: 'wex_3', workout_id: 'workout_lower_a', exercise_library_id: null, custom_name: 'Half-kneeling Pallof Press', sets: '3', reps: '10/side', target_rpe: '7', rest: '45s', rest_seconds: 45, tempo: '', default_load_value: 15, default_load_unit: 'lb', notes: 'No torso rotation.', video_url: 'https://www.youtube.com/watch?v=ma2OjgP5XDc', position: 2, archived: false, created_at: iso(-45) },
@@ -292,6 +299,7 @@ const state = {
     { id: 'assign_sarah_mobility', program_id: 'program_sarah_mobility', client_id: 'client_sarah', notes: 'Use on recovery days.', archived: false, created_at: iso(-7), client: { id: 'client_sarah', name: 'Sarah Martinez' } },
   ],
   workoutAssignments: [
+    { id: 'work_assign_david_metrics', client_id: 'client_david', workout_id: 'workout_metrics', assignment_mode: 'active', assigned_for: null, notes: 'Explicit typed logging scenario.', archived: false, created_at: iso(-1) },
     { id: 'work_assign_sarah_active', client_id: 'client_sarah', workout_id: 'workout_mobility_run', assignment_mode: 'active', assigned_for: null, notes: 'Use this on recovery days.', archived: false, created_at: iso(-8) },
     { id: 'work_assign_sarah_dated', client_id: 'client_sarah', workout_id: 'workout_upper_a', assignment_mode: 'dated', assigned_for: dateOnly(2), notes: 'Optional if shoulder feels good.', archived: false, created_at: iso(-2) },
     { id: 'work_assign_sarah_copy', client_id: 'client_sarah', workout_id: 'workout_sarah_mobility', assignment_mode: 'active', assigned_for: null, notes: 'Client-specific recovery workout.', archived: false, created_at: iso(-7) },
@@ -596,6 +604,7 @@ function replaceWorkoutExercises(workoutId, exercises = []) {
         && candidate.exercise_library_id === (exercise.exercise_library_id || null)
         && candidate.custom_name === (exercise.exercise_library_id ? null : (exercise.custom_name || null)));
       const values = {
+        ...normalizeTracking({ ...row, ...exercise }),
         workout_id: workoutId,
         exercise_library_id: exercise.exercise_library_id || null,
         custom_name: exercise.exercise_library_id ? null : (exercise.custom_name || null),
@@ -1104,6 +1113,9 @@ function startPreviewWorkout(clientId, payload) {
     const logExercise = {
       id: id('workout_log_exercise'), workout_log_id: log.id, source_workout_exercise_id: exercise.id,
       exercise_library_id: exercise.exercise_library_id,
+      tracking_type: trackingType(exercise),
+      prescribed_duration_value: exercise.duration_value ?? null, prescribed_duration_unit: exercise.duration_unit ?? null,
+      prescribed_distance_value: exercise.distance_value ?? null, prescribed_distance_unit: exercise.distance_unit ?? null,
       exercise_name: exerciseName(exercise), prescribed_sets: exercise.sets, prescribed_reps: exercise.reps,
       prescribed_rpe: exercise.target_rpe, prescribed_rest: exercise.rest, prescribed_tempo: exercise.tempo,
       prescribed_rest_seconds: exercise.rest_seconds ?? parseRestSeconds(exercise.rest || ''),
@@ -1119,6 +1131,7 @@ function startPreviewWorkout(clientId, payload) {
         id: id('workout_log_set'), workout_log_id: log.id, workout_log_exercise_id: logExercise.id,
         set_number: setNumber, set_origin: 'prescribed', status: 'pending',
         actual_load_value: logExercise.prescribed_load_value, actual_load_unit: logExercise.prescribed_load_unit,
+        actual_duration_value: null, actual_duration_unit: null, actual_distance_value: null, actual_distance_unit: null,
         actual_reps: null, actual_rpe: null,
         client_operation_id: null, completed_at: null, archived: false, created_at: createdAt, updated_at: createdAt,
       });
@@ -1470,10 +1483,12 @@ export function installPreviewApi(api) {
       const occurrences = page.map((row) => {
         const matchedExercise = matchByLog.get(row.id);
         return {
-          workout_log_id: row.id, completed_at: row.completed_at, exercise_name: matchedExercise.exercise_name,
+          workout_log_id: row.id, completed_at: row.completed_at, exercise_name: matchedExercise.exercise_name, tracking_type: trackingType(matchedExercise),
           sets: state.workoutLogSets.filter((set) => set.workout_log_exercise_id === matchedExercise.id && set.status === 'completed' && !set.archived)
             .sort((a, b) => a.set_number - b.set_number).map((set) => ({
               set_number: set.set_number, actual_load_value: set.actual_load_value, actual_load_unit: set.actual_load_unit,
+              actual_duration_value: set.actual_duration_value ?? null, actual_duration_unit: set.actual_duration_unit ?? null,
+              actual_distance_value: set.actual_distance_value ?? null, actual_distance_unit: set.actual_distance_unit ?? null,
               actual_reps: set.actual_reps ?? null, actual_rpe: set.actual_rpe ?? null,
             })),
         };
@@ -1495,11 +1510,16 @@ export function installPreviewApi(api) {
       const log = state.workoutLogs.find((row) => row.id === workoutSetUpdate[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
       const set = state.workoutLogSets.find((row) => row.id === workoutSetUpdate[2] && row.workout_log_id === log?.id && !row.archived);
       if (!set) return fail(config, 404, 'Workout set not found');
+      const exercise = state.workoutLogExercises.find((row) => row.id === set.workout_log_exercise_id);
+      let metrics;
+      try { metrics = actualMetrics(payload, set, exercise); } catch (error) { return fail(config, 400, error.message); }
+      if (trackingType(exercise) !== 'reps_weight' && payload.actual_reps != null) return fail(config, 400, 'Reps do not match the exercise tracking type');
       const validReps = payload.actual_reps == null || (typeof payload.actual_reps === 'number' && Number.isInteger(payload.actual_reps) && payload.actual_reps >= 0);
       const validRpe = payload.actual_rpe == null || (typeof payload.actual_rpe === 'number' && payload.actual_rpe >= 1 && payload.actual_rpe <= 10 && Number.isInteger(payload.actual_rpe * 2));
       if (!validReps) return fail(config, 400, 'Reps must be a nonnegative whole number or null');
       if (!validRpe) return fail(config, 400, 'RPE must be 1 through 10 in 0.5 increments or null');
       Object.assign(set, {
+        ...metrics,
         status: payload.status === 'completed' ? 'completed' : 'pending',
         actual_load_value: payload.actual_load_value === '' || payload.actual_load_value == null ? null : Number(payload.actual_load_value),
         actual_load_unit: payload.actual_load_value === '' || payload.actual_load_value == null ? null : (payload.actual_load_unit || 'lb'),
@@ -1523,6 +1543,7 @@ export function installPreviewApi(api) {
         set_number: Math.max(0, ...exerciseSets.map((set) => set.set_number)) + 1,
         set_origin: 'extra', status: 'pending', actual_load_value: exercise.prescribed_load_value,
         actual_load_unit: exercise.prescribed_load_unit, client_operation_id: payload.client_operation_id,
+        actual_duration_value: null, actual_duration_unit: null, actual_distance_value: null, actual_distance_unit: null,
         actual_reps: null, actual_rpe: null,
         completed_at: null, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       };
@@ -2127,7 +2148,7 @@ export function installPreviewApi(api) {
         .map((exercise) => ({
           id: exercise.id,
           name: state.exerciseLibrary.find((lib) => lib.id === exercise.exercise_library_id)?.name || exercise.custom_name || 'Exercise',
-          sets: exercise.sets, reps: exercise.reps, rest: exercise.rest, client_notes: exercise.notes || null,
+          sets: exercise.sets, reps: exercise.reps, ...normalizeTracking(exercise), rest: exercise.rest, client_notes: exercise.notes || null,
         })) : [];
       return ok({
         ...row,
@@ -2150,7 +2171,7 @@ export function installPreviewApi(api) {
         .map((exercise) => ({
           id: exercise.id,
           name: state.exerciseLibrary.find((lib) => lib.id === exercise.exercise_library_id)?.name || exercise.custom_name || 'Exercise',
-          sets: exercise.sets, reps: exercise.reps, rest: exercise.rest, client_notes: exercise.notes || null,
+          sets: exercise.sets, reps: exercise.reps, ...normalizeTracking(exercise), rest: exercise.rest, client_notes: exercise.notes || null,
         })) : [];
       const linkedLogs = state.workoutLogs
         .filter((log) => log.session_id === row.id && !log.archived && ['active', 'completed'].includes(log.status))
@@ -2430,6 +2451,9 @@ export function installPreviewApi(api) {
     }
 
     if (path === '/programs/workouts' && method === 'get') return ok(state.workouts.filter((w) => !w.archived).map((w) => workoutDetails(w.id)), config);
+    if ((path === '/programs/workouts' && method === 'post') || (/^\/programs\/workouts\/[^/]+$/.test(path) && method === 'put')) {
+      try { (payload.exercises || []).forEach((exercise) => normalizeTracking(exercise)); } catch (error) { return fail(config, 400, error.message); }
+    }
     if (path === '/programs/workouts' && method === 'post') {
       const workout = { id: id('workout'), coach_id: currentCoach().id, name: payload.name, description: payload.description || null, goal: payload.goal || null, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       state.workouts.push(workout);

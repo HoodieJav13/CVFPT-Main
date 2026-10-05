@@ -1,3 +1,6 @@
+import { setPrescription } from '@/lib/workoutMetrics';
+import { ExerciseTrackingFields } from '@/components/training/ExerciseTrackingFields';
+import { trackingType } from '@/lib/workoutMetrics';
 import { Fragment, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, LoadingScreen, LoadErrorState, EmptyState, IconButton } from '@/components/common';
@@ -54,13 +57,14 @@ const {
 } = draftTools;
 
 const EMPTY_LIBRARY = { name: '', category: '', equipment: '', primary_muscle: '', secondary_muscles: '', video_url: '', notes: '' };
-const EMPTY_EXERCISE = { id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '', superset_group: null };
+const EMPTY_EXERCISE = { tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null, id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '', superset_group: null };
 // Builder rows carry a client-only _uid so accordion state follows an
 // exercise when it is reordered (the save RPC ignores unknown keys).
 let exerciseUid = 0;
 const newExerciseRow = (fields = {}) => ({ ...EMPTY_EXERCISE, ...fields, _uid: `exercise-${++exerciseUid}` });
 const emptyWorkout = () => ({ name: '', description: '', goal: '', exercises: [newExerciseRow()] });
 const EMPTY_DRAFT_EXERCISE = {
+  tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null,
   name: '',
   sets: '',
   reps: '',
@@ -378,6 +382,8 @@ export function workoutToForm(workout) {
       custom_name: ex.custom_name || ex.library_exercise?.name || '',
       sets: ex.sets || '',
       reps: ex.reps || '',
+      tracking_type: trackingType(ex), duration_value: ex.duration_value ?? '', duration_unit: ex.duration_unit,
+      distance_value: ex.distance_value ?? '', distance_unit: ex.distance_unit,
       rest: ex.rest || '',
       tempo: ex.tempo || '',
       target_rpe: ex.target_rpe || '',
@@ -1225,9 +1231,10 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
                                 <Trash2 className="h-4 w-4" />
                               </IconButton>
                             </div>
+                            <ExerciseTrackingFields exercise={exercise} onChange={(fields) => setExercise(dayIndex, exerciseIndex, fields)} />
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                               <Input value={exercise.sets} onChange={(e) => setExercise(dayIndex, exerciseIndex, { sets: e.target.value })} placeholder="Sets" data-testid="program-import-exercise-sets-input" />
-                              <Input value={exercise.reps} onChange={(e) => setExercise(dayIndex, exerciseIndex, { reps: e.target.value })} placeholder="Reps" data-testid="program-import-exercise-reps-input" />
+                              {trackingType(exercise) === 'reps_weight' && <Input value={exercise.reps} onChange={(e) => setExercise(dayIndex, exerciseIndex, { reps: e.target.value })} placeholder="Reps" data-testid="program-import-exercise-reps-input" />}
                               <Input value={exercise.rest} onChange={(e) => setExercise(dayIndex, exerciseIndex, { rest: e.target.value })} placeholder="Rest" data-testid="program-import-exercise-rest-input" />
                               <Input value={exercise.tempo} onChange={(e) => setExercise(dayIndex, exerciseIndex, { tempo: e.target.value })} placeholder="Tempo" data-testid="program-import-exercise-tempo-input" />
                             </div>
@@ -1449,7 +1456,7 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
             <span className="flex min-w-0 items-center gap-2 text-left">
               <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md bg-primary/15 px-1.5 text-xs font-semibold tabular-nums text-primary" data-testid="workout-exercise-marker">{markers[index]}</span>
               <span className="truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
-              {(exercise.sets || exercise.reps) && <Badge variant="outline" className="hidden shrink-0 tabular-nums sm:inline-flex">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+              {(exercise.sets || exercise.reps) && <Badge variant="outline" className="hidden shrink-0 tabular-nums sm:inline-flex">{setPrescription(exercise)}</Badge>}
             </span>
           </AccordionTrigger>
           <IconButton label={`Move ${rowName(exercise, index)} up`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" disabled={!canMoveExercise(form.exercises, index, -1)} onClick={() => setExercises(moveExercise(form.exercises, index, -1))} data-testid="workout-exercise-move-up-button"><ArrowUp className="h-4 w-4" /></IconButton>
@@ -1461,9 +1468,10 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
             <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
             <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(form.exercises.filter((_, i) => i !== index))} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
           </div>
+          <ExerciseTrackingFields exercise={exercise} onChange={(fields) => setExercise(index, fields)} />
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />
-            <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />
+            {trackingType(exercise) === 'reps_weight' && <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />}
             <div className="min-w-0">
               {/* Numeric authoring, serialized as canonical "Ns" text; the
                   DB fill trigger derives rest_seconds from it. */}

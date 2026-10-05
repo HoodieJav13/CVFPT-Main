@@ -50,6 +50,7 @@ export function applyOptimistic(log, operation) {
           status: 'pending',
           actual_load_value: exercise.prescribed_load_value,
           actual_load_unit: exercise.prescribed_load_unit,
+          actual_duration_value: null, actual_duration_unit: null, actual_distance_value: null, actual_distance_unit: null,
           actual_reps: null,
           actual_rpe: null,
           archived: false,

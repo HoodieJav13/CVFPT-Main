@@ -1,3 +1,4 @@
+import { setPrescription, trackingTargets } from '@/lib/workoutMetrics';
 // Coach session detail: everything a coach works from for one session —
 // when/where/who, the planned workout, live linked workout state, session
 // notes, and every session action as a real button instead of a hidden menu.
@@ -193,9 +194,9 @@ export default function CoachSessionDetail() {
             <div className="mt-2 divide-y divide-border/70">
               {session.workout.exercises.map((exercise, index) => (
                 <div key={exercise.id} className="flex items-center justify-between gap-2 py-2.5" data-testid="session-plan-exercise">
-                  <p className="text-sm font-medium"><span className="mr-2 text-muted-foreground">{index + 1}.</span>{exercise.name}</p>
+                  <div className="min-w-0"><p className="text-sm font-medium"><span className="mr-2 text-muted-foreground">{index + 1}.</span>{exercise.name}</p>{trackingTargets(exercise).map((target) => <p key={target} className="text-xs text-muted-foreground">{target}</p>)}</div>
                   {(exercise.sets || exercise.reps) && (
-                    <Badge variant="outline" className="shrink-0 tabular-nums">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>
+                    <Badge variant="outline" className="shrink-0 tabular-nums">{setPrescription(exercise)}</Badge>
                   )}
                 </div>
               ))}
