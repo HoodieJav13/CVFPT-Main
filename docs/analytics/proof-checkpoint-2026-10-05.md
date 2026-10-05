@@ -66,9 +66,17 @@ Inspected result: one generated session `01a10d1d-77bc-715c-8aca-611dfa7ab80d`, 
 `a602c1c4b2d73d464eef65754ede7b8e799ba3ff2d7ed20825d23ce4dec89c86`.
 The authorized limit was one fictional session / 120 seconds / 2 MiB.
 
-**Hosted replay attempted once:** both exact inspected packets acknowledged HTTP200 at `https://us.i.posthog.com/s/`; zero retries. Journal exists and prevents a second execution. Hosted indexing is verified: one synthetic identity, 30 events, three clicks, zero keystrokes, zero console log/warn/error entries, fictional start URL, and 388161 provider bytes (under the 2-MiB cap). Provider timestamp normalization moves the stored time; raw rrweb activity span remains 2495ms. Hosted visual playback and post-test usage screen verification remain pending. Browser controls became disconnected after the app update; connector/shell still work, and billing read scopes are absent. Do not resend; remaining checks are read-only.
+**Hosted replay attempted once:** both exact inspected packets acknowledged HTTP200 at `https://us.i.posthog.com/s/`; zero retries. Journal exists and prevents a second execution. Hosted indexing is verified: one synthetic identity, 30 events, three clicks, zero keystrokes, zero console log/warn/error entries, fictional start URL, and 388161 provider bytes (under the 2-MiB cap). Provider timestamp normalization moves the stored time; raw rrweb activity span remains 2495ms. Hosted visual playback and post-test usage were subsequently verified at approximately 18:27 UTC; see the completed proof below. Do not resend.
 [recording](https://us.posthog.com/project/509463/replay/01a10d1d-77bc-715c-8aca-611dfa7ab80d).
 No real token was given to the recorder; the SDK only ever used a fake local token against an intercepted local sink. No SDK is installed or started in the app.
+
+## Completed read-only hosted proof — approximately 18:27 UTC
+
+The separately authorized playback retry opened the exact fictional recording above. Settled screenshots and DOM sampling verified Overview, Sessions, Programs and Resources: active navigation retained, main contents blank, non-public text redacted, input/select values empty; no POISON, example.invalid or poison.invalid canaries. This verifies only the fictional fixture, not production replay. No retransmission, AI summary/scanner, settings change or notification occurred.
+
+The current billing overview showed Free plan, September 10–October 10 cycle: product analytics 8 / 1,000,000 free, web replay 1 / 5,000 free, errors 1 / 100,000 free. Historical Usage/Spend states daily UTC reporting with today's numbers appearing tomorrow; the older default date range had no historical data. These checks do not establish a settled current-day invoice or authorize paid usage.
+
+Source evidence: the read-only proof task's report and settled screenshots, `posthog-hosted-proof-result-2026-10-05.md`, dated 2026-10-05 18:27 UTC. Both previously pending proof checks are complete. App collection/replay, real identities and alerts remain off; no send is repeated for integration.
 
 ## Integration and release gates
 
@@ -80,4 +88,4 @@ file list is available in the implementation commit.
 No push: both Vercel projects are Git-connected and the checked-in branch rule
 only excludes the separate email preview branch. Treat push as a deployment
 trigger until independently disabled or approved. Production release, real-user
-identity policy, dashboards/notifications and application replay remain separate gates. Hosted replay visual playback and post-test usage screen still need read-only verification. Claude/design/email work is preserved.
+identity policy, dashboards/notifications and application replay remain separate gates. Hosted replay visual playback and post-test usage verification are complete; real-user collection and application replay remain separate gates. Claude/design/email work is preserved.
