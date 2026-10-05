@@ -1,5 +1,7 @@
 # Local validation and release handoff — 2026-10-05
 
+This is the original local-validation record before owner-approved release. Current hosted application and verification supersede its historical pending/no-push gates: see `hosted-release-2026-10-05.md`. Original test counts and limitations remain preserved below; the integration PR records its fresh combined checks.
+
 Isolated branch: `codex/workout-duration-distance`, based on freshly verified main `3886fef15db67b1177a0d4cf468fd8d654d42b3e`. No pre-existing changes. No hosted migration, push, PR, merge or deployment. No credentials created/copied, real client reads/writes, notifications or email sends. Dependencies and lockfiles are unchanged.
 
 ## Evidence

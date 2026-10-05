@@ -1,5 +1,7 @@
 # Audit reconciliation — local metric branch, 2026-10-05
 
+This records the original local audit reconciliation. The later owner-approved release performed rollback-only fictional probes on both hosted schemas; see `hosted-release-2026-10-05.md`. Historical local-only statements below describe the evidence available at the audit checkpoint. Actual-device, live-client and broader UI findings remain open.
+
 The supplied audit reviewed main `3886fef15db67b1177a0d4cf468fd8d654d42b3e` and parked design `1d6de310356fe0378c96cc3a55b3d6c722c4f314`, not this implementation. Its statement that the metric branch was unavailable is historically accurate. This reconciliation applies to the changes following local feature commit `95e960f9b0213776155266ce2b8bcfc79f9ccf79`; the final handoff records the exact final head.
 
 ## Artifact provenance
