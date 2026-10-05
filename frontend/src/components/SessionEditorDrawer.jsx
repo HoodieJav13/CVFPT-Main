@@ -20,6 +20,7 @@ import { SeriesComposer } from '@/components/series/SeriesComposer';
 import { createDraftStore } from '@/lib/seriesDraftStore';
 import { fmtDateTime, toLocalInputValue } from '@/lib/format';
 import { toast } from 'sonner';
+import { observeCoachSessionSave } from '@/lib/coachAnalytics';
 
 const EMPTY_FORM = { client_id: '', scheduled_at: '', duration_minutes: '60', location: '', workout_id: 'none' };
 
@@ -101,9 +102,12 @@ export function SessionEditorDrawer({ open, onOpenChange, clients, editing, pres
         location: form.location,
         workout_id: form.workout_id === 'none' ? null : form.workout_id,
       };
-      const { data } = editing
-        ? await api.put(`/sessions/${editing.id}`, payload)
-        : await api.post('/sessions', payload);
+      const workoutChange = payload.workout_id === (editing?.workout_id || null)
+        ? (editing ? 'unchanged' : 'none') : payload.workout_id ? 'attached' : 'removed';
+      const { data } = await observeCoachSessionSave(
+        () => editing ? api.put(`/sessions/${editing.id}`, payload) : api.post('/sessions', payload),
+        { operation: editing ? 'update' : 'create', workout_change: workoutChange },
+      );
       // Location overlap is advisory only (S1): the session is saved either way.
       if (data?.location_overlaps > 0) {
         toast.warning(`Scheduled — heads up: ${data.location_overlaps} other session${data.location_overlaps === 1 ? '' : 's'} at ${form.location.trim()} in that window.`);

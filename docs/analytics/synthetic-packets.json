@@ -1,0 +1,104 @@
+[
+  {
+    "event": "cvfpt_coach_screen_viewed",
+    "distinct_id": "cvfpt-synthetic-preview",
+    "properties": {
+      "app": "cvfpt",
+      "schema_version": 1,
+      "environment": "synthetic_preview",
+      "$process_person_profile": false,
+      "$ip": null,
+      "$geoip_disable": true,
+      "screen": "home"
+    }
+  },
+  {
+    "event": "cvfpt_coach_screen_viewed",
+    "distinct_id": "cvfpt-synthetic-preview",
+    "properties": {
+      "app": "cvfpt",
+      "schema_version": 1,
+      "environment": "synthetic_preview",
+      "$process_person_profile": false,
+      "$ip": null,
+      "$geoip_disable": true,
+      "screen": "sessions"
+    }
+  },
+  {
+    "event": "cvfpt_coach_session_save",
+    "distinct_id": "cvfpt-synthetic-preview",
+    "properties": {
+      "app": "cvfpt",
+      "schema_version": 1,
+      "environment": "synthetic_preview",
+      "$process_person_profile": false,
+      "$ip": null,
+      "$geoip_disable": true,
+      "operation": "create",
+      "outcome": "success",
+      "workout_change": "attached",
+      "failure_kind": "none"
+    }
+  },
+  {
+    "event": "cvfpt_coach_session_save",
+    "distinct_id": "cvfpt-synthetic-preview",
+    "properties": {
+      "app": "cvfpt",
+      "schema_version": 1,
+      "environment": "synthetic_preview",
+      "$process_person_profile": false,
+      "$ip": null,
+      "$geoip_disable": true,
+      "operation": "update",
+      "outcome": "success",
+      "workout_change": "removed",
+      "failure_kind": "none"
+    }
+  },
+  {
+    "event": "cvfpt_coach_session_save",
+    "distinct_id": "cvfpt-synthetic-preview",
+    "properties": {
+      "app": "cvfpt",
+      "schema_version": 1,
+      "environment": "synthetic_preview",
+      "$process_person_profile": false,
+      "$ip": null,
+      "$geoip_disable": true,
+      "operation": "create",
+      "outcome": "unconfirmed",
+      "workout_change": "attached",
+      "failure_kind": "server"
+    }
+  },
+  {
+    "event": "$exception",
+    "distinct_id": "cvfpt-synthetic-preview",
+    "properties": {
+      "app": "cvfpt",
+      "schema_version": 1,
+      "environment": "synthetic_preview",
+      "$process_person_profile": false,
+      "$ip": null,
+      "$geoip_disable": true,
+      "source": "action",
+      "failure_kind": "server",
+      "operation": "create",
+      "$exception_list": [
+        {
+          "type": "CvfptCoachFailure",
+          "value": "Coach create: action server",
+          "mechanism": {
+            "type": "generic",
+            "handled": true,
+            "synthetic": true
+          }
+        }
+      ],
+      "$exception_fingerprint": "cvfpt-v1-create-action-server",
+      "$exception_level": "error"
+    }
+  }
+]

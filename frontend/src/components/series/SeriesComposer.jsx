@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, errMsg } from '@/lib/api';
+import { observeCoachSessionSave } from '@/lib/coachAnalytics';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { RecurrencePanel } from '@/components/series/RecurrencePanel';
@@ -234,7 +235,10 @@ export function SeriesComposer({
     setStage('saving');
     setError('');
     try {
-      const { data } = await api.post('/sessions/series', body);
+      const { data } = await observeCoachSessionSave(
+        () => api.post('/sessions/series', body),
+        { operation: 'series_create', workout_change: body.slots.some((slot) => slot.workout_id) ? 'attached' : 'none' },
+      );
       store.clear(clientId);
       frozenBodyRef.current = null;
       draftRef.current = null;

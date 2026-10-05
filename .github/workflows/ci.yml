@@ -51,6 +51,7 @@ jobs:
       - run: npm run test:unit
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:preview
+      - run: npm run test:e2e:analytics
       - run: npm audit --omit=dev
 
   # Its own job so the series suite always reports, even if the (separately tracked) preview suite fails.

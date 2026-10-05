@@ -2,7 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  testIgnore: ['**/series-mocked.spec.mjs'], // the mocked-API series tests need a NON-preview build; see playwright.series.config.mjs
+  // These suites own their server/config: series uses mocked real mode, analytics a local collector.
+  testIgnore: ['**/series-mocked.spec.mjs', '**/coach-analytics.spec.mjs'],
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

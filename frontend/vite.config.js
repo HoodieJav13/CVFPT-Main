@@ -48,6 +48,8 @@ export default defineConfig(({ mode }) => {
     envPrefix: ['REACT_APP_', 'VITE_'],
     define: {
       'process.env': JSON.stringify(env),
+      // This first slice is fixture-only. Production/non-preview builds cannot enable capture.
+      __CVF_POSTHOG_PREVIEW_ALLOWED__: JSON.stringify(vercelEnvironment === 'preview' || (mode === 'development' && vercelEnvironment !== 'production')),
       ...hostedDemoDefines,
     },
     resolve: {
