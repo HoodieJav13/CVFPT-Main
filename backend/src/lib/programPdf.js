@@ -1,3 +1,4 @@
+const { trackingType, trackingTargets, setPrescription } = require('./workoutMetrics');
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
@@ -55,7 +56,8 @@ function exerciseVideo(exercise) {
 // once-per-round rest, matching the tracker.
 function getExerciseText(exercise, includeCoachNotes = false, { grouped = false } = {}) {
   const parts = [];
-  if (exercise.sets || exercise.reps) parts.push(`${exercise.sets || '?'} x ${exercise.reps || '?'}`);
+  if (exercise.sets || exercise.reps) parts.push(setPrescription(exercise));
+  parts.push(...trackingTargets(exercise));
   if (exercise.rest && !grouped) parts.push(`Rest: ${exercise.rest}`);
   if (exercise.tempo) parts.push(`Tempo: ${exercise.tempo}`);
   if (exercise.client_notes || exercise.notes) parts.push(exercise.client_notes || exercise.notes);
@@ -208,7 +210,8 @@ function targetLoad(exercise, loadByExercise) {
 
 function logSheetDetail(exercise, load, { grouped = false } = {}) {
   return [
-    (exercise.sets || exercise.reps) && `${exercise.sets || '?'} x ${exercise.reps || '?'}`,
+    (exercise.sets || exercise.reps) && setPrescription(exercise),
+    ...trackingTargets(exercise),
     load && `Target: ${load}`,
     exercise.target_rpe && `RPE: ${exercise.target_rpe}`,
     exercise.rest && !grouped && `Rest: ${exercise.rest}`,
@@ -222,7 +225,12 @@ const BOX_HEIGHT = 40;
 const BOX_GAP = 5;
 const BOXES_PER_ROW = 6;
 
-function drawSetBoxes(doc, count) {
+function drawSetBoxes(doc, count, exercise = {}) {
+  const type = trackingType(exercise);
+  const labels = type === 'reps_weight' ? ['Wt', 'Reps'] : ['Wt',
+    ...(['duration', 'duration_distance'].includes(type) ? [`Time (${exercise.duration_unit || 's'})`] : []),
+    ...(['distance', 'duration_distance'].includes(type) ? [`Dist (${exercise.distance_unit || 'm'})`] : [])];
+  const height = labels.length === 3 ? 54 : BOX_HEIGHT;
   const rows = Math.ceil(count / BOXES_PER_ROW);
   let top = doc.y + 6;
   for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
@@ -230,23 +238,24 @@ function drawSetBoxes(doc, count) {
     for (let col = 0; col < inRow; col += 1) {
       const setNumber = rowIndex * BOXES_PER_ROW + col + 1;
       const left = 70 + col * (BOX_WIDTH + BOX_GAP);
-      doc.roundedRect(left, top, BOX_WIDTH, BOX_HEIGHT, 4).lineWidth(0.75).strokeColor('#CBD5E1').stroke();
+      doc.roundedRect(left, top, BOX_WIDTH, height, 4).lineWidth(0.75).strokeColor('#CBD5E1').stroke();
       doc.fillColor(teal).font('Helvetica-Bold').fontSize(6.5).text(`SET ${setNumber}`, left + 5, top + 4, { lineBreak: false });
-      doc.fillColor(muted).font('Helvetica').fontSize(7)
-        .text('Wt', left + 5, top + 15, { lineBreak: false })
-        .text('Reps', left + 5, top + 28, { lineBreak: false });
-      doc.strokeColor('#E5E7EB').lineWidth(0.5)
-        .moveTo(left + 24, top + 22).lineTo(left + BOX_WIDTH - 5, top + 22).stroke()
-        .moveTo(left + 24, top + 35).lineTo(left + BOX_WIDTH - 5, top + 35).stroke();
+      labels.forEach((label, row) => {
+        const y = top + 15 + row * 13;
+        doc.fillColor(muted).font('Helvetica').fontSize(7).text(label, left + 5, y, { lineBreak: false });
+        const start = type === 'reps_weight' ? 24 : 38;
+        doc.strokeColor('#E5E7EB').lineWidth(0.5).moveTo(left + start, y + 7).lineTo(left + BOX_WIDTH - 5, y + 7).stroke();
+      });
     }
-    top += BOX_HEIGHT + BOX_GAP;
+    top += height + BOX_GAP;
   }
   doc.x = 42;
   doc.y = top;
 }
 
-function exerciseBlockHeight(boxes) {
-  return 44 + Math.ceil(boxes / BOXES_PER_ROW) * (BOX_HEIGHT + BOX_GAP);
+function exerciseBlockHeight(boxes, exercise = {}) {
+  const height = trackingType(exercise) === 'duration_distance' ? 54 : BOX_HEIGHT;
+  return 44 + Math.ceil(boxes / BOXES_PER_ROW) * (height + BOX_GAP);
 }
 
 // Printable client sheet: prescriptions plus blank per-set boxes to log by
@@ -257,7 +266,7 @@ function generateLogSheetPdf({ title, clientName, note, sections }) {
     const generated = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     doc.fillColor(muted).font('Helvetica').fontSize(10)
       .text(`${clientName ? `Prepared for ${clientName}   ` : ''}Printed: ${generated}`);
-    doc.fillColor(muted).fontSize(9).text('Write in the weight and reps you complete for each set.');
+    doc.fillColor(muted).fontSize(9).text('Write the performed weight, reps, duration or distance in the labelled units for each set.');
     if (note) {
       doc.moveDown(0.6);
       doc.fillColor('#1F2937').font('Helvetica-Oblique').fontSize(10).text(`Coach note: ${note}`, { width: 510, lineGap: 2 });
@@ -266,7 +275,7 @@ function generateLogSheetPdf({ title, clientName, note, sections }) {
 
     (sections || []).forEach((section) => {
       const exercises = section.exercises || [];
-      ensurePdfSpace(doc, 70 + (exercises.length ? exerciseBlockHeight(setBoxCount(exercises[0].sets)) : 0));
+      ensurePdfSpace(doc, 70 + (exercises.length ? exerciseBlockHeight(setBoxCount(exercises[0].sets), exercises[0]) : 0));
       drawDayBanner(doc, section.title || 'Workout', section.goal);
       doc.fillColor(muted).font('Helvetica').fontSize(9).text('Date: ____________________', 54, doc.y, { width: 490 });
       doc.moveDown(0.4);
@@ -285,14 +294,14 @@ function generateLogSheetPdf({ title, clientName, note, sections }) {
       const { captions, grouped } = groupCaptions(exercises);
       exercises.forEach((exercise, index) => {
         const boxes = setBoxCount(exercise.sets);
-        ensurePdfSpace(doc, exerciseBlockHeight(boxes) + (captions.has(index) ? 12 : 0));
+        ensurePdfSpace(doc, exerciseBlockHeight(boxes, exercise) + (captions.has(index) ? 12 : 0));
         drawGroupCaption(doc, captions.get(index));
         drawExerciseTitle(doc, exercise, markers[index]);
         const detail = logSheetDetail(exercise, targetLoad(exercise, loadByExercise), { grouped: grouped.has(index) });
         if (detail) doc.fillColor('#374151').font('Helvetica').fontSize(9).text(detail, 70, doc.y + 3, { width: 470, lineGap: 2 });
         const video = exerciseVideo(exercise);
         if (video) doc.fillColor(teal).fontSize(8).text(video, 70, doc.y + 3, { width: 470, underline: true });
-        drawSetBoxes(doc, boxes);
+        drawSetBoxes(doc, boxes, exercise);
         doc.moveDown(0.6);
       });
       doc.moveDown(0.6);

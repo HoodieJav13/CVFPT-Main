@@ -1,3 +1,4 @@
+import { tracks, trackingType } from '@/lib/workoutMetrics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { m, useReducedMotion } from 'framer-motion';
@@ -170,8 +171,14 @@ export default function WorkoutLogDetail() {
       { replace: true, state: null },
     );
   }, [id, isClient, location.hash, location.pathname, location.search, location.state, navigate]);
-  if (!log && loadError) return <LoadErrorState message={loadError} scope="workout-detail" onRetry={load} />;
-  if (!log) return <LoadingScreen />;
+  const waitingBanner = queueStillWaiting && (
+    <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
+      <Clock3 className="h-4 w-4 shrink-0 text-gold" />
+      Finished on this phone — syncing when a connection returns. Your results are safe.
+    </div>
+  );
+  if (!log && loadError) return <div>{waitingBanner}<LoadErrorState message={loadError} scope="workout-detail" onRetry={load} /></div>;
+  if (!log) return <div>{waitingBanner}<LoadingScreen /></div>;
 
   const completed = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'completed').length;
   const skipped = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'skipped').length;
@@ -222,12 +229,7 @@ export default function WorkoutLogDetail() {
       >
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
-      {queueStillWaiting && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
-          <Clock3 className="h-4 w-4 shrink-0 text-gold" />
-          Finished on this phone — syncing when a connection returns. Your results are safe.
-        </div>
-      )}
+      {waitingBanner}
       {syncError && (
         <div className="mb-4 flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="completion-sync-error">
           <span>{syncError} The workout is active again.</span>
@@ -274,7 +276,7 @@ export default function WorkoutLogDetail() {
       <div className="space-y-3">
         <SupersetGroups exercises={log.exercises}>{(exercise, { marker }) => {
           const hasTarget = exercise.prescribed_sets || exercise.prescribed_load_value != null
-            || exercise.prescribed_reps || exercise.prescribed_rpe || exercise.prescribed_rest || exercise.prescribed_tempo;
+            || exercise.prescribed_duration_value || exercise.prescribed_distance_value || exercise.prescribed_reps || exercise.prescribed_rpe || exercise.prescribed_rest || exercise.prescribed_tempo;
           const totals = completedVolume(exercise);
           const units = Object.keys(totals);
           const previous = previousByExercise[exerciseMatchKey(exercise)];
@@ -302,23 +304,25 @@ export default function WorkoutLogDetail() {
                     <span className="font-medium">Target</span>
                     {exercise.prescribed_sets && <span>Sets {exercise.prescribed_sets}</span>}
                     {exercise.prescribed_load_value != null && <span>Load {exercise.prescribed_load_value} {exercise.prescribed_load_unit}</span>}
-                    {exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
+                    {trackingType(exercise) === 'reps_weight' && exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
+                    {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => exercise[`prescribed_${metric}_value`] != null && <span key={metric}>{metric === 'duration' ? 'Duration' : 'Distance'} {exercise[`prescribed_${metric}_value`]} {exercise[`prescribed_${metric}_unit`]}</span>)}
                     {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
                     {exercise.prescribed_rest && <span>Rest {exercise.prescribed_rest}</span>}
                     {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
                   </div>
                 )}
                 <div className="grid grid-cols-[2rem_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 pb-1 text-xs font-medium text-muted-foreground">
-                  <span>Set</span><span>Weight</span><span>Reps</span><span>RPE</span><span className="sr-only">Status</span>
+                  <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span><span>RPE</span><span className="sr-only">Status</span>
                 </div>
                 <div className="divide-y divide-border/70">
                   {exercise.sets.map((set) => (
                     <div key={set.id} className="grid min-h-11 grid-cols-[2rem_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 py-2 text-sm" data-testid="review-set-row">
                       <span className="tabular-nums text-muted-foreground">{set.set_number}</span>
                       <span className="tabular-nums">{set.actual_load_value === null ? <span aria-label="No weight logged">—</span> : `${set.actual_load_value} ${set.actual_load_unit}`}</span>
-                      <span className="tabular-nums">{set.actual_reps ?? <span aria-label="No reps logged">—</span>}</span>
+                      <span className="tabular-nums">{trackingType(exercise) === 'reps_weight' ? (set.actual_reps ?? <span aria-label="No reps logged">—</span>) : '—'}</span>
                       <span className="tabular-nums">{set.actual_rpe ?? <span aria-label="No RPE logged">—</span>}</span>
-                      <Badge variant={set.status === 'completed' ? 'default' : 'outline'}>{set.status}</Badge>
+                      {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => <span key={metric} className="col-span-full tabular-nums">{metric === 'duration' ? 'Duration' : 'Distance'}: {set[`actual_${metric}_value`] == null ? <span aria-label={`No ${metric} logged`}>—</span> : `${set[`actual_${metric}_value`]} ${set[`actual_${metric}_unit`]}`}</span>)}
+                      <Badge className="col-start-5 row-start-1" variant={set.status === 'completed' ? 'default' : 'outline'}>{set.status}</Badge>
                     </div>
                   ))}
                 </div>

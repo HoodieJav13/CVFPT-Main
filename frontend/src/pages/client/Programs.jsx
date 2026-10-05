@@ -1,3 +1,5 @@
+import { setPrescription, trackingTargets } from '@/lib/workoutMetrics';
+import { trackingType } from '@/lib/workoutMetrics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
@@ -247,9 +249,10 @@ function ExerciseList({ exercises, loads = [] }) {
               <p className="text-sm font-medium"><span className="mr-2 text-muted-foreground">{marker}.</span>{exerciseName(exercise)}</p>
               <span className="flex shrink-0 items-center gap-2">
                 {exerciseVideo(exercise) && <a href={exerciseVideo(exercise)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"><Play className="h-3 w-3" /> Video</a>}
-                {(exercise.sets || exercise.reps) && <Badge variant="outline">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+                {(exercise.sets || (trackingType(exercise) === 'reps_weight' && exercise.reps)) && <Badge variant="outline">{setPrescription(exercise)}</Badge>}
               </span>
             </div>
+            {trackingTargets(exercise).map((target) => <p key={target} className="mt-1 text-xs text-muted-foreground">{target}</p>)}
             <p className="mt-1 text-xs text-muted-foreground">
               {[load && `Load: ${load.load_value} ${load.load_unit}`, exercise.target_rpe && `RPE: ${exercise.target_rpe}`, exercise.rest && `Rest: ${exercise.rest}`, exercise.tempo && `Tempo: ${exercise.tempo}`, clientExerciseNotes(exercise)].filter(Boolean).join(' - ')}
             </p>

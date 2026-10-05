@@ -1,3 +1,4 @@
+import { normalizeTracking } from './workoutMetrics.js';
 // ESM browser copy of backend/src/lib/programDraft.cjs — keep logic in sync manually. See CLAUDE.md.
 const PARSER_VERSION = 'program-draft-v1';
 const EXERCISE_LINE_PATTERN = /^(.+?)\s+(\d+)[xX](\d+(?:-\d+)?)(.*)$/;
@@ -16,6 +17,7 @@ const KNOWN_CSV_COLUMNS = [
   'exercise_name',
   'sets',
   'reps',
+  'tracking_type', 'duration_value', 'duration_unit', 'distance_value', 'distance_unit',
   'rest',
   'tempo',
   'client_notes',
@@ -213,6 +215,7 @@ function draftFromCsvRows(rows, options = {}) {
       name: cleanString(row.exercise_name),
       sets: nullableString(row.sets),
       reps: nullableString(row.reps),
+      tracking_type: row.tracking_type || 'reps_weight', duration_value: row.duration_value, duration_unit: row.duration_unit, distance_value: row.distance_value, distance_unit: row.distance_unit,
       rest: nullableString(row.rest),
       tempo: nullableString(row.tempo),
       client_notes: nullableString(row.client_notes || row.notes),
@@ -394,6 +397,9 @@ function normalizeDraft(input = {}) {
         name: cleanString(exercise.name || exercise.custom_name || exercise.library_exercise?.name),
         sets: nullableString(exercise.sets),
         reps: nullableString(exercise.reps),
+        tracking_type: exercise.tracking_type ?? 'reps_weight',
+        duration_value: exercise.duration_value ?? null, duration_unit: exercise.duration_unit || null,
+        distance_value: exercise.distance_value ?? null, distance_unit: exercise.distance_unit || null,
         rest: nullableString(exercise.rest),
         tempo: nullableString(exercise.tempo),
         client_notes: nullableString(exercise.client_notes || exercise.notes),
@@ -438,6 +444,7 @@ function validateDraft(input) {
     if (!day.name) errors.push({ path: `days.${dayIndex}.name`, message: 'Workout day name is required' });
     if (!day.exercises.length) errors.push({ path: `days.${dayIndex}.exercises`, message: 'Add at least one exercise' });
     day.exercises.forEach((exercise, exerciseIndex) => {
+      try { normalizeTracking(exercise); } catch (error) { errors.push({ path: `days.${dayIndex}.exercises.${exerciseIndex}.tracking_type`, message: error.message }); }
       if (!exercise.name) errors.push({ path: `days.${dayIndex}.exercises.${exerciseIndex}.name`, message: 'Exercise name is required' });
     });
   });
@@ -461,6 +468,7 @@ function draftFromProgram(program) {
         name: exercise.library_exercise?.name || exercise.custom_name || exercise.name,
         sets: exercise.sets,
         reps: exercise.reps,
+        tracking_type: exercise.tracking_type, duration_value: exercise.duration_value, duration_unit: exercise.duration_unit, distance_value: exercise.distance_value, distance_unit: exercise.distance_unit,
         rest: exercise.rest,
         tempo: exercise.tempo,
         client_notes: exercise.client_notes || exercise.notes || '',

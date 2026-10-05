@@ -106,7 +106,7 @@ test('history route is ordered before generic detail and uses active ownership p
   assert.ok(routes.indexOf("router.get('/:id/exercises/:exerciseId/history'") < routes.indexOf("router.get('/:id',"));
   assert.match(routes, /createExerciseHistoryHandler\(\)/);
   assert.match(routes, /p_occurrence_limit: 11/);
-  assert.match(routes, /allOccurrences\.slice\(0, 10\)/);
+  assert.match(routes, /logIds\.slice\(0, 10\)/);
 });
 
 test('mounted history handler rejects an invalid cursor before any history access', async () => {

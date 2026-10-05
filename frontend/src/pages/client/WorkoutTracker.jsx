@@ -1,3 +1,5 @@
+import { performedSet, trackingType, tracks } from '@/lib/workoutMetrics';
+import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Play, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
@@ -86,14 +88,15 @@ function ExerciseHistory({ logId, exercise }) {
           {error && <div role="alert" className="space-y-2 text-sm"><p>{error}</p><Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => loadHistory(nextCursor && occurrences.length ? nextCursor : null)}>Retry</Button></div>}
           {!loading && !error && attempted && occurrences.length === 0 && <p className="text-sm text-muted-foreground">No completed history yet.</p>}
           {occurrences.map((occurrence) => (
-            <section key={occurrence.workout_log_id} className="space-y-2" data-testid="history-occurrence">
+            <section key={occurrence.occurrence_id || occurrence.workout_log_id} className="space-y-2" data-testid="history-occurrence">
               <div><p className="text-sm font-medium">{occurrence.exercise_name}</p><p className="text-xs text-muted-foreground">{new Date(occurrence.completed_at).toLocaleDateString()}</p></div>
               <div className="space-y-1">
                 {occurrence.sets.map((set) => (
                   <div key={set.set_number} className="grid grid-cols-[2rem_repeat(3,minmax(0,1fr))] gap-2 text-xs">
                     <span>Set {set.set_number}</span>
                     <span>Weight: {displayPerformed(set.actual_load_value, set.actual_load_unit ? ` ${set.actual_load_unit}` : '')}</span>
-                    <span>Reps: {displayPerformed(set.actual_reps)}</span>
+                    {trackingType(occurrence) === 'reps_weight' && <span>Reps: {displayPerformed(set.actual_reps)}</span>}
+                    {['duration', 'distance'].filter((metric) => tracks(occurrence, metric)).map((metric) => <span key={metric}>{metric === 'duration' ? 'Duration' : 'Distance'}: {displayPerformed(set[`actual_${metric}_value`], ` ${set[`actual_${metric}_unit`] || ''}`)}</span>)}
                     <span>RPE: {displayPerformed(set.actual_rpe)}</span>
                   </div>
                 ))}
@@ -301,17 +304,12 @@ export default function WorkoutTracker() {
   };
 
   const saveSet = (exercise, set) => {
-    const blank = set.actual_load_value === '' || set.actual_load_value === null;
+    let payload;
+    try { payload = performedSet(set, exercise); } catch (error) { toast.error(error.message); return; }
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
-      data: {
-        actual_load_value: blank ? null : Number(set.actual_load_value),
-        actual_load_unit: blank ? null : (set.actual_load_unit || 'lb'),
-        actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
-        actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
-        status: set.status,
-      },
+      data: payload,
     });
   };
 
@@ -319,17 +317,12 @@ export default function WorkoutTracker() {
     const status = set.status === 'completed' ? 'pending' : 'completed';
     // Load fields normalized exactly like saveSet — an empty string with a
     // stale unit is a backend 400 that would revert the completion.
-    const blank = set.actual_load_value === '' || set.actual_load_value === null;
+    let payload;
+    try { payload = performedSet({ ...set, status }, exercise); } catch (error) { toast.error(error.message); return; }
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
-      data: {
-        status,
-        actual_load_value: blank ? null : Number(set.actual_load_value),
-        actual_load_unit: blank ? null : (set.actual_load_unit || 'lb'),
-        actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
-        actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
-      },
+      data: payload,
     });
     if (status === 'completed') {
       // Inside a superset/giant set, rest waits for the end of the round.
@@ -376,7 +369,7 @@ export default function WorkoutTracker() {
       setLastTimeLoading(exercise.id);
       try {
         const { data } = await api.get(`/workout-logs/${id}/exercises/${exercise.id}/history`);
-        occurrence = data.occurrences[0] || null;
+        occurrence = data.occurrences.find((row) => trackingType(row) === trackingType(exercise)) || null;
         lastTimeCache.current[exercise.id] = occurrence;
       } catch (error) {
         toast.error(errMsg(error, 'Failed to load last time'));
@@ -392,7 +385,7 @@ export default function WorkoutTracker() {
     // Re-read the exercise: anything typed while history loaded is kept.
     const current = logRef.current?.exercises.find((row) => row.id === exercise.id) || exercise;
     let filledCount = 0;
-    lastTimeFills(current.sets, occurrence).forEach(({ setId, data }) => {
+    lastTimeFills(current.sets, occurrence, current).forEach(({ setId, data }) => {
       const queued = outbox.enqueue({
         kind: 'set', exerciseId: exercise.id, setId,
         method: 'patch', url: `/workout-logs/${id}/sets/${setId}`,
@@ -541,7 +534,8 @@ export default function WorkoutTracker() {
               </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 {exercise.prescribed_load_value != null && <span>Load {exercise.prescribed_load_value} {exercise.prescribed_load_unit || 'lb'}</span>}
-                {exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
+                {trackingType(exercise) === 'reps_weight' && exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
+                {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => exercise[`prescribed_${metric}_value`] != null && <span key={metric}>{metric === 'duration' ? 'Duration' : 'Distance'} {exercise[`prescribed_${metric}_value`]} {exercise[`prescribed_${metric}_unit`]}</span>)}
                 {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
                 {/* Grouped exercises rest once per round (shown on the group). */}
                 {!grouped && (exercise.prescribed_rest_seconds != null || exercise.prescribed_rest) && (
@@ -565,7 +559,7 @@ export default function WorkoutTracker() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-[1.75rem_minmax(5.5rem,1fr)_3.5rem_3.5rem_2.75rem] gap-1 px-1 text-xs font-medium text-muted-foreground">
-                <span>Set</span><span>Weight</span><span>Reps</span><span>RPE</span><span className="sr-only">Complete</span>
+                <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span><span>RPE</span><span className="sr-only">Complete</span>
               </div>
               {exercise.sets.map((set) => (
                 <div key={set.id} className={`grid min-h-12 grid-cols-[1.75rem_minmax(5.5rem,1fr)_3.5rem_3.5rem_2.75rem] items-center gap-1 rounded-md px-1 ${setRowClass(exercise, set)}`}>
@@ -583,17 +577,7 @@ export default function WorkoutTracker() {
                     />
                     <Select disabled={sealed} value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
                       setLocalValue(exercise.id, set.id, 'actual_load_unit', value);
-                      outbox.enqueue({
-                        kind: 'set', exerciseId: exercise.id, setId: set.id,
-                        method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
-                        data: {
-                          actual_load_value: set.actual_load_value === '' || set.actual_load_value == null ? null : Number(set.actual_load_value),
-                          actual_load_unit: set.actual_load_value === '' || set.actual_load_value == null ? null : value,
-                          actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
-                          actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
-                          status: set.status,
-                        },
-                      });
+                      saveSet(exercise, { ...set, actual_load_unit: value });
                     }}>
                       <SelectTrigger
                         className="h-11 w-14 shrink-0 px-1.5"
@@ -604,10 +588,10 @@ export default function WorkoutTracker() {
                       <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
                     </Select>
                   </div>
-                  <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
+                  {trackingType(exercise) === 'reps_weight' ? <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
                     placeholder={exercise.prescribed_reps || undefined}
                     onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
-                    aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} />
+                    aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} /> : <span aria-hidden className="text-center text-muted-foreground">—</span>}
                   <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-11 px-2 text-sm tabular-nums" value={set.actual_rpe ?? ''}
                     placeholder={exercise.prescribed_rpe || undefined}
                     onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
@@ -619,6 +603,21 @@ export default function WorkoutTracker() {
                   >
                     <Check className="h-5 w-5" />
                   </Button>
+                  {trackingType(exercise) !== 'reps_weight' && (
+                    <div className="col-span-full grid grid-cols-1 gap-2 pb-2 sm:grid-cols-2">
+                      {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => (
+                        <WorkoutMetricInput key={metric} metric={metric} label={`${exercise.exercise_name} set ${set.set_number} performed ${metric}`}
+                          value={set[`actual_${metric}_value`]} unit={set[`actual_${metric}_unit`] || exercise[`prescribed_${metric}_unit`]}
+                          disabled={sealed} onValueChange={(value) => setLocalValue(exercise.id, set.id, `actual_${metric}_value`, value)}
+                          onBlur={() => saveSet(exercise, set)} onUnitChange={(unit) => {
+                            const updated = { ...set, [`actual_${metric}_unit`]: unit };
+                            setLocalValue(exercise.id, set.id, `actual_${metric}_unit`, unit);
+                            saveSet(exercise, updated);
+                          }} />
+                      ))}
+                      <p className="col-span-full text-xs text-muted-foreground">Enter values in the selected units. Changing a unit keeps the number.</p>
+                    </div>
+                  )}
                   {set.set_origin === 'extra' && (
                     <Button type="button" size="touchIcon" variant="ghost" className="col-start-2 text-muted-foreground" disabled={sealed} onClick={() => removeSet(exercise, set)} aria-label="Remove extra set" title="Remove extra set">
                       <Trash2 aria-hidden />

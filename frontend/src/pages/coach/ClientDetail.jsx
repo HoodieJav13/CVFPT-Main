@@ -1,3 +1,4 @@
+import { setPrescription, trackingTargets } from '@/lib/workoutMetrics';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
@@ -1460,9 +1461,10 @@ function CoachExerciseRows({ exercises }) {
                   <Play className="h-3 w-3" /> Video
                 </a>
               )}
-              {(exercise.sets || exercise.reps) && <Badge variant="outline" className="tabular-nums">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+              {(exercise.sets || exercise.reps) && <Badge variant="outline" className="tabular-nums">{setPrescription(exercise)}</Badge>}
             </span>
           </div>
+          {trackingTargets(exercise).map((target) => <p key={target} className="mt-1 text-xs text-muted-foreground">{target}</p>)}
           {(exercise.client_notes || exercise.notes) && <p className="text-xs text-muted-foreground mt-1">{exercise.client_notes || exercise.notes}</p>}
           {exercise.coach_notes && <p className="text-xs text-primary mt-1">Coach: {exercise.coach_notes}</p>}
         </div>

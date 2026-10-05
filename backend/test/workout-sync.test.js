@@ -74,7 +74,7 @@ test('outbox and tracker wire the rules in', () => {
   assert.match(outbox, /resolvedIdsRef\.current\.get\(operation\.setId\)/);
   // History fill reads the latest log after the await, not the stale argument.
   assert.match(tracker, /logRef\.current\?\.exercises\.find\(\(row\) => row\.id === exercise\.id\)/);
-  assert.match(tracker, /lastTimeFills\(current\.sets, occurrence\)/);
+  assert.match(tracker, /lastTimeFills\(current\.sets, occurrence, current\)/);
   // Every mutation control honours the sealed state.
   assert.match(tracker, /<Select disabled=\{sealed\}/);
   assert.match(tracker, /disabled=\{sealed\} onClick=\{\(\) => removeSet\(exercise, set\)\}/);
