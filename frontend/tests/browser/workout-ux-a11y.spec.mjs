@@ -39,3 +39,22 @@ test('workout and library authoring fields retain associated labels after typing
  for (const f of ['name','category','equipment','primary-muscle','secondary-muscles','video','notes']) expect(await page.getByTestId(`exercise-library-${f}-input`).evaluate(e => [...e.labels].filter(l => l.textContent.trim()).length)).toBeGreaterThan(0);
  expect(results.unexpected).toEqual([]);
 });
+
+test('offline invalid input never enters the queue; a corrected value still syncs', async ({ page, context }) => {
+ const { results } = await tracker(page);
+ await context.setOffline(true);
+ const input = page.getByLabel(`${exerciseName} set 1 performed RPE`, { exact: true });
+ await input.fill('11'); await input.blur();
+ await page.getByRole('button', { name: 'Complete set 1', exact: true }).first().click();
+ await expect(input).toHaveAttribute('aria-invalid', 'true');
+ await expect(input).toHaveValue('11');
+ await expect(page.getByTestId('rest-timer')).toHaveCount(0);
+ expect(results.writes).toEqual([]);
+ expect(await page.evaluate(() => JSON.parse(localStorage.getItem('cvf_workout_outbox_ux-log') || '[]'))).toEqual([]);
+ await input.fill('7.5'); await input.blur();
+ await expect(input).not.toHaveAttribute('aria-invalid', 'true');
+ expect(results.writes).toEqual([]);
+ await context.setOffline(false);
+ await expect.poll(() => results.writes.some(write => write.actual_rpe === 7.5)).toBe(true);
+ expect(results.errors).toEqual([]); expect(results.unexpected).toEqual([]);
+});
