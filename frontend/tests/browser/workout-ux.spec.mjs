@@ -15,7 +15,7 @@ for (const width of [320,390,1440]) test(`decimal loads fit without horizontal o
  await page.setViewportSize({ width, height: 900 }); await tracker(page);
  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
  for (const n of [exerciseName,'Chest-supported row']) {
-  const fit = await page.getByLabel(`${n} set 1 weight`, { exact:true }).evaluate(e => { const s=getComputedStyle(e),c=document.createElement('canvas').getContext('2d'); c.font=s.font; return { available:e.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight), required:c.measureText(e.value).width+16 }; });
+  const fit = await page.getByLabel(`${n} set 1 weight`, { exact:true }).evaluate(e => { const s=getComputedStyle(e),c=document.createElement('canvas').getContext('2d'); c.font=`${s.fontStyle} ${s.fontWeight} ${s.fontSize} ${s.fontFamily}`; return { available:e.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight), required:c.measureText(e.value).width+16 }; });
   expect(fit.available).toBeGreaterThanOrEqual(fit.required);
  }
 });
