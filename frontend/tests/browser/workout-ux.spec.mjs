@@ -19,7 +19,30 @@ for (const width of [320,390,1440]) test(`decimal loads fit without horizontal o
   expect(fit.available).toBeGreaterThanOrEqual(fit.required);
  }
 });
-test('rest reserves dock space and retains adjustment, reload and dismissal', async ({ page }) => {
+for (const { width, height, scrollY } of [{ width:320,height:640,scrollY:571 }, { width:390,height:844,scrollY:271 }, { width:1440,height:900,scrollY:271 }]) {
+ test(`running rest leaves exercise actions unobscured at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width,height }); const { results } = await tracker(page);
+  await page.getByRole('button',{name:'Complete set 1',exact:true}).first().click();
+  await page.getByRole('button',{name:'Complete set 1',exact:true}).first().click();
+  await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state','running');
+  await page.evaluate(y => window.scrollTo({ top:y,left:0,behavior:'instant' }),scrollY);
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollY);
+  const actions = [page.getByRole('button',{name:'Add set',exact:true}).first(),page.getByTestId('same-as-last-time').first()];
+  for (const action of actions) {
+   await expect(action).toBeInViewport({ ratio:1 });
+   expect(await action.evaluate(e => {
+    const r=e.getBoundingClientRect();
+    return [0.1,0.5,0.9].every(x => [0.1,0.5,0.9].every(y => e.contains(document.elementFromPoint(r.x+r.width*x,r.y+r.height*y))));
+   })).toBe(true);
+  }
+  // Ordinary page scrolling still moves the exercise content. No nested scroller or clipping workaround.
+  const top=(await actions[1].boundingBox()).y; await page.mouse.move(width/2,height/2); await page.mouse.wheel(0,80);
+  await expect.poll(async () => (await actions[1].boundingBox()).y).toBeLessThan(top);
+  await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state','running');
+  expect(results.errors).toEqual([]); expect(results.unexpected).toEqual([]);
+ });
+}
+test('rest retains adjustment, reload and dismissal in the workout controls', async ({ page }) => {
  await page.setViewportSize({ width:390,height:844 }); await tracker(page);
  await page.getByRole('button',{name:'Complete set 1',exact:true}).first().click(); await page.getByRole('button',{name:'Complete set 1',exact:true}).first().click();
  const dock=page.getByTestId('workout-control-dock'); await expect(dock.getByTestId('rest-timer')).toBeVisible();
