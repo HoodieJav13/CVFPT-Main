@@ -76,96 +76,23 @@ values cannot collect. There is a 2-second request abort, no capture retries,
 100 events/page boot, 20 exceptions/page boot, and 30-second fingerprint dedup.
 These caps are defensive and reset on reload; they are not account billing limits.
 
-## Bounded cloud event proof — prepared, not transmitted
+## Bounded hosted fictional proof
 
-Target is connected **Default project 509463**, after the parent verifies its
-region, project-level **Discard client IP data**, free-plan status and remaining
-usage. Destination is that region's allowlisted `https://us.i.posthog.com/i/v0/e/`
-or EU equivalent; never the hosted app/backend. HTTP necessarily exposes network
-metadata to the receiver despite `$ip: null`, disabled geolocation and omitted
-cookies/referrer. Payload-only tests cannot establish provider-side storage.
+Connected Default project509463 is US Cloud on the free plan, verified through its UI before the test. The owner approved enabling project **Discard client IP data**; UI/connector confirmed `anonymize_ips:true`. No other provider setting, billing, dashboard, alert or notification destination changed. HTTP exposes network metadata to the receiver; explicit `$ip:null` and `$geoip_disable:true` plus receiver-side discard prevent stored IP/geolocation in the verified event records.
 
-`synthetic-packets.json` contains the exact constructed event examples without
-credentials. For transmission, the transport adds only `api_key`, supplied by the
-owner through secure scoped configuration as a **public project ingestion token**,
-not an account/personal key. The existing public project ingestion token was read
-through the supported connector for the separately authorized fictional proof and held only in ephemeral
-memory. No credential was generated or persisted in the repository or environment.
-The project settings UI also displayed this public token automatically. No personal
-API key or account credential was read. Local work requires no token.
+Nine exact fictional events from actual fixture UI actions were independently reconstructed and sent once to `https://us.i.posthog.com/i/v0/e/`. All nine received records and the single scrubbed exception issue were read in full. No forbidden data appeared. The existing public ingestion token was read through the supported connector, held only in ephemeral tool/stdin memory, then cleared. No personal/account key was read; no credential created or persisted. The settings UI displayed the public token automatically. No token is needed for local tests.
 
-The authorized first proof is **one isolated fictional browser run, at most 12
-allowlisted packets, no replay**, home → sessions → create/attach → edit/remove
-→ injected 503
-→ retry. First intercept all packets locally; approve the exact inspected set and
-then allow only that set/count through a test-runner network gate. Stop at the
-bound; do not reload or browse other flows with collection enabled. The app's
-100-per-boot cap does not enforce this proof's 12-packet bound. Parent verifies
-received fields and exception grouping, then turns collection off immediately.
+[Proof checkpoint](proof-checkpoint-2026-10-05.md) records the exact event sequence, hashes, provider enrichment and actual checks. Evidence outside the repo includes inspected/received events and an attempt journal. The one-shot sender refuses any second execution; uncertain delivery requires read-only receipt checking.
 
-**Actual checkpoint:** nine packets from real local fixture UI actions were
-inspected, with zero external requests. The account UI confirms US Cloud, free
-plan and zero event/error/web-recording usage. Project IP discard is off; approval
-to enable it is pending. Nothing has been sent. See
-[proof checkpoint](proof-checkpoint-2026-10-05.md) for the exact nine-event list
-and local real-recorder outcome.
+## Bounded replay proof — separate from app collection
 
-No provider settings, dashboards, alerts, billing/plan, production data or
-notification destinations were changed. Current formats were checked through
-PostHog docs: [Capture API](https://posthog.com/docs/api/capture),
-[API tutorial](https://posthog.com/tutorials/api-capture-events),
-[exceptions](https://posthog.com/docs/error-tracking/capture) and
-[privacy controls](https://posthog.com/docs/privacy/data-collection).
+Both `replayProofPolicy.js` and `replayProofSanitizer.js` are **not imported by the app**. No recorder or PostHog SDK dependency is installed in the app. A temporary pinned `posthog-js@1.436.1` recorder and `rrweb@2.1.7` player were used entirely against intercepted fictional local fixtures.
 
-## Bounded replay proposal — offline policy only
+The corrected real recorder passed complete decoded packet inspection and actual four-route rrweb playback. Only fixed public Overview/Sessions/Programs/Resources labels, allowlisted static layout classes, exact reviewed resource-free styles, blocked-node geometry, generated technical rrweb IDs/coordinates/timestamps and a fictional coarse origin remain. Arbitrary attributes/text/styles, inputs, main contents, client IDs/notes/health, real URLs, SDK config/debug, console and network records are removed. Production/real-data gates fail closed; initialization stays opted out and replay disabled until an explicit local start. Before any forbidden SPA route the runner opts out/stops the recorder. One-session/120-second/2-MiB limits are enforced before outgoing packets; external requests are blocked.
 
-`replayProofPolicy.js` is **not imported by the app**. Its candidate options and
-eligibility have unit checks. No SDK is installed in the app. A separately pinned
-`posthog-js@1.436.1` recorder and `rrweb@2.1.7` player were installed only in a
-temporary offline harness. Real snapshots were decoded and played locally; none
-were transmitted. **The replay proof failed**, so hosted replay remains blocked.
+The owner-authorized single clip was two packets / 388119 bytes / 2495ms activity. Both were HTTP200 acknowledged once at the verified US replay endpoint; no retry. Hosted indexing is verified (30 events, three clicks, zero keypresses/console entries, fictional URL). Hosted visual playback and post-test usage screen verification remain pending because browser controls are disconnected; billing connector scope is absent. Do not resend. Local playback shows navigation only because main contents are blocked. This cannot diagnose editor/workout contents and does not approve production replay.
 
-Proposed scope: **one fictional fixture session, at most 120 seconds and 2 MiB**,
-one parent-approved local/isolated preview origin, coach role, no real login.
-Only `/coach` → `/coach/sessions` → `/coach/programs` → `/coach/resources`, no
-query/hash. Exclude client/session details, messages, workout tracker/logs,
-notifications, admin, auth/reset/invite, downloads and external links. Fictional
-fixture names/health text stay local and may not enter the recording.
-
-Candidate controls: disabled recorder at initialization; no autocapture,
-automatic pageviews/exceptions, console, network/performance/headers/bodies;
-mask every input/text/element attribute; block `main`, portals/dialogs/listboxes/
-menus, user menu, images/SVG/canvas/media/iframes. The network/URL callback drops
-requests, including snapshot URL metadata. Only shell geometry and interaction
-timing could remain. Production is never eligible. A future runner must destroy
-the recorder **before** any disallowed SPA navigation, not after its DOM renders.
-
-Before collection approval, pin/review the SDK and record to an in-memory **local
-sink**, intercepting all traffic. Decode complete snapshots and mutations,
-including URLs, text/inputs, attributes/styles, console and network entries.
-Poison fictional data with ID/name/email/health/note/token strings and assert none
-remain; assert prohibited routes never get recorded. Enforce one session/two
-minutes/two MiB independently of sampling. Any prohibited field or blank/unusable
-playback fails the proof. No cloud packet passes until this is directly verified.
-
-The proposed navigation usefulness **failed the actual local playback check**:
-the SDK masks CSS classes along with other attributes, destroying the layout
-and alignment of click positions. Coarse events still identify screens. Blocking
-`main` prevents replay from showing the editor/workout or diagnosing its contents;
-A corrected candidate must pass local packet/playback checks before any cloud
-recording. Its only eligible destination is Default project 509463's verified
-region. Parent coordinates any temporary project replay setting. Production
-recorder and global broad capture remain disabled.
-
-Docs currently advertise **5,000 free web recordings/month**. Verify account
-status/remaining usage before a single recording; do not add a card, upgrade,
-create a paid project or alter billing. Use the one-run hard stop and verify the
-count afterward. Consulted 2026-10-05:
-[replay privacy](https://posthog.com/docs/session-replay/privacy),
-[network recording](https://posthog.com/docs/session-replay/network-recording),
-[manual controls](https://posthog.com/docs/session-replay/how-to-control-which-sessions-you-record#programmatic-start-and-stop-controls),
-[config](https://posthog.com/docs/references/posthog-js/types/SessionRecordingRemoteConfig),
-[pricing](https://posthog.com/session-replay/pricing).
+Current format references, consulted 2026-10-05: [Capture API](https://posthog.com/docs/api/capture), [exceptions](https://posthog.com/docs/error-tracking/capture), [privacy controls](https://posthog.com/docs/privacy/data-collection), [replay privacy](https://posthog.com/docs/session-replay/privacy), [replay ingestion](https://posthog.com/docs/how-posthog-works/recordings-ingestion), [timestamps](https://posthog.com/docs/data/timestamps). Account UI showed 5000 free web recordings/month before proof. No card, upgrade or paid project was added.
 
 ## Release gates / rollback
 
@@ -173,10 +100,8 @@ count afterward. Consulted 2026-10-05:
    `deploymentEnabled` excludes only `codex/email-brand-preview`, not this branch.
    Treat push as a preview-deploy trigger; secure separate approval or independently
    verify disabled hooks before any remote push/PR. No Vercel setting was changed.
-2. Approve exact synthetic payload/destination/count and verify provider privacy/
-   free usage before a cloud proof. Secure token setup is unnecessary until then.
-3. Replay needs pinned-SDK local packet/playback verification and its own bounded
-   collection decision. This offline proposal never activates it.
+2. Hosted fictional events are verified. Finish read-only hosted replay visual playback and post-test usage checks; do not repeat transmissions.
+3. App replay remains disabled/uninstalled. Any further replay collection needs its own scope/approval; the proof tooling never activates it.
 4. Production usage/errors need separate release approval and a reviewed change to
    fixture/build gates, an appropriate coarse anonymous identity policy and
    received-property verification. Environment settings alone cannot enable it.
@@ -184,5 +109,4 @@ count afterward. Consulted 2026-10-05:
    and real-user collection remain separate authorization gates.
 
 Rollback: set `REACT_APP_POSTHOG_MODE=off` or revert the scoped local commit. There
-are no migrations, new application dependencies, provider changes or hosted
-cleanup steps at this checkpoint. Temporary recorder packages are outside the app.
+are no migrations or new application dependencies. Provider IP discard is an independently approved privacy improvement and remains on. Nine fictional events and one attempted fictional clip remain in PostHog; no cleanup/deletion was authorized. Temporary recorder packages are outside the app.

@@ -135,7 +135,7 @@ of unreleased features and UI on Vercel preview links, design QA, and the
 
 ## Status (updated as of this session)
 
-- PostHog coach usage/error first slice (2026-10-05): **isolated local implementation, production off**. Fixture-only coarse navigation/session save/workout outcomes and scrubbed errors are tested. Nine exact fictional packets inspected locally; hosted proof is pending IP-discard approval. Real SDK replay tested only in a temporary local harness and failed usefulness/metadata gates; no app recorder or hosted replay. No push/deploy/provider change; see `docs/analytics/proof-checkpoint-2026-10-05.md`.
+- PostHog coach usage/error first slice (2026-10-05): **isolated implementation, production off**. Fixture-only coarse navigation/session/workout outcomes and scrubbed errors tested; nine fictional events received and one scrubbed issue verified in Default project509463. Owner-approved IP discard enabled/verified. Corrected offline recorder passed full decoded packet/privacy and four-route playback checks; one fictional recording (two packets, 388119 bytes, 2495ms activity) acknowledged once and indexed; hosted visual playback/usage checks pending because browser controls disconnected. No app recorder, push or deploy. See `docs/analytics/proof-checkpoint-2026-10-05.md`.
 
 - Toolchain/scaffolding cleanup, brand token foundation, and visual elevation pass: **done**.
 - High Desert visual system: **implemented and passed the visual-quality gate

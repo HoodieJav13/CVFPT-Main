@@ -13,10 +13,10 @@ attachment/removal outcomes. API errors contribute only numeric status; exceptio
 messages/types/fingerprints are constructed from fixed enums. Transport failure
 cannot change app save behavior. No broad autocapture or replay SDK in the app.
 
-Checks completed: unit 62/62; analytics browser 5/5; preview browser 77 passed,
+Checks completed: unit 67/67 (including five replay sanitizer regressions); analytics browser 5/5; preview browser 77 passed,
 8 existing live-auth skips; series browser 19/19; production Vite build;
 actual compiled runtime production-off check; frontend boundary guard;
-Git diff whitespace and CI YAML parse. No code changed after those checks.
+Git diff whitespace and CI YAML parse. The offline replay repair also passed actual SDK packet inspection and rrweb playback on all four allowed routes; the app code remains unchanged after its initial checks.
 
 ## Exact fictional event run
 
@@ -44,48 +44,31 @@ secrets. A one-shot sender independently reconstructs every payload, checks the
 hash/count, journals attempts, and refuses any second execution. HTTP uncertainty
 requires read-only verification; it must never cause a resend.
 
-The existing public ingestion token was read through the connector and is held
-only in ephemeral memory. The settings UI displayed it automatically; no token
-was copied to disk/repository/environment, and no credential was created. The
-provider UI confirms Default project 509463, US Cloud, free plan, zero current
-product-event/error/web-replay usage before any test. Project IP discard is off.
+The existing public ingestion token was read through the connector, used only in ephemeral stdin/tool memory, then cleared. The settings UI displayed it automatically; no token was copied to disk/repository/environment and no credential was created. Provider UI confirmed Default project509463, US Cloud, free plan and zero usage before the test.
 
-**Hosted proof is pending approval to enable Discard client IP data.** The current
-SDK source warns the legacy `ip` configuration has no effect; `$ip:null` is not
-accepted as proof of receiver-side IP storage prevention. No capture request has
-been sent. No provider setting has changed. After approval: verify discard on,
-send only the inspected nine packets once to `https://us.i.posthog.com/i/v0/e/`,
-verify received full properties and exception grouping, then clear ephemeral key
-state. All application collection remains off.
+The owner approved enabling **Discard client IP data**. It was enabled in the exact Privacy setting and verified through the UI and connector (`anonymize_ips:true`). Geolocation suppression remains explicit in every packet; IP discard alone does not prevent every provider transformation before storage.
 
-## Actual local recorder outcome: fail, no cloud replay
+**Hosted event proof passed.** Exactly nine packets were attempted and acknowledged once (zero retries), then all nine received records were read in full. No stored IP, geolocation, URL, client identity, notes, health text or raw errors appeared. Provider exception enrichment adds generated issue/exception identifiers and manual fingerprint metadata only. One synthetic `CvfptCoachFailure` issue contains one occurrence, one synthetic identity and zero sessions:
+[synthetic issue](https://us.posthog.com/project/509463/error_tracking/01a10d0b-539a-7fa3-8b0d-d0749fef74f3).
+No alert or notification was configured or sent. App collection remained off throughout the manual proof.
 
-Only the temporary harness uses pinned `posthog-js@1.436.1` and `rrweb@2.1.7`.
-The app dependency/lock files were not changed. All external requests were
-blocked. Initialization was opted out with replay disabled. Explicit local
-start produced real SDK snapshots. Full compressed snapshots and mutation fields
-were decompressed before inspection, rather than checking compressed bytes.
+## Corrected real recorder proof
 
-With the original fail-closed `before_send`, nothing is emitted. Allowing only
-`$snapshot` in the local harness exposed further behavior: headless UA filtering
-must be disabled for this test; dropping all replay URLs also removes rrweb Meta
-records and produces blank playback. A local-only variant replaced metadata with
-fictional URLs on the four approved coarse routes. It produced 34 rrweb events,
-3 full snapshots, 140120 serialized request bytes and 2857ms of recorded activity.
-No poisoned name/email/athlete ID/input/health/secret strings remained after full
-decoding. Console/network plugins were absent.
+Only the temporary harness uses pinned `posthog-js@1.436.1` and `rrweb@2.1.7`. App dependencies/lock files are unchanged. `replayProofPolicy.js` remains an unimported disabled baseline; `replayProofSanitizer.js` is separate unimported proof tooling and cannot start an SDK. Production and non-fictional fixtures are ineligible.
 
-However, attribute masking also masks CSS classes. Actual replay was unstyled
-and its click positions no longer matched the shell. SDK custom events included
-`$posthog_config`, `$remote_config_received` and `$session_options`, including the
-fake local SDK token/configuration. These need removal before any hosted proof.
-A snapshot-only event-name filter does not provide sufficient data minimization.
+The first local attempt exposed unusable CSS-class masking, blank playback when rrweb Meta was removed, and SDK custom configuration records. The corrected proof preserves only reviewed literal layout classes, exact reviewed static stylesheets with resource URLs/imports/comments removed, four fixed public navigation labels and numeric blocked-node dimensions. Everything else is rebuilt or dropped. Media becomes empty layout placeholders; whitespace stays empty to preserve cursor alignment.
 
-**Do not upload a replay.** The usefulness and metadata gates failed. The app
-continues to have no recorder; the offline candidate still drops every event.
-No real ingestion token was given to the recorder. A later corrected candidate
-must pass real SDK packet inspection and playback again before the previously
-bounded one-session/two-minute/two-MiB hosted test can proceed.
+The actual SDK's individually compressed snapshot/mutation fields are decoded before sanitization. The outgoing envelope is reconstructed, eliminating default URL/device/person fields and custom configuration, console, network, input, selection, canvas and unknown extension records. Text is redacted; main content, dialogs, menus, input controls and user menu remain blocked. Metadata/hrefs use only `https://cvfpt-synthetic.invalid` plus `/coach`, `/coach/sessions`, `/coach/programs`, `/coach/resources`. Technical rrweb node/session/window IDs are generated recording data, never application/client IDs. The one-shot sender substitutes only the existing public ingestion authentication token after inspection.
+
+**Local privacy and playback passed:** initialization opted out/recorder stopped; explicit start; actual four-route sidebar navigation; forbidden Clients navigation destroys capture before transition; zero external requests or app errors. Poisoned name/email/athlete ID/health/input/attribute/style/console/header/body strings and SDK config are absent from full decoded outgoing packets. Actual rrweb playback matches all four active screens, retains public labels and aligns link geometry with the live shell exactly (8px tolerance test). Main contents are empty; replay requests no external assets.
+
+Inspected result: one generated session `01a10d1d-77bc-715c-8aca-611dfa7ab80d`, two packets, 30 rrweb events, three full snapshots, **388119 bytes**, **2495ms** activity. Compact inspected packet SHA-256:
+`a602c1c4b2d73d464eef65754ede7b8e799ba3ff2d7ed20825d23ce4dec89c86`.
+The authorized limit was one fictional session / 120 seconds / 2 MiB.
+
+**Hosted replay attempted once:** both exact inspected packets acknowledged HTTP200 at `https://us.i.posthog.com/s/`; zero retries. Journal exists and prevents a second execution. Hosted indexing is verified: one synthetic identity, 30 events, three clicks, zero keystrokes, zero console log/warn/error entries, fictional start URL, and 388161 provider bytes (under the 2-MiB cap). Provider timestamp normalization moves the stored time; raw rrweb activity span remains 2495ms. Hosted visual playback and post-test usage screen verification remain pending. Browser controls became disconnected after the app update; connector/shell still work, and billing read scopes are absent. Do not resend; remaining checks are read-only.
+[recording](https://us.posthog.com/project/509463/replay/01a10d1d-77bc-715c-8aca-611dfa7ab80d).
+No real token was given to the recorder; the SDK only ever used a fake local token against an intercepted local sink. No SDK is installed or started in the app.
 
 ## Integration and release gates
 
@@ -97,5 +80,4 @@ file list is available in the implementation commit.
 No push: both Vercel projects are Git-connected and the checked-in branch rule
 only excludes the separate email preview branch. Treat push as a deployment
 trigger until independently disabled or approved. Production release, real-user
-identity policy, actual received-field verification, dashboards/notifications and
-replay remain separate gates. Claude/design/email work is preserved.
+identity policy, dashboards/notifications and application replay remain separate gates. Hosted replay visual playback and post-test usage screen still need read-only verification. Claude/design/email work is preserved.
