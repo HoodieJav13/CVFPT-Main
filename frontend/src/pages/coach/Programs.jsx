@@ -300,7 +300,7 @@ function ExerciseLibraryTab({ library, reload }) {
             {importing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileUp className="h-4 w-4 mr-1.5" />} Import CSV
             <input type="file" accept=".csv,text/csv" className="hidden" disabled={importing} onChange={(e) => importCsv(e.target.files?.[0], e.target)} data-testid="exercise-library-import-input" />
           </label>
-          <Button className="rounded-xl" onClick={openCreate} data-testid="exercise-library-create-button">
+          <Button size="touch" className="rounded-xl" onClick={openCreate} data-testid="exercise-library-create-button">
             <Plus className="h-4 w-4 mr-1.5" /> Add exercise
           </Button>
         </div>
@@ -349,7 +349,7 @@ function ExerciseLibraryTab({ library, reload }) {
         ))}
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent aria-describedby={undefined} className="max-w-lg">
+        <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-lg grid-cols-1 overflow-y-auto [&>button]:h-11 [&>button]:w-11">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit exercise' : 'Add exercise'}</DialogTitle>
                       </DialogHeader>
@@ -363,7 +363,7 @@ function ExerciseLibraryTab({ library, reload }) {
             </div>
             <LabeledField label="YouTube video URL"><Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="YouTube video URL" data-testid="exercise-library-video-input" /></LabeledField>
             <LabeledField label="Notes"><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" data-testid="exercise-library-notes-input" /></LabeledField>
-            <DialogFooter><Button disabled={saving} className="rounded-xl" data-testid="exercise-library-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save exercise'}</Button></DialogFooter>
+            <DialogFooter><Button size="touch" disabled={saving} className="rounded-xl" data-testid="exercise-library-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save exercise'}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -373,7 +373,7 @@ function ExerciseLibraryTab({ library, reload }) {
 
 function LabeledField({ label, children }) {
   const id = useId();
-  return <div className="min-w-0 space-y-1"><Label htmlFor={id}>{label}</Label>{cloneElement(children, { id })}</div>;
+  return <div className="min-w-0 flex-1 space-y-1"><Label htmlFor={id}>{label}</Label>{cloneElement(children, { id, className: cn('min-h-11', children.props.className) })}</div>;
 }
 
 export function workoutToForm(workout) {
@@ -551,7 +551,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
   return (
     <div className="space-y-4 mt-1">
       <div className="flex justify-end lg:hidden">
-        <Button className="rounded-xl" onClick={openCreate} data-testid="workout-create-button"><Plus className="h-4 w-4 mr-1.5" /> New workout day</Button>
+        <Button size="touch" className="rounded-xl" onClick={openCreate} data-testid="workout-create-button"><Plus className="h-4 w-4 mr-1.5" /> New workout day</Button>
       </div>
       {workouts.length > 0 && (
         <AuthorFilter value={author} onChange={setAuthor} options={authorOptions(workouts)} testId="workout-author-filter" />
@@ -561,7 +561,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
       {/* ---------- Desktop: list rail + persistent editor pane ---------- */}
       <div className="hidden lg:grid lg:h-[calc(100dvh-320px)] lg:min-h-[480px] lg:grid-cols-[300px_1fr] lg:gap-6">
         <aside className="min-h-0 space-y-2 overflow-y-auto pr-1" data-testid="workout-rail">
-          <Button className="w-full rounded-xl" onClick={selectCreate} data-testid="workout-rail-create">
+          <Button size="touch" className="w-full rounded-xl" onClick={selectCreate} data-testid="workout-rail-create">
             <Plus className="h-4 w-4 mr-1.5" /> New workout day
           </Button>
           {groups.map(({ item, children }) => (
@@ -577,7 +577,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
             </div>
           ))}
         </aside>
-        <section className="flex min-h-0 flex-col overflow-y-auto rounded-2xl border border-border bg-card/40 p-5" data-testid="workout-editor-pane">
+        <section className="flex min-h-0 min-w-0 flex-col overflow-y-auto rounded-2xl border border-border bg-card/40 p-5" data-testid="workout-editor-pane">
           {!paneActive ? (
             <div className="flex flex-1 items-center justify-center">
               <EmptyState icon={Dumbbell} title="Select a workout day" subtitle="Pick a day from the list to edit it here, or start a new one." testId="workout-editor-empty" />
@@ -1208,7 +1208,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
                   return (
                     <AccordionItem key={`${day.day_number}-${dayIndex}`} value={dayValue} className="rounded-xl border border-border bg-card px-4 shadow-sm" data-testid="program-import-day-card">
                       <AccordionTrigger className="min-h-11 py-3 hover:no-underline">
-                        <span className="flex min-w-0 items-center gap-2 text-left">
+                        <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
                           <span className="font-display font-semibold">Day {day.day_number}</span>
                           <span className="truncate text-sm text-muted-foreground">{day.name || 'Untitled workout day'}</span>
                           {needsAttention && <Badge variant="outline" className="shrink-0 border-gold/25 bg-gold/10 text-gold">Needs review</Badge>}
@@ -1452,15 +1452,15 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
             type="button"
             {...drag.handle}
             aria-label={`Drag to reorder ${rowName(exercise, index)}`}
-            className="flex h-11 w-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+            className="flex h-11 w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
             data-testid="workout-exercise-drag-handle"
           >
             <GripVertical className="h-4 w-4" />
           </button>
           <AccordionTrigger className="min-h-11 min-w-0 py-3 hover:no-underline">
-            <span className="flex min-w-0 items-center gap-2 text-left">
+            <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
               <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md bg-primary/15 px-1.5 text-xs font-semibold tabular-nums text-primary" data-testid="workout-exercise-marker">{markers[index]}</span>
-              <span className="truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
               {(exercise.sets || exercise.reps) && <Badge variant="outline" className="hidden shrink-0 tabular-nums sm:inline-flex">{setPrescription(exercise)}</Badge>}
             </span>
           </AccordionTrigger>
@@ -1477,11 +1477,12 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <LabeledField label="Sets"><Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" /></LabeledField>
             {trackingType(exercise) === 'reps_weight' && <LabeledField label="Reps"><Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" /></LabeledField>}
-            <div className="min-w-0">
+            <div className="min-w-0 space-y-1">
               {/* Numeric authoring, serialized as canonical "Ns" text; the
                   DB fill trigger derives rest_seconds from it. */}
               <Label htmlFor={`${idPrefix}-${rowValue(exercise, index)}-rest`}>Rest (seconds)</Label>
               <Input
+                className="h-11"
                 id={`${idPrefix}-${rowValue(exercise, index)}-rest`}
                 type="number" min="0" step="5" inputMode="numeric"
                 value={parseRestSeconds(exercise.rest) ?? ''}
@@ -1498,16 +1499,18 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
             </div>
             <LabeledField label="Tempo"><Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" /></LabeledField>
           </div>
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] items-end gap-2">
             <LabeledField label="Target RPE"><Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" /></LabeledField>
             <LabeledField label="Default load"><Input type="number" min="0" step="0.5" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" /></LabeledField>
+            <div className="space-y-1"><Label htmlFor={`${idPrefix}-${rowValue(exercise, index)}-load-unit`}>Unit</Label>
             <Select value={exercise.default_load_unit || 'lb'} onValueChange={(value) => setExercise(index, { default_load_unit: value })}>
-              <SelectTrigger aria-label="Default load unit"><SelectValue /></SelectTrigger>
+              <SelectTrigger id={`${idPrefix}-${rowValue(exercise, index)}-load-unit`} className="h-11" aria-label="Default load unit"><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
             </Select>
+            </div>
           </div>
           <div className="relative">
-            <Video className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Video className="absolute bottom-3.5 left-3 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
             <LabeledField label="Video URL"><Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" /></LabeledField>
           </div>
           <LabeledField label="Client notes"><Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" /></LabeledField>
@@ -1529,7 +1532,7 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
           type="button"
           variant="ghost"
           size="touch"
-          className={cn('h-9 rounded-full px-3 text-xs', linked ? 'text-primary' : 'text-muted-foreground hover:text-primary')}
+          className={cn('rounded-full px-3 text-xs', linked ? 'text-primary' : 'text-muted-foreground hover:text-primary')}
           onClick={() => setExercises(toggleLinkWithNext(form.exercises, index))}
           aria-label={linked ? `Unlink ${pair}` : `Link ${pair} as a superset`}
           data-testid={linked ? 'workout-exercise-unlink-button' : 'workout-exercise-link-button'}
@@ -1541,7 +1544,7 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
   };
 
   return (
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="min-w-0 space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <LabeledField label="Workout day name"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Workout day name" data-testid="workout-name-input" /></LabeledField>
             <LabeledField label="Goal/focus"><Input value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} placeholder="Goal/focus" data-testid="workout-goal-input" /></LabeledField>
@@ -1595,11 +1598,11 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
           </Accordion>
           </SortableContext>
           </DndContext>
-          <Button type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setExercises([...form.exercises, newExerciseRow()])} data-testid="workout-exercise-add-button">
+          <Button size="touch" type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setExercises([...form.exercises, newExerciseRow()])} data-testid="workout-exercise-add-button">
             <Plus className="h-4 w-4 mr-1.5" /> Add exercise
           </Button>
           <div className="flex justify-end">
-            <Button disabled={saving} className="rounded-xl" data-testid="workout-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save workout'}</Button>
+            <Button size="touch" disabled={saving} className="rounded-xl" data-testid="workout-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save workout'}</Button>
           </div>
         </form>
   );
@@ -1608,7 +1611,7 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
 export function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onSubmit, editing }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-2xl overflow-y-auto">
+      <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-2xl grid-cols-1 overflow-y-auto [&>button]:h-11 [&>button]:w-11">
         <DialogHeader>
           <DialogTitle>{editing ? 'Edit workout day' : 'New workout day'}</DialogTitle>
                   </DialogHeader>
