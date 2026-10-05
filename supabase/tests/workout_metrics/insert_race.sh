@@ -36,7 +36,7 @@ SQL
 metrics_insert_status=$?
 set -e
 wait "$metrics_completion_pid"
-if [ "$metrics_insert_status" = 0 ] || ! rg -q 'Completed workout logs cannot be changed' "$RACE_DIR/insert.txt"; then
+if [ "$metrics_insert_status" = 0 ] || ! grep -Fq 'Completed workout logs cannot be changed' "$RACE_DIR/insert.txt"; then
   cat "$RACE_DIR/insert.txt"
   echo 'FAIL: insert raced into completed log'
   exit 1
