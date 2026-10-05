@@ -681,7 +681,7 @@ export default function WorkoutTracker() {
       </div>
 
       <div
-        className="signature-glass sticky bottom-20 z-30 mt-5 flex flex-col gap-2 rounded-2xl p-2.5 lg:bottom-4"
+        className="signature-glass mt-5 flex flex-col gap-2 rounded-2xl p-2.5"
         data-testid="workout-control-dock"
       >
         <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} onAdjust={adjustRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
