@@ -14,6 +14,31 @@ this follow-up. Other worktrees, including the PostHog source branch and parked
 PR99, were not changed. Backend, outbox, sync logic, snapshots, schema, dependencies
 and metric validation contracts have no changes.
 
+## Owner visual review and independent review
+
+Publication and merge are **on hold for owner visual review**. Actual paired
+renders of released baseline `cda1beae5857bb1ce98b44b596ada6def085edce` and
+reviewed head `256676fefbe3d847eca5251ed27a0793ef0f360e` are in
+[`workout-ux-visual-review/index.html`](workout-ux-visual-review/index.html),
+with capture hashes, states and measurements in the adjacent manifest.
+The later documentation commit does not change the captured application source.
+The nine-page packet covers 320/390px weight fields, editor top/lower fields,
+unchanged duration/distance targets, clear and obscured rest states, adjacent
+validation, start/PDF targets and 1440px desktop sanity. No prior Claude audit
+images were used. Full viewport and additional full-page context are retained.
+
+The independent reviewer found no verified in-scope product bugs, reran all 11
+UX cases, 69 frontend unit cases and the typed outbox case, and independently
+checked extra narrow large-set and simultaneous typed-error fixture cases.
+One measurement advisory was corrected in `256676fe`: build the canvas font
+from computed font style/weight/size/family rather than its empty shorthand
+when tabular numerals are set. This is test-only; application source is exactly
+the reviewed `363cd58e` source. Corrected decimal checks pass 3/3, independently
+rerun. Actual `135.5` width is 38.26px in the phone font; 320px usable width is
+106px after, versus 10px before. The reviewer confirmed shared-dock overlap
+remains at some scroll positions. The packet shows it rather than claiming D7
+universally closed. Optimistic offline detail rendering remains deferred.
+
 ## Current reproduction and disposition
 
 The old audit covers main `3886fef` and parked UI `1d6de31`. It was reconciled
