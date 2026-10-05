@@ -662,7 +662,11 @@ test('exercise history is network-only, paginated, retryable, and independent fr
   const disclosure = card.getByRole('button', { name: /Exercise history/ });
   await disclosure.focus();
   await page.keyboard.press('Space');
-  await expect(card.getByRole('alert')).toContainText('temporarily unavailable');
+  await expect(card.getByTestId('exercise-history').getByRole('alert')).toContainText('temporarily unavailable');
+  await expect(reps).toHaveAttribute('aria-invalid', 'true');
+  await reps.fill('8');
+  await reps.blur();
+  await expect(reps).not.toHaveAttribute('aria-invalid', 'true');
   await expect(card.getByRole('button', { name: 'Complete set 1' })).toBeEnabled();
   await card.getByRole('button', { name: 'Complete set 1' }).click();
   await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
