@@ -3,7 +3,7 @@
 Completion: **COMPLETE-LOCAL**. Protocol v1.1. Branch
 `codex/workout-ux-followup`, no upstream and no push. Freshly verified main/base:
 `cda1beae5857bb1ce98b44b596ada6def085edce`. Implementation commit:
-`9f036df729f04ee91286a50b14c730ad9510e5b6`; the following documentation commit
+`5f835410275f0091f1c375341608d50e8c81c60e`; the following documentation commit
 contains this handoff. This is a frontend-only correction to the released typed
 logging implementation, not a new tracking feature or visual direction.
 
@@ -16,28 +16,42 @@ and metric validation contracts have no changes.
 
 ## Owner visual review and independent review
 
-Publication and merge are **on hold for owner visual review**. Actual paired
-renders of released baseline `cda1beae5857bb1ce98b44b596ada6def085edce` and
-reviewed head `256676fefbe3d847eca5251ed27a0793ef0f360e` are in
-[`workout-ux-visual-review/index.html`](workout-ux-visual-review/index.html),
-with capture hashes, states and measurements in the adjacent manifest.
-The later documentation commit does not change the captured application source.
-The nine-page packet covers 320/390px weight fields, editor top/lower fields,
-unchanged duration/distance targets, clear and obscured rest states, adjacent
-validation, start/PDF targets and 1440px desktop sanity. No prior Claude audit
-images were used. Full viewport and additional full-page context are retained.
+Publication and merge are **on hold for owner visual review**. The refreshed
+nine-page packet pairs actual released baseline
+`cda1beae5857bb1ce98b44b596ada6def085edce` and independently reviewed correction
+`5f835410275f0091f1c375341608d50e8c81c60e`:
+[`workout-ux-visual-review/index.html`](workout-ux-visual-review/index.html).
+The adjacent manifest records exact scroll offsets, requested and actual action
+positions, dock geometry, nine-point hit tests and all image hashes. Later docs
+commits do not change the captured app. Phone 320×640/390×844 and desktop
+1440×900 use identical synthetic data/theme. No prior audit images were reused.
 
-The independent reviewer found no verified in-scope product bugs, reran all 11
-UX cases, 69 frontend unit cases and the typed outbox case, and independently
-checked extra narrow large-set and simultaneous typed-error fixture cases.
-One measurement advisory was corrected in `256676fe`: build the canvas font
-from computed font style/weight/size/family rather than its empty shorthand
-when tabular numerals are set. This is test-only; application source is exactly
-the reviewed `363cd58e` source. Corrected decimal checks pass 3/3, independently
-rerun. Actual `135.5` width is 38.26px in the phone font; 320px usable width is
-106px after, versus 10px before. The reviewer confirmed shared-dock overlap
-remains at some scroll positions. The packet shows it rather than claiming D7
-universally closed. Optimistic offline detail rendering remains deferred.
+The first comparison at `256676fe` exposed that moving the timer into the sticky
+dock only partially addressed D7: the enlarged dock still covered Add set and
+Same as last time at scrollY571/271. The owner requested correction before
+sign-off. Regression `f0487e7` fails at both exact phone states on `3c651ee`
+(2 failures; desktop passes). Correction `5f83541` removes only the dock's sticky,
+bottom and z-index classes. It remains in normal document flow after exercises;
+no clipping, reduced targets, nested scrolling, timer logic or navigation change.
+The visible tradeoff is deliberate and shown: timer and finish controls no
+longer stay pinned during logging; scroll to the end to use them.
+
+All nine hit-test points on both exercise actions now pass at the original
+phone scroll offsets, with active rest. The independent reviewer reran the new
+regressions and timer case 4/4, then used ordinary mouse-wheel scrolling to the
+end at all three sizes: timer/adjustment/finish controls fully visible and
+unobscured; Finish opens its dialog; ±15s, reload and dismissal preserve timer
+state. It found no verified bug. Earlier independent review also ran 11 UX,
+69 unit and the typed outbox case, plus large-set/simultaneous typed-error probes.
+Its font measurement advisory was corrected at `256676fe` and independently
+rerun 3/3: actual phone `135.5` width 38.26px, versus 106px usable after and
+10px before. Optimistic offline detail rendering stays deferred.
+
+One baseline alignment limit is explicit: on the 390px obstruction page,
+Before cannot scroll upward beyond document top. Its action is actually y633
+at scrollY0 versus the requested y650. After reaches y650 at scrollY271. The
+17px difference is captioned; neither screenshots nor measurements imply an
+exact positional match there. At 320px both action anchors are y446.
 
 ## Current reproduction and disposition
 
@@ -53,7 +67,7 @@ No audit fixture diff or parked design code was imported.
 | D4 long-name builder overflow | Reproduced 388px dialog with 588px scroll width. Explicit zero-minimum grid column, shrinkable form/title/input containers and truncation now keep the dialog at 388/388; 320px also passes. Desktop editor pane remains usable. |
 | D5 placeholder-only authoring | Added persistent associated labels to existing workout/library fields, including name, prescriptions, video and client/internal notes. Tracking mode and target controls remain explicit. |
 | D6 small actionable controls | Start/PDF 32px, finish actions 36px, authoring inputs 36px and drag grip 28×44 reproduced. Scoped touch variants/minimum sizes now give checked controls 44px targets, including dialog close, builder save/add and drag grip. Both 320px and 390px Start/PDF paths fit. Shared UI defaults were not changed. |
-| D7 rest overlay | Independently fixed-position timer reproduced overlapping Same as last time. Timer now occupies its own row inside the existing workout dock. Add set and Same as last time can scroll clear and pass hit tests with rest running. The established sticky dock remains; scrolling content can pass behind the shared dock. Timer timestamp, ±15s adjustment, reload, dismissal, expiry and opt-in cues are preserved. |
+| D7 rest overlay | Initial timer grouping was partial: the sticky dock still obscured Add set/Same as last time. The final correction removes sticky/bottom/z positioning from the same controls container. Both actions now pass viewport and nine-point hit tests at the documented 320×640 scrollY571 and 390×844 scrollY271 states with rest running. Timer and finish controls remain after exercises, no longer pinned; ordinary scrolling reaches them without navigation overlap. Timestamp, ±15s, reload, dismissal, expiry and opt-in cues are preserved. |
 
 D8 detail alignment, D9 archive confirmation, D10 quick-complete preview
 semantics, D11 parked design direction, D12 navigation name, D13 unsupported
@@ -72,8 +86,9 @@ This is not a blanket audit closure.
    “null”; the existing toast contract remains intact.
 3. Narrow rows wrap weight and units instead of reducing the number text or
    shrinking touch targets. Desktop remains tabular. Rest controls join the
-   existing dock instead of becoming a second overlay. These are layout
-   corrections, not new completion/rest behavior.
+   existing container in normal document flow. Removing its sticky positioning
+   fixes the obstruction at the source; it changes pinned visibility, while
+   completion/rest persistence and actions remain unchanged.
 4. Authoring labels apply to the shared workout editor, including existing
    template/private-copy callers. React-generated IDs preserve associations;
    rest/unit IDs retain the editor prefix. No authoring payload changed.
@@ -92,7 +107,8 @@ This is not a blanket audit closure.
 ## Directly verified checks
 
 - Test-first scoped browser run: 7 failures / 1 pass on the old layout/error UI.
-- Final normal-mode synthetic browser suite: **11 passed**. Covers
+- Final normal-mode synthetic browser suite: **14 passed**. Added D7 red
+  regression: **2 phone failures / 1 desktop pass** before the correction. Covers
   surfaces at 320/390/1440px, number visibility/overflow, associated labels,
   scalar and metric invalid values, blank correction, no invalid writes/rest,
   offline invalid rejection/corrected sync, rest adjustments/reload/dismissal,
@@ -105,13 +121,16 @@ This is not a blanket audit closure.
   session/private-copy flows, rest expiry/reduced motion and typed targets.
 - Frontend unit suite: **69 passed**, including independent simultaneous-field
   errors and legacy nullable/half-step behavior.
-- Backend metric parity/validation and design-token contracts: **16 passed**.
+- Backend metric parity/validation and design-token contracts: **16 passed**
+  in the earlier follow-up phase; not rerun for the one-line frontend layout correction.
 - Vite production build passed; `git diff --check` and protocol v1.1 validation
   passed. Existing bundle-size advisory remains a baseline-unrelated warning.
 - Settled synthetic Chromium screenshots captured at 320/390/1440px. Inspected
   tracker decimals, inline error, rest/secondary controls, populated builder
   top/lower fields, desktop pane and phone library dialog. Capture reports zero
-  page errors and zero unexpected API requests across six contexts.
+  page errors and zero unexpected API requests across 40 refreshed contexts.
+  The manifest retains 54 viewport/full-context image hashes. Printed packet
+  inspection and reproduction evidence is in its adjacent README.
 
 Reproduce from `frontend/`:
 
@@ -137,7 +156,10 @@ and `logs/`. The original audit still resides in `audit-evidence/`.
 
 ## Failures, non-runs and release gates
 
-The initial inline-error addition caused one **introduced** test-selector
+The first D7 correction was **introduced/incomplete**: timer grouping did not
+remove shared-dock obstruction. Exact-state red regressions now pass after the
+normal-flow correction; it is no longer described as merely a separate
+pre-existing limitation. The initial inline-error addition caused one **introduced** test-selector
 collision in the full preview suite; corrected and rerun, final 79/8 above.
 The initial builder correction was insufficient until the dialog grid track
 minimum was fixed; its red regression then passed. Initial missing local backend

@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "createdAt": "2026-10-05T23:01:41.721Z",
+  "schemaVersion": 2,
+  "createdAt": "2026-10-05T23:23:45.990Z",
   "browser": "149.0.7827.55",
   "sources": {
     "before": {
@@ -8,16 +8,16 @@
       "url": "http://127.0.0.1:42744"
     },
     "after": {
-      "sha": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sha": "5f835410275f0091f1c375341608d50e8c81c60e",
       "url": "http://127.0.0.1:42742"
     }
   },
   "fixture": "Identical synthetic workout-ux-fixture.mjs data, log started_at fixed 2026-10-05T11:55Z, Date.now frozen to 2026-10-05T12:00Z, no real client data.",
-  "appSourceChangedAfterInitialReview": false,
+  "appSourceChangedAfterInitialReview": true,
   "limitations": [
     "Synthetic intercepted API responses prove rendered frontend behavior, not hosted/backend data writes or authorization.",
-    "Logical anchors match; changed content heights cause different recorded numeric scroll offsets.",
-    "Sticky dock remains and content can scroll behind it; overlay context is shown explicitly.",
+    "Requested logical anchors match; changed content heights cause different numeric scroll offsets. At 390px rest-overlay Before clamps to actual y633 at scrollY0 versus requested y650; After reaches y650 at scrollY271.",
+    "D7 correction removes sticky positioning: timer and finish controls remain at the end of the workout and are no longer pinned during logging.",
     "Chromium dark/reduced-motion capture only; no physical keyboard, iOS Safari or installed PWA proof."
   ],
   "captures": [
@@ -71,9 +71,9 @@
       "width": 320,
       "height": 640,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/weight-320-after.png",
-      "sha256": "2b239eae67bd4f734394df47e7c2bc2f5cc2a577771c93f8052e5d00bb258448",
+      "sha256": "4447be771cf82f01cda46d14741ca4cc2403332a036493721aa38985ba0180d0",
       "fullContext": [
         "screenshots/weight-320-after-full.png"
       ],
@@ -174,7 +174,7 @@
       "width": 320,
       "height": 640,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/builder-top-320-after.png",
       "sha256": "a38949920a63b731fdf677bdf546453543350b710415100498692e9910806487",
       "fullContext": [],
@@ -292,7 +292,7 @@
       "width": 320,
       "height": 640,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/builder-lower-320-after.png",
       "sha256": "8cbed5858a4f6e710a6062917fefb01b2976b00ac43ef5c7a4bb98f0fa125fbc",
       "fullContext": [],
@@ -348,15 +348,133 @@
       "unexpectedApi": []
     },
     {
+      "scene": "builder-targets",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/builder-targets-320-before.png",
+      "sha256": "f8e7758c9e92178b6556651aab32a3ef8f132c9e4c5e73d18c656e9f17c01baa",
+      "fullContext": [],
+      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 318,
+          "scrollWidth": 588,
+          "scrollTop": 361,
+          "rect": {
+            "x": 0,
+            "y": 32,
+            "width": 320,
+            "height": 576,
+            "top": 32,
+            "right": 320,
+            "bottom": 608,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 1,
+            "y": 277,
+            "width": 257.015625,
+            "height": 36,
+            "top": 277,
+            "right": 258.015625,
+            "bottom": 313,
+            "left": 1
+          },
+          "value": "3",
+          "usableWidth": 231,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-targets",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
+      "file": "screenshots/builder-targets-320-after.png",
+      "sha256": "a9d9a9346f546064ceca0e7e498a44c91fca468796bcf65ce738a3722519b646",
+      "fullContext": [],
+      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 318,
+          "scrollWidth": 318,
+          "scrollTop": 485,
+          "rect": {
+            "x": 0,
+            "y": 32,
+            "width": 320,
+            "height": 576,
+            "top": 32,
+            "right": 320,
+            "bottom": 608,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 30,
+            "y": 317,
+            "width": 122,
+            "height": 44,
+            "top": 317,
+            "right": 152,
+            "bottom": 361,
+            "left": 30
+          },
+          "value": "3",
+          "usableWidth": 96,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [
+            "Sets"
+          ],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
       "scene": "rest-clear",
       "width": 320,
       "height": 640,
       "version": "before",
       "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
       "file": "screenshots/rest-clear-320-before.png",
-      "sha256": "3bdb016659e417b9f99a7b65ff5f86b8fca70b5a8246350d6907794e6ad1e6a1",
+      "sha256": "e2bacab7a6e35ecbc28635195faaddb7456214f21946732694ce0bca0ea9425b",
       "fullContext": [],
-      "scrollState": "First Same as last time top anchored at 298px, first superset round completed, frozen 60s rest. Controls scrolled clear.",
+      "scrollState": "First Same as last time requested top 298px, first superset round completed, frozen 60s rest. Actual top and scroll offsets recorded; page-top clamping disclosed below.",
       "screen": {
         "scrollX": 0,
         "scrollY": 431,
@@ -367,18 +485,53 @@
         "bodyColor": "rgb(15, 13, 10)"
       },
       "detail": {
-        "control": {
-          "rect": {
-            "x": 55,
-            "y": 298,
-            "width": 156.34375,
-            "height": 44,
-            "top": 298,
-            "right": 211.34375,
-            "bottom": 342,
-            "left": 55
+        "requestedControlTop": 298,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 246,
+              "width": 100.046875,
+              "height": 44,
+              "top": 246,
+              "right": 155.046875,
+              "bottom": 290,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
           },
-          "hit": true
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 55,
+              "y": 298,
+              "width": 156.34375,
+              "height": 44,
+              "top": 298,
+              "right": 211.34375,
+              "bottom": 342,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 298,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 470,
+            "width": 288,
+            "height": 90,
+            "top": 470,
+            "right": 304,
+            "bottom": 560,
+            "left": 16
+          },
+          "position": "sticky"
         },
         "timer": {
           "rect": {
@@ -403,11 +556,11 @@
       "width": 320,
       "height": 640,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/rest-clear-320-after.png",
-      "sha256": "14de5817c479aa9308d57cf3c63278e36ea998a816e6058894932cfeda038d0e",
+      "sha256": "a71d302af512191e59e86012a3267359661016fe727164403af8d5fba2f3d50e",
       "fullContext": [],
-      "scrollState": "First Same as last time top anchored at 298px, first superset round completed, frozen 60s rest. Controls scrolled clear.",
+      "scrollState": "First Same as last time requested top 298px, first superset round completed, frozen 60s rest. Actual top and scroll offsets recorded; page-top clamping disclosed below.",
       "screen": {
         "scrollX": 0,
         "scrollY": 719,
@@ -418,28 +571,63 @@
         "bodyColor": "rgb(15, 13, 10)"
       },
       "detail": {
-        "control": {
-          "rect": {
-            "x": 55,
-            "y": 298,
-            "width": 156.34375,
-            "height": 44,
-            "top": 298,
-            "right": 211.34375,
-            "bottom": 342,
-            "left": 55
+        "requestedControlTop": 298,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 246,
+              "width": 100.046875,
+              "height": 44,
+              "top": 246,
+              "right": 155.046875,
+              "bottom": 290,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
           },
-          "hit": true
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 55,
+              "y": 298,
+              "width": 156.34375,
+              "height": 44,
+              "top": 298,
+              "right": 211.34375,
+              "bottom": 342,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 298,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 2966,
+            "width": 288,
+            "height": 168,
+            "top": 2966,
+            "right": 304,
+            "bottom": 3134,
+            "left": 16
+          },
+          "position": "static"
         },
         "timer": {
           "rect": {
             "x": 156,
-            "y": 403,
+            "y": 2977,
             "width": 112,
             "height": 56,
-            "top": 403,
+            "top": 2977,
             "right": 268,
-            "bottom": 459,
+            "bottom": 3033,
             "left": 156
           },
           "text": "1:00",
@@ -458,7 +646,7 @@
       "file": "screenshots/rest-overlay-320-before.png",
       "sha256": "e420690d38fdb4c65e44048eecf4f1d12e9ff3e809695cb738e93766ba53dc2f",
       "fullContext": [],
-      "scrollState": "First Same as last time top anchored at 446px, first superset round completed, frozen 60s rest. Known overlay-state context, not a universal no-overlap claim.",
+      "scrollState": "First Same as last time requested top 446px, first superset round completed, frozen 60s rest. Actual top and scroll offsets recorded; page-top clamping disclosed below.",
       "screen": {
         "scrollX": 0,
         "scrollY": 283,
@@ -469,18 +657,53 @@
         "bodyColor": "rgb(15, 13, 10)"
       },
       "detail": {
-        "control": {
-          "rect": {
-            "x": 55,
-            "y": 446,
-            "width": 156.34375,
-            "height": 44,
-            "top": 446,
-            "right": 211.34375,
-            "bottom": 490,
-            "left": 55
+        "requestedControlTop": 446,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 394,
+              "width": 100.046875,
+              "height": 44,
+              "top": 394,
+              "right": 155.046875,
+              "bottom": 438,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": false
           },
-          "hit": false
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 55,
+              "y": 446,
+              "width": 156.34375,
+              "height": 44,
+              "top": 446,
+              "right": 211.34375,
+              "bottom": 490,
+              "left": 55
+            },
+            "hit": false,
+            "allNinePointsHit": false
+          }
+        ],
+        "actualControlTop": 446,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 470,
+            "width": 288,
+            "height": 90,
+            "top": 470,
+            "right": 304,
+            "bottom": 560,
+            "left": 16
+          },
+          "position": "sticky"
         },
         "timer": {
           "rect": {
@@ -505,11 +728,11 @@
       "width": 320,
       "height": 640,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/rest-overlay-320-after.png",
-      "sha256": "7e7f19cc274148d33e84a733b5b5efc3b7fef747dc10ac5c87a0dcf6052b9f8c",
+      "sha256": "1d0119fef38f22ca1c1cf4fc3941b577ac052b5004643cd52962a4bcb7d238bb",
       "fullContext": [],
-      "scrollState": "First Same as last time top anchored at 446px, first superset round completed, frozen 60s rest. Known overlay-state context, not a universal no-overlap claim.",
+      "scrollState": "First Same as last time requested top 446px, first superset round completed, frozen 60s rest. Actual top and scroll offsets recorded; page-top clamping disclosed below.",
       "screen": {
         "scrollX": 0,
         "scrollY": 571,
@@ -520,28 +743,323 @@
         "bodyColor": "rgb(15, 13, 10)"
       },
       "detail": {
-        "control": {
-          "rect": {
-            "x": 55,
-            "y": 446,
-            "width": 156.34375,
-            "height": 44,
-            "top": 446,
-            "right": 211.34375,
-            "bottom": 490,
-            "left": 55
+        "requestedControlTop": 446,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 394,
+              "width": 100.046875,
+              "height": 44,
+              "top": 394,
+              "right": 155.046875,
+              "bottom": 438,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
           },
-          "hit": false
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 55,
+              "y": 446,
+              "width": 156.34375,
+              "height": 44,
+              "top": 446,
+              "right": 211.34375,
+              "bottom": 490,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 446,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 3114,
+            "width": 288,
+            "height": 168,
+            "top": 3114,
+            "right": 304,
+            "bottom": 3282,
+            "left": 16
+          },
+          "position": "static"
         },
         "timer": {
           "rect": {
             "x": 156,
-            "y": 403,
+            "y": 3125,
             "width": 112,
             "height": 56,
-            "top": 403,
+            "top": 3125,
             "right": 268,
-            "bottom": 459,
+            "bottom": 3181,
+            "left": 156
+          },
+          "text": "1:00",
+          "insideDock": true
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-controls",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/rest-controls-320-before.png",
+      "sha256": "4842bf1b440e0d0554c56decbd3f9217a4193b30fc394ac434d409948253c017",
+      "fullContext": [
+        "screenshots/rest-controls-320-before-full.png"
+      ],
+      "scrollState": "Document bottom: running rest controls and finish actions, frozen 60s rest, first superset round completed.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 2359,
+        "documentWidth": 352,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "controls": [
+          {
+            "name": "Subtract 15 seconds of rest",
+            "rect": {
+              "x": 88,
+              "y": 430,
+              "width": 44,
+              "height": 44,
+              "top": 430,
+              "right": 132,
+              "bottom": 474,
+              "left": 88
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Add 15 seconds of rest",
+            "rect": {
+              "x": 140,
+              "y": 430,
+              "width": 44,
+              "height": 44,
+              "top": 430,
+              "right": 184,
+              "bottom": 474,
+              "left": 140
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Rest timer 1:00, tap to stop",
+            "rect": {
+              "x": 192,
+              "y": 424,
+              "width": 112,
+              "height": 56,
+              "top": 424,
+              "right": 304,
+              "bottom": 480,
+              "left": 192
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Complete all remaining",
+            "rect": {
+              "x": 27,
+              "y": 489,
+              "width": 187.1875,
+              "height": 44,
+              "top": 489,
+              "right": 214.1875,
+              "bottom": 533,
+              "left": 27
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Finish workout",
+            "rect": {
+              "x": 222.1875,
+              "y": 489,
+              "width": 130.046875,
+              "height": 44,
+              "top": 489,
+              "right": 352.234375,
+              "bottom": 533,
+              "left": 222.1875
+            },
+            "hit": true,
+            "allNinePointsHit": false
+          }
+        ],
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 454,
+            "width": 288,
+            "height": 90,
+            "top": 454,
+            "right": 304,
+            "bottom": 544,
+            "left": 16
+          },
+          "position": "sticky"
+        },
+        "timer": {
+          "rect": {
+            "x": 192,
+            "y": 424,
+            "width": 112,
+            "height": 56,
+            "top": 424,
+            "right": 304,
+            "bottom": 480,
+            "left": 192
+          },
+          "text": "1:00",
+          "insideDock": false
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-controls",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
+      "file": "screenshots/rest-controls-320-after.png",
+      "sha256": "226f4f565a94be2973473beb1a93fd58c55cfde521b81ea572ce3ea5e7b6579a",
+      "fullContext": [
+        "screenshots/rest-controls-320-after-full.png"
+      ],
+      "scrollState": "Document bottom: running rest controls and finish actions, frozen 60s rest, first superset round completed.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 3309,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "controls": [
+          {
+            "name": "Subtract 15 seconds of rest",
+            "rect": {
+              "x": 52,
+              "y": 393,
+              "width": 44,
+              "height": 44,
+              "top": 393,
+              "right": 96,
+              "bottom": 437,
+              "left": 52
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Add 15 seconds of rest",
+            "rect": {
+              "x": 104,
+              "y": 393,
+              "width": 44,
+              "height": 44,
+              "top": 393,
+              "right": 148,
+              "bottom": 437,
+              "left": 104
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Rest timer 1:00, tap to stop",
+            "rect": {
+              "x": 156,
+              "y": 387,
+              "width": 112,
+              "height": 56,
+              "top": 387,
+              "right": 268,
+              "bottom": 443,
+              "left": 156
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Complete all remaining",
+            "rect": {
+              "x": 27,
+              "y": 475,
+              "width": 130,
+              "height": 58,
+              "top": 475,
+              "right": 157,
+              "bottom": 533,
+              "left": 27
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Finish workout",
+            "rect": {
+              "x": 165,
+              "y": 475,
+              "width": 128,
+              "height": 58,
+              "top": 475,
+              "right": 293,
+              "bottom": 533,
+              "left": 165
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 376,
+            "width": 288,
+            "height": 168,
+            "top": 376,
+            "right": 304,
+            "bottom": 544,
+            "left": 16
+          },
+          "position": "static"
+        },
+        "timer": {
+          "rect": {
+            "x": 156,
+            "y": 387,
+            "width": 112,
+            "height": 56,
+            "top": 387,
+            "right": 268,
+            "bottom": 443,
             "left": 156
           },
           "text": "1:00",
@@ -601,9 +1119,9 @@
       "width": 320,
       "height": 640,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/validation-320-after.png",
-      "sha256": "4e08a2b8ded837c085427a593cd793e3756c197fc8b0111a5583c742163d39e7",
+      "sha256": "71b3a220ac40d6c68af745e6613a5970cc1a90577f832e505ff0d09df70725f5",
       "fullContext": [],
       "scrollState": "Same invalid RPE 11 blurred; RPE top anchored at 260px.",
       "screen": {
@@ -692,7 +1210,7 @@
       "width": 320,
       "height": 640,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/touch-targets-320-after.png",
       "sha256": "d6b6538846814b0e73907d7d12047208b39016445eeac43959356a9200641c5f",
       "fullContext": [
@@ -783,9 +1301,9 @@
       "width": 390,
       "height": 844,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/weight-390-after.png",
-      "sha256": "a5478ba4efdb14534b25d6c9d5ac114b197a78ea35cf7dcc33dce07556f8b499",
+      "sha256": "c006e27d81ab8102c5528be0a91ed6991637ca86eeaa5cdee264bdfb8e75f18f",
       "fullContext": [
         "screenshots/weight-390-after-full.png"
       ],
@@ -886,9 +1404,9 @@
       "width": 390,
       "height": 844,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/builder-top-390-after.png",
-      "sha256": "250b60d7fd1a3fe1d4f68f8bf11ccc87aacdb9c2d84d98a0a03208585e4055b1",
+      "sha256": "9dc982b8ed679073126eb7add54d1b09667bf1c18665c71419b39eb07e62df40",
       "fullContext": [],
       "scrollState": "Top of editor, expanded first exercise.",
       "screen": {
@@ -1004,7 +1522,7 @@
       "width": 390,
       "height": 844,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/builder-lower-390-after.png",
       "sha256": "cf7f254ac570f98beb453e54a92aa06fcd15876235861350523569aed4597f48",
       "fullContext": [],
@@ -1060,6 +1578,124 @@
       "unexpectedApi": []
     },
     {
+      "scene": "builder-targets",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/builder-targets-390-before.png",
+      "sha256": "7ed1e8e64f0591c8a1383888cbc6d889f64eae3ee826541306f061c6ba9713bc",
+      "fullContext": [],
+      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 388,
+          "scrollWidth": 588,
+          "scrollTop": 244,
+          "rect": {
+            "x": 0,
+            "y": 42.203125,
+            "width": 390,
+            "height": 759.59375,
+            "top": 42.203125,
+            "right": 390,
+            "bottom": 801.796875,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 1,
+            "y": 404.203125,
+            "width": 257.015625,
+            "height": 36,
+            "top": 404.203125,
+            "right": 258.015625,
+            "bottom": 440.203125,
+            "left": 1
+          },
+          "value": "3",
+          "usableWidth": 231,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-targets",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
+      "file": "screenshots/builder-targets-390-after.png",
+      "sha256": "ea7476e47f946b67197f32312e4d920c649a7eb94dc430ac8924f808493a470d",
+      "fullContext": [],
+      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 388,
+          "scrollWidth": 388,
+          "scrollTop": 485,
+          "rect": {
+            "x": 0,
+            "y": 42.203125,
+            "width": 390,
+            "height": 759.59375,
+            "top": 42.203125,
+            "right": 390,
+            "bottom": 801.796875,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 30,
+            "y": 327.203125,
+            "width": 157,
+            "height": 44,
+            "top": 327.203125,
+            "right": 187,
+            "bottom": 371.203125,
+            "left": 30
+          },
+          "value": "3",
+          "usableWidth": 131,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [
+            "Sets"
+          ],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
       "scene": "rest-clear",
       "width": 390,
       "height": 844,
@@ -1068,7 +1704,7 @@
       "file": "screenshots/rest-clear-390-before.png",
       "sha256": "6c370182afed50cf2a7df7417e6c18bdb72d8017de30085843eb92fa596d87be",
       "fullContext": [],
-      "scrollState": "First Same as last time top anchored at 400px, first superset round completed, frozen 60s rest. Controls scrolled clear.",
+      "scrollState": "First Same as last time requested top 400px, first superset round completed, frozen 60s rest. Actual top and scroll offsets recorded; page-top clamping disclosed below.",
       "screen": {
         "scrollX": 0,
         "scrollY": 233,
@@ -1079,18 +1715,53 @@
         "bodyColor": "rgb(15, 13, 10)"
       },
       "detail": {
-        "control": {
-          "rect": {
-            "x": 163.046875,
-            "y": 400,
-            "width": 156.34375,
-            "height": 44,
-            "top": 400,
-            "right": 319.390625,
-            "bottom": 444,
-            "left": 163.046875
+        "requestedControlTop": 400,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 400,
+              "width": 100.046875,
+              "height": 44,
+              "top": 400,
+              "right": 155.046875,
+              "bottom": 444,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
           },
-          "hit": true
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 163.046875,
+              "y": 400,
+              "width": 156.34375,
+              "height": 44,
+              "top": 400,
+              "right": 319.390625,
+              "bottom": 444,
+              "left": 163.046875
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 400,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 674,
+            "width": 358,
+            "height": 90,
+            "top": 674,
+            "right": 374,
+            "bottom": 764,
+            "left": 16
+          },
+          "position": "sticky"
         },
         "timer": {
           "rect": {
@@ -1115,11 +1786,11 @@
       "width": 390,
       "height": 844,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/rest-clear-390-after.png",
-      "sha256": "12033fe9c28700bf4e04394eb8a1a01f8add5e3398130365a641d0263b9dca0f",
+      "sha256": "94b11716acb7d5987f24244f683208f016a10e11f250a0e6d59685b79a33dd43",
       "fullContext": [],
-      "scrollState": "First Same as last time top anchored at 400px, first superset round completed, frozen 60s rest. Controls scrolled clear.",
+      "scrollState": "First Same as last time requested top 400px, first superset round completed, frozen 60s rest. Actual top and scroll offsets recorded; page-top clamping disclosed below.",
       "screen": {
         "scrollX": 0,
         "scrollY": 521,
@@ -1130,28 +1801,63 @@
         "bodyColor": "rgb(15, 13, 10)"
       },
       "detail": {
-        "control": {
-          "rect": {
-            "x": 163.046875,
-            "y": 400,
-            "width": 156.34375,
-            "height": 44,
-            "top": 400,
-            "right": 319.390625,
-            "bottom": 444,
-            "left": 163.046875
+        "requestedControlTop": 400,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 400,
+              "width": 100.046875,
+              "height": 44,
+              "top": 400,
+              "right": 155.046875,
+              "bottom": 444,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
           },
-          "hit": true
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 163.046875,
+              "y": 400,
+              "width": 156.34375,
+              "height": 44,
+              "top": 400,
+              "right": 319.390625,
+              "bottom": 444,
+              "left": 163.046875
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 400,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 2964,
+            "width": 358,
+            "height": 168,
+            "top": 2964,
+            "right": 374,
+            "bottom": 3132,
+            "left": 16
+          },
+          "position": "static"
         },
         "timer": {
           "rect": {
             "x": 191,
-            "y": 607,
+            "y": 2975,
             "width": 112,
             "height": 56,
-            "top": 607,
+            "top": 2975,
             "right": 303,
-            "bottom": 663,
+            "bottom": 3031,
             "left": 191
           },
           "text": "1:00",
@@ -1170,7 +1876,7 @@
       "file": "screenshots/rest-overlay-390-before.png",
       "sha256": "5d99d212566abc6cc6d0967a99f3887be0f91c6e0bd29bd907f2cfd1b6483ef5",
       "fullContext": [],
-      "scrollState": "First Same as last time top anchored at 650px, first superset round completed, frozen 60s rest. Known overlay-state context, not a universal no-overlap claim.",
+      "scrollState": "First Same as last time requested top 650px, first superset round completed, frozen 60s rest. Actual top and scroll offsets recorded; page-top clamping disclosed below.",
       "screen": {
         "scrollX": 0,
         "scrollY": 0,
@@ -1181,18 +1887,53 @@
         "bodyColor": "rgb(15, 13, 10)"
       },
       "detail": {
-        "control": {
-          "rect": {
-            "x": 163.046875,
-            "y": 633,
-            "width": 156.34375,
-            "height": 44,
-            "top": 633,
-            "right": 319.390625,
-            "bottom": 677,
-            "left": 163.046875
+        "requestedControlTop": 650,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 633,
+              "width": 100.046875,
+              "height": 44,
+              "top": 633,
+              "right": 155.046875,
+              "bottom": 677,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
           },
-          "hit": false
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 163.046875,
+              "y": 633,
+              "width": 156.34375,
+              "height": 44,
+              "top": 633,
+              "right": 319.390625,
+              "bottom": 677,
+              "left": 163.046875
+            },
+            "hit": false,
+            "allNinePointsHit": false
+          }
+        ],
+        "actualControlTop": 633,
+        "alignmentDifference": "Requested 650px; actual 633px because scrolling clamps at the document boundary.",
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 674,
+            "width": 358,
+            "height": 90,
+            "top": 674,
+            "right": 374,
+            "bottom": 764,
+            "left": 16
+          },
+          "position": "sticky"
         },
         "timer": {
           "rect": {
@@ -1217,11 +1958,11 @@
       "width": 390,
       "height": 844,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/rest-overlay-390-after.png",
-      "sha256": "610dd0c28913285d55f35ba25217cd10ebcd1c88c161b4f11fb380b41b1ffaff",
+      "sha256": "f5a9018d329e809d3e610f341e40caa81c75ed4389b45c74361c8e8f99954b82",
       "fullContext": [],
-      "scrollState": "First Same as last time top anchored at 650px, first superset round completed, frozen 60s rest. Known overlay-state context, not a universal no-overlap claim.",
+      "scrollState": "First Same as last time requested top 650px, first superset round completed, frozen 60s rest. Actual top and scroll offsets recorded; page-top clamping disclosed below.",
       "screen": {
         "scrollX": 0,
         "scrollY": 271,
@@ -1232,28 +1973,323 @@
         "bodyColor": "rgb(15, 13, 10)"
       },
       "detail": {
-        "control": {
-          "rect": {
-            "x": 163.046875,
-            "y": 650,
-            "width": 156.34375,
-            "height": 44,
-            "top": 650,
-            "right": 319.390625,
-            "bottom": 694,
-            "left": 163.046875
+        "requestedControlTop": 650,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 650,
+              "width": 100.046875,
+              "height": 44,
+              "top": 650,
+              "right": 155.046875,
+              "bottom": 694,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
           },
-          "hit": false
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 163.046875,
+              "y": 650,
+              "width": 156.34375,
+              "height": 44,
+              "top": 650,
+              "right": 319.390625,
+              "bottom": 694,
+              "left": 163.046875
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 650,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 3214,
+            "width": 358,
+            "height": 168,
+            "top": 3214,
+            "right": 374,
+            "bottom": 3382,
+            "left": 16
+          },
+          "position": "static"
         },
         "timer": {
           "rect": {
             "x": 191,
-            "y": 607,
+            "y": 3225,
             "width": 112,
             "height": 56,
-            "top": 607,
+            "top": 3225,
             "right": 303,
-            "bottom": 663,
+            "bottom": 3281,
+            "left": 191
+          },
+          "text": "1:00",
+          "insideDock": true
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-controls",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/rest-controls-390-before.png",
+      "sha256": "a59db453c321a78fbfff3fe5aa59c74b4e841add6ed1c3f50002c4faa60fd041",
+      "fullContext": [
+        "screenshots/rest-controls-390-before-full.png"
+      ],
+      "scrollState": "Document bottom: running rest controls and finish actions, frozen 60s rest, first superset round completed.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 1955,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "controls": [
+          {
+            "name": "Subtract 15 seconds of rest",
+            "rect": {
+              "x": 158,
+              "y": 634,
+              "width": 44,
+              "height": 44,
+              "top": 634,
+              "right": 202,
+              "bottom": 678,
+              "left": 158
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Add 15 seconds of rest",
+            "rect": {
+              "x": 210,
+              "y": 634,
+              "width": 44,
+              "height": 44,
+              "top": 634,
+              "right": 254,
+              "bottom": 678,
+              "left": 210
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Rest timer 1:00, tap to stop",
+            "rect": {
+              "x": 262,
+              "y": 628,
+              "width": 112,
+              "height": 56,
+              "top": 628,
+              "right": 374,
+              "bottom": 684,
+              "left": 262
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Complete all remaining",
+            "rect": {
+              "x": 27,
+              "y": 693,
+              "width": 187.1875,
+              "height": 44,
+              "top": 693,
+              "right": 214.1875,
+              "bottom": 737,
+              "left": 27
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Finish workout",
+            "rect": {
+              "x": 222.1875,
+              "y": 693,
+              "width": 140.8125,
+              "height": 44,
+              "top": 693,
+              "right": 363,
+              "bottom": 737,
+              "left": 222.1875
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 658,
+            "width": 358,
+            "height": 90,
+            "top": 658,
+            "right": 374,
+            "bottom": 748,
+            "left": 16
+          },
+          "position": "sticky"
+        },
+        "timer": {
+          "rect": {
+            "x": 262,
+            "y": 628,
+            "width": 112,
+            "height": 56,
+            "top": 628,
+            "right": 374,
+            "bottom": 684,
+            "left": 262
+          },
+          "text": "1:00",
+          "insideDock": false
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-controls",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
+      "file": "screenshots/rest-controls-390-after.png",
+      "sha256": "e50845e7c924011838188b52e60b4ae901f093fc9d75b70188f1590554e336f3",
+      "fullContext": [
+        "screenshots/rest-controls-390-after-full.png"
+      ],
+      "scrollState": "Document bottom: running rest controls and finish actions, frozen 60s rest, first superset round completed.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 2905,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "controls": [
+          {
+            "name": "Subtract 15 seconds of rest",
+            "rect": {
+              "x": 87,
+              "y": 597,
+              "width": 44,
+              "height": 44,
+              "top": 597,
+              "right": 131,
+              "bottom": 641,
+              "left": 87
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Add 15 seconds of rest",
+            "rect": {
+              "x": 139,
+              "y": 597,
+              "width": 44,
+              "height": 44,
+              "top": 597,
+              "right": 183,
+              "bottom": 641,
+              "left": 139
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Rest timer 1:00, tap to stop",
+            "rect": {
+              "x": 191,
+              "y": 591,
+              "width": 112,
+              "height": 56,
+              "top": 591,
+              "right": 303,
+              "bottom": 647,
+              "left": 191
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Complete all remaining",
+            "rect": {
+              "x": 27,
+              "y": 679,
+              "width": 165,
+              "height": 58,
+              "top": 679,
+              "right": 192,
+              "bottom": 737,
+              "left": 27
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Finish workout",
+            "rect": {
+              "x": 200,
+              "y": 679,
+              "width": 163,
+              "height": 58,
+              "top": 679,
+              "right": 363,
+              "bottom": 737,
+              "left": 200
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 580,
+            "width": 358,
+            "height": 168,
+            "top": 580,
+            "right": 374,
+            "bottom": 748,
+            "left": 16
+          },
+          "position": "static"
+        },
+        "timer": {
+          "rect": {
+            "x": 191,
+            "y": 591,
+            "width": 112,
+            "height": 56,
+            "top": 591,
+            "right": 303,
+            "bottom": 647,
             "left": 191
           },
           "text": "1:00",
@@ -1313,9 +2349,9 @@
       "width": 390,
       "height": 844,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/validation-390-after.png",
-      "sha256": "dccb6e80a41225cc021743880691aa5e3d38f23667654fde0c2fa04c3436329e",
+      "sha256": "f92ac4fa7fbbe02da6deb6375af7094de4f7aa0bdf4d08264b081e4c596cf9b4",
       "fullContext": [],
       "scrollState": "Same invalid RPE 11 blurred; RPE top anchored at 260px.",
       "screen": {
@@ -1404,7 +2440,7 @@
       "width": 390,
       "height": 844,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/touch-targets-390-after.png",
       "sha256": "0ea158c63e41ce00fba058210085306ae949e359afa32973d056afea6a5a5dbe",
       "fullContext": [
@@ -1495,9 +2531,9 @@
       "width": 1440,
       "height": 900,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/weight-1440-after.png",
-      "sha256": "1c6edb9e7f113c54ea4fc1c0710525b5dc8eefa8f548964af006958ab65d9184",
+      "sha256": "8d1087bfcca4605c9ef5b773c248f728c2cd61e15aded6cf9cbdf3ba401ebd8f",
       "fullContext": [
         "screenshots/weight-1440-after-full.png"
       ],
@@ -1542,7 +2578,7 @@
       "version": "before",
       "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
       "file": "screenshots/builder-top-1440-before.png",
-      "sha256": "1511076f4339f1fe8f9affdc8139e7f59a0ec6b7c073412092281d4a055b09e6",
+      "sha256": "6edfaf9d50eee5d95bb542b61c34f22321a26a316f6f69ff791fcd53c80882d2",
       "fullContext": [],
       "scrollState": "Top of editor, expanded first exercise.",
       "screen": {
@@ -1598,7 +2634,7 @@
       "width": 1440,
       "height": 900,
       "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
+      "sourceSHA": "5f835410275f0091f1c375341608d50e8c81c60e",
       "file": "screenshots/builder-top-1440-after.png",
       "sha256": "ce01195bf27ef0bd819de048b849e67d53a44191017299415acd17a79c73963f",
       "fullContext": [],
@@ -1652,242 +2688,6 @@
       },
       "pageErrors": [],
       "unexpectedApi": []
-    },
-    {
-      "scene": "builder-targets",
-      "width": 320,
-      "height": 640,
-      "version": "before",
-      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
-      "file": "screenshots/builder-targets-320-before.png",
-      "sha256": "f8e7758c9e92178b6556651aab32a3ef8f132c9e4c5e73d18c656e9f17c01baa",
-      "fullContext": [],
-      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
-      "screen": {
-        "scrollX": 0,
-        "scrollY": 0,
-        "documentWidth": 320,
-        "viewportWidth": 320,
-        "viewportHeight": 640,
-        "theme": "dark",
-        "bodyColor": "rgb(15, 13, 10)"
-      },
-      "detail": {
-        "editor": {
-          "clientWidth": 318,
-          "scrollWidth": 588,
-          "scrollTop": 361,
-          "rect": {
-            "x": 0,
-            "y": 32,
-            "width": 320,
-            "height": 576,
-            "top": 32,
-            "right": 320,
-            "bottom": 608,
-            "left": 0
-          }
-        },
-        "sets": {
-          "rect": {
-            "x": 1,
-            "y": 277,
-            "width": 257.015625,
-            "height": 36,
-            "top": 277,
-            "right": 258.015625,
-            "bottom": 313,
-            "left": 1
-          },
-          "value": "3",
-          "usableWidth": 231,
-          "textWidth": 9.8828125,
-          "font": "16px Inter, ui-sans-serif, system-ui",
-          "labels": [],
-          "invalid": null,
-          "describedBy": null
-        }
-      },
-      "pageErrors": [],
-      "unexpectedApi": []
-    },
-    {
-      "scene": "builder-targets",
-      "width": 320,
-      "height": 640,
-      "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
-      "file": "screenshots/builder-targets-320-after.png",
-      "sha256": "08671fa8083ec6bf46a3842a0a539549e973a7e92e06d3f158bbee0538a7f7e8",
-      "fullContext": [],
-      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
-      "screen": {
-        "scrollX": 0,
-        "scrollY": 0,
-        "documentWidth": 320,
-        "viewportWidth": 320,
-        "viewportHeight": 640,
-        "theme": "dark",
-        "bodyColor": "rgb(15, 13, 10)"
-      },
-      "detail": {
-        "editor": {
-          "clientWidth": 318,
-          "scrollWidth": 318,
-          "scrollTop": 485,
-          "rect": {
-            "x": 0,
-            "y": 32,
-            "width": 320,
-            "height": 576,
-            "top": 32,
-            "right": 320,
-            "bottom": 608,
-            "left": 0
-          }
-        },
-        "sets": {
-          "rect": {
-            "x": 30,
-            "y": 317,
-            "width": 122,
-            "height": 44,
-            "top": 317,
-            "right": 152,
-            "bottom": 361,
-            "left": 30
-          },
-          "value": "3",
-          "usableWidth": 96,
-          "textWidth": 9.8828125,
-          "font": "16px Inter, ui-sans-serif, system-ui",
-          "labels": [
-            "Sets"
-          ],
-          "invalid": null,
-          "describedBy": null
-        }
-      },
-      "pageErrors": [],
-      "unexpectedApi": []
-    },
-    {
-      "scene": "builder-targets",
-      "width": 390,
-      "height": 844,
-      "version": "before",
-      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
-      "file": "screenshots/builder-targets-390-before.png",
-      "sha256": "7ed1e8e64f0591c8a1383888cbc6d889f64eae3ee826541306f061c6ba9713bc",
-      "fullContext": [],
-      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
-      "screen": {
-        "scrollX": 0,
-        "scrollY": 0,
-        "documentWidth": 390,
-        "viewportWidth": 390,
-        "viewportHeight": 844,
-        "theme": "dark",
-        "bodyColor": "rgb(15, 13, 10)"
-      },
-      "detail": {
-        "editor": {
-          "clientWidth": 388,
-          "scrollWidth": 588,
-          "scrollTop": 244,
-          "rect": {
-            "x": 0,
-            "y": 42.203125,
-            "width": 390,
-            "height": 759.59375,
-            "top": 42.203125,
-            "right": 390,
-            "bottom": 801.796875,
-            "left": 0
-          }
-        },
-        "sets": {
-          "rect": {
-            "x": 1,
-            "y": 404.203125,
-            "width": 257.015625,
-            "height": 36,
-            "top": 404.203125,
-            "right": 258.015625,
-            "bottom": 440.203125,
-            "left": 1
-          },
-          "value": "3",
-          "usableWidth": 231,
-          "textWidth": 9.8828125,
-          "font": "16px Inter, ui-sans-serif, system-ui",
-          "labels": [],
-          "invalid": null,
-          "describedBy": null
-        }
-      },
-      "pageErrors": [],
-      "unexpectedApi": []
-    },
-    {
-      "scene": "builder-targets",
-      "width": 390,
-      "height": 844,
-      "version": "after",
-      "sourceSHA": "256676fefbe3d847eca5251ed27a0793ef0f360e",
-      "file": "screenshots/builder-targets-390-after.png",
-      "sha256": "ea7476e47f946b67197f32312e4d920c649a7eb94dc430ac8924f808493a470d",
-      "fullContext": [],
-      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
-      "screen": {
-        "scrollX": 0,
-        "scrollY": 0,
-        "documentWidth": 390,
-        "viewportWidth": 390,
-        "viewportHeight": 844,
-        "theme": "dark",
-        "bodyColor": "rgb(15, 13, 10)"
-      },
-      "detail": {
-        "editor": {
-          "clientWidth": 388,
-          "scrollWidth": 388,
-          "scrollTop": 485,
-          "rect": {
-            "x": 0,
-            "y": 42.203125,
-            "width": 390,
-            "height": 759.59375,
-            "top": 42.203125,
-            "right": 390,
-            "bottom": 801.796875,
-            "left": 0
-          }
-        },
-        "sets": {
-          "rect": {
-            "x": 30,
-            "y": 327.203125,
-            "width": 157,
-            "height": 44,
-            "top": 327.203125,
-            "right": 187,
-            "bottom": 371.203125,
-            "left": 30
-          },
-          "value": "3",
-          "usableWidth": 131,
-          "textWidth": 9.8828125,
-          "font": "16px Inter, ui-sans-serif, system-ui",
-          "labels": [
-            "Sets"
-          ],
-          "invalid": null,
-          "describedBy": null
-        }
-      },
-      "pageErrors": [],
-      "unexpectedApi": []
     }
   ],
   "allScreenshotHashes": {
@@ -1895,23 +2695,31 @@
     "screenshots/builder-lower-320-before.png": "1cb12faa2ac029d956d19f61d6e85dcbe64a5a5c16adcd54b959aed6e00140fd",
     "screenshots/builder-lower-390-after.png": "cf7f254ac570f98beb453e54a92aa06fcd15876235861350523569aed4597f48",
     "screenshots/builder-lower-390-before.png": "d2c6e6a4adf5873150644e72e7368353730f697596955b62324622cb50944efa",
-    "screenshots/builder-targets-320-after.png": "08671fa8083ec6bf46a3842a0a539549e973a7e92e06d3f158bbee0538a7f7e8",
+    "screenshots/builder-targets-320-after.png": "a9d9a9346f546064ceca0e7e498a44c91fca468796bcf65ce738a3722519b646",
     "screenshots/builder-targets-320-before.png": "f8e7758c9e92178b6556651aab32a3ef8f132c9e4c5e73d18c656e9f17c01baa",
     "screenshots/builder-targets-390-after.png": "ea7476e47f946b67197f32312e4d920c649a7eb94dc430ac8924f808493a470d",
     "screenshots/builder-targets-390-before.png": "7ed1e8e64f0591c8a1383888cbc6d889f64eae3ee826541306f061c6ba9713bc",
     "screenshots/builder-top-1440-after.png": "ce01195bf27ef0bd819de048b849e67d53a44191017299415acd17a79c73963f",
-    "screenshots/builder-top-1440-before.png": "1511076f4339f1fe8f9affdc8139e7f59a0ec6b7c073412092281d4a055b09e6",
+    "screenshots/builder-top-1440-before.png": "6edfaf9d50eee5d95bb542b61c34f22321a26a316f6f69ff791fcd53c80882d2",
     "screenshots/builder-top-320-after.png": "a38949920a63b731fdf677bdf546453543350b710415100498692e9910806487",
     "screenshots/builder-top-320-before.png": "823d9d3c54825b15cac39818c301ecf3e906be2b9198ef64a26ac22d99cafa65",
-    "screenshots/builder-top-390-after.png": "250b60d7fd1a3fe1d4f68f8bf11ccc87aacdb9c2d84d98a0a03208585e4055b1",
+    "screenshots/builder-top-390-after.png": "9dc982b8ed679073126eb7add54d1b09667bf1c18665c71419b39eb07e62df40",
     "screenshots/builder-top-390-before.png": "a6023437d7358f744d4013570d12c68fd38cca4bccf39cae8ef117686d6769c9",
-    "screenshots/rest-clear-320-after.png": "14de5817c479aa9308d57cf3c63278e36ea998a816e6058894932cfeda038d0e",
-    "screenshots/rest-clear-320-before.png": "3bdb016659e417b9f99a7b65ff5f86b8fca70b5a8246350d6907794e6ad1e6a1",
-    "screenshots/rest-clear-390-after.png": "12033fe9c28700bf4e04394eb8a1a01f8add5e3398130365a641d0263b9dca0f",
+    "screenshots/rest-clear-320-after.png": "a71d302af512191e59e86012a3267359661016fe727164403af8d5fba2f3d50e",
+    "screenshots/rest-clear-320-before.png": "e2bacab7a6e35ecbc28635195faaddb7456214f21946732694ce0bca0ea9425b",
+    "screenshots/rest-clear-390-after.png": "94b11716acb7d5987f24244f683208f016a10e11f250a0e6d59685b79a33dd43",
     "screenshots/rest-clear-390-before.png": "6c370182afed50cf2a7df7417e6c18bdb72d8017de30085843eb92fa596d87be",
-    "screenshots/rest-overlay-320-after.png": "7e7f19cc274148d33e84a733b5b5efc3b7fef747dc10ac5c87a0dcf6052b9f8c",
+    "screenshots/rest-controls-320-after-full.png": "ebba1fc72af760f91eef29d9aefc2851e1031545df25602d8c57f6494d8dc139",
+    "screenshots/rest-controls-320-after.png": "226f4f565a94be2973473beb1a93fd58c55cfde521b81ea572ce3ea5e7b6579a",
+    "screenshots/rest-controls-320-before-full.png": "06717b80e95dc3c0133ab2de408e89dc661d3ea6562bf9bb5a2bc1fee33b4d00",
+    "screenshots/rest-controls-320-before.png": "4842bf1b440e0d0554c56decbd3f9217a4193b30fc394ac434d409948253c017",
+    "screenshots/rest-controls-390-after-full.png": "8c911d0e3b6b483eb787c1b465518a06fb9b98f38c2628e3c1ca3f9bb811f310",
+    "screenshots/rest-controls-390-after.png": "e50845e7c924011838188b52e60b4ae901f093fc9d75b70188f1590554e336f3",
+    "screenshots/rest-controls-390-before-full.png": "6a15e72eee2657756e1c943f87b1ea0374053fb7fda8d6e0640b6034661ec567",
+    "screenshots/rest-controls-390-before.png": "a59db453c321a78fbfff3fe5aa59c74b4e841add6ed1c3f50002c4faa60fd041",
+    "screenshots/rest-overlay-320-after.png": "1d0119fef38f22ca1c1cf4fc3941b577ac052b5004643cd52962a4bcb7d238bb",
     "screenshots/rest-overlay-320-before.png": "e420690d38fdb4c65e44048eecf4f1d12e9ff3e809695cb738e93766ba53dc2f",
-    "screenshots/rest-overlay-390-after.png": "610dd0c28913285d55f35ba25217cd10ebcd1c88c161b4f11fb380b41b1ffaff",
+    "screenshots/rest-overlay-390-after.png": "f5a9018d329e809d3e610f341e40caa81c75ed4389b45c74361c8e8f99954b82",
     "screenshots/rest-overlay-390-before.png": "5d99d212566abc6cc6d0967a99f3887be0f91c6e0bd29bd907f2cfd1b6483ef5",
     "screenshots/touch-targets-320-after-full.png": "d6b6538846814b0e73907d7d12047208b39016445eeac43959356a9200641c5f",
     "screenshots/touch-targets-320-after.png": "d6b6538846814b0e73907d7d12047208b39016445eeac43959356a9200641c5f",
@@ -1921,20 +2729,20 @@
     "screenshots/touch-targets-390-after.png": "0ea158c63e41ce00fba058210085306ae949e359afa32973d056afea6a5a5dbe",
     "screenshots/touch-targets-390-before-full.png": "a971bcb368f381ad68f957aed8a5458454a7635549cd8ccc994ca5c4bd3a3322",
     "screenshots/touch-targets-390-before.png": "a971bcb368f381ad68f957aed8a5458454a7635549cd8ccc994ca5c4bd3a3322",
-    "screenshots/validation-320-after.png": "4e08a2b8ded837c085427a593cd793e3756c197fc8b0111a5583c742163d39e7",
+    "screenshots/validation-320-after.png": "71b3a220ac40d6c68af745e6613a5970cc1a90577f832e505ff0d09df70725f5",
     "screenshots/validation-320-before.png": "b29ef97dc317b32d0914082bc0e25c06f57c3c44e177bb6cc2735b8322f164d7",
-    "screenshots/validation-390-after.png": "dccb6e80a41225cc021743880691aa5e3d38f23667654fde0c2fa04c3436329e",
+    "screenshots/validation-390-after.png": "f92ac4fa7fbbe02da6deb6375af7094de4f7aa0bdf4d08264b081e4c596cf9b4",
     "screenshots/validation-390-before.png": "7b7f8230ce81182933ca249f6c12b1f6f7cc26b6f69e75dc4c9eaf59cecfc43c",
-    "screenshots/weight-1440-after-full.png": "41f32943fdcdedac48637d1e5e7a5fb90d2d0a010eae7ff8b3428861d04f8dd7",
-    "screenshots/weight-1440-after.png": "1c6edb9e7f113c54ea4fc1c0710525b5dc8eefa8f548964af006958ab65d9184",
+    "screenshots/weight-1440-after-full.png": "639597f2597723abd9accc44295498c10347ad4b2f1facce2acde72892c86a6b",
+    "screenshots/weight-1440-after.png": "8d1087bfcca4605c9ef5b773c248f728c2cd61e15aded6cf9cbdf3ba401ebd8f",
     "screenshots/weight-1440-before-full.png": "529389e5ef94d4c09629e6225b589e0141158d4cf1813997e03a9b6e0cca090f",
     "screenshots/weight-1440-before.png": "32dedb03cf0374730f9650c532fae9d420c314bf64173947e58b250dc6d18027",
-    "screenshots/weight-320-after-full.png": "1809af76321afc5033d7fcb72b7455be72563991651cbab70fd94fafb3a4d33c",
-    "screenshots/weight-320-after.png": "2b239eae67bd4f734394df47e7c2bc2f5cc2a577771c93f8052e5d00bb258448",
+    "screenshots/weight-320-after-full.png": "eb808390cf9f653eab9707173a254d5645b8642315805bac4a8210cb726f3353",
+    "screenshots/weight-320-after.png": "4447be771cf82f01cda46d14741ca4cc2403332a036493721aa38985ba0180d0",
     "screenshots/weight-320-before-full.png": "2278fa7a03089b8af3e668adc2fd7584e79c10d44fbd4094c79e2fab97ed6f1e",
     "screenshots/weight-320-before.png": "7e08215c76dcd6af48d52afec93b9ba687fdef20aea0e62f52c1fddcd3c388d8",
-    "screenshots/weight-390-after-full.png": "44e3482f3e9f519d2dda709c144bf8bd932e92e08fce226d739954f49cc5d4b7",
-    "screenshots/weight-390-after.png": "a5478ba4efdb14534b25d6c9d5ac114b197a78ea35cf7dcc33dce07556f8b499",
+    "screenshots/weight-390-after-full.png": "32248aa62f0d273dc0819c2ef118f580af188d069ac732e85caca4051546e26a",
+    "screenshots/weight-390-after.png": "c006e27d81ab8102c5528be0a91ed6991637ca86eeaa5cdee264bdfb8e75f18f",
     "screenshots/weight-390-before-full.png": "d72f7c278cc13740cf7e99727fd15fca1226804b36a5619d935b41a392bb2e9e",
     "screenshots/weight-390-before.png": "01aeedd03d47a85845bb4b6d50ef8b4c842c561129f290393606cf4bed6dd259"
   }

@@ -50,7 +50,11 @@ Red tests verified then fixed: old server silently ignoring metric fields, repea
 The separate local branch `codex/workout-ux-followup`, based on deployed
 `cda1beae5857bb1ce98b44b596ada6def085edce`, reproduced and corrected D1, the
 inline-accessibility remainder of D2, D4, D5, checked D6 targets and the
-independent rest overlay in D7. Existing sticky-dock behavior remains. The
+rest overlay in D7. The first timer-grouping change left D7 partial; the
+final correction removes sticky positioning from the controls container,
+passes original-state visibility/hit tests and retains ordinary page scrolling.
+Timer and finish controls now stay in document flow after the exercises, rather
+than remaining pinned. The
 historical dispositions above describe the earlier metric checkpoint; they are
 not current closure claims. See [the UX follow-up](../workout-ux-followup-2026-10-05.md)
 for exact scope, measured browser evidence, test counts and local-only authority.
