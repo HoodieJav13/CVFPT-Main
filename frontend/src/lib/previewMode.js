@@ -2108,7 +2108,7 @@ export function installPreviewApi(api) {
         scheduledAt: payload.scheduled_at, durationMinutes: payload.duration_minutes || 60,
       });
       if (conflict) return scheduleConflictReject(config, conflict);
-      const row = { id: id('session'), client_id: target.id, coach_id: target.coach_id, scheduled_at: payload.scheduled_at, duration_minutes: payload.duration_minutes || 60, location: payload.location || null, status: 'scheduled', credit_deducted: false, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), client: { id: target.id, name: target.name } };
+      const row = { id: id('session'), client_id: target.id, coach_id: target.coach_id, scheduled_at: payload.scheduled_at, duration_minutes: payload.duration_minutes || 60, location: payload.location || null, workout_id: payload.workout_id || null, status: 'scheduled', credit_deducted: false, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), client: { id: target.id, name: target.name } };
       state.sessions.push(row);
       return ok({ ...row, location_overlaps: previewLocationOverlaps(row) }, config, 201);
     }

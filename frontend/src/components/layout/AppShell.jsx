@@ -29,6 +29,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
+import { coachScreen, listenForCoachErrors, trackCoachScreen } from '@/lib/coachAnalytics';
 
 const COACH_NAV = [
   { to: '/coach', label: 'Home', icon: LayoutDashboard, end: true },
@@ -100,6 +101,22 @@ export default function AppShell() {
   const { unread, unreadInitialized, refresh: refreshNotifications } = useNotifications();
   const isCoach = user.role === 'coach' || user.role === 'admin';
   const [jumpOpen, setJumpOpen] = useState(false);
+  const analyticsPath = useRef(null);
+  // Skip StrictMode effect replays; emit only when the coarse screen changes.
+  const analyticsScreen = useRef(null);
+  useEffect(() => {
+    analyticsPath.current = location.pathname;
+    if (!isCoach) { analyticsScreen.current = null; return; }
+    const screen = coachScreen(location.pathname);
+    if (analyticsScreen.current !== screen) {
+      analyticsScreen.current = screen;
+      trackCoachScreen(location.pathname);
+    }
+  }, [isCoach, location.pathname]);
+  useEffect(() => {
+    if (!isCoach) return undefined;
+    return listenForCoachErrors(window, () => analyticsPath.current);
+  }, [isCoach]);
 
   useEffect(() => {
     if (!isCoach) return undefined;
