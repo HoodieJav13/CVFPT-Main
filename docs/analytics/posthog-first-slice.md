@@ -76,7 +76,7 @@ values cannot collect. There is a 2-second request abort, no capture retries,
 100 events/page boot, 20 exceptions/page boot, and 30-second fingerprint dedup.
 These caps are defensive and reset on reload; they are not account billing limits.
 
-## Bounded cloud event proof proposal — not executed
+## Bounded cloud event proof — prepared, not transmitted
 
 Target is connected **Default project 509463**, after the parent verifies its
 region, project-level **Discard client IP data**, free-plan status and remaining
@@ -88,17 +88,27 @@ cookies/referrer. Payload-only tests cannot establish provider-side storage.
 `synthetic-packets.json` contains the exact constructed event examples without
 credentials. For transmission, the transport adds only `api_key`, supplied by the
 owner through secure scoped configuration as a **public project ingestion token**,
-not an account/personal key. No real token has been retrieved, generated, copied,
-configured or persisted. Local work requires none; setup is only essential once
-a bounded cloud proof is separately authorized.
+not an account/personal key. The existing public project ingestion token was read
+through the supported connector for the separately authorized fictional proof and held only in ephemeral
+memory. No credential was generated or persisted in the repository or environment.
+The project settings UI also displayed this public token automatically. No personal
+API key or account credential was read. Local work requires no token.
 
-Proposed first proof: **one isolated fictional browser run, at most 12 allowlisted
-packets, no replay**, home → sessions → create/attach → edit/remove → injected 503
+The authorized first proof is **one isolated fictional browser run, at most 12
+allowlisted packets, no replay**, home → sessions → create/attach → edit/remove
+→ injected 503
 → retry. First intercept all packets locally; approve the exact inspected set and
 then allow only that set/count through a test-runner network gate. Stop at the
 bound; do not reload or browse other flows with collection enabled. The app's
 100-per-boot cap does not enforce this proof's 12-packet bound. Parent verifies
 received fields and exception grouping, then turns collection off immediately.
+
+**Actual checkpoint:** nine packets from real local fixture UI actions were
+inspected, with zero external requests. The account UI confirms US Cloud, free
+plan and zero event/error/web-recording usage. Project IP discard is off; approval
+to enable it is pending. Nothing has been sent. See
+[proof checkpoint](proof-checkpoint-2026-10-05.md) for the exact nine-event list
+and local real-recorder outcome.
 
 No provider settings, dashboards, alerts, billing/plan, production data or
 notification destinations were changed. Current formats were checked through
@@ -110,8 +120,10 @@ PostHog docs: [Capture API](https://posthog.com/docs/api/capture),
 ## Bounded replay proposal — offline policy only
 
 `replayProofPolicy.js` is **not imported by the app**. Its candidate options and
-eligibility have unit checks; no SDK was installed, no recording started, and no
-`$snapshot` was created/transmitted. Those checks do not prove SDK masking/playback.
+eligibility have unit checks. No SDK is installed in the app. A separately pinned
+`posthog-js@1.436.1` recorder and `rrweb@2.1.7` player were installed only in a
+temporary offline harness. Real snapshots were decoded and played locally; none
+were transmitted. **The replay proof failed**, so hosted replay remains blocked.
 
 Proposed scope: **one fictional fixture session, at most 120 seconds and 2 MiB**,
 one parent-approved local/isolated preview origin, coach role, no real login.
@@ -136,11 +148,12 @@ remain; assert prohibited routes never get recorded. Enforce one session/two
 minutes/two MiB independently of sampling. Any prohibited field or blank/unusable
 playback fails the proof. No cloud packet passes until this is directly verified.
 
-Navigation usefulness is **inferred**, not tested: shell transitions, click
-positions and timing may help, while coarse events identify screens. Blocking
+The proposed navigation usefulness **failed the actual local playback check**:
+the SDK masks CSS classes along with other attributes, destroying the layout
+and alignment of click positions. Coarse events still identify screens. Blocking
 `main` prevents replay from showing the editor/workout or diagnosing its contents;
-text/attribute masking may reduce usability further. If local playback is useful
-and separately approved, destination is only Default project 509463's verified
+A corrected candidate must pass local packet/playback checks before any cloud
+recording. Its only eligible destination is Default project 509463's verified
 region. Parent coordinates any temporary project replay setting. Production
 recorder and global broad capture remain disabled.
 
@@ -171,4 +184,5 @@ count afterward. Consulted 2026-10-05:
    and real-user collection remain separate authorization gates.
 
 Rollback: set `REACT_APP_POSTHOG_MODE=off` or revert the scoped local commit. There
-are no migrations, new dependencies, provider changes or hosted cleanup steps.
+are no migrations, new application dependencies, provider changes or hosted
+cleanup steps at this checkpoint. Temporary recorder packages are outside the app.
