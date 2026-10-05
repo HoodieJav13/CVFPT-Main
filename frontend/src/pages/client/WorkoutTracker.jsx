@@ -1,3 +1,4 @@
+import { workoutEntryErrors } from '@/lib/workoutEntryErrors';
 import { performedSet, trackingType, tracks } from '@/lib/workoutMetrics';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -212,6 +213,7 @@ export default function WorkoutTracker() {
   const [abandonOpen, setAbandonOpen] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
   const [lastTimeLoading, setLastTimeLoading] = useState(null);
+  const [validatedSets, setValidatedSets] = useState({});
   const [restAlerts, setRestAlerts] = useState(() => localStorage.getItem('cvf_rest_alerts') === 'on');
   const lastTimeCache = useRef({});
   const intensity = useVisualIntensity();
@@ -303,9 +305,16 @@ export default function WorkoutTracker() {
     outbox.markDirty();
   };
 
+  const fieldErrors = new Map(log.exercises.flatMap((exercise) => exercise.sets
+    .filter((set) => validatedSets[set.id]).map((set) => [set.id, workoutEntryErrors(set, exercise)])));
+  const entryErrors = (exercise, set) => fieldErrors.get(set.id) || {};
+  const errorId = (set, field) => `set-${set.id}-${field}-error`;
+  const errorProps = (exercise, set, field) => entryErrors(exercise, set)[field]
+    ? { 'aria-invalid': true, 'aria-describedby': errorId(set, field) } : {};
+
   const saveSet = (exercise, set) => {
     let payload;
-    try { payload = performedSet(set, exercise); } catch (error) { toast.error(error.message); return; }
+    try { payload = performedSet(set, exercise); } catch (error) { setValidatedSets((current) => ({ ...current, [set.id]: true })); toast.error(error.message); return; }
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
@@ -318,7 +327,7 @@ export default function WorkoutTracker() {
     // Load fields normalized exactly like saveSet — an empty string with a
     // stale unit is a backend 400 that would revert the completion.
     let payload;
-    try { payload = performedSet({ ...set, status }, exercise); } catch (error) { toast.error(error.message); return; }
+    try { payload = performedSet({ ...set, status }, exercise); } catch (error) { setValidatedSets((current) => ({ ...current, [set.id]: true })); toast.error(error.message); return; }
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
@@ -573,6 +582,7 @@ export default function WorkoutTracker() {
                       onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
                       onBlur={() => saveSet(exercise, set)}
                       disabled={sealed}
+                      {...errorProps(exercise, set, 'actual_load_value')}
                       aria-label={`${exercise.exercise_name} set ${set.set_number} weight`}
                     />
                     <Select disabled={sealed} value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
@@ -591,11 +601,11 @@ export default function WorkoutTracker() {
                   {trackingType(exercise) === 'reps_weight' ? <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
                     placeholder={exercise.prescribed_reps || undefined}
                     onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
-                    aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} /> : <span aria-hidden className="text-center text-muted-foreground">—</span>}
+                    {...errorProps(exercise, set, 'actual_reps')} aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} /> : <span aria-hidden className="text-center text-muted-foreground">—</span>}
                   <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-11 px-2 text-sm tabular-nums" value={set.actual_rpe ?? ''}
                     placeholder={exercise.prescribed_rpe || undefined}
                     onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
-                    aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
+                    {...errorProps(exercise, set, 'actual_rpe')} aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
                   <Button
                     type="button" size="icon" variant={set.status === 'completed' ? 'default' : 'outline'}
                     className="h-11 w-11" disabled={sealed} onClick={() => toggleSet(exercise, set)}
@@ -606,7 +616,7 @@ export default function WorkoutTracker() {
                   {trackingType(exercise) !== 'reps_weight' && (
                     <div className="col-span-full grid grid-cols-1 gap-2 pb-2 sm:grid-cols-2">
                       {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => (
-                        <WorkoutMetricInput key={metric} metric={metric} label={`${exercise.exercise_name} set ${set.set_number} performed ${metric}`}
+                        <WorkoutMetricInput key={metric} metric={metric} errorId={entryErrors(exercise, set)[`actual_${metric}_value`] ? errorId(set, `actual_${metric}_value`) : undefined} label={`${exercise.exercise_name} set ${set.set_number} performed ${metric}`}
                           value={set[`actual_${metric}_value`]} unit={set[`actual_${metric}_unit`] || exercise[`prescribed_${metric}_unit`]}
                           disabled={sealed} onValueChange={(value) => setLocalValue(exercise.id, set.id, `actual_${metric}_value`, value)}
                           onBlur={() => saveSet(exercise, set)} onUnitChange={(unit) => {
@@ -618,6 +628,9 @@ export default function WorkoutTracker() {
                       <p className="col-span-full text-xs text-muted-foreground">Enter values in the selected units. Changing a unit keeps the number.</p>
                     </div>
                   )}
+                  {Object.entries(entryErrors(exercise, set)).map(([field, message]) => (
+                    <p key={field} id={errorId(set, field)} role="alert" className="col-span-full text-sm text-destructive">{message}</p>
+                  ))}
                   {set.set_origin === 'extra' && (
                     <Button type="button" size="touchIcon" variant="ghost" className="col-start-2 text-muted-foreground" disabled={sealed} onClick={() => removeSet(exercise, set)} aria-label="Remove extra set" title="Remove extra set">
                       <Trash2 aria-hidden />

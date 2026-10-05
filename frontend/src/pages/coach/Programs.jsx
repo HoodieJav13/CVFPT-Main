@@ -1,7 +1,7 @@
 import { setPrescription } from '@/lib/workoutMetrics';
 import { ExerciseTrackingFields } from '@/components/training/ExerciseTrackingFields';
 import { trackingType } from '@/lib/workoutMetrics';
-import { Fragment, useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { cloneElement, useId, Fragment, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api, errMsg } from '@/lib/api';
 import { PageHeader, LoadingScreen, LoadErrorState, EmptyState, IconButton } from '@/components/common';
 import { Button } from '@/components/ui/button';
@@ -354,21 +354,26 @@ function ExerciseLibraryTab({ library, reload }) {
             <DialogTitle>{editing ? 'Edit exercise' : 'Add exercise'}</DialogTitle>
                       </DialogHeader>
           <form onSubmit={save} className="space-y-3.5">
-            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Exercise name" data-testid="exercise-library-name-input" />
+            <LabeledField label="Exercise name"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Exercise name" data-testid="exercise-library-name-input" /></LabeledField>
             <div className="grid grid-cols-2 gap-3">
-              <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Category" data-testid="exercise-library-category-input" />
-              <Input value={form.equipment} onChange={(e) => setForm({ ...form, equipment: e.target.value })} placeholder="Equipment" data-testid="exercise-library-equipment-input" />
-              <Input value={form.primary_muscle} onChange={(e) => setForm({ ...form, primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="exercise-library-primary-muscle-input" />
-              <Input value={form.secondary_muscles} onChange={(e) => setForm({ ...form, secondary_muscles: e.target.value })} placeholder="Secondary muscles" data-testid="exercise-library-secondary-muscles-input" />
+              <LabeledField label="Category"><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Category" data-testid="exercise-library-category-input" /></LabeledField>
+              <LabeledField label="Equipment"><Input value={form.equipment} onChange={(e) => setForm({ ...form, equipment: e.target.value })} placeholder="Equipment" data-testid="exercise-library-equipment-input" /></LabeledField>
+              <LabeledField label="Primary muscle"><Input value={form.primary_muscle} onChange={(e) => setForm({ ...form, primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="exercise-library-primary-muscle-input" /></LabeledField>
+              <LabeledField label="Secondary muscles"><Input value={form.secondary_muscles} onChange={(e) => setForm({ ...form, secondary_muscles: e.target.value })} placeholder="Secondary muscles" data-testid="exercise-library-secondary-muscles-input" /></LabeledField>
             </div>
-            <Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="YouTube video URL" data-testid="exercise-library-video-input" />
-            <Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" data-testid="exercise-library-notes-input" />
+            <LabeledField label="YouTube video URL"><Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="YouTube video URL" data-testid="exercise-library-video-input" /></LabeledField>
+            <LabeledField label="Notes"><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" data-testid="exercise-library-notes-input" /></LabeledField>
             <DialogFooter><Button disabled={saving} className="rounded-xl" data-testid="exercise-library-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save exercise'}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
     </div>
   );
+}
+
+function LabeledField({ label, children }) {
+  const id = useId();
+  return <div className="min-w-0 space-y-1"><Label htmlFor={id}>{label}</Label>{cloneElement(children, { id })}</div>;
 }
 
 export function workoutToForm(workout) {
@@ -1464,18 +1469,20 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
         </div>
         <AccordionContent className="space-y-2 pb-3">
           <div className="flex items-center gap-2">
-            <Input className="min-w-0" list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" />
+            <LabeledField label="Exercise name"><Input className="min-w-0" list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" /></LabeledField>
             <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
             <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(form.exercises.filter((_, i) => i !== index))} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
           </div>
           <ExerciseTrackingFields exercise={exercise} onChange={(fields) => setExercise(index, fields)} />
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" />
-            {trackingType(exercise) === 'reps_weight' && <Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" />}
+            <LabeledField label="Sets"><Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" /></LabeledField>
+            {trackingType(exercise) === 'reps_weight' && <LabeledField label="Reps"><Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" /></LabeledField>}
             <div className="min-w-0">
               {/* Numeric authoring, serialized as canonical "Ns" text; the
                   DB fill trigger derives rest_seconds from it. */}
+              <Label htmlFor={`${idPrefix}-${rowValue(exercise, index)}-rest`}>Rest (seconds)</Label>
               <Input
+                id={`${idPrefix}-${rowValue(exercise, index)}-rest`}
                 type="number" min="0" step="5" inputMode="numeric"
                 value={parseRestSeconds(exercise.rest) ?? ''}
                 onChange={(e) => setExercise(index, { rest: e.target.value === '' ? '' : `${Math.max(0, Number(e.target.value))}s` })}
@@ -1489,11 +1496,11 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
                 </p>
               )}
             </div>
-            <Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" />
+            <LabeledField label="Tempo"><Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" /></LabeledField>
           </div>
           <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] gap-2">
-            <Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" />
-            <Input type="number" min="0" step="0.5" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" />
+            <LabeledField label="Target RPE"><Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" /></LabeledField>
+            <LabeledField label="Default load"><Input type="number" min="0" step="0.5" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" /></LabeledField>
             <Select value={exercise.default_load_unit || 'lb'} onValueChange={(value) => setExercise(index, { default_load_unit: value })}>
               <SelectTrigger aria-label="Default load unit"><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
@@ -1501,10 +1508,10 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
           </div>
           <div className="relative">
             <Video className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" />
+            <LabeledField label="Video URL"><Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" /></LabeledField>
           </div>
-          <Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" />
-          <Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" />
+          <LabeledField label="Client notes"><Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" /></LabeledField>
+          <LabeledField label="Coach notes (internal)"><Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" /></LabeledField>
         </AccordionContent>
       </AccordionItem>
       )}
@@ -1536,10 +1543,10 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
   return (
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Workout day name" data-testid="workout-name-input" />
-            <Input value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} placeholder="Goal/focus" data-testid="workout-goal-input" />
+            <LabeledField label="Workout day name"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Workout day name" data-testid="workout-name-input" /></LabeledField>
+            <LabeledField label="Goal/focus"><Input value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} placeholder="Goal/focus" data-testid="workout-goal-input" /></LabeledField>
           </div>
-          <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" data-testid="workout-description-input" />
+          <LabeledField label="Description"><Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" data-testid="workout-description-input" /></LabeledField>
           <datalist id={`${idPrefix}-exercise-options`}>
             {library.map((exercise) => <option key={exercise.id} value={exercise.name} />)}
           </datalist>
