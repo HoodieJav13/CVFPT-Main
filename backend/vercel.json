@@ -2,7 +2,8 @@
   "version": 2,
   "git": {
     "deploymentEnabled": {
-      "codex/email-brand-preview": false
+      "codex/email-brand-preview": false,
+      "codex/email-yahoo-contrast": false
     }
   },
   "rewrites": [

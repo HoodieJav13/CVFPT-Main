@@ -85,3 +85,10 @@ test('essential layout is inline and dark/mobile styles are progressive enhancem
   assert.match(html, /prefers-color-scheme:\s*dark/);
   assert.match(html, /max-width:\s*420px/);
 });
+
+test('teal-backed action and live wordmark retain an explicit text fill against client color rewrites', () => {
+  const { html } = renderEmail(input);
+  const protectedText = html.match(/<(?:a|div)\b[^>]*style="[^"]*-webkit-text-fill-color:#181511[^>]*>/g) || [];
+  assert.equal(protectedText.length, 3, 'protect only action, wordmark and subtitle, not adaptive body copy');
+  for (const element of protectedText) assert.match(element, /(?:"|;)color:#181511;/);
+});

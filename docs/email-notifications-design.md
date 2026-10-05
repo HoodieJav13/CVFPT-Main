@@ -137,6 +137,15 @@ keys):
   origin and `/logo.png`; it contains no account/reset query. Live branding
   remains when the remote image is blocked. Actual mail-client rendering
   remains a separate release check; browser screenshots are not delivery proof.
+- Yahoo contrast correction (review branch, 2026-10-03): the one received
+  fictional test showed Yahoo's desktop dark theme changing wordmark/action
+  text to `#D5CDC3` while leaving teal `#5EC4D4`, giving 1.29:1 contrast.
+  Only those three text elements now pair inline `-webkit-text-fill-color`
+  with the existing ink `#181511` color fallback (8.94:1 on teal). Body copy
+  still adapts normally. The regression models the observed color rewrite;
+  it does not reproduce Yahoo sanitization or verify delivery. Clients that
+  strip or rewrite text-fill may still show the issue. A real Yahoo retest
+  requires separate send approval; this branch is not a released correction.
 - Session times formatted in **America/Denver** with the day of week
   ("Thu Aug 6, 11:00 AM"), matching the in-app convention.
 - Instant session emails carry date/time, duration, location, and the other
