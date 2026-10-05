@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { isWriteBlocked, reconcileAddedSet, rewritePendingSetId } from '@/lib/workoutSync';
+import { isWriteBlocked, metricWriteAcknowledged, reconcileAddedSet, rewritePendingSetId } from '@/lib/workoutSync';
 
 /**
  * Offline outbox for workout writes (docs/offline-workout-completion.md).
@@ -126,6 +126,11 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
         const operation = queueRef.current[0];
         try {
           const { data } = await api.request({ method: operation.method, url: operation.url, data: operation.data });
+          if (operation.kind === 'set' && !metricWriteAcknowledged(operation.data, data)) {
+            const error = new Error('The server did not acknowledge your metrics. They are kept on this device; retry after the app update.');
+            error.metricAcknowledgementMissing = true;
+            throw error;
+          }
           if (operation.kind === 'add') {
             const pendingId = `pending-${operation.clientOperationId}`;
             resolvedIdsRef.current.set(pendingId, data.id);
@@ -143,6 +148,7 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
             syncedRef.current?.(data);
           }
         } catch (error) {
+          if (error.metricAcknowledgementMissing && !operation.attempts) toast.error(error.message);
           const status = error?.response?.status;
           if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
             const remaining = queueRef.current.filter((queued) => queued.id !== operation.id);

@@ -1475,14 +1475,14 @@ export function installPreviewApi(api) {
           ? row.exercise_library_id === exercise.exercise_library_id
           : !row.exercise_library_id && row.source_workout_exercise_id === exercise.source_workout_exercise_id
       ));
-      const matchByLog = new Map(matchingExercises.map((row) => [row.workout_log_id, row]));
-      const matches = state.workoutLogs.filter((row) => row.client_id === log.client_id && row.status === 'completed' && !row.archived && matchByLog.has(row.id))
+      const matchingLogIds = new Set(matchingExercises.map((row) => row.workout_log_id));
+      const matches = state.workoutLogs.filter((row) => row.client_id === log.client_id && row.status === 'completed' && !row.archived && matchingLogIds.has(row.id))
         .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at) || b.id.localeCompare(a.id))
         .filter((row) => !before || row.completed_at < before.completed_at || (row.completed_at === before.completed_at && row.id < before.id));
       const page = matches.slice(0, 10);
-      const occurrences = page.map((row) => {
-        const matchedExercise = matchByLog.get(row.id);
+      const occurrences = page.flatMap((row) => matchingExercises.filter((entry) => entry.workout_log_id === row.id).sort((a, b) => b.id.localeCompare(a.id)).map((matchedExercise) => {
         return {
+          occurrence_id: `${row.id}:${matchedExercise.id}`, workout_log_exercise_id: matchedExercise.id,
           workout_log_id: row.id, completed_at: row.completed_at, exercise_name: matchedExercise.exercise_name, tracking_type: trackingType(matchedExercise),
           sets: state.workoutLogSets.filter((set) => set.workout_log_exercise_id === matchedExercise.id && set.status === 'completed' && !set.archived)
             .sort((a, b) => a.set_number - b.set_number).map((set) => ({
@@ -1492,7 +1492,7 @@ export function installPreviewApi(api) {
               actual_reps: set.actual_reps ?? null, actual_rpe: set.actual_rpe ?? null,
             })),
         };
-      }).filter((row) => row.sets.length);
+      })).filter((row) => row.sets.length);
       const last = page[page.length - 1];
       return ok({ occurrences, next_cursor: matches.length > 10 && last ? btoa(JSON.stringify({ completed_at: last.completed_at, id: last.id })) : null }, config);
     }

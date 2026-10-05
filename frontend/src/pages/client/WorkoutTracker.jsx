@@ -1,4 +1,4 @@
-import { performedMetrics, trackingType, tracks, actualMetrics } from '@/lib/workoutMetrics';
+import { performedSet, trackingType, tracks } from '@/lib/workoutMetrics';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
@@ -88,7 +88,7 @@ function ExerciseHistory({ logId, exercise }) {
           {error && <div role="alert" className="space-y-2 text-sm"><p>{error}</p><Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => loadHistory(nextCursor && occurrences.length ? nextCursor : null)}>Retry</Button></div>}
           {!loading && !error && attempted && occurrences.length === 0 && <p className="text-sm text-muted-foreground">No completed history yet.</p>}
           {occurrences.map((occurrence) => (
-            <section key={occurrence.workout_log_id} className="space-y-2" data-testid="history-occurrence">
+            <section key={occurrence.occurrence_id || occurrence.workout_log_id} className="space-y-2" data-testid="history-occurrence">
               <div><p className="text-sm font-medium">{occurrence.exercise_name}</p><p className="text-xs text-muted-foreground">{new Date(occurrence.completed_at).toLocaleDateString()}</p></div>
               <div className="space-y-1">
                 {occurrence.sets.map((set) => (
@@ -304,19 +304,12 @@ export default function WorkoutTracker() {
   };
 
   const saveSet = (exercise, set) => {
-    try { actualMetrics(performedMetrics(set, exercise), {}, exercise); } catch (error) { toast.error(error.message); return; }
-    const blank = set.actual_load_value === '' || set.actual_load_value === null;
+    let payload;
+    try { payload = performedSet(set, exercise); } catch (error) { toast.error(error.message); return; }
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
-      data: {
-        ...performedMetrics(set, exercise),
-        actual_load_value: blank ? null : Number(set.actual_load_value),
-        actual_load_unit: blank ? null : (set.actual_load_unit || 'lb'),
-        actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
-        actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
-        status: set.status,
-      },
+      data: payload,
     });
   };
 
@@ -324,19 +317,12 @@ export default function WorkoutTracker() {
     const status = set.status === 'completed' ? 'pending' : 'completed';
     // Load fields normalized exactly like saveSet — an empty string with a
     // stale unit is a backend 400 that would revert the completion.
-    try { actualMetrics(performedMetrics(set, exercise), {}, exercise); } catch (error) { toast.error(error.message); return; }
-    const blank = set.actual_load_value === '' || set.actual_load_value === null;
+    let payload;
+    try { payload = performedSet({ ...set, status }, exercise); } catch (error) { toast.error(error.message); return; }
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
-      data: {
-        ...performedMetrics(set, exercise),
-        status,
-        actual_load_value: blank ? null : Number(set.actual_load_value),
-        actual_load_unit: blank ? null : (set.actual_load_unit || 'lb'),
-        actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
-        actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
-      },
+      data: payload,
     });
     if (status === 'completed') {
       // Inside a superset/giant set, rest waits for the end of the round.
@@ -383,7 +369,7 @@ export default function WorkoutTracker() {
       setLastTimeLoading(exercise.id);
       try {
         const { data } = await api.get(`/workout-logs/${id}/exercises/${exercise.id}/history`);
-        occurrence = data.occurrences[0] || null;
+        occurrence = data.occurrences.find((row) => trackingType(row) === trackingType(exercise)) || null;
         lastTimeCache.current[exercise.id] = occurrence;
       } catch (error) {
         toast.error(errMsg(error, 'Failed to load last time'));
@@ -591,18 +577,7 @@ export default function WorkoutTracker() {
                     />
                     <Select disabled={sealed} value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
                       setLocalValue(exercise.id, set.id, 'actual_load_unit', value);
-                      outbox.enqueue({
-                        kind: 'set', exerciseId: exercise.id, setId: set.id,
-                        method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
-                        data: {
-                          ...performedMetrics(set, exercise),
-                          actual_load_value: set.actual_load_value === '' || set.actual_load_value == null ? null : Number(set.actual_load_value),
-                          actual_load_unit: set.actual_load_value === '' || set.actual_load_value == null ? null : value,
-                          actual_reps: set.actual_reps === '' || set.actual_reps == null ? null : Number(set.actual_reps),
-                          actual_rpe: set.actual_rpe === '' || set.actual_rpe == null ? null : Number(set.actual_rpe),
-                          status: set.status,
-                        },
-                      });
+                      saveSet(exercise, { ...set, actual_load_unit: value });
                     }}>
                       <SelectTrigger
                         className="h-11 w-14 shrink-0 px-1.5"

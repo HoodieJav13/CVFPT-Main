@@ -17,6 +17,51 @@ test('duration and distance retain their explicit units through repeated partial
   assert.equal(workoutSetUpdatePayload({ actual_duration_value: null, actual_duration_unit: null }, saved, 'now', exercise).actual_duration_value, null);
 });
 
+test('metric limits match exact decimal database arithmetic at the mile/yard boundary', () => {
+  const { metricPair } = require('../src/lib/workoutMetrics');
+  for (const [value, unit] of [[621.371192237334, 'mi'], [1093613.2983377078, 'yd']]) assert.throws(() => metricPair(value, unit, 'distance'), (error) => error.status === 400);
+  assert.equal(metricPair(621.3711922373339, 'mi', 'distance').value, 621.3711922373339);
+  assert.equal(metricPair(0.000000001, 'min', 'duration').value, 0.000000001);
+  assert.equal(metricPair(1440, 'min', 'duration').value, 1440);
+});
+
+test('offline queue requires explicit acknowledgement of metric values and units', async () => {
+  const { metricWriteAcknowledged } = await import('../../frontend/src/lib/workoutSync.js');
+  const request = { actual_duration_value: 12.5, actual_duration_unit: 'min', actual_distance_value: 1.25, actual_distance_unit: 'mi' };
+  assert.equal(metricWriteAcknowledged(request, { ...request }), true);
+  assert.equal(metricWriteAcknowledged(request, { ...request, actual_duration_value: null }), false);
+  assert.equal(metricWriteAcknowledged(request, { status: 'completed' }), false);
+  assert.equal(metricWriteAcknowledged({ actual_distance_value: null, actual_distance_unit: null }, { actual_distance_value: 1, actual_distance_unit: 'mi' }), false);
+  assert.equal(metricWriteAcknowledged({ actual_reps: 8 }, { actual_reps: 8 }), true);
+});
+
+test('tracker validation rejects invalid reps/RPE before completion or rest can start', async () => {
+  const { performedSet } = await import('../../frontend/src/lib/workoutMetrics.js');
+  for (const fields of [{ actual_reps: '8.5' }, { actual_rpe: '11' }, { actual_rpe: '7.25' }]) assert.throws(() => performedSet({ ...stored, ...fields }, {}), (error) => error.status === 400);
+  assert.equal(performedSet({ ...stored, actual_reps: '0', actual_rpe: '7.5' }, {}).actual_rpe, 7.5);
+});
+
+test('history keeps duplicate library snapshots separate and never splits a workout at a cursor', async () => {
+  const { createExerciseHistoryHandler } = require('../src/routes/workoutLogs');
+  const rows = [];
+  for (let index = 11; index >= 1; index--) {
+    const id = String(index).padStart(2, '0');
+    const base = { workout_log_id: id, completed_at: '2026-10-05T10:00:00Z', exercise_name: 'Repeated library exercise', set_number: 1, actual_load_value: null, actual_load_unit: null, actual_reps: null, actual_rpe: null };
+    rows.push({ ...base, workout_log_exercise_id: `${id}-duration`, tracking_type: 'duration', actual_duration_value: 10, actual_duration_unit: 'min' });
+    rows.push({ ...base, workout_log_exercise_id: `${id}-distance`, tracking_type: 'distance', actual_distance_value: 2, actual_distance_unit: 'km' });
+  }
+  const handler = createExerciseHistoryHandler({ findLog: async () => ({ status: 'active', client_id: 'c', exercises: [{ id: 'ex', exercise_library_id: 'lib' }] }), runHistory: async () => ({ data: rows, error: null }) });
+  const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+  await handler({ params: { id: 'active', exerciseId: 'ex' }, user: { role: 'client', client: { id: 'c' } }, query: {} }, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.occurrences.length, 20);
+  assert.equal(new Set(res.body.occurrences.map((row) => row.occurrence_id)).size, 20);
+  assert.equal(res.body.occurrences.every((row) => row.sets.length === 1), true);
+  assert.equal(res.body.occurrences.filter((row) => row.tracking_type === 'duration').every((row) => row.sets[0].actual_duration_value === 10), true);
+  assert.equal(JSON.parse(Buffer.from(res.body.next_cursor, 'base64url')).id, '02');
+  assert.equal(res.body.occurrences.some((row) => row.workout_log_id === '01'), false);
+});
+
 test('malformed, mismatched and out-of-range metric writes never mutate', async () => {
   let writes = 0;
   for (const body of [

@@ -171,8 +171,14 @@ export default function WorkoutLogDetail() {
       { replace: true, state: null },
     );
   }, [id, isClient, location.hash, location.pathname, location.search, location.state, navigate]);
-  if (!log && loadError) return <LoadErrorState message={loadError} scope="workout-detail" onRetry={load} />;
-  if (!log) return <LoadingScreen />;
+  const waitingBanner = queueStillWaiting && (
+    <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
+      <Clock3 className="h-4 w-4 shrink-0 text-gold" />
+      Finished on this phone — syncing when a connection returns. Your results are safe.
+    </div>
+  );
+  if (!log && loadError) return <div>{waitingBanner}<LoadErrorState message={loadError} scope="workout-detail" onRetry={load} /></div>;
+  if (!log) return <div>{waitingBanner}<LoadingScreen /></div>;
 
   const completed = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'completed').length;
   const skipped = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'skipped').length;
@@ -223,12 +229,7 @@ export default function WorkoutLogDetail() {
       >
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
-      {queueStillWaiting && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
-          <Clock3 className="h-4 w-4 shrink-0 text-gold" />
-          Finished on this phone — syncing when a connection returns. Your results are safe.
-        </div>
-      )}
+      {waitingBanner}
       {syncError && (
         <div className="mb-4 flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="completion-sync-error">
           <span>{syncError} The workout is active again.</span>

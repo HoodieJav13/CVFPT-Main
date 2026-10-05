@@ -59,8 +59,18 @@ for each row execute function public.fill_workout_log_exercise_metrics();
 
 create or replace function public.check_workout_set_metrics()
 returns trigger language plpgsql security invoker set search_path = '' as $$
-declare v_type text;
+declare v_type text; v_status text;
 begin
+  if tg_op='INSERT' then
+    -- Serialize extra-set insertion before its FK waits on an exercise lock.
+    -- Otherwise a BEFORE trigger can see active, wait, then insert after finish.
+    select l.status into v_status from public.workout_log_exercises e
+      join public.workout_logs l on l.id=e.workout_log_id
+      where e.id=new.workout_log_exercise_id for share of l;
+    if v_status is not null and v_status<>'active' then
+      raise exception 'Completed workout logs cannot be changed';
+    end if;
+  end if;
   select tracking_type into v_type from public.workout_log_exercises where id = new.workout_log_exercise_id;
   if (new.actual_duration_value is not null and v_type not in ('duration','duration_distance'))
      or (new.actual_distance_value is not null and v_type not in ('distance','duration_distance'))
@@ -464,7 +474,8 @@ returns table (
   actual_rpe numeric,
   tracking_type text,
   actual_duration_value numeric, actual_duration_unit text,
-  actual_distance_value numeric, actual_distance_unit text
+  actual_distance_value numeric, actual_distance_unit text,
+  workout_log_exercise_id uuid
 )
 language sql
 security invoker
@@ -491,7 +502,7 @@ as $$
   )
   select o.id, o.completed_at, e.exercise_name, s.set_number,
     s.actual_load_value, s.actual_load_unit, s.actual_reps, s.actual_rpe,
-    e.tracking_type, s.actual_duration_value, s.actual_duration_unit, s.actual_distance_value, s.actual_distance_unit
+    e.tracking_type, s.actual_duration_value, s.actual_duration_unit, s.actual_distance_value, s.actual_distance_unit, e.id
   from occurrences o
   join public.workout_log_exercises e on e.workout_log_id = o.id and e.archived = false
     and ((p_exercise_library_id is not null and e.exercise_library_id = p_exercise_library_id)
@@ -499,7 +510,7 @@ as $$
         and e.exercise_library_id is null and e.source_workout_exercise_id = p_source_workout_exercise_id))
   join public.workout_log_sets s on s.workout_log_exercise_id = e.id
     and s.archived = false and s.status = 'completed'
-  order by o.completed_at desc, o.id desc, s.set_number asc;
+  order by o.completed_at desc, o.id desc, e.id desc, s.set_number asc;
 $$;
 
 revoke execute on function public.valid_workout_metric(numeric, text, text) from public, anon, authenticated;
@@ -510,3 +521,39 @@ revoke execute on function public.check_workout_set_metrics() from public, anon,
 grant execute on function public.check_workout_set_metrics() to service_role;
 revoke execute on function public.get_workout_exercise_history_v2(uuid, uuid, uuid, timestamptz, uuid, integer) from public, anon, authenticated;
 grant execute on function public.get_workout_exercise_history_v2(uuid, uuid, uuid, timestamptz, uuid, integer) to service_role;
+
+-- Quick completion is untracked. Normal starts and ordinary complete-all keep
+-- their weight defaults. Lock the fresh log and children before detecting edits
+-- so a racing entry is either preserved or refused by completed-log protection.
+create function public.quick_complete_workout_log_v2(p_workout_log_id uuid, p_client_id uuid)
+returns uuid language plpgsql security invoker set search_path = '' as $$
+declare v_log public.workout_logs%rowtype;
+begin
+  select * into v_log from public.workout_logs
+  where id=p_workout_log_id and client_id=p_client_id and archived=false for update;
+  if v_log.id is null then raise exception 'Workout log not found'; end if;
+  if v_log.status <> 'active' then raise exception 'Workout log is not active'; end if;
+  perform e.id from public.workout_log_exercises e
+    join public.workout_log_sets s on s.workout_log_exercise_id=e.id
+    where e.workout_log_id=v_log.id order by e.id,s.id for update of e,s;
+  if coalesce(v_log.notes,'')<>'' or coalesce(v_log.feedback,'')<>'' or exists (
+    select 1 from public.workout_log_exercises e
+    join public.workout_log_sets s on s.workout_log_exercise_id=e.id
+    where e.workout_log_id=v_log.id and (
+      e.archived or s.archived or coalesce(e.client_notes,'')<>'' or e.updated_at<>e.created_at
+      or s.status<>'pending' or s.set_origin<>'prescribed' or s.updated_at<>s.created_at
+      or s.actual_reps is not null or s.actual_rpe is not null
+      or s.actual_duration_value is not null or s.actual_distance_value is not null
+      or s.actual_load_value is distinct from e.prescribed_load_value
+      or s.actual_load_unit is distinct from e.prescribed_load_unit
+    )
+  ) then raise exception 'Workout has logged changes; resume tracking to finish'; end if;
+  update public.workout_log_sets s set actual_load_value=null,actual_load_unit=null
+    from public.workout_log_exercises e where s.workout_log_exercise_id=e.id and e.workout_log_id=v_log.id;
+  perform public.complete_all_workout_sets_v2(v_log.id,p_client_id,'client',null);
+  update public.workout_logs set quick_completed=true where id=v_log.id;
+  return public.complete_workout_log_v2(v_log.id,p_client_id,'','',null);
+end;
+$$;
+revoke execute on function public.quick_complete_workout_log_v2(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.quick_complete_workout_log_v2(uuid, uuid) to service_role;

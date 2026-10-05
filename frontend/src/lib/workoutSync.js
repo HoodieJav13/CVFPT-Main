@@ -1,4 +1,9 @@
 import { tracks, trackingType, performedMetrics } from './workoutMetrics.js';
+// An old backend can return 200 while ignoring new fields. Never drop those edits.
+export function metricWriteAcknowledged(request, response = {}) {
+  return ['actual_duration_value', 'actual_duration_unit', 'actual_distance_value', 'actual_distance_unit']
+    .every((field) => !Object.hasOwn(request, field) || (Object.hasOwn(response, field) && response[field] === request[field]));
+}
 /**
  * Pure reconciliation rules for the workout outbox and tracker
  * (docs/offline-workout-completion.md). No app imports, so the rules are

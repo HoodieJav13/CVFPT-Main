@@ -19,4 +19,6 @@ Test-first pure and mounted handler regressions, local synthetic legacy/new SQL 
 
 ## Release/rollback
 
+Every metric write must be echoed by the server before its outbox operation is removed. An older server that ignores new fields keeps the operation pending with a retry message and prevents FIFO completion from overtaking it. Extended history includes snapshot IDs so repeated uses of one library exercise remain distinct. A new atomic quick-complete RPC refuses edited logs, clears untouched load defaults and invokes existing completion logic; resumed workouts remain for explicit tracker completion. Set INSERT takes a shared lock on the parent log before checking status, serializing it with completion without adding parent locking to ordinary UPDATEs.
+
 Local only. Both Vercel roots auto-deploy on main merge and branch previews may build on push. Do not push. Before a separately approved hosted release, apply and independently verify the backward-compatible migration in development and production, obtain migration-applied/prod-migration-applied labels, then release backend and frontend. Roll back application code while retaining the additive columns, versioned history RPC and values; never drop logged data. Existing constraints/immutability/RLS/grants remain active. Rollback migration transaction during synthetic tests; no production down migration.

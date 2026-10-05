@@ -19,4 +19,5 @@ bash "$HERE/stack.sh" psql < "$ROOT/supabase/tests/exercise_history_pre_migratio
 bash "$HERE/stack.sh" psql -c "do \$\$ begin if exists(select from information_schema.columns where table_schema='public' and table_name='workout_log_sets' and column_name='actual_duration_value') then raise exception 'migration transaction did not roll back'; end if; if (select actual_load_value from public.workout_log_sets where id='90000000-0000-4000-8000-000000000001')<>42.5 then raise exception 'legacy data changed'; end if; raise notice 'PASS: migration transaction rolls back and preserves legacy data'; end \$\$;"
 bash "$HERE/stack.sh" psql < "$MIGRATION"
 bash "$HERE/stack.sh" psql < "$HERE/assertions.sql"
-echo 'PASS: migration and lifecycle regressions; synthetic writes rolled back'
+bash "$HERE/insert_race.sh"
+echo 'PASS: migration and lifecycle regressions; fixture transactions rolled back; concurrency data removed by owned stack teardown'

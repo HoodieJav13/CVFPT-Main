@@ -141,7 +141,7 @@ async function updateSetAtHandlerBoundary({ body, set, exercise, mutate, now }) 
 function workoutRpcStatus(error) {
   const message = error?.message || '';
   if (/not found|Assigned workout/i.test(message)) return 404;
-  if (/not active|cannot be changed/i.test(message)) return 409;
+  if (/not active|cannot be changed|logged changes/i.test(message)) return 409;
   if (/required|Complete at least one set/i.test(message)) return 400;
   return 500;
 }
@@ -513,14 +513,17 @@ function createExerciseHistoryHandler({
       if (error) throw error;
       const grouped = new Map();
       for (const row of data || []) {
-        if (!grouped.has(row.workout_log_id)) grouped.set(row.workout_log_id, {
+        const occurrenceId = `${row.workout_log_id}:${row.workout_log_exercise_id || 'legacy'}`;
+        if (!grouped.has(occurrenceId)) grouped.set(occurrenceId, {
+          occurrence_id: occurrenceId,
+          workout_log_exercise_id: row.workout_log_exercise_id ?? null,
           workout_log_id: row.workout_log_id,
           completed_at: row.completed_at,
           exercise_name: row.exercise_name,
           tracking_type: row.tracking_type ?? 'reps_weight',
           sets: [],
         });
-        grouped.get(row.workout_log_id).sets.push({
+        grouped.get(occurrenceId).sets.push({
           set_number: row.set_number,
           actual_load_value: row.actual_load_value,
           actual_load_unit: row.actual_load_unit,
@@ -535,11 +538,16 @@ function createExerciseHistoryHandler({
       const allOccurrences = [...grouped.values()]
         .map((occurrence) => ({ ...occurrence, sets: occurrence.sets.sort((a, b) => a.set_number - b.set_number) }))
         .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)
-          || b.workout_log_id.localeCompare(a.workout_log_id));
-      const occurrences = allOccurrences.slice(0, 10);
+          || b.workout_log_id.localeCompare(a.workout_log_id)
+          || b.occurrence_id.localeCompare(a.occurrence_id));
+      // The SQL lookahead and cursor count workouts, so keep every matching
+      // exercise in each selected workout instead of splitting a cursor group.
+      const logIds = [...new Set(allOccurrences.map((row) => row.workout_log_id))];
+      const selectedLogIds = new Set(logIds.slice(0, 10));
+      const occurrences = allOccurrences.filter((row) => selectedLogIds.has(row.workout_log_id));
       return res.json({
         occurrences,
-        next_cursor: allOccurrences.length > 10 ? encodeHistoryCursor(occurrences[occurrences.length - 1]) : null,
+        next_cursor: logIds.length > 10 ? encodeHistoryCursor(occurrences[occurrences.length - 1]) : null,
       });
     } catch (error) {
       logError('exercise history error', error);
@@ -930,7 +938,7 @@ router.post('/quick-complete', requireClient, async (req, res) => {
       p_session_id: await resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId }),
     });
     if (startErr) throw startErr;
-    if (started.outcome === 'conflict') {
+    if (started.outcome === 'conflict' || started.outcome === 'resumed') {
       const active = await workoutLogWithDetails(started.workout_log_id);
       return res.status(409).json({ error: 'Finish or abandon your active workout first', active_workout: active });
     }
@@ -939,16 +947,10 @@ router.post('/quick-complete', requireClient, async (req, res) => {
     }
     const logId = started.workout_log_id;
 
-    // Sets → completed with values left null (honest "not tracked").
-    const { error: allErr } = await supabaseAdmin.rpc('complete_all_workout_sets_v2', {
-      p_workout_log_id: logId, p_client_id: clientId, p_entered_by: 'client', p_entered_by_coach_id: null,
-    });
-    if (allErr) throw allErr;
-    // Flag while still active — the immutability trigger guards child sets,
-    // not the parent log row.
-    await supabaseAdmin.from('workout_logs').update({ quick_completed: true }).eq('id', logId);
-    const { error: completeErr } = await supabaseAdmin.rpc('complete_workout_log_v2', {
-      p_workout_log_id: logId, p_client_id: clientId, p_notes: '', p_feedback: '', p_completed_at: null,
+    // Atomic and guarded: discard only untouched prescription defaults.
+    // Concurrently logged values remain active for the client to resume.
+    const { error: completeErr } = await supabaseAdmin.rpc('quick_complete_workout_log_v2', {
+      p_workout_log_id: logId, p_client_id: clientId,
     });
     if (completeErr) throw completeErr;
 
