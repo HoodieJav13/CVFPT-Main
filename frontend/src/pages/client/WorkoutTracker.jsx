@@ -1,4 +1,4 @@
-import { workoutEntryErrors } from '@/lib/workoutEntryErrors';
+import { workoutEntryErrorMessage, workoutEntryErrors } from '@/lib/workoutEntryErrors';
 import { performedSet, trackingType, tracks } from '@/lib/workoutMetrics';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -314,7 +314,7 @@ export default function WorkoutTracker() {
 
   const saveSet = (exercise, set) => {
     let payload;
-    try { payload = performedSet(set, exercise); } catch (error) { setValidatedSets((current) => ({ ...current, [set.id]: true })); toast.error(error.message); return; }
+    try { payload = performedSet(set, exercise); } catch (error) { setValidatedSets((current) => ({ ...current, [set.id]: true })); toast.message(workoutEntryErrorMessage(error)); return; }
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
@@ -327,7 +327,7 @@ export default function WorkoutTracker() {
     // Load fields normalized exactly like saveSet — an empty string with a
     // stale unit is a backend 400 that would revert the completion.
     let payload;
-    try { payload = performedSet({ ...set, status }, exercise); } catch (error) { setValidatedSets((current) => ({ ...current, [set.id]: true })); toast.error(error.message); return; }
+    try { payload = performedSet({ ...set, status }, exercise); } catch (error) { setValidatedSets((current) => ({ ...current, [set.id]: true })); toast.message(workoutEntryErrorMessage(error)); return; }
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
@@ -638,7 +638,7 @@ export default function WorkoutTracker() {
                     </div>
                   )}
                   {Object.entries(entryErrors(exercise, set)).map(([field, message]) => (
-                    <p key={field} id={errorId(set, field)} role="alert" className="col-span-full text-sm text-destructive">{message}</p>
+                    <p key={field} id={errorId(set, field)} role="status" className="col-span-full text-sm text-destructive">{message}</p>
                   ))}
                   {set.set_origin === 'extra' && (
                     <Button type="button" size="touchIcon" variant="ghost" className="col-start-2 text-muted-foreground" disabled={sealed} onClick={() => removeSet(exercise, set)} aria-label="Remove extra set" title="Remove extra set">

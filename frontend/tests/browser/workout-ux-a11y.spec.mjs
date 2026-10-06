@@ -13,9 +13,9 @@ async function editor(page) {
 test('invalid fields retain values with associated inline errors and never enqueue or start rest', async ({ page }) => {
  const { results } = await tracker(page);
  for (const [field, value, message, corrected] of [
-  [`${exerciseName} set 1 performed RPE`, '11', 'RPE must be 1 through 10', ''],
-  [`${exerciseName} set 1 performed reps`, '2.5', 'Reps must be a nonnegative whole number', ''],
-  [`${exerciseName} set 1 weight`, '-1', 'Enter a valid weight and unit', '135.5'],
+  [`${exerciseName} set 1 performed RPE`, '11', 'Use RPE 1–10', ''],
+  [`${exerciseName} set 1 performed reps`, '2.5', 'Use a whole number of reps', ''],
+  [`${exerciseName} set 1 weight`, '-1', 'Use weight 0 or more', '135.5'],
   ['Synthetic run set 1 performed duration', '1441', '24 hours', ''],
   ['Synthetic run set 1 performed distance', '1001', '1,000 km', ''],
  ]) {

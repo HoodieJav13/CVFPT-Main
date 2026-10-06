@@ -57,7 +57,7 @@ test('typed outbox survives reload and an ambiguous add response, then completes
   await expect(duration(1)).toHaveValue('');
   await page.getByLabel('Run set 1 performed RPE', { exact: true }).fill('11');
   await page.getByRole('button', { name: 'Complete set 1', exact: true }).click();
-  await expect(page.getByText('RPE must be 1 through 10 in 0.5 increments or null').first()).toBeVisible();
+  await expect(page.getByText('Use RPE 1–10 in 0.5 steps, or leave blank.').first()).toBeVisible();
   await expect(page.getByTestId('rest-timer')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Complete set 1', exact: true })).toBeVisible();
   expect(writes).toEqual([]);

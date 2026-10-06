@@ -654,7 +654,8 @@ test('exercise history is network-only, paginated, retryable, and independent fr
   await reps.fill('-1');
   await reps.blur();
   await card.getByRole('button', { name: 'Complete set 2' }).click();
-  await expect(page.getByText('Reps must be a nonnegative whole number or null')).toBeVisible();
+  const repsErrorId = await reps.getAttribute('aria-describedby');
+  await expect(card.locator(`[id="${repsErrorId}"]`)).toHaveText('Use a whole number of reps (0 or more), or leave blank.');
   await expect(card.getByRole('button', { name: 'Mark incomplete set 2' })).toBeVisible();
   await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
 
