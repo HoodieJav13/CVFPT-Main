@@ -3,9 +3,15 @@ import { setupWorkoutUx, exerciseName } from '../../frontend/tests/browser/worko
 import { writeFile,readFile,readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 const folder=new URL('.',import.meta.url).pathname;
-const sources={before:{sha:'cda1beae5857bb1ce98b44b596ada6def085edce',url:'http://127.0.0.1:42744'},after:{sha:'5f835410275f0091f1c375341608d50e8c81c60e',url:'http://127.0.0.1:42742'}};
+const sources={before:{sha:'cda1beae5857bb1ce98b44b596ada6def085edce',url:'http://127.0.0.1:42744'},after:{sha:'770e7139c8442983d7189be33f328cd4bae84521',url:'http://127.0.0.1:42742'}};
 const browser=await chromium.launch();const captures=[];
-async function anchor(page,locator,y){await locator.evaluate((e,target)=>window.scrollTo({top:Math.max(0,scrollY+e.getBoundingClientRect().top-target),left:0,behavior:'instant'}),y);}
+async function anchor(page,locator,y){await locator.evaluate((e,requested)=>{
+ const region=e.closest('[data-testid="workout-scroll-region"]');
+ if(region&&getComputedStyle(region).overflowY==='auto'){
+  const r=region.getBoundingClientRect(),target=Math.max(r.top+8,Math.min(requested,r.bottom-e.getBoundingClientRect().height-8));
+  region.scrollTo({top:Math.max(0,region.scrollTop+e.getBoundingClientRect().top-target),behavior:'instant'});
+ }else window.scrollTo({top:Math.max(0,scrollY+e.getBoundingClientRect().top-requested),left:0,behavior:'instant'});
+},y);}
 async function metrics(locator){return locator.evaluate(e=>{const s=getComputedStyle(e),c=document.createElement('canvas').getContext('2d');c.font=`${s.fontStyle} ${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;const r=e.getBoundingClientRect();return {rect:r.toJSON(),value:e.value,usableWidth:e.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight),textWidth:c.measureText(e.value||'').width,font:c.font,labels:[...(e.labels||[])].map(l=>l.textContent.trim()),invalid:e.getAttribute('aria-invalid'),describedBy:e.getAttribute('aria-describedby')};});}
 const scenes=['weight','builder-top','builder-lower','builder-targets','rest-clear','rest-overlay','rest-controls','validation','touch-targets'];
 for(const width of [320,390,1440]) for(const scene of (width===1440?['weight','builder-top']:scenes)) for(const [version,source] of Object.entries(sources)) {
@@ -22,32 +28,33 @@ for(const width of [320,390,1440]) for(const scene of (width===1440?['weight','b
   detail.editor=await editor.evaluate(e=>({clientWidth:e.clientWidth,scrollWidth:e.scrollWidth,scrollTop:e.scrollTop,rect:e.getBoundingClientRect().toJSON()}));
   detail.sets=await metrics(editor.getByTestId('workout-exercise-sets-input'));
  } else if(scene==='touch-targets'){
-  await page.goto('/client/programs?view=other');await page.getByTestId('start-standalone-workout').waitFor();await page.evaluate(()=>scrollTo({top:0,left:0,behavior:'instant'}));scrollState='Top of Other assigned workouts; no start/download action performed.';
+  await page.goto('/client/programs?view=other');await page.getByTestId('start-standalone-workout').waitFor();await page.evaluate(()=>document.fonts.ready);await page.evaluate(()=>scrollTo({top:0,left:0,behavior:'instant'}));scrollState='Top of Other assigned workouts; no start/download action performed.';
+  detail.title=await page.getByText('Synthetic phone workout',{exact:true}).evaluate(e=>({rect:e.getBoundingClientRect().toJSON(),lineCount:e.getBoundingClientRect().height/parseFloat(getComputedStyle(e).lineHeight)}));
   for(const id of ['start-standalone-workout','download-workout-pdf'])detail[id]=await page.getByTestId(id).evaluate(e=>e.getBoundingClientRect().toJSON());
  } else {
-  await page.goto('/client/workouts/ux-log/track');await page.getByTestId('workout-tracker').waitFor();
+  await page.goto('/client/workouts/ux-log/track');await page.getByTestId('workout-tracker').waitFor();await page.evaluate(()=>document.fonts.ready);
   const weight=page.getByLabel(`${exerciseName} set 1 weight`,{exact:true});
   if(scene==='weight'){await anchor(page,weight,260);scrollState='First exercise, set 1 weight top anchored at 260px.';detail.weight=await metrics(weight);}
   if(scene==='validation'){
-   const rpe=page.getByLabel(`${exerciseName} set 1 performed RPE`,{exact:true});await rpe.fill('11');await rpe.blur();await anchor(page,rpe,260);scrollState='Same invalid RPE 11 blurred; RPE top anchored at 260px.';detail.rpe=await metrics(rpe);detail.error=await rpe.evaluate(e=>document.getElementById(e.getAttribute('aria-describedby'))?.textContent||null);detail.writes=results.writes;
+   const rpe=page.getByLabel(`${exerciseName} set 1 performed RPE`,{exact:true});await rpe.fill('11');await rpe.blur();await anchor(page,rpe,260);scrollState='Same invalid RPE 11 blurred; RPE top anchored at 260px.';detail.rpe=await metrics(rpe);detail.error=await rpe.evaluate(e=>document.getElementById(e.getAttribute('aria-describedby'))?.textContent||null);detail.writes=results.writes;detail.feedback=await rpe.evaluate(e=>{const p=document.getElementById(e.getAttribute('aria-describedby'));if(!p)return null;const backgrounds=[];for(let node=p;node;node=node.parentElement)backgrounds.push(getComputedStyle(node).backgroundColor);return{role:p.getAttribute('role'),informationIcons:p.querySelectorAll('svg[aria-hidden="true"]').length,foreground:getComputedStyle(p).color,backgrounds};});
   }
   if(scene.startsWith('rest')){
-   await page.getByRole('button',{name:'Complete set 1',exact:true}).first().click();await page.getByRole('button',{name:'Complete set 1',exact:true}).first().click();await page.getByTestId('rest-timer').waitFor();
+   await page.getByRole('button',{name:'Complete set 1',exact:true}).first().click();await page.getByRole('button',{name:'Complete set 1',exact:true}).first().click();await page.getByTestId('rest-timer').waitFor();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const control=page.getByTestId('same-as-last-time').first();const target=scene==='rest-clear'?Math.round(height/2)-22:height-194;
    if(scene==='rest-controls'){
-    await page.evaluate(()=>scrollTo({top:document.documentElement.scrollHeight,left:0,behavior:'instant'}));
-    scrollState='Document bottom: running rest controls and finish actions, frozen 60s rest, first superset round completed.';
+    await page.evaluate(()=>{const region=document.querySelector('[data-testid="workout-scroll-region"]');if(region&&getComputedStyle(region).overflowY==='auto')region.scrollTo({top:region.scrollHeight,behavior:'instant'});else scrollTo({top:document.documentElement.scrollHeight,left:0,behavior:'instant'});});
+    scrollState='Workout content bottom: running rest controls and finish actions, frozen 60s rest, first superset round completed. After controls occupy a separate reserved footer.';
    }else{
     await anchor(page,control,target);
     detail.requestedControlTop=target;
-    scrollState=`First Same as last time requested top ${target}px, first superset round completed, frozen 60s rest. Actual top and scroll offsets recorded; page-top clamping disclosed below.`;
+    scrollState=`First Same as last time requested top ${target}px, first superset round completed, frozen 60s rest. Actual top, scroll offsets and reserved-region boundary clamping disclosed below.`;
    }
    const checks=scene==='rest-controls'?[page.getByTestId('rest-minus'),page.getByTestId('rest-plus'),page.getByTestId('rest-timer'),page.getByRole('button',{name:'Complete all remaining',exact:true}),page.getByRole('button',{name:'Finish workout',exact:true})]:[page.getByRole('button',{name:'Add set',exact:true}).first(),control];
    detail.controls=[];
    for(const locator of checks)detail.controls.push(await locator.evaluate(e=>{const r=e.getBoundingClientRect();return{name:e.getAttribute('aria-label')||e.textContent.trim(),rect:r.toJSON(),hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)),allNinePointsHit:[0.2,0.5,0.8].every(x=>[0.2,0.5,0.8].every(y=>e.contains(document.elementFromPoint(r.x+r.width*x,r.y+r.height*y))))};}));
    if(scene!=='rest-controls'){
     const actualTop=detail.controls[1].rect.top;detail.actualControlTop=actualTop;
-    detail.alignmentDifference=actualTop===target?null:`Requested ${target}px; actual ${actualTop}px because scrolling clamps at the document boundary.`;
+    detail.alignmentDifference=actualTop===target?null:`Requested ${target}px; actual ${actualTop}px because the document or reserved entry-region boundary limits the anchor.`;
    }
    detail.dock=await page.getByTestId('workout-control-dock').evaluate(e=>({rect:e.getBoundingClientRect().toJSON(),position:getComputedStyle(e).position}));
    detail.timer=await page.getByTestId('rest-timer').evaluate(e=>({rect:e.getBoundingClientRect().toJSON(),text:e.textContent.trim(),insideDock:Boolean(e.closest('[data-testid="workout-control-dock"]'))}));
@@ -56,6 +63,7 @@ for(const width of [320,390,1440]) for(const scene of (width===1440?['weight','b
  }
  await page.evaluate(()=>document.fonts.ready);const file=`screenshots/${scene}-${width}-${version}.png`;await page.screenshot({path:`${folder}/${file}`,animations:'disabled'});
  const screen=await page.evaluate(()=>({scrollX,scrollY,documentWidth:document.documentElement.scrollWidth,viewportWidth:innerWidth,viewportHeight:innerHeight,theme:document.documentElement.className,bodyColor:getComputedStyle(document.body).backgroundColor}));
+ const region=page.getByTestId('workout-scroll-region');if(await region.count())detail.scrollRegion=await region.evaluate(e=>({rect:e.getBoundingClientRect().toJSON(),scrollTop:e.scrollTop,scrollHeight:e.scrollHeight,overflow:getComputedStyle(e).overflowY}));
  const fullContext=[];
  if(scene==='weight'||scene==='touch-targets'||scene==='rest-controls'){
   const full=`screenshots/${scene}-${width}-${version}-full.png`;await page.screenshot({path:`${folder}/${full}`,fullPage:true,animations:'disabled'});fullContext.push(full);
@@ -63,5 +71,14 @@ for(const width of [320,390,1440]) for(const scene of (width===1440?['weight','b
  if(results.errors.length||results.unexpected.length)throw new Error(JSON.stringify({scene,width,version,errors:results.errors,unexpected:results.unexpected}));
  captures.push({scene,width,height,version,sourceSHA:source.sha,file,sha256:createHash('sha256').update(await readFile(`${folder}/${file}`)).digest('hex'),fullContext,scrollState,screen,detail,pageErrors:results.errors,unexpectedApi:results.unexpected});console.log(`${scene} ${width} ${version}: ${screen.documentWidth}px`);await context.close();
 }
+// Record contrast from computed colors; validation backgrounds are transparent
+// layers over the existing dark surface, plus the active row's primary tint.
+for(const capture of captures){const feedback=capture.detail.feedback;if(!feedback)continue;
+ let rgb=[255,255,255];for(const color of [...feedback.backgrounds].reverse()){const p=color.match(/[\d.]+/g).map(Number),a=p[3]??1;rgb=rgb.map((v,i)=>p[i]*a+v*(1-a));}
+ const luminance=colors=>colors.map(v=>v/255).reduce((sum,v,i)=>sum+[.2126,.7152,.0722][i]*(v<=.04045?v/12.92:((v+.055)/1.055)**2.4),0);
+ const fg=luminance(feedback.foreground.match(/[\d.]+/g).map(Number).slice(0,3)),bg=luminance(rgb);
+ feedback.cssCompositeContrast=Math.round(((Math.max(fg,bg)+.05)/(Math.min(fg,bg)+.05))*100)/100;
+ if(feedback.cssCompositeContrast<4.5)throw new Error('Validation text contrast below4.5');
+}
 const allScreenshotHashes={};for(const file of (await readdir(`${folder}/screenshots`)).filter(f=>f.endsWith('.png')).sort())allScreenshotHashes[`screenshots/${file}`]=createHash('sha256').update(await readFile(`${folder}/screenshots/${file}`)).digest('hex');
-await writeFile(`${folder}/manifest.json`,JSON.stringify({schemaVersion:2,createdAt:new Date().toISOString(),browser:browser.version(),sources,fixture:'Identical synthetic workout-ux-fixture.mjs data, log started_at fixed 2026-10-05T11:55Z, Date.now frozen to 2026-10-05T12:00Z, no real client data.',appSourceChangedAfterInitialReview:true,limitations:['Synthetic intercepted API responses prove rendered frontend behavior, not hosted/backend data writes or authorization.','Requested logical anchors match; changed content heights cause different numeric scroll offsets. At 390px rest-overlay Before clamps to actual y633 at scrollY0 versus requested y650; After reaches y650 at scrollY271.','D7 correction removes sticky positioning: timer and finish controls remain at the end of the workout and are no longer pinned during logging.','Chromium dark/reduced-motion capture only; no physical keyboard, iOS Safari or installed PWA proof.'],captures,allScreenshotHashes},null,2));await browser.close();
+await writeFile(`${folder}/manifest.json`,JSON.stringify({schemaVersion:3,createdAt:new Date().toISOString(),browser:browser.version(),sources,fixture:'Identical synthetic workout-ux-fixture.mjs data, log started_at fixed 2026-10-05T11:55Z, Date.now frozen to 2026-10-05T12:00Z, no real client data.',appSourceChangedAfterInitialReview:true,reviewedAppSHA:sources.after.sha,appSourceChangedAfterFinalReview:false,limitations:['Synthetic intercepted API responses prove rendered frontend behavior, not hosted/backend data writes or authorization.','Requested logical anchors match where feasible. The reserved footer reduces available entry space, so After obstruction anchors clamp to the entry-region bottom; Before also clamps at document top for390px. Exact requested/actual positions and both document/region scroll offsets are recorded.','Owner revision reserves a separate timer/Finish footer and scrolls entries above it. Very short or keyboard viewports use document scrolling with focused-field clearance. Full-page captures show actual document extent; they do not expand clipped regional content.','Chromium dark/reduced-motion capture only; no physical keyboard, iOS Safari or installed PWA proof.'],captures,allScreenshotHashes},null,2));await browser.close();

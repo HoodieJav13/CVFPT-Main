@@ -1,31 +1,52 @@
 # Workout UI: actual before/after review
 
-**Local only. Publication/merge held for owner visual review.**
+**Local only. Publication and merge held for owner review.**
 
-Open [index.html](index.html). Nine comparison pages retain complete viewport
-frames. Portable HTML additionally embeds full-page context and the manifest;
-PDF contains the compact pages. The key PNG is page 8, the D7 obstruction comparison. Final documentation head
-and artifact upload status are in the external handoff.
+Open [index.html](index.html). Nine numbered pages preserve #6 validation,
+#7 workout Start/PDF and timer views. Portable HTML embeds all images/manifest;
+PDF contains the compact sheets. Page8 is the obstruction key PNG.
 
-- Before: freshly rendered released main `cda1beae5857bb1ce98b44b596ada6def085edce`.
-- After: independently reviewed `5f835410275f0091f1c375341608d50e8c81c60e`.
-- This replaces the earlier packet at `256676fe` that exposed D7 as partial.
-  Original-state red regressions `f0487e7` caught the obstruction; `5f83541`
-  removes only sticky/bottom/z positioning from the existing controls container.
-- Phone: 320 × 640 and 390 × 844. Desktop: 1440 × 900.
-- Chromium 149, dark theme, reduced motion, en-US, UTC; frozen Date.now at
-  2026-10-05 12:00 UTC; synthetic start time 11:55 UTC.
-- [manifest.json](manifest.json): 40 viewport captures plus 14 full-page context
-  images, exact source/state/rects/scroll offsets, all 54 PNG SHA-256 hashes,
-  no page errors and no unexpected API requests. No real client data or stale
-  audit images. [screenshots](screenshots/) retain original PNGs.
+- Before: actual released main `cda1beae5857bb1ce98b44b596ada6def085edce`.
+- After: independently reviewed app `770e7139c8442983d7189be33f328cd4bae84521`.
+- Supersedes the owner-reviewed `5f83541` packet, which cleared obstruction by
+  unpinning controls. The owner requested pinned convenience, calmer #6 guidance
+  and compact #7 title layout. Historical packets remain in Git.
+- Phone320×640 /390×844, desktop1440×900; Chromium149, dark, reduced motion,
+  en-US /UTC, Date.now frozen2026-10-05T12:00Z, workout start11:55Z.
+- [manifest.json](manifest.json) schema3 records40 viewport and14 full-document
+  images, all54 PNG hashes, exact source/rectangles, requested/actual anchors,
+  document and entry-region offsets, hit tests and interception results.
+  No page errors, unexpected API calls or real client data.
+
+## What changed
+
+The existing responsive rows, editor containment, durable labels and44px targets
+remain. Timer/progress/Finish now occupy a separate reserved row; workout entries
+scroll above it and cannot extend underneath. This preserves pinned controls at
+normal sizes, with less content visible during rest. Very short or panned
+keyboard viewports use document scrolling with focused-field clearance, so
+inputs remain reachable. The shell and navigation are unchanged.
+
+#6 uses neutral foreground text, an information icon, polite status and the same
+softer guidance in its toast. Field associations, values and validation limits
+are preserved. #7 raises button height32→44px while retaining previous12px text
+and horizontal padding: Start51.64px /PDF79.44px wide; title stays2lines at320
+and1line at390. The prior wider button style had added an unnecessary title line.
+
+The reserved region changes scroll geometry. Requested lower action anchors
+clamp upward to the entry boundary; Before390px also clamps at document top.
+Actual positions and both scroll offsets are disclosed under each image and in
+the manifest. Nine interior control hit points pass after the revision. Tests
+use stricter10/50/90% points for rectangular actions; capture uses20/50/80% to
+avoid counting outside corners of circular timer buttons as obstruction.
+Full-document images show the actual page extent; they do not expand all content
+inside the regional scroller. Viewport images are the paired evidence.
 
 ## Reproduction
 
-Use separate worktrees at exact Before and After source SHAs. Start normal
-Vite (not preview fixture mode) on 127.0.0.1:42744 for Before and :42742 for After,
-with existing locked frontend dependencies. Never reuse another server on those
-ports. From the After worktree run:
+Use isolated worktrees at the exact Before and After app SHAs, existing locked
+frontend dependencies, normal Vite mode (not preview fixture mode), and strict
+loopback ports42744 /42742. Never reuse a foreign server. From After:
 
 ```sh
 node docs/workout-ux-visual-review/capture.mjs
@@ -33,59 +54,29 @@ python3 docs/workout-ux-visual-review/make-packet.py /absolute/output/directory
 node docs/workout-ux-visual-review/render-packet.mjs /absolute/output/directory/CVFPT-Workout-UI-Before-After
 ```
 
-Capture imports the committed synthetic fixture and Playwright, intercepts
-every API request, and writes only this evidence directory. It submits no real
-client changes. Inspect images and the printed document afterward. Numeric
-captions are specific to these source SHAs, not promises for future changes.
+Capture intercepts every API call with the committed synthetic fixture. It
+submits no real changes. Caption measurements apply to these exact sources.
+Inspect both rendered HTML and decoded PDF pages afterward.
 
-## What the evidence means
+## Verification and limits
 
-320px weight: baseline document 352px, input usable 10px versus actual text
-38.26px. After: document 320px and input usable 106px. Builder content width:
-baseline 588px versus 318px/388px after at phone widths. Start/PDF controls:
-32px before versus 44px after. Duration/distance targets and units already
-existed in Before; their behavior remains unchanged.
+Final source: UX25/25, frontend unit69/69, typed outbox1/1, full preview79 passed /
+8 live-auth skipped, production build, diff/protocol checks. Independent reviewer
+ran UX25/25, unit69/69 and typed outbox1/1; directly checked both roles, timer
+behavior, nine-point hits, compact buttons, short-window resize, Tab navigation
+and synthetic visual-viewport shrink/pan. All verified issues were corrected and
+rechecked; the captured app is unchanged after final independent review.
 
-D7 originally remained partial after timer grouping: the sticky dock still
-covered Add set/Same as last time. Final controls are in normal document flow
-after exercises. At 320×640 scrollY571 both exercise actions are fully visible
-and hit-testable; at 390×844 scrollY271 both are clear at y650. The manifest
-records nine interior hit-test points per control. Regression tests retain
-stronger rectangular-action points at 10/50/90%; capture uses 20/50/80% interior
-points so it does not falsely count the outside corners of circular timer
-buttons as obstruction. No clipping, smaller targets or nested scroll area.
+All9 print sheets and54 screenshot hashes are checked. PDFKit decodes the PDF
+into9 actual page images for inspection. The build's existing chunk-size
+advisory remains. Physical phone keyboard, Safari and installed PWA are not
+verified; synthetic interception proves frontend behavior, not hosted persistence
+or authorization. Optimistic offline detail snapshots stay deferred. No backend,
+metric/unit/outbox/schema/dependency contract changed. No push, migration,
+merge or deployment occurred.
 
-The visible tradeoff is explicit: timer and finish actions no longer stay
-pinned during logging; ordinary scrolling reaches them at the workout end.
-Page 5 shows their end-of-document state; page 8 shows the previously obscured
-exercise actions. End controls are clear of mobile navigation. Timer state,
-±15 seconds, reload, dismissal, expiry and opt-in cues remain unchanged.
-
-Requested logical anchors match, but actual numeric offsets differ when
-content heights change. At 390px rest-overlay, Before clamps at document top:
-actual action y633, scrollY0, versus requested y650. After reaches y650 at
-scrollY271. This 17px alignment difference is captioned and recorded. At 320px
-both anchors are y446 (Before scrollY283, After571). Full-page captures retain
-additional context; viewport frames are the comparison evidence.
-
-Synthetic API interception proves frontend rendering, not live backend
-authorization/persistence. Physical keyboards, Safari and installed PWA were
-not tested. Optimistic offline detail rendering remains deferred. No production
-or migration state changed.
-
-## Verification and review
-
-Fresh correction checks: UX14/14; frontend unit69/69; typed outbox1/1; full
-preview79 passed/8 live-auth skipped; Vite production build; diff/protocol v1.1.
-Red D7 regression on the unfixed source: two phone hit-test failures and one
-desktop pass. Independent exact-head review reran new regressions/timer4/4,
-then verified ordinary scroll-to-end, all timer/finish controls, Finish dialog,
-±15/reload/dismissal at all three sizes. No verified bug, page error or
-unexpected API request. The material unpinned-visibility tradeoff was confirmed.
-
-HTML images/load/layout and all nine print sheets were checked. PDFKit decoded
-the final PDF to nine PNG pages for visual inspection. Image hashes are verified.
-A first capture probe failed on outside corners of circular buttons; corrected
-interior probes passed without any application change. Historical evidence is
-retained by Git; this refreshed packet supersedes the partial-D7 comparison.
-See the [implementation handoff](../workout-ux-followup-2026-10-05.md).
+Library upload remains blocked before preparation by unavailable tooling; no
+Library file ID/save is claimed. The portable HTML is opened in a new
+dedicated owner-review Chrome window because the previous window was closed;
+existing tabs are unchanged. Exact doc head, artifact hashes and external
+review logs are in the local handoff. See [implementation notes](../workout-ux-followup-2026-10-05.md).
