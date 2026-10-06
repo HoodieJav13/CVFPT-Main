@@ -19,14 +19,21 @@ Production deployments are allowed for this UI release. Hosted migrations,
 schema changes, production-data mutations, sends, costs, new/raw credentials,
 PostHog activation and unrelated release work are forbidden.
 
+The owner additionally approved the exact dependency repair at
+2026-10-06 02:06:57 UTC: “Approve fix.” This grants only the backend lockfile
+patch from `proxy-addr` 2.0.7 to 2.0.8, clean installation/tests/audits,
+independent review and fresh exact-head CI before the already-authorized
+merge and Production verification. No broader dependency updates are included.
+
 - Approved documentation head: `8fd164f3d4b26f9020be0e3c6e419dd54a99f002`.
 - Approved app/capture head: `770e7139c8442983d7189be33f328cd4bae84521`.
 - Fresh main/base: `cda1beae5857bb1ce98b44b596ada6def085edce`; the release
   preflight fetched origin/main and found no intervening commits or conflict.
 - Branch: `codex/workout-ux-followup`; other worktrees are preserved.
 
-No application source changed after owner/independent review. New release
-changes only update this status/authority documentation. The original
+No application source changed after owner/independent review. Release changes
+update this status/authority documentation and the separately approved
+single-package backend lock entry described below. The original
 [numbered comparison](workout-ux-visual-review/index.html), manifest and all54
 image hashes remain intact. The former local-review hold printed on those
 artifacts is historical, superseded by the approval above.
@@ -36,9 +43,20 @@ artifacts is historical, superseded by the approval above.
 Phone load fit, narrow builder containment, persistent field labels, accessible
 entry guidance, scoped44px targets and reserved pinned timer/Finish space form
 the complete reviewed UI scope. Existing tracking types, units, outbox, history,
-API authorization, snapshots, backend, schema and dependencies are unchanged.
+API authorization, snapshots, backend source and schema are unchanged.
 Very short/panned viewports use document scrolling with focus clearance. The
 owner-approved tradeoff remains less visible entry content during rest.
+
+The unchanged baseline `proxy-addr` 2.0.7 triggered critical advisory
+`GHSA-jqcg-44mw-7w3h` in local and PR108 mandatory backend audits. The approved
+repair changes only its lock entry to 2.0.8, including registry tarball,
+integrity and upstream funding metadata. The manifest, other package entries
+and its dependencies are unchanged. Express's existing `~2.0.7` range accepts
+the patch. Clean installation, all499 backend tests and a zero-vulnerability
+audit verified the candidate before commit. The app uses numeric proxy trust;
+no exposure to the advisory's IPv6-subnet-specific exploit was demonstrated.
+The prior failed-audit receipts are retained alongside the fresh release
+evidence. All CI gates must pass on the final head before merge.
 
 The fresh exact-head run will cover backend/unit/build, normal-mode synthetic
 UX and typed recovery, full preview and fixture analytics/series checks. GitHub
