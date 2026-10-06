@@ -1,6 +1,9 @@
 # Workout UI: actual before/after review
 
-**Local only. Publication and merge held for owner review.**
+**Owner approved the revised comparison on2026-10-06.** The captured images and
+PDF retain their original local-review labels as historical evidence. PR/CI/merge
+and exact Production verification are now authorized; see the
+[release ledger](../workout-ux-release-2026-10-06.md).
 
 Open [index.html](index.html). Nine numbered pages preserve #6 validation,
 #7 workout Start/PDF and timer views. Portable HTML embeds all images/manifest;

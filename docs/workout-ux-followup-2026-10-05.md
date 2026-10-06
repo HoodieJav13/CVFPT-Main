@@ -1,5 +1,12 @@
 # Workout layout/accessibility follow-up — 2026-10-05
 
+> **Owner approval — 2026-10-06:** the revised comparison is approved and the
+> visual hold is cleared. The already authorized PT UI release now includes
+> PR publication, mandatory CI, merge and exact Production verification.
+> This document retains the preceding local-review checkpoint; its former
+> release hold describes that checkpoint. Current release evidence is in
+> [the release ledger](workout-ux-release-2026-10-06.md).
+
 **COMPLETE-LOCAL**, protocol v1.1. Branch `codex/workout-ux-followup`, no
 upstream/push. Released main/base:
 `cda1beae5857bb1ce98b44b596ada6def085edce`. Reviewed app/capture commit:
