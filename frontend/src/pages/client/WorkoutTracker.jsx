@@ -1,9 +1,10 @@
 import { workoutEntryErrorMessage, workoutEntryErrors } from '@/lib/workoutEntryErrors';
 import { performedSet, trackingType, tracks } from '@/lib/workoutMetrics';
+import { WorkoutViewport } from '@/components/training/WorkoutViewport';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Play, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Play, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -461,8 +462,42 @@ export default function WorkoutTracker() {
     }
   };
 
+  const controls = (
+      <div
+        className="signature-glass flex flex-col gap-2 rounded-2xl p-2.5"
+        data-testid="workout-control-dock"
+      >
+        <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} onAdjust={adjustRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
+        <div className="flex items-center gap-2 px-1">
+          <div
+            className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary"
+            role="progressbar"
+            aria-label="Sets completed"
+            aria-valuemin={0}
+            aria-valuemax={allSets.length}
+            aria-valuenow={completedCount}
+            data-testid="workout-progress-bar"
+          >
+            <div
+              className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${allSets.length && completedCount === allSets.length ? 'bg-success' : 'bg-primary'}`}
+              style={{ width: `${allSets.length ? Math.round((completedCount / allSets.length) * 100) : 0}%` }}
+            />
+          </div>
+          <span className="text-xs tabular-nums text-muted-foreground">{completedCount}/{allSets.length}</span>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2" disabled={sealed || !remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
+            Complete all remaining
+          </Button>
+          <Button className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2" disabled={sealed || !completedCount} onClick={() => setFinishOpen(true)}>
+            Finish workout
+          </Button>
+        </div>
+      </div>
+  );
+
   return (
-    <div data-testid="workout-tracker">
+    <WorkoutViewport controls={controls}>
       <PageHeader
         title={log.workout_name}
         subtitle={isCoach && log.client?.name ? `For ${log.client.name}` : null}
@@ -638,7 +673,9 @@ export default function WorkoutTracker() {
                     </div>
                   )}
                   {Object.entries(entryErrors(exercise, set)).map(([field, message]) => (
-                    <p key={field} id={errorId(set, field)} role="status" className="col-span-full text-sm text-destructive">{message}</p>
+                    <p key={field} id={errorId(set, field)} role="status" className="col-span-full flex items-start gap-2 text-sm text-foreground">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span>{message}</span>
+                    </p>
                   ))}
                   {set.set_origin === 'extra' && (
                     <Button type="button" size="touchIcon" variant="ghost" className="col-start-2 text-muted-foreground" disabled={sealed} onClick={() => removeSet(exercise, set)} aria-label="Remove extra set" title="Remove extra set">
@@ -680,38 +717,6 @@ export default function WorkoutTracker() {
         )}</SupersetGroups>
       </div>
 
-      <div
-        className="signature-glass mt-5 flex flex-col gap-2 rounded-2xl p-2.5"
-        data-testid="workout-control-dock"
-      >
-        <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} onAdjust={adjustRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
-        <div className="flex items-center gap-2 px-1">
-          <div
-            className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary"
-            role="progressbar"
-            aria-label="Sets completed"
-            aria-valuemin={0}
-            aria-valuemax={allSets.length}
-            aria-valuenow={completedCount}
-            data-testid="workout-progress-bar"
-          >
-            <div
-              className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${allSets.length && completedCount === allSets.length ? 'bg-success' : 'bg-primary'}`}
-              style={{ width: `${allSets.length ? Math.round((completedCount / allSets.length) * 100) : 0}%` }}
-            />
-          </div>
-          <span className="text-xs tabular-nums text-muted-foreground">{completedCount}/{allSets.length}</span>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2" disabled={sealed || !remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
-            Complete all remaining
-          </Button>
-          <Button className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2" disabled={sealed || !completedCount} onClick={() => setFinishOpen(true)}>
-            Finish workout
-          </Button>
-        </div>
-      </div>
-
       <Dialog open={abandonOpen} onOpenChange={setAbandonOpen}>
         <DialogContent className="max-w-sm [&>button]:h-11 [&>button]:w-11" data-testid="workout-abandon-dialog">
           <DialogHeader>
@@ -750,6 +755,6 @@ export default function WorkoutTracker() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </WorkoutViewport>
   );
 }

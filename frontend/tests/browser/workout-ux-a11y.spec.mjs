@@ -40,6 +40,15 @@ test('workout and library authoring fields retain associated labels after typing
  expect(results.unexpected).toEqual([]);
 });
 
+test('entry feedback uses calm associated guidance with a non-color cue',async({page})=>{
+ await tracker(page);const input=page.getByLabel(`${exerciseName} set 1 performed RPE`,{exact:true});await input.fill('11');await input.blur();
+ const id=await input.getAttribute('aria-describedby');const feedback=page.locator(`[id="${id}"]`);
+ await expect(feedback).toHaveAttribute('role','status');await expect(feedback).toHaveText('Use RPE 1–10 in 0.5 steps, or leave blank.');
+ await expect(feedback.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+ const colors=await feedback.evaluate(e=>({actual:getComputedStyle(e).color,neutral:getComputedStyle(document.body).color}));expect(colors.actual).toBe(colors.neutral);
+ await input.fill('7.5');await input.blur();await expect(feedback).toHaveCount(0);await expect(input).not.toHaveAttribute('aria-invalid','true');
+});
+
 test('offline invalid input never enters the queue; a corrected value still syncs', async ({ page, context }) => {
  const { results } = await tracker(page);
  await context.setOffline(true);

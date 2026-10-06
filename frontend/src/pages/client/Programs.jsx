@@ -197,7 +197,7 @@ function WorkoutAssignmentCard({ assignment, starting, onStart }) {
           <div><p className="font-display font-semibold">{workout.name}</p>{(workout.goal || workout.description) && <p className="mt-1 text-sm text-muted-foreground">{workout.goal || workout.description}</p>}</div>
           <div className="flex shrink-0 items-center gap-2">
             <DownloadPdfButton path={`/programs/client/workout-assignments/${assignment.id}/log-sheet.pdf`} name={workout.name} testId="download-workout-pdf" />
-            <Button size="touch" disabled={starting === assignment.id} onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })} data-testid="start-standalone-workout">
+            <Button size="sm" className="h-11 min-w-11" disabled={starting === assignment.id} onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })} data-testid="start-standalone-workout">
               {starting === assignment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Start'}
             </Button>
           </div>
@@ -294,7 +294,7 @@ function DownloadPdfButton({ path, name, testId }) {
     }
   };
   return (
-    <Button size="touch" variant="outline" disabled={downloading} onClick={download} aria-label={`Download ${name || 'workout'} as a printable PDF`} data-testid={testId}>
+    <Button size="sm" className="h-11 min-w-11" variant="outline" disabled={downloading} onClick={download} aria-label={`Download ${name || 'workout'} as a printable PDF`} data-testid={testId}>
       {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
       <span className="ml-1.5">PDF</span>
     </Button>
