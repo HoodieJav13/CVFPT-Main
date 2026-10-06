@@ -218,3 +218,25 @@ an explicit owner decision — it is never presented as already-completed work.
 The effort and impact scores themselves are reviewed by the owner at the same
 decision point as the baseline/bold-probe choice, not self-certified by the
 executing agent and checked later.
+
+### Before/after evidence for visible UI changes
+
+The owner's 2026-10-05 request makes visual comparison part of change
+documentation going forward. For visible UI changes, render the actual baseline
+and proposed source under identical synthetic data, theme, viewport and logical
+scroll/action state. Record both source SHAs and retain a screenshot manifest
+with dimensions, state, image hashes and known limitations. Use 320px and 390px
+phone captures plus a desktop sanity check where the surface supports desktop.
+Show full viewport context, including navigation, errors and overlays; retain
+additional full-page context where useful. Caption the concrete change and
+preserved limitations, and inspect both screenshot pixels and the rendered
+review document before handoff. Do not substitute imagined UI or stale audit
+images for the actual baseline. New surfaces must describe the available
+baseline honestly. Use fictional data only.
+
+Keep a compact HTML or PDF comparison linked from the change documentation;
+when the owner requests an attachment, save supported artifacts to Library and
+report its returned IDs. Visual evidence supplements the existing functional
+checks and release authority. For the workout follow-up, publication and merge
+are explicitly on hold pending owner visual review. Reference packet:
+[`workout-ux-visual-review/index.html`](workout-ux-visual-review/index.html).

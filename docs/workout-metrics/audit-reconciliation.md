@@ -44,3 +44,21 @@ Step 8's time/distance-aware fields, typed target displays, Program Draft duplic
 ## Additional adversarial review
 
 Red tests verified then fixed: old server silently ignoring metric fields, repeated-library occurrences collapsing into one history entry, and floating-point upper bounds disagreeing with PostgreSQL exact decimal arithmetic. A real two-transaction probe found then fixed the completed-log extra-set INSERT race. Final independent read-only reviewer found no remaining verified defect in these revised changes; it did not independently run the shared database stack. See `validation.md` for executed checks and release gates.
+
+## Later bounded UX follow-up on released main
+
+The separate local branch `codex/workout-ux-followup`, based on deployed
+`cda1beae5857bb1ce98b44b596ada6def085edce`, reproduced and corrected D1, the
+inline-accessibility remainder of D2, D4, D5, checked D6 targets and the
+rest overlay in D7. The first timer-grouping change left D7 partial; removing sticky positioning
+then cleared the exercise actions but lost pinned convenience. The owner's
+subsequent revision restores timer/Finish in a separate reserved row and scrolls
+entries above it. Very short /panned keyboard viewports use document scrolling
+with focused-field clearance. Validation guidance is calmer;44px Start/PDF
+retain their original compact widths. The
+historical dispositions above describe the earlier metric checkpoint; they are
+not current closure claims. See [the UX follow-up](../workout-ux-followup-2026-10-05.md)
+for exact scope, measured browser evidence, test counts and local-only authority.
+D3 optimistic detail snapshots and D8–D13/wider design findings remain separate.
+No unit, tracking-mode, snapshot, outbox, backend or database contract changed in
+this pass. No further push, hosted migration, merge or deployment occurred.

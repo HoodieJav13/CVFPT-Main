@@ -1,8 +1,10 @@
+import { workoutEntryErrorMessage, workoutEntryErrors } from '@/lib/workoutEntryErrors';
 import { performedSet, trackingType, tracks } from '@/lib/workoutMetrics';
+import { WorkoutViewport } from '@/components/training/WorkoutViewport';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Loader2, Play, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Play, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -111,7 +113,7 @@ function ExerciseHistory({ logId, exercise }) {
 }
 
 // The rest timer owns its own 250ms tick so a running countdown re-renders
-// only this FAB — not every exercise card and controlled input (audit #11).
+// only these controls — not every exercise card and controlled input (audit #11).
 // The opt-in end-of-rest cue lives here too, since it keys off the same tick.
 function RestTimerFab({ restEndsAt, onClear, onAdjust, restAlerts, attentionScale }) {
   const [now, setNow] = useState(Date.now());
@@ -164,7 +166,7 @@ function RestTimerFab({ restEndsAt, onClear, onAdjust, restAlerts, attentionScal
   const adjustClass = 'signature-glass h-11 w-11 rounded-full px-0 text-sm font-semibold tabular-nums text-foreground hover:bg-card/80';
   return (
     <>
-      <div className="fixed bottom-40 right-4 z-40 flex items-center gap-2 lg:bottom-24">
+      <div className="flex flex-wrap items-center justify-center gap-2">
         {!complete && (
           <>
             <Button type="button" className={adjustClass} onClick={() => onAdjust(-REST_ADJUST_SECONDS)} aria-label={`Subtract ${REST_ADJUST_SECONDS} seconds of rest`} data-testid="rest-minus">
@@ -212,6 +214,7 @@ export default function WorkoutTracker() {
   const [abandonOpen, setAbandonOpen] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
   const [lastTimeLoading, setLastTimeLoading] = useState(null);
+  const [validatedSets, setValidatedSets] = useState({});
   const [restAlerts, setRestAlerts] = useState(() => localStorage.getItem('cvf_rest_alerts') === 'on');
   const lastTimeCache = useRef({});
   const intensity = useVisualIntensity();
@@ -303,9 +306,16 @@ export default function WorkoutTracker() {
     outbox.markDirty();
   };
 
+  const fieldErrors = new Map(log.exercises.flatMap((exercise) => exercise.sets
+    .filter((set) => validatedSets[set.id]).map((set) => [set.id, workoutEntryErrors(set, exercise)])));
+  const entryErrors = (exercise, set) => fieldErrors.get(set.id) || {};
+  const errorId = (set, field) => `set-${set.id}-${field}-error`;
+  const errorProps = (exercise, set, field) => entryErrors(exercise, set)[field]
+    ? { 'aria-invalid': true, 'aria-describedby': errorId(set, field) } : {};
+
   const saveSet = (exercise, set) => {
     let payload;
-    try { payload = performedSet(set, exercise); } catch (error) { toast.error(error.message); return; }
+    try { payload = performedSet(set, exercise); } catch (error) { setValidatedSets((current) => ({ ...current, [set.id]: true })); toast.message(workoutEntryErrorMessage(error)); return; }
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
@@ -318,7 +328,7 @@ export default function WorkoutTracker() {
     // Load fields normalized exactly like saveSet — an empty string with a
     // stale unit is a backend 400 that would revert the completion.
     let payload;
-    try { payload = performedSet({ ...set, status }, exercise); } catch (error) { toast.error(error.message); return; }
+    try { payload = performedSet({ ...set, status }, exercise); } catch (error) { setValidatedSets((current) => ({ ...current, [set.id]: true })); toast.message(workoutEntryErrorMessage(error)); return; }
     outbox.enqueue({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
@@ -452,8 +462,42 @@ export default function WorkoutTracker() {
     }
   };
 
+  const controls = (
+      <div
+        className="signature-glass flex flex-col gap-2 rounded-2xl p-2.5"
+        data-testid="workout-control-dock"
+      >
+        <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} onAdjust={adjustRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
+        <div className="flex items-center gap-2 px-1">
+          <div
+            className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary"
+            role="progressbar"
+            aria-label="Sets completed"
+            aria-valuemin={0}
+            aria-valuemax={allSets.length}
+            aria-valuenow={completedCount}
+            data-testid="workout-progress-bar"
+          >
+            <div
+              className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${allSets.length && completedCount === allSets.length ? 'bg-success' : 'bg-primary'}`}
+              style={{ width: `${allSets.length ? Math.round((completedCount / allSets.length) * 100) : 0}%` }}
+            />
+          </div>
+          <span className="text-xs tabular-nums text-muted-foreground">{completedCount}/{allSets.length}</span>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2" disabled={sealed || !remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
+            Complete all remaining
+          </Button>
+          <Button className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2" disabled={sealed || !completedCount} onClick={() => setFinishOpen(true)}>
+            Finish workout
+          </Button>
+        </div>
+      </div>
+  );
+
   return (
-    <div data-testid="workout-tracker">
+    <WorkoutViewport controls={controls}>
       <PageHeader
         title={log.workout_name}
         subtitle={isCoach && log.client?.name ? `For ${log.client.name}` : null}
@@ -521,7 +565,7 @@ export default function WorkoutTracker() {
               <div className="flex items-start justify-between gap-2">
                 <CardTitle className="flex min-w-0 items-center gap-2 font-display text-lg">
                   {hasGroups && <ExerciseMarker marker={marker} />}
-                  <span className="min-w-0">{exercise.exercise_name}</span>
+                  <span className="min-w-0 break-words">{exercise.exercise_name}</span>
                 </CardTitle>
                 <Badge
                   variant="outline"
@@ -558,44 +602,54 @@ export default function WorkoutTracker() {
               )}
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-[1.75rem_minmax(5.5rem,1fr)_3.5rem_3.5rem_2.75rem] gap-1 px-1 text-xs font-medium text-muted-foreground">
+              <div className="hidden gap-1 px-1 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]">
                 <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span><span>RPE</span><span className="sr-only">Complete</span>
               </div>
               {exercise.sets.map((set) => (
-                <div key={set.id} className={`grid min-h-12 grid-cols-[1.75rem_minmax(5.5rem,1fr)_3.5rem_3.5rem_2.75rem] items-center gap-1 rounded-md px-1 ${setRowClass(exercise, set)}`}>
-                  <span className={cn('text-center text-sm tabular-nums', isActiveSet(exercise, set) && 'font-semibold text-primary')}>{set.set_number}</span>
-                  <div className="flex min-w-0 gap-1">
-                    <Input
-                      type="number" min="0" step="0.5" inputMode="decimal"
-                      className={cn('h-11 min-w-0 px-2 text-sm tabular-nums', isActiveSet(exercise, set) && 'h-12 border-primary/40 font-display text-lg font-semibold')}
-                      value={set.actual_load_value ?? ''}
-                      placeholder={exercise.prescribed_load_value != null ? String(exercise.prescribed_load_value) : undefined}
-                      onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
-                      onBlur={() => saveSet(exercise, set)}
-                      disabled={sealed}
-                      aria-label={`${exercise.exercise_name} set ${set.set_number} weight`}
-                    />
-                    <Select disabled={sealed} value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
-                      setLocalValue(exercise.id, set.id, 'actual_load_unit', value);
-                      saveSet(exercise, { ...set, actual_load_unit: value });
-                    }}>
-                      <SelectTrigger
-                        className="h-11 w-14 shrink-0 px-1.5"
-                        aria-label={`${exercise.exercise_name} set ${set.set_number} weight unit`}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
-                    </Select>
+                <div key={set.id} className={`grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-end gap-1 rounded-md px-1 py-1 sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem] sm:items-center ${setRowClass(exercise, set)}`}>
+                  <span className={cn('row-span-2 self-center text-center text-sm tabular-nums sm:row-span-1', isActiveSet(exercise, set) && 'font-semibold text-primary')}>{set.set_number}</span>
+                  <div className="col-span-3 min-w-0 sm:col-span-1">
+                    <span className="text-xs text-muted-foreground sm:hidden">Weight</span>
+                    <div className="flex min-w-0 gap-1">
+                      <Input
+                        type="number" min="0" step="0.5" inputMode="decimal"
+                        className={cn('h-11 min-w-0 px-2 text-sm tabular-nums', isActiveSet(exercise, set) && 'h-12 border-primary/40 font-display text-lg font-semibold')}
+                        value={set.actual_load_value ?? ''}
+                        placeholder={exercise.prescribed_load_value != null ? String(exercise.prescribed_load_value) : undefined}
+                        onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
+                        onBlur={() => saveSet(exercise, set)}
+                        disabled={sealed}
+                        {...errorProps(exercise, set, 'actual_load_value')}
+                        aria-label={`${exercise.exercise_name} set ${set.set_number} weight`}
+                      />
+                      <Select disabled={sealed} value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
+                        setLocalValue(exercise.id, set.id, 'actual_load_unit', value);
+                        saveSet(exercise, { ...set, actual_load_unit: value });
+                      }}>
+                        <SelectTrigger
+                          className="h-11 w-14 shrink-0 px-1.5"
+                          aria-label={`${exercise.exercise_name} set ${set.set_number} weight unit`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  {trackingType(exercise) === 'reps_weight' ? <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
-                    placeholder={exercise.prescribed_reps || undefined}
-                    onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
-                    aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} /> : <span aria-hidden className="text-center text-muted-foreground">—</span>}
-                  <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-11 px-2 text-sm tabular-nums" value={set.actual_rpe ?? ''}
-                    placeholder={exercise.prescribed_rpe || undefined}
-                    onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
-                    aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
+                  <div className="col-start-2 min-w-0 sm:col-start-auto">
+                    <span className="text-xs text-muted-foreground sm:hidden">{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>
+                    {trackingType(exercise) === 'reps_weight' ? <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
+                      placeholder={exercise.prescribed_reps || undefined}
+                      onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
+                      {...errorProps(exercise, set, 'actual_reps')} aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} /> : <span aria-hidden className="text-center text-muted-foreground">—</span>}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs text-muted-foreground sm:hidden">RPE</span>
+                    <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-11 px-2 text-sm tabular-nums" value={set.actual_rpe ?? ''}
+                      placeholder={exercise.prescribed_rpe || undefined}
+                      onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
+                      {...errorProps(exercise, set, 'actual_rpe')} aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
+                  </div>
                   <Button
                     type="button" size="icon" variant={set.status === 'completed' ? 'default' : 'outline'}
                     className="h-11 w-11" disabled={sealed} onClick={() => toggleSet(exercise, set)}
@@ -606,7 +660,7 @@ export default function WorkoutTracker() {
                   {trackingType(exercise) !== 'reps_weight' && (
                     <div className="col-span-full grid grid-cols-1 gap-2 pb-2 sm:grid-cols-2">
                       {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => (
-                        <WorkoutMetricInput key={metric} metric={metric} label={`${exercise.exercise_name} set ${set.set_number} performed ${metric}`}
+                        <WorkoutMetricInput key={metric} metric={metric} errorId={entryErrors(exercise, set)[`actual_${metric}_value`] ? errorId(set, `actual_${metric}_value`) : undefined} label={`${exercise.exercise_name} set ${set.set_number} performed ${metric}`}
                           value={set[`actual_${metric}_value`]} unit={set[`actual_${metric}_unit`] || exercise[`prescribed_${metric}_unit`]}
                           disabled={sealed} onValueChange={(value) => setLocalValue(exercise.id, set.id, `actual_${metric}_value`, value)}
                           onBlur={() => saveSet(exercise, set)} onUnitChange={(unit) => {
@@ -618,6 +672,11 @@ export default function WorkoutTracker() {
                       <p className="col-span-full text-xs text-muted-foreground">Enter values in the selected units. Changing a unit keeps the number.</p>
                     </div>
                   )}
+                  {Object.entries(entryErrors(exercise, set)).map(([field, message]) => (
+                    <p key={field} id={errorId(set, field)} role="status" className="col-span-full flex items-start gap-2 text-sm text-foreground">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span>{message}</span>
+                    </p>
+                  ))}
                   {set.set_origin === 'extra' && (
                     <Button type="button" size="touchIcon" variant="ghost" className="col-start-2 text-muted-foreground" disabled={sealed} onClick={() => removeSet(exercise, set)} aria-label="Remove extra set" title="Remove extra set">
                       <Trash2 aria-hidden />
@@ -658,41 +717,8 @@ export default function WorkoutTracker() {
         )}</SupersetGroups>
       </div>
 
-      <div
-        className="signature-glass sticky bottom-20 z-30 mt-5 flex flex-col gap-2 rounded-2xl p-2.5 lg:bottom-4"
-        data-testid="workout-control-dock"
-      >
-        <div className="flex items-center gap-2 px-1">
-          <div
-            className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary"
-            role="progressbar"
-            aria-label="Sets completed"
-            aria-valuemin={0}
-            aria-valuemax={allSets.length}
-            aria-valuenow={completedCount}
-            data-testid="workout-progress-bar"
-          >
-            <div
-              className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${allSets.length && completedCount === allSets.length ? 'bg-success' : 'bg-primary'}`}
-              style={{ width: `${allSets.length ? Math.round((completedCount / allSets.length) * 100) : 0}%` }}
-            />
-          </div>
-          <span className="text-xs tabular-nums text-muted-foreground">{completedCount}/{allSets.length}</span>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="min-h-11 flex-1" disabled={sealed || !remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
-            Complete all remaining
-          </Button>
-          <Button className="min-h-11 flex-1" disabled={sealed || !completedCount} onClick={() => setFinishOpen(true)}>
-            Finish workout
-          </Button>
-        </div>
-      </div>
-
-      <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} onAdjust={adjustRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
-
       <Dialog open={abandonOpen} onOpenChange={setAbandonOpen}>
-        <DialogContent className="max-w-sm" data-testid="workout-abandon-dialog">
+        <DialogContent className="max-w-sm [&>button]:h-11 [&>button]:w-11" data-testid="workout-abandon-dialog">
           <DialogHeader>
             <DialogTitle>Abandon this workout?</DialogTitle>
             <DialogDescription>Logged sets are kept but won't count as completed.</DialogDescription>
@@ -714,7 +740,7 @@ export default function WorkoutTracker() {
       </Dialog>
 
       <Dialog open={finishOpen} onOpenChange={setFinishOpen}>
-        <DialogContent className="signature-glass bg-card/80 sm:rounded-2xl" data-testid="workout-completion-dialog">
+        <DialogContent className="signature-glass bg-card/80 sm:rounded-2xl [&>button]:h-11 [&>button]:w-11" data-testid="workout-completion-dialog">
           <DialogHeader>
             <DialogTitle>Finish workout?</DialogTitle>
             <DialogDescription>{completedCount} {completedCount === 1 ? 'set' : 'sets'} done{remainingCount ? ` · ${remainingCount} ${remainingCount === 1 ? 'set' : 'sets'} will be skipped` : ''}</DialogDescription>
@@ -724,11 +750,11 @@ export default function WorkoutTracker() {
             <div className="space-y-1.5"><Label htmlFor="workout-notes">Workout notes</Label><Textarea id="workout-notes" rows={3} value={workoutNotes} onChange={(event) => setWorkoutNotes(event.target.value)} /></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setFinishOpen(false)}>Keep tracking</Button>
-            <Button onClick={finish} disabled={finishing}>{finishing ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Finishing workout</span></> : 'Confirm completion'}</Button>
+            <Button variant="outline" size="touch" onClick={() => setFinishOpen(false)}>Keep tracking</Button>
+            <Button size="touch" onClick={finish} disabled={finishing}>{finishing ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Finishing workout</span></> : 'Confirm completion'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </WorkoutViewport>
   );
 }

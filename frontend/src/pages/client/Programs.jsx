@@ -97,7 +97,7 @@ export default function ClientPrograms() {
         <Card className="mb-5 border-primary/30 bg-primary/5" data-testid="active-workout-banner">
           <CardContent className="flex items-center justify-between gap-3 p-4">
             <div className="min-w-0"><p className="text-xs font-medium uppercase text-primary">{hasQueuedCompleteFor(activeLog.id) ? 'Finishing — waiting to sync' : 'In progress'}</p><p className="truncate font-display font-semibold">{activeLog.workout_name}</p></div>
-            <Button asChild><Link to={hasQueuedCompleteFor(activeLog.id) ? `/client/workouts/${activeLog.id}` : `/client/workouts/${activeLog.id}/track`}>{hasQueuedCompleteFor(activeLog.id) ? 'View' : 'Resume'}</Link></Button>
+            <Button size="touch" asChild><Link to={hasQueuedCompleteFor(activeLog.id) ? `/client/workouts/${activeLog.id}` : `/client/workouts/${activeLog.id}/track`}>{hasQueuedCompleteFor(activeLog.id) ? 'View' : 'Resume'}</Link></Button>
           </CardContent>
         </Card>
       )}
@@ -197,7 +197,7 @@ function WorkoutAssignmentCard({ assignment, starting, onStart }) {
           <div><p className="font-display font-semibold">{workout.name}</p>{(workout.goal || workout.description) && <p className="mt-1 text-sm text-muted-foreground">{workout.goal || workout.description}</p>}</div>
           <div className="flex shrink-0 items-center gap-2">
             <DownloadPdfButton path={`/programs/client/workout-assignments/${assignment.id}/log-sheet.pdf`} name={workout.name} testId="download-workout-pdf" />
-            <Button size="sm" disabled={starting === assignment.id} onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })} data-testid="start-standalone-workout">
+            <Button size="sm" className="h-11 min-w-11" disabled={starting === assignment.id} onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })} data-testid="start-standalone-workout">
               {starting === assignment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Start'}
             </Button>
           </div>
@@ -227,7 +227,7 @@ function WorkoutDay({ day, assignmentId, loads, loading, onStart }) {
       <AccordionContent className="space-y-3 pb-3">
         {day.notes && <p className="text-xs text-muted-foreground">{day.notes}</p>}
         <ExerciseList exercises={day.workout?.exercises || []} loads={loads} assignmentId={assignmentId} dayId={day.id} />
-        <Button size="sm" disabled={loading} onClick={onStart} data-testid="start-program-workout">
+        <Button size="touch" disabled={loading} onClick={onStart} data-testid="start-program-workout">
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Start workout'}
         </Button>
       </AccordionContent>
@@ -294,7 +294,7 @@ function DownloadPdfButton({ path, name, testId }) {
     }
   };
   return (
-    <Button size="sm" variant="outline" disabled={downloading} onClick={download} aria-label={`Download ${name || 'workout'} as a printable PDF`} data-testid={testId}>
+    <Button size="sm" className="h-11 min-w-11" variant="outline" disabled={downloading} onClick={download} aria-label={`Download ${name || 'workout'} as a printable PDF`} data-testid={testId}>
       {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
       <span className="ml-1.5">PDF</span>
     </Button>
