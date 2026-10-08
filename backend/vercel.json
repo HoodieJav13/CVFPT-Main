@@ -3,7 +3,8 @@
   "git": {
     "deploymentEnabled": {
       "codex/email-brand-preview": false,
-      "codex/email-yahoo-contrast": false
+      "codex/email-yahoo-contrast": false,
+      "codex/series-calendar-direction": false
     }
   },
   "rewrites": [
