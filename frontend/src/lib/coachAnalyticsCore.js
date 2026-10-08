@@ -10,6 +10,7 @@ const WORKOUT_CHANGES = new Set(['attached', 'removed', 'unchanged', 'none']);
 const FAILURES = new Set(['none', 'network', 'server', 'conflict', 'authorization', 'validation', 'unknown']);
 const SOURCES = new Set(['action', 'render', 'runtime', 'unhandled_rejection']);
 export const INGEST_HOSTS = new Set(['https://us.i.posthog.com', 'https://eu.i.posthog.com']);
+const VISIT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Only this enum leaves the browser; pathname, search/hash and record IDs never do.
 export function coachScreen(pathname) {
@@ -28,12 +29,39 @@ export function coachScreen(pathname) {
   return section;
 }
 
-export function analyticsMode({ allowedBuild, syntheticFixtures, requestedMode, host, token }) {
+export function analyticsMode({ allowedBuild, productionBuild, syntheticFixtures, requestedMode, host, token }) {
+  const publicToken = typeof token === 'string' && /^phc_[A-Za-z0-9]+$/.test(token);
+  if (requestedMode === 'production-coach') {
+    return productionBuild && !syntheticFixtures && host === 'https://us.i.posthog.com'
+      && publicToken ? 'production-coach' : 'off';
+  }
   if (!allowedBuild || !syntheticFixtures) return 'off';
   if (requestedMode === 'local') return 'local';
-  if (requestedMode === 'synthetic-preview' && INGEST_HOSTS.has(host)
-      && typeof token === 'string' && /^phc_[A-Za-z0-9]+$/.test(token)) return 'synthetic-preview';
+  if (requestedMode === 'synthetic-preview' && INGEST_HOSTS.has(host) && publicToken) return 'synthetic-preview';
   return 'off';
+}
+
+// Only eligibility, a random visit UUID, and a local generation are retained.
+// No auth object/ID, cookie, storage, or persistent device identity enters this module.
+export function createCoachVisit({ randomUUID = () => globalThis.crypto?.randomUUID() } = {}) {
+  let eligible = false;
+  let distinctId = null;
+  let generation = 0;
+  return {
+    setRole(role) {
+      const next = role === 'coach';
+      if (next !== eligible) { generation += 1; distinctId = null; }
+      eligible = next;
+    },
+    getContext(mode) {
+      if (!eligible || !['local', 'synthetic-preview', 'production-coach'].includes(mode)) return null;
+      if (mode === 'production-coach') {
+        try { distinctId ||= randomUUID(); } catch { return null; }
+        if (typeof distinctId !== 'string' || !VISIT_ID.test(distinctId)) return null;
+      }
+      return { mode, distinctId, generation };
+    },
+  };
 }
 
 export function failureKind(error) {
@@ -50,9 +78,13 @@ export function failureKind(error) {
   return 'unknown';
 }
 
-export function buildCoachEvent(event, fields = {}) {
+export function buildCoachEvent(event, fields = {}, { mode = 'synthetic-preview', distinctId } = {}) {
+  const production = mode === 'production-coach';
+  if (production && (typeof distinctId !== 'string' || !VISIT_ID.test(distinctId))) return null;
+  if (!production && mode !== 'local' && mode !== 'synthetic-preview') return null;
   const common = {
-    app: 'cvfpt', schema_version: 1, environment: 'synthetic_preview',
+    app: 'cvfpt', schema_version: production ? 2 : 1,
+    environment: production ? 'production' : 'synthetic_preview',
     $process_person_profile: false, $ip: null, $geoip_disable: true,
   };
   let properties;
@@ -77,22 +109,25 @@ export function buildCoachEvent(event, fields = {}) {
       ...(fields.source === 'action' ? { operation: scope } : { screen: scope }),
       $exception_list: [{ type: 'CvfptCoachFailure', value,
         mechanism: { type: 'generic', handled: fields.source === 'action', synthetic: true } }],
-      $exception_fingerprint: `cvfpt-v1-${scope}-${fields.source}-${fields.failure_kind}`,
+      $exception_fingerprint: `cvfpt-v${production ? 2 : 1}-${scope}-${fields.source}-${fields.failure_kind}`,
       $exception_level: 'error',
     };
   } else return null;
-  // Shared synthetic identity only. No auth identity, cookies, session IDs or persistence.
-  return { event, distinct_id: 'cvfpt-synthetic-preview', properties: { ...common, ...properties } };
+  return { event, distinct_id: production ? distinctId : 'cvfpt-synthetic-preview', properties: { ...common, ...properties } };
 }
 
-export function createCoachTracker({ mode = 'off', send = () => {}, now = Date.now } = {}) {
+export function createCoachTracker({ mode = 'off', send = () => {}, now = Date.now,
+  getContext = () => ({ mode }),
+} = {}) {
   let eventCount = 0;
   let errorCount = 0;
   const recentErrors = new Map();
   return (event, fields) => {
     try {
-      if (mode !== 'local' && mode !== 'synthetic-preview') return false;
-      const payload = buildCoachEvent(event, fields);
+      if (!['local', 'synthetic-preview', 'production-coach'].includes(mode)) return false;
+      const context = getContext();
+      if (!context || context.mode !== mode) return false;
+      const payload = buildCoachEvent(event, fields, context);
       if (!payload || eventCount >= 100) return false;
       if (event === '$exception') {
         const key = payload.properties.$exception_fingerprint;
@@ -132,11 +167,16 @@ export async function observeSessionSave(run, fields, emit) {
 }
 
 // Independent of the authenticated app API: no bearer interceptor, cookies, referrer or retries.
-export function createCaptureTransport({ host, token, fetchFn = globalThis.fetch }) {
+export function createCaptureTransport({ host, token, fetchFn = globalThis.fetch,
+  getContext = () => ({ mode: 'synthetic-preview' }),
+}) {
   return async (payload) => {
     if (!INGEST_HOSTS.has(host) || typeof token !== 'string' || !/^phc_[A-Za-z0-9]+$/.test(token)) return false;
     // Rebuild at the transport boundary too. A caller cannot inject extra event properties.
-    const clean = buildCoachEvent(payload?.event, payload?.properties);
+    const context = getContext();
+    if (!context || (context.mode === 'production-coach'
+      && (host !== 'https://us.i.posthog.com' || payload?.distinct_id !== context.distinctId))) return false;
+    const clean = buildCoachEvent(payload?.event, payload?.properties, context);
     if (!clean) return false;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2000);

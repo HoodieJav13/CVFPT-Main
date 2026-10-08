@@ -110,6 +110,24 @@ test('single create attaches a workout and edit removes it only after successful
   expect(JSON.stringify(await events(page))).not.toMatch(/PRIVATE|example|health|secret|client_sarah|client_david|workout_lower|session_\w{8}/i);
 });
 
+test('admin coach-tree visits stay uncollected and returning to coach restores error listeners', async ({ page }) => {
+  await page.goto('/coach');
+  await expect(page.getByTestId('coach-action-queue')).toBeVisible();
+  await page.getByTestId('preview-role-select').selectOption('admin');
+  await expect(page).toHaveURL(/\/admin$/);
+  const count = (await events(page)).length;
+  await spaGo(page, '/coach/sessions');
+  await expect(page.getByTestId('session-create-button')).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new ErrorEvent('error', { message: 'PRIVATE admin' })));
+  expect((await events(page)).length).toBe(count);
+  await page.getByTestId('preview-role-select').selectOption('coach');
+  await expect(page).toHaveURL(/\/coach$/);
+  await expect(page.getByTestId('coach-action-queue')).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new ErrorEvent('error', { message: 'PRIVATE coach' })));
+  await expect.poll(async () => (await events(page)).filter(event => event.event === '$exception').length).toBe(1);
+  expect(JSON.stringify(await events(page))).not.toContain('PRIVATE');
+});
+
 test('conflicts are coarse failures; server faults are unconfirmed and retries still work', async ({ page }) => {
   await newSession(page, { attach: true });
   await faultNextSessionSave(page, 409);

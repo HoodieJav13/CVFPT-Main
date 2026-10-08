@@ -1,8 +1,10 @@
 # PostHog coach first slice — 2026-10-05
 
-**Local implementation; collection off.** Production and non-preview production
-builds are hard-disabled, even with enabling env values. Capture requires the
-fixture-backed preview mode. No PostHog SDK, recorder, autocapture, automatic
+**Historical fictional first-slice proof; collection remains off by default.**
+The separately approved [production release candidate](coach-production-activation.md)
+adds explicit Production opt-in, exact coach-role gating and a memory-only visit UUID.
+It is not activated here. Fixture modes remain restricted to fixture-backed preview
+builds. No PostHog SDK, recorder, autocapture, automatic
 pageviews, identification, cookies, persistent analytics storage, feature flags,
 surveys or console capture is installed. Local verification needs no credentials.
 
@@ -67,9 +69,12 @@ PostHog/Sentry request. Tests cover navigation/privacy, create/attachment,
 edit/removal, 409 conflict, 503 uncertainty, retry, recurring summary and a broken
 analytics transport. Unit tests cover poisoned properties, status-only errors,
 throwing/rejecting/hanging analytics, exact HTTP envelopes, gates, limits and the
-offline replay proposal. The production test compiles the actual runtime with
-the actual Vite build guard, enabling flags and a fake token, and verifies zero
-network/local-event/listener delivery for Production and ordinary production builds.
+offline replay proposal. Compiled-runtime tests use the actual Vite build guards
+with intercepted fetch and fictional public tokens. Default/off, fixture modes,
+invalid config and non-Production builds emit nothing; explicit production-coach
+mode emits only sanitized coach-route envelopes. Role/logout/stale-result and
+memory-only UUID lifecycle checks cover the new candidate; no provider receives
+these test packets.
 
 Default off, real-data mode, missing token, invalid hosts and personal-key-shaped
 values cannot collect. There is a 2-second request abort, no capture retries,
@@ -102,9 +107,10 @@ Current format references, consulted 2026-10-05: [Capture API](https://posthog.c
    verify disabled hooks before any remote push/PR. No Vercel setting was changed.
 2. Hosted fictional events, replay visual playback and current usage checks are complete. Do not repeat transmissions. Integration/merge is owner-authorized; these findings do not authorize real-user collection.
 3. App replay remains disabled/uninstalled. Any further replay collection needs its own scope/approval; the proof tooling never activates it.
-4. Production usage/errors need separate release approval and a reviewed change to
-   fixture/build gates, an appropriate coarse anonymous identity policy and
-   received-property verification. Environment settings alone cannot enable it.
+4. The owner separately approved limited ongoing coach usage/scrubbed errors,
+   no paid upgrade/replay. The production opt-in candidate preserves fixture gates
+   and adds a memory-only visit UUID. Received schema2-property verification and
+   release/configuration checks remain before activation.
 5. Alerts/notifications, dashboards, push/merge/deploy, backend/schema/data changes
    and real-user collection remain separate authorization gates.
 
