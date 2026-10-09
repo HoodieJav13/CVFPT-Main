@@ -68,6 +68,11 @@ require.cache[supabasePath] = {
         };
         return chain;
       },
+      async rpc(name,args) {
+        if(name==='apply_invite_action')return {data:{action_id:args.p_action_id,replayed:false,result:{outcome:'selected'},attempt_id:AUTH_USER_ID},error:null};
+        if(name==='admit_invite_call')return {data:{admitted:false,invite:{attempt_id:AUTH_USER_ID,status:'unconfigured',retryable:false,next_retry_at:null,needs_confirmation:false}},error:null};
+        throw Error('Unexpected RPC');
+      },
       auth: {
         admin: {
           generateLink(args) {
@@ -219,33 +224,17 @@ test('change-password: verified current password updates the caller only', async
   assert.deepEqual(state.updateUserCalls, [{ id: AUTH_USER_ID, attrs: { password: 'new-password-1' } }]);
 });
 
-test('invite toggle: sends the invite email and reports invite_email sent', async () => {
-  resetState();
-  currentUser = coachUser;
-  state.clientRow = {
-    id: CLIENT_ID, name: 'Jo Client', email: 'jo@x.com', auth_user_id: null,
-    invited: false, archived: false, updated_at: '2026-08-06T00:00:00.000Z',
-  };
-  const { status, body } = await post(`/api/clients/${CLIENT_ID}/invite`, { invited: true }, 'PATCH');
-  assert.equal(status, 200);
-  assert.equal(body.invite_email, 'sent');
-  assert.equal(state.sentEmails.length, 1);
-  assert.deepEqual(state.sentEmails[0].message.to, ['jo@x.com']);
-  assert.ok(state.sentEmails[0].message.text.includes('/signup?email=jo%40x.com'));
+test('invite toggle: missing action identity is rejected without the legacy sender', async () => {
+  resetState(); currentUser=coachUser;
+  const {status}=await post(`/api/clients/${CLIENT_ID}/invite`,{invited:true},'PATCH');
+  assert.equal(status,400); assert.equal(state.sentEmails.length,0);
 });
 
-test('invite toggle: unconfigured email reports invite_email unconfigured', async () => {
-  resetState();
-  currentUser = coachUser;
-  state.emailConfigured = false;
-  state.clientRow = {
-    id: CLIENT_ID, name: 'Jo Client', email: 'jo@x.com', auth_user_id: null,
-    invited: false, archived: false, updated_at: '2026-08-06T00:00:00.000Z',
-  };
-  const { status, body } = await post(`/api/clients/${CLIENT_ID}/invite`, { invited: true }, 'PATCH');
-  assert.equal(status, 200);
-  assert.equal(body.invite_email, 'unconfigured');
-  assert.equal(state.sentEmails.length, 0);
+test('invite action: unconfigured email reports summary without invoking the legacy sender', async () => {
+  resetState(); currentUser=coachUser; state.emailConfigured=false;
+  state.clientRow={id:CLIENT_ID,coach_id:COACH_ID,name:'Jo Client',email:'jo@x.com',invited:false,auth_user_id:null,archived:false};
+  const {status,body}=await post(`/api/clients/${CLIENT_ID}/invite`,{invited:true,action_id:AUTH_USER_ID},'PATCH');
+  assert.equal(status,200); assert.equal(body.invite.status,'unconfigured'); assert.equal(state.sentEmails.length,0);
 });
 
 test('send-password-reset: unclaimed client is a 400 with no email', async () => {

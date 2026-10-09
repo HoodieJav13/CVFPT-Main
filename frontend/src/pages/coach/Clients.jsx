@@ -1,3 +1,4 @@
+import ClientCreateDialog from '@/components/ClientCreateDialog';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { api, errMsg } from '@/lib/api';
@@ -27,9 +28,6 @@ export default function Clients() {
   const [loadError, setLoadError] = useState(null);
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', goals: '', health_notes: '' });
-  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -51,22 +49,6 @@ export default function Clients() {
     return clients.filter((c) => !q || c.name.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q));
   }, [clients, search]);
 
-  const createClient = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const { data } = await api.post('/clients', form);
-      toast.success(`${data.name} added`);
-      setOpen(false);
-      setForm({ name: '', email: '', phone: '', goals: '', health_notes: '' });
-      load();
-    } catch (err) {
-      toast.error(errMsg(err, 'Failed to add client'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
   if (!clients && loadError) return <LoadErrorState message={loadError} scope="coach-clients" onRetry={() => { setLoadError(null); load(); }} />;
   if (!clients) return <ListSkeleton rows={3} />;
 
@@ -78,47 +60,7 @@ export default function Clients() {
         action={
           <div className="flex gap-2">
           <ImportClientsDialog onImported={load} />
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button className="rounded-xl" data-testid="add-client-button">
-                <Plus className="h-4 w-4 mr-1.5" /> Add client
-              </Button>
-            </DialogTrigger>
-            <DialogContent aria-describedby={undefined} className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>New client</DialogTitle>
-                              </DialogHeader>
-              <form onSubmit={createClient} className="space-y-3.5">
-                <div className="space-y-1.5">
-                  <Label>Full name *</Label>
-                  <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Jane Doe" data-testid="client-name-input" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>Email</Label>
-                    <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="jane@email.com" data-testid="client-email-input" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Phone</Label>
-                    <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="505-555-0100" data-testid="client-phone-input" />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Goals</Label>
-                  <Textarea rows={2} value={form.goals} onChange={(e) => setForm({ ...form, goals: e.target.value })} placeholder="What do they want to achieve?" data-testid="client-goals-input" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Injury / health notes</Label>
-                  <Textarea rows={2} value={form.health_notes} onChange={(e) => setForm({ ...form, health_notes: e.target.value })} placeholder="Anything to train around?" data-testid="client-health-input" />
-                </div>
-                <DialogFooter>
-                  <Button type="submit" disabled={saving} className="rounded-xl w-full sm:w-auto" data-testid="client-save-button">
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add client'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <ClientCreateDialog onCreated={load} />
           </div>
         }
       />

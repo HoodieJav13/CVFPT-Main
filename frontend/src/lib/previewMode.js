@@ -1,3 +1,4 @@
+import {createPreviewInvites} from './previewInvites.js';
 import { actualMetrics, normalizeTracking, trackingType } from './workoutMetrics.js';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
@@ -58,6 +59,7 @@ const PREVIEW_SAVE_ROUTES = [
   ['patch', /^\/resources\/([^/]+)\/assignments\/([^/]+)$/],
   ['put', /^\/clients\/([^/]+)$/],
   ['patch', /^\/clients\/([^/]+)\/invite$/],
+  ['post', /^\/clients\/([^/]+)\/invite\/resend$/],
   ['patch', /^\/clients\/([^/]+)\/archive$/],
   ['post', /^\/admin\/coaches$/],
   ['patch', /^\/admin\/clients\/([^/]+)\/reassign$/],
@@ -160,6 +162,7 @@ const iso = (days = 0, hours = 9) => {
 const dateOnly = (days = 0) => iso(days).slice(0, 10);
 const id = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 
+const inviteFixtures=createPreviewInvites({outcome:()=>{try{return localStorage.getItem('cvf_preview_invite_outcome')||'accepted';}catch{return 'accepted';}}});
 const state = {
   coaches: [
     { id: 'coach_marcus', auth_user_id: 'auth_marcus', name: 'Marcus Rivera', email: 'marcus@corevaluefitness.com', phone: '505-555-0101', is_admin: true, archived: false, created_at: iso(-300) },
@@ -533,7 +536,7 @@ function previewClientCanAccessResource(resource, clientId) {
 }
 
 function shapeClient(client) {
-  return { ...client, coach: coachById(client.coach_id) };
+  return { ...client, coach: coachById(client.coach_id), invite:inviteFixtures.latest(client) };
 }
 
 function activeClientsForCoach() {
@@ -1721,7 +1724,19 @@ export function installPreviewApi(api) {
       const includeArchived = search.get('include_archived') === 'true';
       return ok(state.clients.filter((c) => includeArchived || !c.archived).filter((c) => role === 'admin' || c.coach_id === currentCoach().id).map(shapeClient), config);
     }
+    const canInviteAccess=c=>role!=='client'&&(role==='admin'||c.coach_id===currentCoach().id);
+    const fixtureResponse=r=>r.status>=400?Promise.reject({response:{...r,config}}):ok(r.data,config,r.status);
+    const recoverMatch=path.match(/^\/clients\/create-requests\/([^/]+)$/);
+    if(recoverMatch&&method==='get') {
+      if(role==='client')return fail(config,403,'Coach access required');
+      return fixtureResponse(inviteFixtures.recover(currentCoach().id,recoverMatch[1],state.clients,canInviteAccess));
+    }
     if (path === '/clients' && method === 'post') {
+      if(payload.request_id!==undefined){
+        const target=role==='admin'?(payload.coach_id||currentCoach().id):currentCoach().id;
+        if(role==='client'||!state.coaches.some(c=>c.id===target&&!c.archived))return fail(config,403,'Coach access required');
+        return fixtureResponse(inviteFixtures.create(currentCoach().id,payload,state.clients,target,canInviteAccess));
+      }
       const row = { id: id('client'), coach_id: payload.coach_id || currentCoach().id, name: payload.name, email: payload.email || null, phone: payload.phone || null, goals: payload.goals || null, health_notes: payload.health_notes || null, invited: false, auth_user_id: null, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       state.clients.push(row);
       return ok(row, config, 201);
@@ -1816,17 +1831,18 @@ export function installPreviewApi(api) {
     const clientMatch = path.match(/^\/clients\/([^/]+)$/);
     if (clientMatch) {
       const row = clientById(clientMatch[1]);
-      if (method === 'get') return ok(row, config);
+      if (method === 'get') return ok({...row,invite:inviteFixtures.latest(row)}, config);
       if (method === 'put') {
         Object.assign(row, payload, { updated_at: new Date().toISOString() });
         return ok(row, config);
       }
     }
-    const inviteMatch = path.match(/^\/clients\/([^/]+)\/invite$/);
-    if (inviteMatch && method === 'patch') {
-      const row = clientById(inviteMatch[1]);
-      row.invited = Boolean(payload.invited);
-      return ok(row, config);
+    const inviteMatch = path.match(/^\/clients\/([^/]+)\/invite(\/resend)?$/);
+    if (inviteMatch && ((method === 'patch'&&!inviteMatch[2])||(method==='post'&&inviteMatch[2]))) {
+      const row=state.clients.find(c=>c.id===inviteMatch[1]);
+      if(!row||!canInviteAccess(row))return fail(config,404,'Client not found');
+      const kind=inviteMatch[2]?'resend':payload.invited?'switch_on':'switch_off';
+      return fixtureResponse(inviteFixtures.action(currentCoach().id,row,payload,kind));
     }
     const archiveClientMatch = path.match(/^\/clients\/([^/]+)\/archive$/);
     if (archiveClientMatch && method === 'patch') {
