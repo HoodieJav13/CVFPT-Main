@@ -119,6 +119,7 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
       return Promise.resolve(false);
     }
     window.clearTimeout(retryRef.current);
+    let finished = false;
     const run = (async () => {
     try {
       while (queueRef.current.length) {
@@ -186,10 +187,13 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
       setSaveState('saved');
       return true;
     } finally {
+      finished = true;
       inFlightRef.current = null;
     }
     })();
-    inFlightRef.current = run;
+    // An empty queue finishes synchronously, before this line: storing that
+    // settled run would make every later flush() return it without sending.
+    if (!finished) inFlightRef.current = run;
     return run;
   }, [logId, persist, setLog]);
 
