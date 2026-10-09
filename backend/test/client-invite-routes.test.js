@@ -28,10 +28,54 @@ test('authorized recovery distinguishes absence, committed and lookup failure',a
  state.readError=true;r=await send(url,path);assert.equal(r.status,500);assert.notEqual(r.data.status,'absent');assert.doesNotMatch(JSON.stringify(r.data),/RAW_PRIVATE/);
 }));
 test('switch command requires action identity and stale replay never admits email',async()=>withServer(async url=>{
- reset();let r=await send(url,`/api/clients/${clientId}/invite`,'PATCH',{invited:true});assert.equal(r.status,400);assert.equal(state.providerCalls,0);
+ reset();let r;
  state.actionResult={action_id:requestId,replayed:true,result:{outcome:'stale'},attempt_id:attemptId};
  r=await send(url,`/api/clients/${clientId}/invite`,'PATCH',{invited:true,action_id:requestId,supersedes_attempt_id:attemptId,confirm_duplicate_risk:false});
  assert.equal(r.data.action.result.outcome,'stale');assert.equal(state.rpcCalls.filter(c=>c.name==='admit_invite_call').length,0);assert.equal(state.providerCalls,0);
+}));
+for (const invited of [true, false]) {
+ test(`legacy invite ${invited ? 'on' : 'off'} requires reload without writes or email`,async()=>withServer(async url=>{
+  reset();const original=client.invited;client.invited=!invited;
+  try {
+   const before=structuredClone(client);
+   const r=await send(url,`/api/clients/${clientId}/invite`,'PATCH',{invited});
+   assert.equal(r.status,409);assert.equal(r.data.code,'client_update_required');
+   assert.match(r.data.error,/Reload this page, then try again/);assert.match(r.data.error,/No invitation change was made/);
+   assert.deepEqual(client,before);assert.deepEqual(state.rpcCalls,[]);assert.deepEqual(state.rows,[]);assert.equal(state.providerCalls,0);
+  } finally {client.invited=original;}
+ }));
+}
+test('malformed modern commands and nonlegacy shapes retain strict validation',async()=>withServer(async url=>{
+ for (const [id,method,suffix,body] of [
+  ['invalid','PATCH','',{invited:true}],
+  [clientId,'PATCH','',{invited:'true'}],
+  [clientId,'PATCH','',{}],
+  [clientId,'PATCH','',{invited:true,unexpected:true}],
+  [clientId,'PATCH','',{invited:false,action_id:'invalid'}],
+  [clientId,'PATCH','',{invited:true,action_id:requestId,supersedes_attempt_id:'invalid'}],
+  [clientId,'PATCH','',{invited:true,action_id:requestId,confirm_duplicate_risk:'true'}],
+  [clientId,'POST','/resend',{invited:true}],
+ ]) {
+  reset();const r=await send(url,`/api/clients/${id}/invite${suffix}`,method,body);
+  assert.equal(r.status,400);assert.deepEqual(r.data,{error:'Valid invite command identity is required'});
+  assert.deepEqual(state.rpcCalls,[]);assert.deepEqual(state.rows,[]);assert.equal(state.providerCalls,0);
+ }
+}));
+test('valid modern on and off retain action identity and actor authority',async()=>withServer(async url=>{
+ for (const invited of [true,false]) {
+  reset();state.actionResult={action_id:requestId,replayed:false,result:{outcome:'permission_updated'},attempt_id:null};
+  const r=await send(url,`/api/clients/${clientId}/invite`,'PATCH',{invited,action_id:requestId});
+  assert.equal(r.status,200);assert.equal(r.data.action.action_id,requestId);assert.equal(r.data.action.replayed,false);
+  assert.equal(state.rpcCalls.length,1);assert.equal(state.rpcCalls[0].name,'apply_invite_action');
+  assert.equal(state.rpcCalls[0].args.p_actor,actor);assert.equal(state.rpcCalls[0].args.p_action_id,requestId);
+  assert.equal(state.rpcCalls[0].args.p_kind,invited?'switch_on':'switch_off');assert.equal(state.providerCalls,0);
+ }
+}));
+test('legacy refresh response remains behind coach authorization',async()=>withServer(async url=>{
+ reset();user.role='client';try {
+  const r=await send(url,`/api/clients/${clientId}/invite`,'PATCH',{invited:true});
+  assert.equal(r.status,403);assert.deepEqual(state.rpcCalls,[]);assert.equal(state.providerCalls,0);
+ } finally {user.role='coach';}
 }));
 const services=require('../src/services/clientInvites');
 test('completion failure stays unknown and admitted same-key retry passes frozen body',async()=>{

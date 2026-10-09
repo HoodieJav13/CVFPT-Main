@@ -224,10 +224,13 @@ test('change-password: verified current password updates the caller only', async
   assert.deepEqual(state.updateUserCalls, [{ id: AUTH_USER_ID, attrs: { password: 'new-password-1' } }]);
 });
 
-test('invite toggle: missing action identity is rejected without the legacy sender', async () => {
-  resetState(); currentUser=coachUser;
-  const {status}=await post(`/api/clients/${CLIENT_ID}/invite`,{invited:true},'PATCH');
-  assert.equal(status,400); assert.equal(state.sentEmails.length,0);
+test('legacy invite toggles require reload without the legacy sender', async () => {
+  for (const invited of [true, false]) {
+    resetState(); currentUser=coachUser;
+    const {status,body}=await post(`/api/clients/${CLIENT_ID}/invite`,{invited},'PATCH');
+    assert.equal(status,409); assert.equal(body.code,'client_update_required');
+    assert.match(body.error,/Reload this page/); assert.equal(state.sentEmails.length,0);
+  }
 });
 
 test('invite action: unconfigured email reports summary without invoking the legacy sender', async () => {

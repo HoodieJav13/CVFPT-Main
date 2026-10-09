@@ -223,6 +223,14 @@ router.put('/:id', async (req, res) => {
 // One tracked invite path for create, switch and resend; no background dispatch.
 async function applyInvite(req, res, kind) {
   const body = req.body || {};
+  if (UUID.test(req.params.id) && kind !== 'resend'
+    && Object.hasOwn(body, 'invited') && Object.keys(body).length === 1
+    && typeof body.invited === 'boolean') {
+    return res.status(409).json({
+      code: 'client_update_required',
+      error: 'Invitation controls have been updated. Reload this page, then try again. No invitation change was made.',
+    });
+  }
   if (!UUID.test(req.params.id) || !UUID.test(body.action_id || '')
     || (body.supersedes_attempt_id != null && !UUID.test(body.supersedes_attempt_id))
     || (body.confirm_duplicate_risk !== undefined && typeof body.confirm_duplicate_risk !== 'boolean')
