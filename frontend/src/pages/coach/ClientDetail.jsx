@@ -1,3 +1,4 @@
+import ClientInviteCard from '@/components/ClientInviteCard';
 import { setPrescription, trackingTargets } from '@/lib/workoutMetrics';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router';
@@ -199,7 +200,7 @@ export default function ClientDetail() {
         <p className="mt-1 text-right text-[11px] text-muted-foreground sm:hidden" data-testid="client-tabs-overflow-hint">Swipe tabs for more</p>
 
         <TabsContent value="overview">
-          <OverviewTab client={client} waiver={waiver} reload={load} user={user} />
+          <OverviewTab client={client} waiver={waiver} reload={load} user={user} onInviteIntent={() => { loadSequence.current += 1; }} onInviteCurrent={setClient} />
         </TabsContent>
         <TabsContent value="check-ins">
           <CheckInsTab clientId={client.id} />
@@ -227,7 +228,7 @@ function ClientStatusBadges({ client }) {
       {client.auth_user_id ? (
         <Badge variant="outline" className="bg-success/15 text-success-foreground border-success/25">Account active</Badge>
       ) : client.invited ? (
-        <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Invite sent · Signup pending</Badge>
+        <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Can claim account · Signup pending</Badge>
       ) : (
         <Badge variant="outline" className="text-muted-foreground">Not invited</Badge>
       )}
@@ -235,7 +236,7 @@ function ClientStatusBadges({ client }) {
   );
 }
 
-function OverviewTab({ client, waiver, reload, user }) {
+function OverviewTab({ client, waiver, reload, user, onInviteIntent, onInviteCurrent }) {
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({
     name: client.name, email: client.email || '', phone: client.phone || '',
@@ -262,18 +263,6 @@ function OverviewTab({ client, waiver, reload, user }) {
       toast.error(errMsg(err));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const toggleInvite = async (invited) => {
-    try {
-      const { data } = await api.patch(`/clients/${client.id}/invite`, { invited });
-      if (!invited) toast.success('Invitation removed');
-      else if (data.invite_email === 'sent') toast.success('Invite email sent - they can claim their account from the link');
-      else toast.success('Client invited - tell them to sign up with their email');
-      reload();
-    } catch (err) {
-      toast.error(errMsg(err));
     }
   };
 
@@ -370,23 +359,7 @@ function OverviewTab({ client, waiver, reload, user }) {
 
       <Card>
         <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="font-medium text-sm">App invite</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {client.auth_user_id
-                  ? 'Accepted'
-                  : client.invited ? `Sent to ${client.email || 'their email'} · Turn off to withdraw` : 'Turn on to email a signup link'}
-              </p>
-            </div>
-            <Switch
-              checked={client.invited || Boolean(client.auth_user_id)}
-              disabled={Boolean(client.auth_user_id)}
-              onCheckedChange={toggleInvite}
-              aria-label="App invite"
-              data-testid="client-invite-switch"
-            />
-          </div>
+          <ClientInviteCard client={client} onIntent={onInviteIntent} onCurrent={onInviteCurrent} />
           {Boolean(client.auth_user_id) && client.email && (
             <div className="flex items-center justify-end gap-3 border-t border-border pt-3">
               <Button variant="outline" size="sm" className="min-h-9 rounded-lg shrink-0" disabled={sendingReset}

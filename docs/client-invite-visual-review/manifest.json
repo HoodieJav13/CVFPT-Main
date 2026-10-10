@@ -1,0 +1,437 @@
+{
+  "implementationHead": "0e4313780f1a0712badc20cc0148cc84894327b3",
+  "beforeSource": "61a6305b5164af0edbf7a0ddf49aa7eca4732c6e",
+  "mainBaseline": "0d1a5398c6e2df65f04da513f0f5b99d10bfd36c",
+  "retainedAfterSourceTreeCommittedAs": "bc73c038ce4a3922d7428cd4f83efef6520b5ff4",
+  "provenanceChecks": {
+    "all212BaselineTrackedFrontendBlobsMatch": true,
+    "beforeVersusMainFrontendDiff": [],
+    "retainedAfterVersusReviewedFrontendDiff": [],
+    "all18RetainedFrontendManifestEntriesMatchReviewedFiles": true
+  },
+  "fixture": {
+    "actor": "10000000-0000-4000-8000-0000000000a1",
+    "client": "20000000-0000-4000-8000-0000000000b1",
+    "name": "Fictional Client",
+    "email": "fictional@example.invalid",
+    "invited": false,
+    "auth_user_id": null,
+    "archived": false,
+    "invite": null,
+    "created_at": "2026-10-01T00:00:00Z",
+    "theme": "dark"
+  },
+  "captureHarness": "frontend/e2e/invite-visual.spec.mjs",
+  "new320Harness": "task45/evidence-visual-correction/capture/phone320.spec.mjs",
+  "new320Runs": {
+    "before": "1 capture test passed",
+    "after": "1 capture test passed",
+    "before-bottom": "1 supplemental detail capture test passed",
+    "after-bottom": "1 supplemental detail capture test passed"
+  },
+  "limits": [
+    "Default/off states only; no uncertainty/retry/error visual assertion",
+    "Local fictional HTTP interception; no real provider/backend/hosted readiness proof",
+    "Full-page image height is not viewport height; fixed navigation may appear mid-image",
+    "Original timezone not recorded; new320 timezone fixed explicitly"
+  ],
+  "files": [
+    {
+      "path": "screenshots/after-desktop-create.png",
+      "sha256": "0cf9f3c597b019f74e47da0335288dcb069a8a279b60caa821b4d59531f4769d",
+      "bytes": 82218,
+      "imageDimensions": {
+        "width": 1390,
+        "height": 900
+      },
+      "viewport": {
+        "width": 1390,
+        "height": 900
+      },
+      "side": "after",
+      "state": "create",
+      "mode": "fullPage",
+      "reused": true,
+      "captureSource": "bc73c038ce4a3922d7428cd4f83efef6520b5ff4",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/evidence-implementation/screenshots/after-desktop-create.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "browser default; not recorded"
+    },
+    {
+      "path": "screenshots/after-desktop-detail.png",
+      "sha256": "7081cb919d3cd4026d296bd58a0b5b2b0b1c1d1764ffb0b784ed26e18c207d97",
+      "bytes": 296230,
+      "imageDimensions": {
+        "width": 1390,
+        "height": 900
+      },
+      "viewport": {
+        "width": 1390,
+        "height": 900
+      },
+      "side": "after",
+      "state": "detail",
+      "mode": "fullPage",
+      "reused": true,
+      "captureSource": "bc73c038ce4a3922d7428cd4f83efef6520b5ff4",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/evidence-implementation/screenshots/after-desktop-detail.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "browser default; not recorded"
+    },
+    {
+      "path": "screenshots/after-mobile-create.png",
+      "sha256": "8d48b6a525790d59d1608f3886e3ed237cb7baf11545709f6f0e7c5160744766",
+      "bytes": 29090,
+      "imageDimensions": {
+        "width": 390,
+        "height": 844
+      },
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "side": "after",
+      "state": "create",
+      "mode": "fullPage",
+      "reused": true,
+      "captureSource": "bc73c038ce4a3922d7428cd4f83efef6520b5ff4",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/evidence-implementation/screenshots/after-mobile-create.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "browser default; not recorded"
+    },
+    {
+      "path": "screenshots/after-mobile-detail.png",
+      "sha256": "547058d60203b5135df4306aba1ae45230f0e77f1db151e77eb4da2a78ae25d7",
+      "bytes": 149794,
+      "imageDimensions": {
+        "width": 390,
+        "height": 1014
+      },
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "side": "after",
+      "state": "detail",
+      "mode": "fullPage",
+      "reused": true,
+      "captureSource": "bc73c038ce4a3922d7428cd4f83efef6520b5ff4",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/evidence-implementation/screenshots/after-mobile-detail.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "browser default; not recorded"
+    },
+    {
+      "path": "screenshots/after-phone320-create-viewport.png",
+      "sha256": "a6e9e912622adccd4fcc0711e4e7cf6cc6615091fa44ef012f7fc2aff7adf19b",
+      "bytes": 28381,
+      "imageDimensions": {
+        "width": 320,
+        "height": 844
+      },
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "side": "after",
+      "state": "create",
+      "mode": "viewport",
+      "reused": false,
+      "captureSource": "0e4313780f1a0712badc20cc0148cc84894327b3",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/invite-visual-evidence/docs/client-invite-visual-review/screenshots/after-phone320-create-viewport.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "America/Denver"
+    },
+    {
+      "path": "screenshots/after-phone320-create.png",
+      "sha256": "a6e9e912622adccd4fcc0711e4e7cf6cc6615091fa44ef012f7fc2aff7adf19b",
+      "bytes": 28381,
+      "imageDimensions": {
+        "width": 320,
+        "height": 844
+      },
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "side": "after",
+      "state": "create",
+      "mode": "fullPage",
+      "reused": false,
+      "captureSource": "0e4313780f1a0712badc20cc0148cc84894327b3",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/invite-visual-evidence/docs/client-invite-visual-review/screenshots/after-phone320-create.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "America/Denver"
+    },
+    {
+      "path": "screenshots/after-phone320-detail-viewport.png",
+      "sha256": "a88870ed487a08cd2943ba049a3aa132c4bb87e5f126bbe70729cb91390a6403",
+      "bytes": 116349,
+      "imageDimensions": {
+        "width": 320,
+        "height": 844
+      },
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "side": "after",
+      "state": "detail",
+      "mode": "viewport",
+      "reused": false,
+      "captureSource": "0e4313780f1a0712badc20cc0148cc84894327b3",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/invite-visual-evidence/docs/client-invite-visual-review/screenshots/after-phone320-detail-viewport.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "America/Denver"
+    },
+    {
+      "path": "screenshots/after-phone320-detail.png",
+      "sha256": "025c2b8c01b8e1e329aa9a4d3a1777e4ee52e24c4c2a782e4debbfbef5e89802",
+      "bytes": 135074,
+      "imageDimensions": {
+        "width": 320,
+        "height": 1070
+      },
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "side": "after",
+      "state": "detail",
+      "mode": "fullPage",
+      "reused": false,
+      "captureSource": "0e4313780f1a0712badc20cc0148cc84894327b3",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/invite-visual-evidence/docs/client-invite-visual-review/screenshots/after-phone320-detail.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "America/Denver"
+    },
+    {
+      "path": "screenshots/before-desktop-create.png",
+      "sha256": "435521142fba1c32d143b1d296b3b4110880eda7f9c62ee3a66823871c727aa6",
+      "bytes": 90411,
+      "imageDimensions": {
+        "width": 1390,
+        "height": 900
+      },
+      "viewport": {
+        "width": 1390,
+        "height": 900
+      },
+      "side": "before",
+      "state": "create",
+      "mode": "fullPage",
+      "reused": true,
+      "captureSource": "61a6305b5164af0edbf7a0ddf49aa7eca4732c6e",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/evidence-implementation/screenshots/before-desktop-create.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "browser default; not recorded"
+    },
+    {
+      "path": "screenshots/before-desktop-detail.png",
+      "sha256": "72cb951a45388fba28dc2c9562686241cf1e4c24ef89df2d61d2fb056d997b2a",
+      "bytes": 259380,
+      "imageDimensions": {
+        "width": 1390,
+        "height": 900
+      },
+      "viewport": {
+        "width": 1390,
+        "height": 900
+      },
+      "side": "before",
+      "state": "detail",
+      "mode": "fullPage",
+      "reused": true,
+      "captureSource": "61a6305b5164af0edbf7a0ddf49aa7eca4732c6e",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/evidence-implementation/screenshots/before-desktop-detail.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "browser default; not recorded"
+    },
+    {
+      "path": "screenshots/before-mobile-create.png",
+      "sha256": "00ae27a03d88a89e6231af387b0cbb87854b61cd4f467958822d9239aa8d6abb",
+      "bytes": 43204,
+      "imageDimensions": {
+        "width": 390,
+        "height": 844
+      },
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "side": "before",
+      "state": "create",
+      "mode": "fullPage",
+      "reused": true,
+      "captureSource": "61a6305b5164af0edbf7a0ddf49aa7eca4732c6e",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/evidence-implementation/screenshots/before-mobile-create.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "browser default; not recorded"
+    },
+    {
+      "path": "screenshots/before-mobile-detail.png",
+      "sha256": "49e90ee112156344b324c68b7cbf4251b9174df2dcffde60d079677bcd096683",
+      "bytes": 128953,
+      "imageDimensions": {
+        "width": 390,
+        "height": 886
+      },
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "side": "before",
+      "state": "detail",
+      "mode": "fullPage",
+      "reused": true,
+      "captureSource": "61a6305b5164af0edbf7a0ddf49aa7eca4732c6e",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/evidence-implementation/screenshots/before-mobile-detail.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "browser default; not recorded"
+    },
+    {
+      "path": "screenshots/before-phone320-create-viewport.png",
+      "sha256": "20debaa04c35fb31e55676d4fe5caea6aa1ebc942423be916def5f8a0507a053",
+      "bytes": 41754,
+      "imageDimensions": {
+        "width": 320,
+        "height": 844
+      },
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "side": "before",
+      "state": "create",
+      "mode": "viewport",
+      "reused": false,
+      "captureSource": "61a6305b5164af0edbf7a0ddf49aa7eca4732c6e",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/invite-visual-evidence/docs/client-invite-visual-review/screenshots/before-phone320-create-viewport.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "America/Denver"
+    },
+    {
+      "path": "screenshots/before-phone320-create.png",
+      "sha256": "20debaa04c35fb31e55676d4fe5caea6aa1ebc942423be916def5f8a0507a053",
+      "bytes": 41754,
+      "imageDimensions": {
+        "width": 320,
+        "height": 844
+      },
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "side": "before",
+      "state": "create",
+      "mode": "fullPage",
+      "reused": false,
+      "captureSource": "61a6305b5164af0edbf7a0ddf49aa7eca4732c6e",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/invite-visual-evidence/docs/client-invite-visual-review/screenshots/before-phone320-create.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "America/Denver"
+    },
+    {
+      "path": "screenshots/before-phone320-detail-viewport.png",
+      "sha256": "f7aa8d2dbc4ea1f33f7f75116066c2d388ac8e6ce44c249d92198ce24261a7a2",
+      "bytes": 114236,
+      "imageDimensions": {
+        "width": 320,
+        "height": 844
+      },
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "side": "before",
+      "state": "detail",
+      "mode": "viewport",
+      "reused": false,
+      "captureSource": "61a6305b5164af0edbf7a0ddf49aa7eca4732c6e",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/invite-visual-evidence/docs/client-invite-visual-review/screenshots/before-phone320-detail-viewport.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "America/Denver"
+    },
+    {
+      "path": "screenshots/before-phone320-detail.png",
+      "sha256": "c357f886b46a51036ca75af6fe8b393e63780a834225fd2a14d87ed82fe35569",
+      "bytes": 115024,
+      "imageDimensions": {
+        "width": 320,
+        "height": 942
+      },
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "side": "before",
+      "state": "detail",
+      "mode": "fullPage",
+      "reused": false,
+      "captureSource": "61a6305b5164af0edbf7a0ddf49aa7eca4732c6e",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/invite-visual-evidence/docs/client-invite-visual-review/screenshots/before-phone320-detail.png",
+      "logicalScrollState": "initial/top; full-page mode additionally records document below fold",
+      "theme": "dark (inspected pixels)",
+      "timezone": "America/Denver"
+    },
+    {
+      "path": "screenshots/before-phone320-detail-bottom-viewport.png",
+      "sha256": "cc063c0f0b9f3ff9faab335efa9852f2d2e5fa65dffc6a3bf049a5e5d81955f4",
+      "bytes": 110925,
+      "imageDimensions": {
+        "width": 320,
+        "height": 844
+      },
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "side": "before",
+      "state": "detail-bottom",
+      "mode": "viewport",
+      "reused": false,
+      "captureSource": "61a6305b5164af0edbf7a0ddf49aa7eca4732c6e",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/invite-visual-evidence/docs/client-invite-visual-review/screenshots/before-phone320-detail-bottom-viewport.png",
+      "logicalScrollState": "scroll document to bottom in both sources; maximum scroll offset differs with card height",
+      "theme": "dark (inspected pixels)",
+      "timezone": "America/Denver"
+    },
+    {
+      "path": "screenshots/after-phone320-detail-bottom-viewport.png",
+      "sha256": "007ce68d4243bb83dbde0657b5f517ee7a796cc600ebc83eba6b532ea0e30cb1",
+      "bytes": 120227,
+      "imageDimensions": {
+        "width": 320,
+        "height": 844
+      },
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "side": "after",
+      "state": "detail-bottom",
+      "mode": "viewport",
+      "reused": false,
+      "captureSource": "0e4313780f1a0712badc20cc0148cc84894327b3",
+      "originalEvidencePath": "/Users/jav/Documents/Codex/2026-10-08/task-45/invite-visual-evidence/docs/client-invite-visual-review/screenshots/after-phone320-detail-bottom-viewport.png",
+      "logicalScrollState": "scroll document to bottom in both sources; maximum scroll offset differs with card height",
+      "theme": "dark (inspected pixels)",
+      "timezone": "America/Denver"
+    }
+  ],
+  "new320BottomHarness": "task45/evidence-visual-correction/capture/bottom.spec.mjs"
+}

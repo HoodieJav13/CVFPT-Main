@@ -92,3 +92,7 @@ memory/test_credentials.md
 
 # Mobile development
 android-sdk/
+
+# Separate local invite browser suites preserve each other's traces.
+frontend/test-results-invites/
+frontend/test-results-visual/
