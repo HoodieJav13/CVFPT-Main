@@ -33,6 +33,8 @@ const CLIENT_LIBRARY_EXERCISE_FIELDS = [
 const CLIENT_PROGRAM_ASSIGNMENT_FIELDS = ['id', 'program_id', 'client_id', 'notes', 'archived', 'created_at'];
 const CLIENT_WORKOUT_ASSIGNMENT_FIELDS = [
   'id', 'client_id', 'workout_id', 'assignment_mode', 'assigned_for', 'notes', 'archived', 'created_at',
+  // Quick sessions: the type label and the authoritative completion flag only.
+  'kind', 'quick_session_completed',
 ];
 
 function clientSafeExercise(exercise) {

@@ -498,3 +498,29 @@ test('client copies follow an admin reassignment: the former coach is masked, th
     assert.equal((await call('PUT', `/${uuid(13)}`, { name: 'Changed' })).status, 200, 'new coach edits the program copy');
   });
 });
+
+test('F2 generic save-as-template routes a quick private source through the common-lock RPC with normal ownership masking', async (t) => {
+  await withServer(t, async (call) => {
+    setup('coachA');
+    const source = db.tables.workouts.find((w) => w.id === uuid(3));
+    source.source_workout_id = null;
+    source.name = 'Quick private source';
+    db.tables.workout_assignments.push({ id: uuid(99), workout_id: source.id, client_id: CLI_A, kind: 'quick', archived: false });
+    db.rpcResults.save_workout_as_template = { data: uuid(6), error: null };
+    const res = await call('POST', `/workouts/${source.id}/save-as-template`, {});
+    assert.equal(res.status, 201);
+    assert.deepEqual(db.rpcCalls, [{ name: 'save_workout_as_template', args: {
+      p_workout_id: source.id, p_coach_id: A, p_name: null, p_variation_of: null,
+    } }], 'no header name from the pre-RPC read overrides the coherent clone');
+    db.rpcCalls.length = 0;
+    currentUser = users.coachB;
+    assert.equal((await call('POST', `/workouts/${source.id}/save-as-template`, {})).status, 404);
+    assert.equal(db.rpcCalls.length, 0, 'foreign coach never invokes the service RPC');
+    currentUser = users.clientA;
+    assert.equal((await call('POST', `/workouts/${source.id}/save-as-template`, {})).status, 403);
+    currentUser = users.admin;
+    assert.equal((await call('POST', `/workouts/${source.id}/save-as-template`, { name: 'Explicit name' })).status, 201);
+    assert.equal(db.rpcCalls[0].args.p_coach_id, ADMIN);
+    assert.equal(db.rpcCalls[0].args.p_name, 'Explicit name');
+  });
+});

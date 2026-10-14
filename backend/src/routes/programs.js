@@ -36,16 +36,9 @@ const {
   validateDraft,
 } = require('../lib/programDraft.cjs');
 const { extractPdfText } = require('../lib/pdfText');
-const { normalizeSupersetGroups } = require('../lib/supersets');
-const { normalizeTracking } = require('../lib/workoutMetrics');
-
-function trackingExercises(exercises, previous = []) {
-  const old = new Map(previous.map((row) => [row.id, row]));
-  return normalizeSupersetGroups(exercises.map((row) => {
-    const merged = { ...old.get(row.id), ...row };
-    return { ...row, ...normalizeTracking(merged) };
-  }));
-}
+const { normalizeQuickSessionCreate, quickSessionHash, trackingExercises } = require('../lib/quickSessions');
+const { annotateQuickCompletion, quickCompletionFlags } = require('../lib/quickSessionReads');
+const { todayDateInTz } = require('../utils/time');
 const {
   generateLogSheetPdf,
   generateProgramPdf,
@@ -336,6 +329,52 @@ function rpcErrorStatus(error) {
   return null;
 }
 
+// A quick session's prescription/loads are editable only before it is ever started.
+function isQuickSessionStarted(error) {
+  return /quick_session_started/.test(String(error?.message || ''));
+}
+
+function sendQuickSessionStarted(res) {
+  return res.status(409).json({
+    error: 'This quick session has already been started, so its prescription can no longer change.',
+    code: 'quick_session_started',
+  });
+}
+
+// Coach-facing assignment rows never carry the create fingerprint or request id.
+function coachAssignment(row) {
+  const { create_request_hash: _hash, create_request_id: _request, ...rest } = row;
+  return rest;
+}
+
+// Current-access recheck for a quick receipt (and an optional newly supplied
+// target client row) before anything about it is serialized.
+function authorizeQuickReceipt(user, receipt, suppliedClient = null) {
+  if (!receipt || receipt.kind !== 'quick' || receipt.archived) return false;
+  if (!receipt.client || receipt.client.archived || !canAccessClient(user, receipt.client)) return false;
+  if (suppliedClient !== null && (!suppliedClient || suppliedClient.archived || !canAccessClient(user, suppliedClient))) return false;
+  return true;
+}
+
+// Hydrates a quick assignment for a coach response, or null when the caller no
+// longer has access. Read failures throw (500), never masquerade as absence.
+async function quickAssignmentForResponse(user, assignmentId) {
+  const { data: assignment, error } = await supabaseAdmin.from('workout_assignments')
+    .select('*, client:clients(*)').eq('id', assignmentId).maybeSingle();
+  if (error) throw error;
+  if (!authorizeQuickReceipt(user, assignment)) return null;
+  const workout = await workoutWithDetails(assignment.workout_id);
+  if (!workout || !canAccessWorkout(user, workout)) return null;
+  const flags = await quickCompletionFlags(assignment.client_id, [assignment.id], { db: supabaseAdmin });
+  const { client: _client, ...row } = assignment;
+  return coachAssignment({
+    ...row,
+    workout,
+    exercise_loads: await workoutAssignmentLoads(assignment.id),
+    quick_session_completed: flags.get(assignment.id) === true,
+  });
+}
+
 async function programDaysAreAccessible(user, days, options = {}) {
   const workoutIds = [...new Set((days || []).map((day) => day.workout_id).filter(Boolean))];
   if (!workoutIds.length) return true;
@@ -499,6 +538,7 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
       p_goal: 'goal' in body ? body.goal || null : workout.goal,
       p_exercises: trackingExercises(Array.isArray(body.exercises) ? body.exercises : workout.exercises, workout.exercises),
     });
+    if (error && isQuickSessionStarted(error)) return sendQuickSessionStarted(res);
     if (error) throw error;
     if (!workoutId) return res.status(404).json({ error: 'Workout not found' });
     return res.json(await workoutWithDetails(workoutId));
@@ -948,9 +988,9 @@ router.get('/workout-assignments/client/:clientId', requireCoach, async (req, re
       .eq('client_id', clientRow.id).eq('archived', false).order('assigned_for', { ascending: true, nullsFirst: false });
     if (error) throw error;
     const result = [];
-    for (const a of data || []) {
+    for (const a of await annotateQuickCompletion(clientRow.id, data || [], { db: supabaseAdmin })) {
       const workout = await workoutWithDetails(a.workout_id);
-      if (workout) result.push({ ...a, workout, exercise_loads: await workoutAssignmentLoads(a.id) });
+      if (workout) result.push(coachAssignment({ ...a, workout, exercise_loads: await workoutAssignmentLoads(a.id) }));
     }
     return res.json(result);
   } catch (e) {
@@ -1011,8 +1051,9 @@ router.put('/workout-assignments/:assignmentId/loads', requireCoach, async (req,
       p_notes: 'notes' in (req.body || {}) ? req.body.notes : assignment.notes,
       p_loads: loads,
     });
+    if (error && isQuickSessionStarted(error)) return sendQuickSessionStarted(res);
     if (error) throw error;
-    return res.json({ ...assignment, exercise_loads: await workoutAssignmentLoads(assignment.id) });
+    return res.json(coachAssignment({ ...assignment, exercise_loads: await workoutAssignmentLoads(assignment.id) }));
   } catch (e) {
     logError('update workout assignment loads error', e);
     return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to update assigned loads' });
@@ -1044,6 +1085,87 @@ router.patch('/workout-assignments/:assignmentId/archive', requireCoach, async (
   }
 });
 
+// ----- Coach-created quick sessions (docs/superpowers/specs/2026-10-09-quick-sessions-design.md) -----
+const QUICK_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+router.post('/quick-sessions', requireCoach, async (req, res) => {
+  let normalized;
+  try {
+    normalized = normalizeQuickSessionCreate(req.body, { today: todayDateInTz() });
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    logError('quick session normalize error', e);
+    return res.status(500).json({ error: 'Failed to save the quick session' });
+  }
+  try {
+    const { request_id: requestId, payload } = normalized;
+    // Actor comes only from authentication; the fingerprint only from the server.
+    const { data, error } = await supabaseAdmin.rpc('create_quick_session', {
+      p_actor: req.user.coach.id,
+      p_client_id: payload.client_id,
+      p_request_id: requestId,
+      p_hash: quickSessionHash(payload),
+      p_assigned_for: payload.assigned_for,
+      p_name: payload.name,
+      p_notes: payload.notes,
+      p_exercises: payload.exercises,
+    });
+    if (error) {
+      if (/^Hidden exercises cannot be added/.test(String(error.message || ''))) return res.status(422).json({ error: error.message });
+      throw error;
+    }
+    if (data?.state === 'request_mismatch') return res.status(409).json({ state: 'request_mismatch' });
+    if (data?.state === 'created' || data?.state === 'replayed') {
+      const assignment = await quickAssignmentForResponse(req.user, data.assignment_id);
+      if (!assignment) return res.status(404).json({ state: 'not_found' });
+      return res.status(data.state === 'created' ? 201 : 200).json({ state: data.state, assignment });
+    }
+    return res.status(404).json({ state: 'not_found' });
+  } catch (e) {
+    logError('create quick session error', e);
+    return res.status(500).json({ error: 'Failed to save the quick session' });
+  }
+});
+
+// Authorized status of an uncertain create. Absence never proves rollback.
+router.get('/quick-sessions/requests/:requestId', requireCoach, async (req, res) => {
+  try {
+    if (!QUICK_UUID.test(req.params.requestId)) return res.status(400).json({ error: 'Invalid request id' });
+    const { data, error } = await supabaseAdmin.rpc('get_quick_session_request', {
+      p_actor: req.user.coach.id,
+      p_request_id: req.params.requestId.toLowerCase(),
+    });
+    if (error) throw error;
+    if (data?.state === 'committed') {
+      const assignment = await quickAssignmentForResponse(req.user, data.assignment_id);
+      if (assignment) return res.json({ state: 'committed', assignment });
+    }
+    return res.status(404).json({ state: 'not_found' });
+  } catch (e) {
+    logError('quick session status error', e);
+    return res.status(500).json({ error: 'Failed to check the quick session' });
+  }
+});
+
+// Independent, idempotent: one hidden shared studio template per quick session.
+router.post('/quick-sessions/:assignmentId/save-to-library', requireCoach, async (req, res) => {
+  try {
+    if (!QUICK_UUID.test(req.params.assignmentId)) return res.status(400).json({ error: 'Invalid quick session' });
+    const { data, error } = await supabaseAdmin.rpc('save_quick_session_to_library', {
+      p_actor: req.user.coach.id,
+      p_assignment_id: req.params.assignmentId.toLowerCase(),
+    });
+    if (error) throw error;
+    if (data?.state === 'saved' || data?.state === 'replayed') {
+      return res.status(data.state === 'saved' ? 201 : 200).json({ state: data.state, template_id: data.template_id });
+    }
+    return res.status(404).json({ state: 'not_found' });
+  } catch (e) {
+    logError('quick session library save error', e);
+    return res.status(500).json({ error: 'Failed to save to the studio library' });
+  }
+});
+
 router.get('/client/assigned', requireClient, async (req, res) => {
   try {
     const { data: programAssignments, error } = await supabaseAdmin.from('program_assignments')
@@ -1061,7 +1183,7 @@ router.get('/client/assigned', requireClient, async (req, res) => {
       .eq('client_id', req.user.client.id).eq('archived', false).order('assigned_for', { ascending: true, nullsFirst: false });
     if (waErr) throw waErr;
     const workouts = [];
-    for (const assignment of workoutAssignments || []) {
+    for (const assignment of await annotateQuickCompletion(req.user.client.id, workoutAssignments || [], { db: supabaseAdmin })) {
       const workout = await workoutWithDetails(assignment.workout_id);
       if (workout) workouts.push(clientSafeWorkoutAssignment({ ...assignment, workout, exercise_loads: await workoutAssignmentLoads(assignment.id) }));
     }

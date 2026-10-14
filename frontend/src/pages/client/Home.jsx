@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
 import { chooseClientTodayPlan } from '@/lib/clientTodayPlan';
+import { QuickSessionBadge } from '@/components/training/QuickSessionBadge';
 import { WeekStrip, StreakPill } from '@/components/WeekRhythm';
 import { trackProductEvent } from '@/lib/telemetry';
 import { useShowInstallCard } from '@/lib/pwa';
@@ -209,6 +210,7 @@ export default function ClientHome() {
           </div>
           <div className="mt-1 flex items-start justify-between gap-4">
             <div className="min-w-0">
+              {todayPlan.quickSession && <QuickSessionBadge className="mb-1" testId="client-today-quick-session" />}
               <h2 className="font-display text-4xl font-semibold tracking-tight" data-testid="client-today-plan-title">{todayPlan.title}</h2>
               {todayPlan.description && <p className="mt-1 text-sm text-muted-foreground">{todayPlan.description}</p>}
             </div>

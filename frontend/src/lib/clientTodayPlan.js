@@ -25,6 +25,12 @@ function firstProgramWorkout(programs = [], history = []) {
   return null;
 }
 
+// A completed quick session (authoritative server flag) is not a due candidate; every
+// other assignment keeps the existing priority rules. Mirrors lib/quickSessions.
+function candidateWorkouts(assignments) {
+  return (assignments?.workouts || []).filter((assignment) => !(assignment.kind === 'quick' && assignment.quick_session_completed === true));
+}
+
 export function chooseClientTodayPlan({ assignments, activeLog, history, unreadMessages, todayCheckIn, complete = true }) {
   if (activeLog) {
     return {
@@ -40,7 +46,7 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
     .filter((log) => log.status === 'completed' && log.dated_workout_assignment_id)
     .map((log) => log.dated_workout_assignment_id));
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
-  const due = (assignments?.workouts || [])
+  const due = candidateWorkouts(assignments)
     .filter((assignment) => assignment.assignment_mode === 'dated'
       && assignment.assigned_for <= today
       && !completedDated.has(assignment.id))
@@ -48,6 +54,7 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
   if (due) {
     return {
       kind: 'dated',
+      quickSession: due.kind === 'quick',
       eyebrow: due.assigned_for < today ? 'Overdue' : 'Today’s workout',
       title: due.workout?.name || 'Assigned workout',
       description: due.notes || null,
@@ -59,7 +66,7 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
   const program = firstProgramWorkout(assignments?.programs || [], history || []);
   if (program) return program;
 
-  const activeAssignment = (assignments?.workouts || []).find((assignment) => assignment.assignment_mode === 'active');
+  const activeAssignment = candidateWorkouts(assignments).find((assignment) => assignment.assignment_mode === 'active');
   if (activeAssignment) {
     return {
       kind: 'standalone',

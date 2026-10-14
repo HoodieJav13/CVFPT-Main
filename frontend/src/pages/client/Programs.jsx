@@ -18,6 +18,8 @@ import { downloadBlob, filenameFromDisposition } from '@/lib/download';
 import { SupersetGroups } from '@/components/training/SupersetGroups';
 import { useHistoryPages } from '@/lib/useHistoryPages';
 import { HistoryShowMore } from '@/components/training/HistoryShowMore';
+import { QuickSessionBadge } from '@/components/training/QuickSessionBadge';
+import { activeCardAssignments, isQuickAssignment, isQuickSessionLog } from '@/lib/quickSessions';
 
 export default function ClientPrograms() {
   const navigate = useNavigate();
@@ -82,7 +84,8 @@ export default function ClientPrograms() {
   if (!assignments || history === null) return <LoadingScreen />;
 
   const programAssignments = assignments.programs || [];
-  const workoutAssignments = assignments.workouts || [];
+  // Completed quick sessions leave the active cards; history keeps them.
+  const workoutAssignments = activeCardAssignments(assignments.workouts);
   const activeWorkouts = workoutAssignments.filter((assignment) => assignment.assignment_mode === 'active');
   const datedWorkouts = workoutAssignments
     .filter((assignment) => assignment.assignment_mode === 'dated')
@@ -202,7 +205,10 @@ function WorkoutAssignmentCard({ assignment, starting, onStart }) {
             </Button>
           </div>
         </div>
-        <Badge variant="outline" className="w-fit"><CalendarDays className="mr-1 h-3.5 w-3.5" /> {label}</Badge>
+        <div className="flex flex-wrap gap-2">
+          {isQuickAssignment(assignment) && <QuickSessionBadge />}
+          <Badge variant="outline" className="w-fit"><CalendarDays className="mr-1 h-3.5 w-3.5" /> {label}</Badge>
+        </div>
         {assignment.notes && <AssignmentNote>{assignment.notes}</AssignmentNote>}
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="exercises" className="last:border-b-0">
@@ -271,6 +277,7 @@ function HistoryRow({ log }) {
     <Link to={`/client/workouts/${log.id}`} className="flex min-h-16 items-center justify-between gap-3 rounded-md border border-border bg-card/60 px-4 py-3 transition-colors hover:bg-card" data-testid="workout-history-row">
       <span className="min-w-0">
         <span className="block truncate font-medium">{log.workout_name}</span>
+        {isQuickSessionLog(log) && <span className="block text-xs font-medium text-primary" data-testid="history-quick-session-label">Quick session</span>}
         <span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)} - {completed} sets</span>
         {hasUnreadCoachFeedback && <span className="mt-1 block text-xs font-medium text-primary" data-testid="new-coach-feedback-marker">New coach feedback</span>}
       </span>

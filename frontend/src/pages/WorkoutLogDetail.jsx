@@ -8,6 +8,8 @@ import { useAuth } from '@/context/AuthContext';
 import { fmtDateTime, initials } from '@/lib/format';
 import { LoadingScreen, LoadErrorState, PageHeader } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
+import { QuickSessionBadge } from '@/components/training/QuickSessionBadge';
+import { isQuickSessionLog } from '@/lib/quickSessions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -254,6 +256,7 @@ export default function WorkoutLogDetail() {
         {celebrateCompletion && <div className="sr-only" role="status" aria-live="polite">Workout complete</div>}
         <PageHeader title={log.workout_name} subtitle={log.completed_at ? `Completed ${fmtDateTime(log.completed_at)}` : `Started ${fmtDateTime(log.started_at)}`} />
         <div className="mb-4 flex flex-wrap gap-2">
+          {isQuickSessionLog(log) && <QuickSessionBadge testId="log-detail-quick-session" />}
           <Badge variant="outline" className="bg-success/10 text-success-foreground"><Check className="mr-1 h-3.5 w-3.5" /> {completed} completed</Badge>
           {skipped > 0 && <Badge variant="outline"><CircleSlash2 className="mr-1 h-3.5 w-3.5" /> {skipped} skipped</Badge>}
           <Badge variant="outline"><Clock3 className="mr-1 h-3.5 w-3.5" /> {log.status}</Badge>
