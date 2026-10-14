@@ -388,7 +388,7 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
 }
 
 module.exports = {
-  providerErrorCode,
+  FROM, providerErrorCode,
   configured, dispatchEmail, formatDenver, notifyBookingEvent, notifySessionCancelRequested,
   notifySessionCancelled, notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
   notifySeriesCancelled, notifySeriesScheduled,

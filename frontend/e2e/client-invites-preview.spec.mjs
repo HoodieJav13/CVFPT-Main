@@ -1,0 +1,11 @@
+import {test,expect,usePreviewRole,callPreviewApi} from './preview-test.mjs';
+const request='a0000000-0000-4000-8000-000000000011';
+test('fictional create receipt and invite routes never reach the network',async({page})=>{
+ await usePreviewRole(page,'coach');await page.goto('/coach/clients');await page.getByTestId('add-client-button').click();await expect(page.getByTestId('client-send-invite-checkbox')).not.toBeChecked();await page.getByTestId('client-name-input').fill('Fictional Invite');await page.getByTestId('client-email-input').fill('fixture@example.invalid');await page.getByTestId('client-send-invite-checkbox').check();await page.getByTestId('client-save-button').click();await expect(page.getByRole('dialog')).not.toBeVisible();
+ const body={request_id:request,name:'Fictional Receipt',email:'receipt@example.invalid',invite_now:true};const first=await callPreviewApi(page,'post','/clients',body);expect(first.status).toBe(201);expect(first.data.invite.status).toBe('accepted');
+ const replay=await callPreviewApi(page,'post','/clients',body);expect(replay.data.replayed).toBe(true);expect(replay.data.client.id).toBe(first.data.client.id);
+ const recovered=await callPreviewApi(page,'get',`/clients/create-requests/${request}`);expect(recovered.data.status).toBe('committed');expect(recovered.data.client.health_notes).toBeUndefined();
+ const id=first.data.client.id;const stale=await callPreviewApi(page,'patch',`/clients/${id}/invite`,{action_id:'b0000000-0000-4000-8000-000000000011',invited:true,supersedes_attempt_id:null});expect(stale.data.action.result.outcome).toBe('stale');
+ const sent=await callPreviewApi(page,'post',`/clients/${id}/invite/resend`,{action_id:'b0000000-0000-4000-8000-000000000012',supersedes_attempt_id:first.data.invite.attempt_id,confirm_duplicate_risk:false});expect(sent.data.action.result.outcome).toBe('selected');
+ expect((await callPreviewApi(page,'get',`/clients/${id}`)).data.invite.status).toBe('accepted');await page.getByText('Fictional Invite',{exact:true}).click();await expect(page.getByTestId('client-invite-outcome')).toHaveText('Accepted for sending');await page.getByTestId('client-invite-switch').click();await expect(page.getByTestId('client-claim-permission')).toHaveText('Can claim account: no');
+});
