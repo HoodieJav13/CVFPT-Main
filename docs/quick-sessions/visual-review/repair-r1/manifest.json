@@ -1,0 +1,352 @@
+{
+  "scope": "R2 bug correction to existing frozen control state; R1 is behaviorally verified with delayed response cases, not inferred from screenshots",
+  "captureMethod": "Playwright actual rendered app with fictional intercepted API; held responses and frozen states in test worktrees, verified runtime bytes match the commits below. Not git-archive screenshot claims.",
+  "clock": "2026-10-14T17:00:00Z fixed Date; Chromium headless, default test timezone and existing theme",
+  "sources": {
+    "before": {
+      "commit": "d6fad27a37733bdcc79c355ba81047c3e0eec54f",
+      "runtimeFiles": {
+        "frontend/src/components/training/QuickSessionBuilder.jsx": "6ad61eee4ec79c8ffaa2c089bb7a6f2fcc577c413b51f6fb6100fb28df90c517",
+        "frontend/src/pages/coach/ClientDetail.jsx": "396d219425e16aa96bd45d1e22d80d5521560946c6c003ab2c64d1ea040e68b7"
+      }
+    },
+    "after": {
+      "commit": "93a26e83bf82a1664c1441ac4f0ea04edc579733",
+      "runtimeFiles": {
+        "frontend/src/components/training/QuickSessionBuilder.jsx": "cabd395fbeab8f59dbb5abdad1138e427828c2bb8f1323cd7b541ab19d63580b",
+        "frontend/src/pages/coach/ClientDetail.jsx": "74cc2a560dbd3380763e78361ad608392ca09e3869a7fd1336ea0b2f1ce7efd6"
+      }
+    }
+  },
+  "pairs": 12,
+  "images": [
+    {
+      "version": "before",
+      "state": "frozen-saving",
+      "width": 1440,
+      "height": 900,
+      "file": "before-frozen-saving-1440.png",
+      "sha256": "990a6fb254431b0bb63b54b2688fa436181a3e27ddbf4ac9f646fbd94cf4e987",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-3cda4-n-and-truthful-while-saving/frozen-saving-1440.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-saving",
+      "width": 320,
+      "height": 640,
+      "file": "before-frozen-saving-320.png",
+      "sha256": "8dd27586367a70d5fadb2af93de485ad0e7ae88622d02d2f21698f11377e36a4",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-3cda4-n-and-truthful-while-saving/frozen-saving-320.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-saving",
+      "width": 390,
+      "height": 844,
+      "file": "before-frozen-saving-390.png",
+      "sha256": "97adb4e8fe194dd7f3ee50ecc0237127e9c1a65eb4d9eb484fe33138cfdeaa3e",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-3cda4-n-and-truthful-while-saving/frozen-saving-390.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-checking",
+      "width": 1440,
+      "height": 900,
+      "file": "before-frozen-checking-1440.png",
+      "sha256": "9ee049e7e6d1bb4d2119673a66f1b27c481c24cdeabbb7aaab16675886d96721",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-dbca5-and-truthful-while-checking/frozen-checking-1440.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-checking",
+      "width": 320,
+      "height": 640,
+      "file": "before-frozen-checking-320.png",
+      "sha256": "0bf59b5af4bd8d96013413012e848f3f1aaa84e4dfcb6cc212e73a76ce84d8be",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-dbca5-and-truthful-while-checking/frozen-checking-320.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-checking",
+      "width": 390,
+      "height": 844,
+      "file": "before-frozen-checking-390.png",
+      "sha256": "621d9bb0d2368c3ecd8871ae74a6e2264b162a634b2ae3883e27792a8b2d0f1c",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-dbca5-and-truthful-while-checking/frozen-checking-390.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-unrecovered",
+      "width": 1440,
+      "height": 900,
+      "file": "before-frozen-unrecovered-1440.png",
+      "sha256": "a7d77ff7cc783c1e7894c8e7c63949d4a08e8895a389cd9e24ac408801eef1da",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-f018d--truthful-while-unrecovered/frozen-unrecovered-1440.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-unrecovered",
+      "width": 320,
+      "height": 640,
+      "file": "before-frozen-unrecovered-320.png",
+      "sha256": "2bb8fe8b8bd8f5ae68359fd9f5d693b3a886f5aba1e39f79d1a0680b34a5da34",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-f018d--truthful-while-unrecovered/frozen-unrecovered-320.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-unrecovered",
+      "width": 390,
+      "height": 844,
+      "file": "before-frozen-unrecovered-390.png",
+      "sha256": "66d1c933769dbc727daa51bb157c86f3bef647ad26affab18b5e5170214514c0",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-f018d--truthful-while-unrecovered/frozen-unrecovered-390.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-uncertain",
+      "width": 1440,
+      "height": 900,
+      "file": "before-frozen-uncertain-1440.png",
+      "sha256": "cb27c4775505c690a0019d7a89262933779a7d2117e8c6b86d10b1075527eac8",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-fd499-nd-truthful-while-uncertain/frozen-uncertain-1440.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-uncertain",
+      "width": 320,
+      "height": 640,
+      "file": "before-frozen-uncertain-320.png",
+      "sha256": "7bab7f41e5ab111715f669c8dca08d98c60690777f8165e1c255567f0e0c570b",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-fd499-nd-truthful-while-uncertain/frozen-uncertain-320.png"
+    },
+    {
+      "version": "before",
+      "state": "frozen-uncertain",
+      "width": 390,
+      "height": 844,
+      "file": "before-frozen-uncertain-390.png",
+      "sha256": "da37b7dcaa20e40347aa8e6808692a98a5136be81883cc853132e8aad63e3a11",
+      "sourceArtifact": "repair-r1/evidence/red-visual-quick-results/quick-sessions-mocked-R2-c-fd499-nd-truthful-while-uncertain/frozen-uncertain-390.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-saving",
+      "width": 1440,
+      "height": 900,
+      "file": "after-frozen-saving-1440.png",
+      "sha256": "a48c02fecad445463c90330b3ca581c2bec1654e8908bd372b27fd5f812fe4db",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-3cda4-n-and-truthful-while-saving/frozen-saving-1440.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-saving",
+      "width": 320,
+      "height": 640,
+      "file": "after-frozen-saving-320.png",
+      "sha256": "5b3d262938b90cf4df0201502061dd06a41ad72e0f940f46e75db6d0261ec6aa",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-3cda4-n-and-truthful-while-saving/frozen-saving-320.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-saving",
+      "width": 390,
+      "height": 844,
+      "file": "after-frozen-saving-390.png",
+      "sha256": "263fcaf173a39ae6ff4302479b7106a051f40316eb516d0d627302153e5db377",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-3cda4-n-and-truthful-while-saving/frozen-saving-390.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-checking",
+      "width": 1440,
+      "height": 900,
+      "file": "after-frozen-checking-1440.png",
+      "sha256": "b8a6efb0b390a381cc4aadf0fcf9750a0f68d03e3db2481f05a48d83eceb7f0e",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-dbca5-and-truthful-while-checking/frozen-checking-1440.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-checking",
+      "width": 320,
+      "height": 640,
+      "file": "after-frozen-checking-320.png",
+      "sha256": "3637e38c17914a83ccb02ca94b22164a33c4164bcc03cbb9dd6083a28bca2fc9",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-dbca5-and-truthful-while-checking/frozen-checking-320.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-checking",
+      "width": 390,
+      "height": 844,
+      "file": "after-frozen-checking-390.png",
+      "sha256": "10a53b38d619973d1bda32e137e6d9ab32fcf10cde948d4d15f77759f79fe2c9",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-dbca5-and-truthful-while-checking/frozen-checking-390.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-unrecovered",
+      "width": 1440,
+      "height": 900,
+      "file": "after-frozen-unrecovered-1440.png",
+      "sha256": "54d6955a3836f9c9db2cbf7fa2a400f33772a4425e314200c4325f297ca31224",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-f018d--truthful-while-unrecovered/frozen-unrecovered-1440.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-unrecovered",
+      "width": 320,
+      "height": 640,
+      "file": "after-frozen-unrecovered-320.png",
+      "sha256": "95fb9a65b5a1546329e8a3649cf57a4f8128da76d4c1010432f5f49d7d6aa908",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-f018d--truthful-while-unrecovered/frozen-unrecovered-320.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-unrecovered",
+      "width": 390,
+      "height": 844,
+      "file": "after-frozen-unrecovered-390.png",
+      "sha256": "5839541b01c1f8580b21dbad2f124417ab4d599bbbad157b238f27cd4c280d22",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-f018d--truthful-while-unrecovered/frozen-unrecovered-390.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-uncertain",
+      "width": 1440,
+      "height": 900,
+      "file": "after-frozen-uncertain-1440.png",
+      "sha256": "1cbeee31f3f7ff7362a3796591cc7e9e21eea2018c67263009cf8a0a1b4bc74c",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-fd499-nd-truthful-while-uncertain/frozen-uncertain-1440.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-uncertain",
+      "width": 320,
+      "height": 640,
+      "file": "after-frozen-uncertain-320.png",
+      "sha256": "5a235d78dff7f14006429c816156e463494855bfd7faa2ee7cf6acf06b44dbcb",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-fd499-nd-truthful-while-uncertain/frozen-uncertain-320.png"
+    },
+    {
+      "version": "after",
+      "state": "frozen-uncertain",
+      "width": 390,
+      "height": 844,
+      "file": "after-frozen-uncertain-390.png",
+      "sha256": "55c7de9ccb3401839a752fb0957d215bead151c9996f2de860f2b2b3507884ae",
+      "sourceArtifact": "repair-r1/evidence/green-final-quick-results/quick-sessions-mocked-R2-c-fd499-nd-truthful-while-uncertain/frozen-uncertain-390.png"
+    }
+  ],
+  "afterDOM": [
+    {
+      "phase": "saving",
+      "width": 320,
+      "height": 640,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "saving",
+      "width": 390,
+      "height": 844,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "saving",
+      "width": 1440,
+      "height": 900,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "checking",
+      "width": 320,
+      "height": 640,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "checking",
+      "width": 390,
+      "height": 844,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "checking",
+      "width": 1440,
+      "height": 900,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "unrecovered",
+      "width": 320,
+      "height": 640,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "unrecovered",
+      "width": 390,
+      "height": 844,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "unrecovered",
+      "width": 1440,
+      "height": 900,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "uncertain",
+      "width": 320,
+      "height": 640,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "uncertain",
+      "width": 390,
+      "height": 844,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    },
+    {
+      "phase": "uncertain",
+      "width": 1440,
+      "height": 900,
+      "horizontalOverflow": false,
+      "duration": "60",
+      "distance": "20",
+      "disabled": true
+    }
+  ],
+  "acceptance": "Implementer evidence only; independent exact-head re-review and owner visual/release gates remain separate",
+  "originalEvidence": "Original released-main pairs and the original sealed411-entry packet are unchanged."
+}
