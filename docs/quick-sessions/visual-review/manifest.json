@@ -1,0 +1,2274 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-14T20:02:19.591Z",
+  "browser": "chromium (Playwright headless shell)",
+  "sources": {
+    "baseline": {
+      "sha": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "url": "http://127.0.0.1:46410",
+      "served": "git archive export, vite dev, preview mode"
+    },
+    "proposed": {
+      "sha": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "url": "http://127.0.0.1:46420",
+      "served": "git archive export, vite dev, preview mode"
+    }
+  },
+  "fixture": "Identical preview fixtures from each SHA (Sarah baseline; quick-session scenario on fictional client Riley Ortega exists in proposed only). Clock fixed 2026-10-09T17:00:00Z (11:00 America/Denver).",
+  "theme": "dark, reduced motion, en-US, America/Denver",
+  "classification": "Extension of existing Assign/client-copy patterns plus one semantic type label using existing Badge/primary tokens. No new identity/signature visual direction proposed; no direction is selected here. Paired captures document the actual deltas; cold/owner review is not self-certified.",
+  "limitations": [
+    "Preview mode proves rendered UI behavior only; authorization, idempotency and races are proven by the SQL and mocked-network suites.",
+    "Shared pairs use Sarah fixtures (present in both SHAs). Quick-session states are new-only: the baseline has no creator, so the Assign -> Standalone flow is the creator baseline.",
+    "The preview toolbar is part of the preview build and overlays the lower right on both sides.",
+    "Chromium headless shell only (dark, reduced motion); no iOS Safari or installed PWA proof."
+  ],
+  "captures": [
+    {
+      "state": "assign-standalone",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "Shared: Assign -> Standalone workout (the honest creator baseline: there is no quick-session creator before).",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-standalone-320-baseline.png",
+      "sha256": "b481d412fef9bd6e511651c3db888546966b95d482f652e8f2cfe829bda926f9",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/assign-standalone-320-baseline-full.png",
+        "sha256": "86e4ff7b32826714fdf091fee00d5239fd3e73c447d606e50bd1f7bd65bce609",
+        "image": {
+          "width": 320,
+          "height": 4136
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-standalone",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "Shared: Assign -> Standalone workout (the honest creator baseline: there is no quick-session creator before).",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-standalone-320-proposed.png",
+      "sha256": "b481d412fef9bd6e511651c3db888546966b95d482f652e8f2cfe829bda926f9",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/assign-standalone-320-proposed-full.png",
+        "sha256": "86e4ff7b32826714fdf091fee00d5239fd3e73c447d606e50bd1f7bd65bce609",
+        "image": {
+          "width": 320,
+          "height": 4136
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-standalone",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "Shared: Assign -> Standalone workout (the honest creator baseline: there is no quick-session creator before).",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-standalone-390-baseline.png",
+      "sha256": "a7eb2d445f5ddd50779aeed1f8c1528272f9b6a716036b280863b16805c12065",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/assign-standalone-390-baseline-full.png",
+        "sha256": "b8b05f3358bf7b538daa03e8f89863cb402568ff3329f87e56edc5480690270f",
+        "image": {
+          "width": 390,
+          "height": 3832
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-standalone",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "Shared: Assign -> Standalone workout (the honest creator baseline: there is no quick-session creator before).",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-standalone-390-proposed.png",
+      "sha256": "a7eb2d445f5ddd50779aeed1f8c1528272f9b6a716036b280863b16805c12065",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/assign-standalone-390-proposed-full.png",
+        "sha256": "b8b05f3358bf7b538daa03e8f89863cb402568ff3329f87e56edc5480690270f",
+        "image": {
+          "width": 390,
+          "height": 3832
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-standalone",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "Shared: Assign -> Standalone workout (the honest creator baseline: there is no quick-session creator before).",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-standalone-1440-baseline.png",
+      "sha256": "9b9c4859a775234f40b7bf12724fc9195d2c33dfc4dd353fa3983504c36cbe61",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/assign-standalone-1440-baseline-full.png",
+        "sha256": "1fb675005e8f10db91ec9cdcb8984079cc1026426f087c58f4afd7146a8a3b99",
+        "image": {
+          "width": 1440,
+          "height": 3130
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-standalone",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "Shared: Assign -> Standalone workout (the honest creator baseline: there is no quick-session creator before).",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-standalone-1440-proposed.png",
+      "sha256": "b733435308fc85195a428133388ca463a5f466fa3aba30ee00733b183c9fda6f",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/assign-standalone-1440-proposed-full.png",
+        "sha256": "e39f9e8b0721c3e0141ad8973b6e7bef941ddb32cb06317af00fd07f12aa2f15",
+        "image": {
+          "width": 1440,
+          "height": 3130
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-type-menu",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "Shared: Assign training type selector open. Proposed adds the \"Quick session\" option.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-type-menu-320-baseline.png",
+      "sha256": "27d80de64a50a68968b914327f18b2350affdafbb4ad2fbfcb403437bfed9247",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/assign-type-menu-320-baseline-full.png",
+        "sha256": "fef204776a13ca02016c88b1f226ce0e8574d5829ace2817f6e229585e03a1ef",
+        "image": {
+          "width": 320,
+          "height": 4136
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-type-menu",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "Shared: Assign training type selector open. Proposed adds the \"Quick session\" option.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-type-menu-320-proposed.png",
+      "sha256": "5643c3a486ba824439ba2aacc545b31613c606b711a04a0b90d2b8f7d374826f",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/assign-type-menu-320-proposed-full.png",
+        "sha256": "fef204776a13ca02016c88b1f226ce0e8574d5829ace2817f6e229585e03a1ef",
+        "image": {
+          "width": 320,
+          "height": 4136
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-type-menu",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "Shared: Assign training type selector open. Proposed adds the \"Quick session\" option.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-type-menu-390-baseline.png",
+      "sha256": "b888307279e0fb4daaae7a9b5aee2218f74cb55411903f629e2c2dfd90c8fa23",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/assign-type-menu-390-baseline-full.png",
+        "sha256": "bae942c6b72c2d8ccbc95f02c24f9a7789a5865e534587b230ba692c9a38805d",
+        "image": {
+          "width": 390,
+          "height": 3832
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-type-menu",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "Shared: Assign training type selector open. Proposed adds the \"Quick session\" option.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-type-menu-390-proposed.png",
+      "sha256": "6899104e598b0fd6c5e3b8f02ab70135aa681e9dcff9d78640964db8b4b266e8",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/assign-type-menu-390-proposed-full.png",
+        "sha256": "bae942c6b72c2d8ccbc95f02c24f9a7789a5865e534587b230ba692c9a38805d",
+        "image": {
+          "width": 390,
+          "height": 3832
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-type-menu",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "Shared: Assign training type selector open. Proposed adds the \"Quick session\" option.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-type-menu-1440-baseline.png",
+      "sha256": "16833359905b4955b3541c081742db045b67c85f46bc81f8e541a53ec4dea9eb",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/assign-type-menu-1440-baseline-full.png",
+        "sha256": "301300a5717b566c4c2483848185fa9df41b3a5ad7b5495d35bb50b738559b73",
+        "image": {
+          "width": 1440,
+          "height": 3130
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "assign-type-menu",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "Shared: Assign training type selector open. Proposed adds the \"Quick session\" option.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/assign-type-menu-1440-proposed.png",
+      "sha256": "8125438835065d42640ecb8abe8bf6f60c2dd69db54aad7117b5cb12e9b70d8f",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/assign-type-menu-1440-proposed-full.png",
+        "sha256": "ea3eb997a32f2bc2394c439114110aff2dec0e2b826a77324f809c36c5fe3ddd",
+        "image": {
+          "width": 1440,
+          "height": 3130
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-home-riley",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "New only: client Home — a quick session considered under the existing due priority, with its label.",
+      "role": "client",
+      "client": "client_riley",
+      "file": "captures/client-home-riley-320-proposed.png",
+      "sha256": "026d7477eaa775b0b48b925074c9a327e0ccdd18fd3194ba21668cf9e30953a0",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/client-home-riley-320-proposed-full.png",
+        "sha256": "dae6a55a991da672c0503e1c2595f276776e119aac5f033f6d429d9c7b88b7cf",
+        "image": {
+          "width": 320,
+          "height": 1736
+        }
+      },
+      "screen": {
+        "url": "/client",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-home-riley",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "New only: client Home — a quick session considered under the existing due priority, with its label.",
+      "role": "client",
+      "client": "client_riley",
+      "file": "captures/client-home-riley-390-proposed.png",
+      "sha256": "507b7513dc3b580b633e3c13864969ab8bbcd69b3ae33c03c19dc16cf37fd5e9",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/client-home-riley-390-proposed-full.png",
+        "sha256": "d9c492ebb54838e9c7ca22d5078f5b228d64e8f0acdfa4b987482deb159642a4",
+        "image": {
+          "width": 390,
+          "height": 1704
+        }
+      },
+      "screen": {
+        "url": "/client",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-home-riley",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "New only: client Home — a quick session considered under the existing due priority, with its label.",
+      "role": "client",
+      "client": "client_riley",
+      "file": "captures/client-home-riley-1440-proposed.png",
+      "sha256": "bc361fa619da23bb962f4d9eea7d49ce01ed1c3197d0c9f2cdd1280f9f70e0e4",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/client-home-riley-1440-proposed-full.png",
+        "sha256": "993ead45ca0622e1a992279b964db0c678873f5b0db24c470409c4e3e24b574b",
+        "image": {
+          "width": 1440,
+          "height": 1555
+        }
+      },
+      "screen": {
+        "url": "/client",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-home-sarah",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "Shared: client Home today plan (Sarah). Expected unchanged.",
+      "role": "client",
+      "client": "client_sarah",
+      "file": "captures/client-home-sarah-320-baseline.png",
+      "sha256": "cef350f95295af4dde8ca43855ca7fe7a964d8325ee821ae7f0712755d0f90a3",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/client-home-sarah-320-baseline-full.png",
+        "sha256": "2869ea6cf0cb180e1e8c7bfce20901f50f760fccc64d3a43d9b1a8b9682a2497",
+        "image": {
+          "width": 320,
+          "height": 2116
+        }
+      },
+      "screen": {
+        "url": "/client",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-home-sarah",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "Shared: client Home today plan (Sarah). Expected unchanged.",
+      "role": "client",
+      "client": "client_sarah",
+      "file": "captures/client-home-sarah-320-proposed.png",
+      "sha256": "cef350f95295af4dde8ca43855ca7fe7a964d8325ee821ae7f0712755d0f90a3",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/client-home-sarah-320-proposed-full.png",
+        "sha256": "2869ea6cf0cb180e1e8c7bfce20901f50f760fccc64d3a43d9b1a8b9682a2497",
+        "image": {
+          "width": 320,
+          "height": 2116
+        }
+      },
+      "screen": {
+        "url": "/client",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-home-sarah",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "Shared: client Home today plan (Sarah). Expected unchanged.",
+      "role": "client",
+      "client": "client_sarah",
+      "file": "captures/client-home-sarah-390-baseline.png",
+      "sha256": "2ceef36ad9adf4edefd1f64dd1df91e24aacdabd97caee4b0508e2e309fbb7db",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/client-home-sarah-390-baseline-full.png",
+        "sha256": "afb88e228a0fc9dbe9dc85879b23333afbb0c7be13b6c9471d739c8562664b75",
+        "image": {
+          "width": 390,
+          "height": 1990
+        }
+      },
+      "screen": {
+        "url": "/client",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-home-sarah",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "Shared: client Home today plan (Sarah). Expected unchanged.",
+      "role": "client",
+      "client": "client_sarah",
+      "file": "captures/client-home-sarah-390-proposed.png",
+      "sha256": "2ceef36ad9adf4edefd1f64dd1df91e24aacdabd97caee4b0508e2e309fbb7db",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/client-home-sarah-390-proposed-full.png",
+        "sha256": "afb88e228a0fc9dbe9dc85879b23333afbb0c7be13b6c9471d739c8562664b75",
+        "image": {
+          "width": 390,
+          "height": 1990
+        }
+      },
+      "screen": {
+        "url": "/client",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-home-sarah",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "Shared: client Home today plan (Sarah). Expected unchanged.",
+      "role": "client",
+      "client": "client_sarah",
+      "file": "captures/client-home-sarah-1440-baseline.png",
+      "sha256": "ee3172aa03784e74150cad448779f012f7da4cecb333a3543fa84dbb94c81b96",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/client-home-sarah-1440-baseline-full.png",
+        "sha256": "9b5ec75cf5d7f55dab4fd9ba02558add6990500a608b0637278117d770fdf6e2",
+        "image": {
+          "width": 1440,
+          "height": 1857
+        }
+      },
+      "screen": {
+        "url": "/client",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-home-sarah",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "Shared: client Home today plan (Sarah). Expected unchanged.",
+      "role": "client",
+      "client": "client_sarah",
+      "file": "captures/client-home-sarah-1440-proposed.png",
+      "sha256": "ee3172aa03784e74150cad448779f012f7da4cecb333a3543fa84dbb94c81b96",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/client-home-sarah-1440-proposed-full.png",
+        "sha256": "9b5ec75cf5d7f55dab4fd9ba02558add6990500a608b0637278117d770fdf6e2",
+        "image": {
+          "width": 1440,
+          "height": 1857
+        }
+      },
+      "screen": {
+        "url": "/client",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-programs-riley",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "New only: client Programs (Other) — quick session card label; the completed one is not shown.",
+      "role": "client",
+      "client": "client_riley",
+      "file": "captures/client-programs-riley-320-proposed.png",
+      "sha256": "9145ca231057abb6bfc937190a1fe51de0dce25746a0f8ea37fbea6ae97ec9ad",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/client-programs-riley-320-proposed-full.png",
+        "sha256": "1cf987255ce06b7e2bda81ee93f1530e787c469324f5685f0f27473440de5699",
+        "image": {
+          "width": 320,
+          "height": 810
+        }
+      },
+      "screen": {
+        "url": "/client/programs?view=other",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-programs-riley",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "New only: client Programs (Other) — quick session card label; the completed one is not shown.",
+      "role": "client",
+      "client": "client_riley",
+      "file": "captures/client-programs-riley-390-proposed.png",
+      "sha256": "b843ad4f00363eae813c6aa810246b4995960272bfc394169fdd5010df9d0927",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/client-programs-riley-390-proposed-full.png",
+        "sha256": "b843ad4f00363eae813c6aa810246b4995960272bfc394169fdd5010df9d0927",
+        "image": {
+          "width": 390,
+          "height": 844
+        }
+      },
+      "screen": {
+        "url": "/client/programs?view=other",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "client-programs-riley",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "New only: client Programs (Other) — quick session card label; the completed one is not shown.",
+      "role": "client",
+      "client": "client_riley",
+      "file": "captures/client-programs-riley-1440-proposed.png",
+      "sha256": "af143a66a45b8fc7d344b822e4d17d2ec7c58e8313a8cc81a48278ac828a28c7",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/client-programs-riley-1440-proposed-full.png",
+        "sha256": "af143a66a45b8fc7d344b822e4d17d2ec7c58e8313a8cc81a48278ac828a28c7",
+        "image": {
+          "width": 1440,
+          "height": 900
+        }
+      },
+      "screen": {
+        "url": "/client/programs?view=other",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-history-sarah",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "Shared: coach Workout history list (Sarah, no quick logs). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-history-sarah-320-baseline.png",
+      "sha256": "ee9dd7c2063906f59f863f4ad8b8d1ed91f1693bac6328677d8bf784ad0cb047",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/coach-history-sarah-320-baseline-full.png",
+        "sha256": "7b9829ab710275e8e3d06ff3db9d9277606bc3a430e3bfc6d50d49c41a3ca55e",
+        "image": {
+          "width": 320,
+          "height": 4136
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 2614,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-history-sarah",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "Shared: coach Workout history list (Sarah, no quick logs). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-history-sarah-320-proposed.png",
+      "sha256": "ee9dd7c2063906f59f863f4ad8b8d1ed91f1693bac6328677d8bf784ad0cb047",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/coach-history-sarah-320-proposed-full.png",
+        "sha256": "7b9829ab710275e8e3d06ff3db9d9277606bc3a430e3bfc6d50d49c41a3ca55e",
+        "image": {
+          "width": 320,
+          "height": 4136
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 2614,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-history-sarah",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "Shared: coach Workout history list (Sarah, no quick logs). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-history-sarah-390-baseline.png",
+      "sha256": "20f777020247d5490a5e749dffb7e3fd4980ad2d3d920eed741499b6e6eebad3",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/coach-history-sarah-390-baseline-full.png",
+        "sha256": "99dc8dfbd41c057afcc296e2a714b25db35b9aace1f91e991b98decaba423087",
+        "image": {
+          "width": 390,
+          "height": 3832
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 2208,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-history-sarah",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "Shared: coach Workout history list (Sarah, no quick logs). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-history-sarah-390-proposed.png",
+      "sha256": "20f777020247d5490a5e749dffb7e3fd4980ad2d3d920eed741499b6e6eebad3",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/coach-history-sarah-390-proposed-full.png",
+        "sha256": "99dc8dfbd41c057afcc296e2a714b25db35b9aace1f91e991b98decaba423087",
+        "image": {
+          "width": 390,
+          "height": 3832
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 2208,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-history-sarah",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "Shared: coach Workout history list (Sarah, no quick logs). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-history-sarah-1440-baseline.png",
+      "sha256": "23cb97710ea2f4557eb486b4be3e5df34ee07910f52cac8fd13d7f621656b637",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/coach-history-sarah-1440-baseline-full.png",
+        "sha256": "ad21cc2fa56160fe5523e31674ef953d6a043db84d6340b929d187fe2db3c292",
+        "image": {
+          "width": 1440,
+          "height": 3130
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 1534,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-history-sarah",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "Shared: coach Workout history list (Sarah, no quick logs). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-history-sarah-1440-proposed.png",
+      "sha256": "23cb97710ea2f4557eb486b4be3e5df34ee07910f52cac8fd13d7f621656b637",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/coach-history-sarah-1440-proposed-full.png",
+        "sha256": "ad21cc2fa56160fe5523e31674ef953d6a043db84d6340b929d187fe2db3c292",
+        "image": {
+          "width": 1440,
+          "height": 3130
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 1534,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-programs-sarah",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "Shared: coach client Programs tab (Sarah baseline fixture). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-programs-sarah-320-baseline.png",
+      "sha256": "41d07e9b12bc83ba205dd5189ed2398e048135b82420108601887b787e5da984",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/coach-programs-sarah-320-baseline-full.png",
+        "sha256": "166a93a4dc7f6ee985b4de54b0d1c4dc71fd90ff97446bcf45496bc44c4f5ea7",
+        "image": {
+          "width": 320,
+          "height": 4136
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-programs-sarah",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "Shared: coach client Programs tab (Sarah baseline fixture). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-programs-sarah-320-proposed.png",
+      "sha256": "41d07e9b12bc83ba205dd5189ed2398e048135b82420108601887b787e5da984",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/coach-programs-sarah-320-proposed-full.png",
+        "sha256": "166a93a4dc7f6ee985b4de54b0d1c4dc71fd90ff97446bcf45496bc44c4f5ea7",
+        "image": {
+          "width": 320,
+          "height": 4136
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-programs-sarah",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "Shared: coach client Programs tab (Sarah baseline fixture). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-programs-sarah-390-baseline.png",
+      "sha256": "cfbd44b078c7ae2d9f78befc301fa31073104c13f595a1333235f72ddcb30b8a",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/coach-programs-sarah-390-baseline-full.png",
+        "sha256": "ae2a56f1227cdd65a4ec10d2353ca98919d73a6cfbfdc7aad9b279fe6fc05a6d",
+        "image": {
+          "width": 390,
+          "height": 3832
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-programs-sarah",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "Shared: coach client Programs tab (Sarah baseline fixture). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-programs-sarah-390-proposed.png",
+      "sha256": "cfbd44b078c7ae2d9f78befc301fa31073104c13f595a1333235f72ddcb30b8a",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/coach-programs-sarah-390-proposed-full.png",
+        "sha256": "ae2a56f1227cdd65a4ec10d2353ca98919d73a6cfbfdc7aad9b279fe6fc05a6d",
+        "image": {
+          "width": 390,
+          "height": 3832
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-programs-sarah",
+      "version": "baseline",
+      "sourceSHA": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "Shared: coach client Programs tab (Sarah baseline fixture). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-programs-sarah-1440-baseline.png",
+      "sha256": "cf96d3ae375d3df278909b34c3c9e6de1446f8c94a82e525b459e0c1af7592d2",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/coach-programs-sarah-1440-baseline-full.png",
+        "sha256": "2916af24f852af96ec126c095e24ff0fedc7a6b7c10fe1c71a3cedc7cb24f353",
+        "image": {
+          "width": 1440,
+          "height": 3130
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-programs-sarah",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "Shared: coach client Programs tab (Sarah baseline fixture). Expected unchanged.",
+      "role": "coach",
+      "client": "client_sarah",
+      "file": "captures/coach-programs-sarah-1440-proposed.png",
+      "sha256": "cf96d3ae375d3df278909b34c3c9e6de1446f8c94a82e525b459e0c1af7592d2",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/coach-programs-sarah-1440-proposed-full.png",
+        "sha256": "2916af24f852af96ec126c095e24ff0fedc7a6b7c10fe1c71a3cedc7cb24f353",
+        "image": {
+          "width": 1440,
+          "height": 3130
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_sarah?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-riley-cards",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "New only: coach cards with the Quick session label; the completed quick session is hidden from active cards.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/coach-riley-cards-320-proposed.png",
+      "sha256": "6ae891f265597e22d89875b5413f818a5616d0f19e64182d4b2fe52df606e4af",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/coach-riley-cards-320-proposed-full.png",
+        "sha256": "88b79ebfec559ed668c9e4a3252a891cfda442625bdc305fd62437a904ae3c81",
+        "image": {
+          "width": 320,
+          "height": 1281
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-riley-cards",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "New only: coach cards with the Quick session label; the completed quick session is hidden from active cards.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/coach-riley-cards-390-proposed.png",
+      "sha256": "26faad94cfb2b27ebefba7080b10ffbeb3fb56c564ff8bb8128ac5abb63d92a2",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/coach-riley-cards-390-proposed-full.png",
+        "sha256": "73bb5672c9ac5756932cdc230bb131d97ecdab962ea9d563fb92aab0aab91689",
+        "image": {
+          "width": 390,
+          "height": 1261
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "coach-riley-cards",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "New only: coach cards with the Quick session label; the completed quick session is hidden from active cards.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/coach-riley-cards-1440-proposed.png",
+      "sha256": "a256512d56362ac9851f81bd402ee9a5460ea402e58814274264c835dfd9863f",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/coach-riley-cards-1440-proposed-full.png",
+        "sha256": "a256512d56362ac9851f81bd402ee9a5460ea402e58814274264c835dfd9863f",
+        "image": {
+          "width": 1440,
+          "height": 900
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "history-detail-riley",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "New only: completed quick-session log detail with the Quick session provenance label.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/history-detail-riley-320-proposed.png",
+      "sha256": "18f98c9c707393ab38817341a0fd4bf03ef5dab5425cdcdfe8dc1aeec9fb633c",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/history-detail-riley-320-proposed-full.png",
+        "sha256": "17699fd200c7166591822d1cf1d49b0c47d5750930b69cbd764dd77cbd4621fe",
+        "image": {
+          "width": 320,
+          "height": 1203
+        }
+      },
+      "screen": {
+        "url": "/coach/workouts/log_quick_riley_done",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "history-detail-riley",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "New only: completed quick-session log detail with the Quick session provenance label.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/history-detail-riley-390-proposed.png",
+      "sha256": "b215348ed54a0a84e2292dfdb4416675c0535f7335786384e7b41ec0fadb57ee",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/history-detail-riley-390-proposed-full.png",
+        "sha256": "eee5431f5b286466efe333ed365159813ca0ca24f53275c0eff1819e92d30e42",
+        "image": {
+          "width": 390,
+          "height": 1203
+        }
+      },
+      "screen": {
+        "url": "/coach/workouts/log_quick_riley_done",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "history-detail-riley",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "New only: completed quick-session log detail with the Quick session provenance label.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/history-detail-riley-1440-proposed.png",
+      "sha256": "73e0b45cc51a90af1708cb328b6f69538dbf4198cd676dcc6c0265a4943f5b63",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/history-detail-riley-1440-proposed-full.png",
+        "sha256": "c87b89d7ae8f73a4fc524f59a00f539cee1d02546c19b624cbada77c47ab041d",
+        "image": {
+          "width": 1440,
+          "height": 976
+        }
+      },
+      "screen": {
+        "url": "/coach/workouts/log_quick_riley_done",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "library-failure",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "New only: \"Session assigned — saving to library failed · Try again\" (preview Fail next save).",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/library-failure-320-proposed.png",
+      "sha256": "f2f862d2e14c3442e41157b70d42bc36027f888ad76bd52cb2eccc375f675d3f",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/library-failure-320-proposed-full.png",
+        "sha256": "fb414ed5c1a8e9ebdc65cc5b36a8a631abf98e1cf5d187e7ab61fae29c0a3efb",
+        "image": {
+          "width": 320,
+          "height": 1545
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "library-failure",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "New only: \"Session assigned — saving to library failed · Try again\" (preview Fail next save).",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/library-failure-390-proposed.png",
+      "sha256": "f9d869112ebaa11b175e10db76d480babf15598faf040d2e82db4f4783e8b6b0",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/library-failure-390-proposed-full.png",
+        "sha256": "903eb262ba2bcf42f341a9918136a6cb137a154d686fab1cfa1022a0d79468dd",
+        "image": {
+          "width": 390,
+          "height": 1525
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "library-failure",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "New only: \"Session assigned — saving to library failed · Try again\" (preview Fail next save).",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/library-failure-1440-proposed.png",
+      "sha256": "bb22e31156b36dcc3a0636418c0bd6f05b861cee504309a219ff374a7465b9d6",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/library-failure-1440-proposed-full.png",
+        "sha256": "61211bc3ba47fd58498f47ae589a64480daff881ccf467c5492cac92241a90f6",
+        "image": {
+          "width": 1440,
+          "height": 1043
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "quick-builder",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "New only: Assign -> Quick session builder, Denver-today date default, one exercise filled.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/quick-builder-320-proposed.png",
+      "sha256": "10da762776878750c3f7b96e5abb2deaee0948f07b5075728b640288c3b64d5c",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/quick-builder-320-proposed-full.png",
+        "sha256": "f5b8cb718206199bf3c10beb386f618973885eaceaa9804d50bc1e675cad7f25",
+        "image": {
+          "width": 320,
+          "height": 1281
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "quick-builder",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "New only: Assign -> Quick session builder, Denver-today date default, one exercise filled.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/quick-builder-390-proposed.png",
+      "sha256": "3f2456c1c5fbbdc8251602971cbd65fc868769f6fbe9a5ca4f35b9a2d117c665",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/quick-builder-390-proposed-full.png",
+        "sha256": "ffc32e4467a2d3371f0e2304672096d6ab5d888228508116b0f052e1a60d0a27",
+        "image": {
+          "width": 390,
+          "height": 1261
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "quick-builder",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "New only: Assign -> Quick session builder, Denver-today date default, one exercise filled.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/quick-builder-1440-proposed.png",
+      "sha256": "270b10e32d473d4a3061eb5e33ac9e25f92f8f8d95e169a85c864affbebe28ec",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/quick-builder-1440-proposed-full.png",
+        "sha256": "848117b8796bb2d6755814b3b3dd2941fe739fec1a5a2eae9a924372323ffa53",
+        "image": {
+          "width": 1440,
+          "height": 900
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "quick-builder-more-validation",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "New only: More expanded (tracking, rest, tempo, RPE, notes) and the empty-session validation message.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/quick-builder-more-validation-320-proposed.png",
+      "sha256": "6d838dea69fb051d4adefa1be3e77f63c7dbcd5dd93fd444f5d64687ce4f501e",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/quick-builder-more-validation-320-proposed-full.png",
+        "sha256": "4e69b49de857a2ec5585921022cc44010746b59d791d907f071f5560f7dbd95c",
+        "image": {
+          "width": 320,
+          "height": 1281
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "quick-builder-more-validation",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "New only: More expanded (tracking, rest, tempo, RPE, notes) and the empty-session validation message.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/quick-builder-more-validation-390-proposed.png",
+      "sha256": "6dbb47ab2233698967b2466b6b3d49a52fd4b8f6e9d260bc2b32c66072eee048",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/quick-builder-more-validation-390-proposed-full.png",
+        "sha256": "e3144fb4959dd8fb3b13c4d45d4b37d4312bdddc953a31d87bdf87e01b3fc236",
+        "image": {
+          "width": 390,
+          "height": 1261
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "quick-builder-more-validation",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "New only: More expanded (tracking, rest, tempo, RPE, notes) and the empty-session validation message.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/quick-builder-more-validation-1440-proposed.png",
+      "sha256": "29661beadfa3974331f822990e3639cf25f2c62eade18707141a81ee18933afa",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/quick-builder-more-validation-1440-proposed-full.png",
+        "sha256": "e0146a471fbd9a18996b8b6c8b3b7b7ca65f986839531a1d25e8c5292df1ab30",
+        "image": {
+          "width": 1440,
+          "height": 900
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "quick-saved",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "New only: confirmed create with independent Start now / Save to library actions.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/quick-saved-320-proposed.png",
+      "sha256": "17034a02fa089054d8e58f55bdb22ac4cf2de5254bb722820bfb71d2e2b6a5f3",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/quick-saved-320-proposed-full.png",
+        "sha256": "cdb509feee0007110665d51e71b07a8b34c779cd4b9a28f6679b2e09b5ca1aba",
+        "image": {
+          "width": 320,
+          "height": 1545
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "quick-saved",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "New only: confirmed create with independent Start now / Save to library actions.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/quick-saved-390-proposed.png",
+      "sha256": "a561ba0e9d3ff81b8ca9c973c7199a1a689ae09cc183a7471bffaff3191f280c",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/quick-saved-390-proposed-full.png",
+        "sha256": "21d56bf232d9f32ba645b03f75c10bbbd192c91e8e71ee5986d30aec34457264",
+        "image": {
+          "width": 390,
+          "height": 1525
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "quick-saved",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "New only: confirmed create with independent Start now / Save to library actions.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/quick-saved-1440-proposed.png",
+      "sha256": "6a18a339a8e9e4cd05978577936572068f8f12a3cef7cf232ffdaa99f6674d44",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/quick-saved-1440-proposed-full.png",
+        "sha256": "627d585ac49bf98460f5629e654fa0d6b7f0529d98176674a9f187a2510b9994",
+        "image": {
+          "width": 1440,
+          "height": 1043
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "recovery-uncertainty",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "New only: reload recovery — an unrecoverable pending request and a corrupt entry, with Re-enter / Discard.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/recovery-uncertainty-320-proposed.png",
+      "sha256": "d4ab41eb60881ffabed0171bf9997b29afa750f86c78618105d2a471c6e8928f",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/recovery-uncertainty-320-proposed-full.png",
+        "sha256": "1a8296fdc003094440024046922612ae735fe3dcf39e3e5f204a24a7bd2e4257",
+        "image": {
+          "width": 320,
+          "height": 1581
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 176,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": [
+          "cvf_quick_session_pending:v1:preview:coach_marcus:7e570000-0000-4000-8000-0000000000aa",
+          "cvf_quick_session_pending:v1:preview:coach_marcus:not-a-request"
+        ]
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "recovery-uncertainty",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "New only: reload recovery — an unrecoverable pending request and a corrupt entry, with Re-enter / Discard.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/recovery-uncertainty-390-proposed.png",
+      "sha256": "f36dad86e73cd3f21ab700eb06e7913452679f853ad231e7e0afc8215d75148b",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/recovery-uncertainty-390-proposed-full.png",
+        "sha256": "590377b726294eb7d8849af33ddcaa554791c32f1d53b0bafc18f2a2358cc3d0",
+        "image": {
+          "width": 390,
+          "height": 1541
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 64,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": [
+          "cvf_quick_session_pending:v1:preview:coach_marcus:7e570000-0000-4000-8000-0000000000aa",
+          "cvf_quick_session_pending:v1:preview:coach_marcus:not-a-request"
+        ]
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "recovery-uncertainty",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "New only: reload recovery — an unrecoverable pending request and a corrupt entry, with Re-enter / Discard.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/recovery-uncertainty-1440-proposed.png",
+      "sha256": "3c04e36cec7102380febc5797aa50d1054df7be9f85a68629a1f5ad548b13a54",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/recovery-uncertainty-1440-proposed-full.png",
+        "sha256": "d9f7b28b7b796157d8b100002aa6cacbe576d3c4383dd1e267f68c782aec7661",
+        "image": {
+          "width": 1440,
+          "height": 1039
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": [
+          "cvf_quick_session_pending:v1:preview:coach_marcus:7e570000-0000-4000-8000-0000000000aa",
+          "cvf_quick_session_pending:v1:preview:coach_marcus:not-a-request"
+        ]
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "start-conflict",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 320,
+        "height": 640
+      },
+      "caption": "New only: Start now while another workout is active — the session stays assigned; retry only Start.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/start-conflict-320-proposed.png",
+      "sha256": "09966dcac4095f048377a170f3f30da0715485d7b4e0123b901b102112ec654f",
+      "image": {
+        "width": 320,
+        "height": 640
+      },
+      "fullPage": {
+        "file": "captures/start-conflict-320-proposed-full.png",
+        "sha256": "f7c4a8b2c8e5d3065d9b053fcef681ae6dc017f0a351d727f032ff816ad6eb3a",
+        "image": {
+          "width": 320,
+          "height": 1545
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "start-conflict",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "caption": "New only: Start now while another workout is active — the session stays assigned; retry only Start.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/start-conflict-390-proposed.png",
+      "sha256": "337344b454089d37396d89c99ba6c222e0fd6eb92d8c5a8c546ff0906e0450e7",
+      "image": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": {
+        "file": "captures/start-conflict-390-proposed-full.png",
+        "sha256": "9ed1a3e6ef41c67314753ff86430d1700ebefa4b80222323717031c66d5b0dc7",
+        "image": {
+          "width": 390,
+          "height": 1525
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    },
+    {
+      "state": "start-conflict",
+      "version": "proposed",
+      "sourceSHA": "d661b146c796cb28df1f7f2431246d0954a2f76a",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "caption": "New only: Start now while another workout is active — the session stays assigned; retry only Start.",
+      "role": "coach",
+      "client": "client_riley",
+      "file": "captures/start-conflict-1440-proposed.png",
+      "sha256": "7c2c36c244b0d5911bcd72ad343242d253bd68158c9e985469f4b2cd140fb334",
+      "image": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": {
+        "file": "captures/start-conflict-1440-proposed-full.png",
+        "sha256": "35c9876ef8a3e98647f96fcdbf840850bfcb363a00be19ea40083d8695c14968",
+        "image": {
+          "width": 1440,
+          "height": 1043
+        }
+      },
+      "screen": {
+        "url": "/coach/clients/client_riley?tab=programs",
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "horizontalOverflow": false,
+        "now": "2026-10-09T17:00:00.000Z",
+        "pendingKeys": []
+      },
+      "consoleErrors": [],
+      "unexpectedErrors": []
+    }
+  ],
+  "pixelComparison": {
+    "assign-standalone@320": "Pixel-identical",
+    "assign-standalone@390": "Pixel-identical",
+    "assign-standalone@1440": "1050 pixels differ; maximum channel difference 2",
+    "assign-type-menu@320": "11814 pixels differ; maximum channel difference 221",
+    "assign-type-menu@390": "14754 pixels differ; maximum channel difference 221",
+    "assign-type-menu@1440": "20512 pixels differ; maximum channel difference 221",
+    "client-home-sarah@320": "Pixel-identical",
+    "client-home-sarah@390": "Pixel-identical",
+    "client-home-sarah@1440": "Pixel-identical",
+    "coach-history-sarah@320": "Pixel-identical",
+    "coach-history-sarah@390": "Pixel-identical",
+    "coach-history-sarah@1440": "Pixel-identical",
+    "coach-programs-sarah@320": "Pixel-identical",
+    "coach-programs-sarah@390": "Pixel-identical",
+    "coach-programs-sarah@1440": "Pixel-identical"
+  }
+}
