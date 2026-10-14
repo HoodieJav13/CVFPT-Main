@@ -870,7 +870,9 @@ function SessionsTab({ clientId }) {
 
 function ProgramsTab({ clientId, sessionContextId = null }) {
   const navigate = useNavigate();
+  const { user, sessionEpoch } = useAuth();
   const [starting, setStarting] = useState(null);
+  useEffect(() => { setStarting(null); }, [clientId, user?.profile?.id, sessionEpoch]);
   const [programs, setPrograms] = useState(null);
   const [workouts, setWorkouts] = useState(null);
   const [workoutAssignments, setWorkoutAssignments] = useState(null);
@@ -903,7 +905,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   const savedQuickId = quick.state.assignment?.id || null;
   const recoveredCount = quick.state.recovered.length;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isCurrent = () => true) => {
     try {
       const [programRes, workoutRes, assignmentRes, historyRes, programAssignmentRes] = await Promise.all([
         api.get('/programs'),
@@ -912,6 +914,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         fetchHistory(),
         api.get(`/programs/program-assignments/client/${clientId}`),
       ]);
+      if (!isCurrent()) return;
       setPrograms(programRes.data);
       setWorkouts(workoutRes.data);
       setProgramAssignments(programAssignmentRes.data);
@@ -919,6 +922,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       setHistoryPage(historyRes);
       setLoadError(null);
     } catch (e) {
+      if (!isCurrent()) return;
       const message = errMsg(e);
       setLoadError(message);
       toast.error(message);
@@ -1043,11 +1047,15 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   };
 
   const saveQuickToLibrary = async (assignment) => {
+    const isCurrent = quick.beginCardOperation('library', assignment.id);
+    if (!isCurrent()) return;
     try {
       await api.post(`/programs/quick-sessions/${assignment.id}/save-to-library`);
+      if (!isCurrent()) return;
       toast.success('Saved to the shared studio library as a hidden template.');
-      load();
+      load(isCurrent);
     } catch (err) {
+      if (!isCurrent()) return;
       toast.error(`Saving to library failed · ${errMsg(err, 'Try again')}`);
     }
   };
@@ -1116,7 +1124,9 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
     return workouts.find((template) => template.id === id) || null;
   };
 
-  const startWorkout = async (key, source) => {
+  const startWorkout = async (key, source, quickSession = false) => {
+    const isCurrent = quickSession ? quick.beginCardOperation('start', source.workout_assignment_id) : () => true;
+    if (!isCurrent()) return;
     setStarting(key);
     try {
       const { data } = await api.post('/workout-logs/start', {
@@ -1124,8 +1134,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         client_id: clientId,
         ...(sessionContextId ? { session_id: sessionContextId } : {}),
       });
+      if (!isCurrent()) return;
       navigate(`/coach/workouts/${data.workout_log.id}/track`);
     } catch (error) {
+      if (!isCurrent()) return;
       const active = error.response?.data?.active_workout;
       if (error.response?.status === 409 && active?.id) {
         toast.info(`${active.workout_name} is already in progress — opening it.`);
@@ -1134,7 +1146,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         toast.error(errMsg(error, 'Could not start workout'));
       }
     } finally {
-      setStarting(null);
+      if (isCurrent()) setStarting(null);
     }
   };
 
@@ -1469,7 +1481,7 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
               <Button
                 size="sm" variant="secondary" className="min-h-11 rounded-lg sm:min-h-0"
                 disabled={starting === assignment.id}
-                onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })}
+                onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id }, quickSession)}
                 data-testid="coach-log-standalone-workout"
               >
                 {starting === assignment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log workout'}

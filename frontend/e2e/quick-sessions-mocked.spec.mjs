@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises';
 // A4-A6 browser races for quick-session recovery, against an in-test fake backend that survives
 // page reloads (preview fixtures intentionally reset on reload, so they cannot prove this).
 // Real transactional idempotency and authorization are proven by the SQL suite instead.
@@ -113,6 +114,8 @@ async function install(page, backend) {
       const replayed = backend.templates.has(library[1]);
       if (!replayed) backend.templates.set(library[1], `tmpl-${backend.templates.size + 1}`);
       const response = { state: replayed ? 'replayed' : 'saved', template_id: backend.templates.get(library[1]) };
+      const assignment = backend.assignments.find((row) => row.id === library[1]);
+      if (assignment) assignment.library_template_id = response.template_id;
       if (backend.dropNextLibraryResponse) { backend.dropNextLibraryResponse = false; return route.abort('failed').catch(() => {}); }
       if (delay) {
         await delay.gate.promise;
@@ -132,7 +135,7 @@ async function install(page, backend) {
       if (backend.dropNextStartResponse) { backend.dropNextStartResponse = false; return route.abort('failed').catch(() => {}); }
       if (delay) {
         await delay.gate.promise;
-        await json(route, delay.failure ? 409 : 201, delay.failure
+        await json(route, delay.failure === 'error' ? 500 : delay.failure ? 409 : 201, delay.failure
           ? { error: 'Old start conflict', active_workout: { id: 'old-log' } }
           : { outcome: 'started', workout_log: log });
         delay.done.resolve();
@@ -375,4 +378,187 @@ for (const operation of ['start', 'library', 'library-then-start']) {
       expect(backend.createAttempts).toHaveLength(2);
     });
   }
+}
+
+async function cardNotifications(page) {
+  return page.evaluate(async () => {
+    const { toast } = await import('/src/components/ui/sonner.jsx');
+    return toast.getHistory().map(({ type, title }) => ({ type, title }));
+  });
+}
+
+// R1/R2 integration review regressions: real card/form behavior, fictional transport only.
+async function switchClientInPlace(page, clientId) {
+  await page.evaluate((href) => {
+    window.history.pushState({}, '', href);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, `/coach/clients/${clientId}?tab=programs`);
+  await expect(page.getByTestId('assign-program-button')).toBeVisible();
+}
+async function releaseCardReply(page, delay) {
+  delay.gate.resolve();
+  await delay.done.promise;
+  // Allow the delivered XHR, React effects and any forbidden navigation/toast to settle.
+  await page.waitForTimeout(200);
+}
+async function savedCard(page, backend, name) {
+  await openBuilder(page);
+  await fillAndAssign(page, name);
+  await expect(page.getByTestId('quick-session-saved')).toBeVisible();
+  await page.getByTestId('quick-session-done').click();
+  return page.getByTestId('assigned-workout-card').filter({ hasText: name });
+}
+for (const outcome of ['success', 'conflict', 'error']) {
+  test(`R1 delayed Quick card Start ${outcome} cannot affect another client page`, async ({ page }) => {
+    const backend = new FakeBackend();
+    await install(page, backend);
+    const card = await savedCard(page, backend, 'Card Session A');
+    const delay = { operation: 'start', gate: deferred(), done: deferred(), failure: outcome === 'success' ? false : outcome === 'error' ? 'error' : true };
+    backend.followupDelay = delay;
+    await card.getByTestId('coach-log-standalone-workout').click();
+    await expect.poll(() => backend.startCalls.length).toBe(1);
+    await switchClientInPlace(page, CLIENT_TWO.id);
+    await expect(page.getByTestId('client-detail-name')).toHaveText(CLIENT_TWO.name);
+    await releaseCardReply(page, delay);
+    await expect(page).toHaveURL(/\/coach\/clients\/client-2/);
+    await expect(page.getByTestId('client-detail-name')).toHaveText(CLIENT_TWO.name);
+    expect(await cardNotifications(page)).toEqual([]);
+    expect(backend.startCalls).toHaveLength(1);
+  });
+}
+for (const failure of [false, true]) {
+  test(`R1 delayed Quick card library ${failure ? 'failure' : 'success'} cannot toast or reload another client`, async ({ page }) => {
+    const backend = new FakeBackend();
+    await install(page, backend);
+    const card = await savedCard(page, backend, 'Card Library A');
+    const delay = { operation: 'library', gate: deferred(), done: deferred(), failure };
+    backend.followupDelay = delay;
+    const reads = [];
+    page.on('request', (request) => { if (request.url().includes('/workout-assignments/client/client-1')) reads.push(request.url()); });
+    await card.getByTestId('quick-session-card-save-library').click();
+    await expect.poll(() => backend.libraryCalls.length).toBe(1);
+    await switchClientInPlace(page, CLIENT_TWO.id);
+    await expect(page.getByTestId('client-detail-name')).toHaveText(CLIENT_TWO.name);
+    const readsBeforeReply = reads.length;
+    await releaseCardReply(page, delay);
+    await expect(page).toHaveURL(/\/coach\/clients\/client-2/);
+    expect(await cardNotifications(page)).toEqual([]);
+    expect(reads).toHaveLength(readsBeforeReply);
+    expect(backend.libraryCalls).toEqual(['qa-1']);
+  });
+}
+test('R1 an older card Start reply cannot clear the newer assignment operation', async ({ page }) => {
+  const backend = new FakeBackend();
+  await install(page, backend);
+  await savedCard(page, backend, 'Card A');
+  const cardB = await savedCard(page, backend, 'Card B');
+  const cardA = page.getByTestId('assigned-workout-card').filter({ hasText: 'Card A' });
+  const first = { operation: 'start', gate: deferred(), done: deferred(), failure: false };
+  backend.followupDelay = first;
+  await cardA.getByTestId('coach-log-standalone-workout').click();
+  await expect.poll(() => backend.startCalls.length).toBe(1);
+  const second = { operation: 'start', gate: deferred(), done: deferred(), failure: false };
+  backend.followupDelay = second;
+  await cardB.getByTestId('coach-log-standalone-workout').click();
+  await expect.poll(() => backend.startCalls.length).toBe(2);
+  await releaseCardReply(page, first);
+  await expect(page).toHaveURL(/\/coach\/clients\/client-1/);
+  await expect(cardB.getByTestId('coach-log-standalone-workout')).toBeDisabled();
+  await releaseCardReply(page, second);
+  await expect(page).toHaveURL(/\/coach\/workouts\/log-2\/track$/);
+  expect(backend.createAttempts).toHaveLength(2);
+});
+for (const phase of ['saving', 'uncertain', 'checking', 'unrecovered']) {
+  test(`R2 complete typed prescription stays frozen and truthful while ${phase}`, async ({ page }) => {
+    const backend = new FakeBackend();
+    const gate = deferred();
+    if (phase === 'saving') backend.hold = { gate };
+    else backend.dropNextCreateResponse = true;
+    await install(page, backend);
+    await page.clock.setFixedTime(new Date('2026-10-14T17:00:00Z'));
+    await openBuilder(page);
+    await page.getByTestId('quick-session-exercise-name-input').first().fill('Fictional timed carry');
+    await page.getByTestId('quick-session-more-button').first().click();
+    await page.getByLabel('Exercise tracking type').selectOption('duration_distance');
+    const duration = page.getByRole('spinbutton', { name: 'Target duration', exact: true });
+    const distance = page.getByRole('spinbutton', { name: 'Target distance', exact: true });
+    await duration.fill('60');
+    await distance.fill('20');
+    await page.getByTestId('quick-session-assign-button').click();
+    await expect.poll(() => backend.createAttempts.length).toBe(1);
+    if (phase !== 'saving') {
+      await expect(page.getByTestId('quick-session-retry-save')).toBeVisible();
+      if (phase === 'checking') {
+        backend.statusDelay = gate;
+        await page.getByTestId('quick-session-check-again').click();
+        await expect.poll(() => backend.statusCalls.length).toBe(1);
+      } else if (phase === 'unrecovered') {
+        backend.receipts.clear(); // status remains unknown; the dispatched body stays frozen
+        await page.getByTestId('quick-session-check-again').click();
+        await expect(page.getByTestId('quick-session-reenter')).toBeVisible();
+      }
+    }
+    const visual = [];
+    for (const [width, height] of [[320, 640], [390, 844], [1440, 900]]) {
+      await page.setViewportSize({ width, height });
+      await page.getByLabel('Exercise tracking type').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: test.info().outputPath(`frozen-${phase}-${width}.png`), animations: 'disabled' });
+      visual.push(await page.evaluate(({ phase, width, height }) => ({ phase, width, height,
+        horizontalOverflow: document.documentElement.scrollWidth > innerWidth,
+        duration: document.querySelector('[aria-label="Target duration"]').value,
+        distance: document.querySelector('[aria-label="Target distance"]').value,
+        disabled: [...document.querySelectorAll('[data-testid="quick-session-more-fields"] select, [data-testid="quick-session-more-fields"] input')].every(e => e.matches(':disabled')),
+      }), { phase, width, height }));
+    }
+    await writeFile(test.info().outputPath('frozen-form-evidence.json'), JSON.stringify(visual, null, 2));
+    await test.info().attach('frozen-form-evidence', { body: JSON.stringify(visual, null, 2), contentType: 'application/json' });
+    try {
+      expect(visual.every(row => !row.horizontalOverflow)).toBe(true);
+      await expect(page.getByTestId('quick-session-title-input')).toBeDisabled();
+      for (const control of [page.getByLabel('Exercise tracking type'), duration, distance,
+        page.getByLabel('Target duration unit', { exact: true }), page.getByLabel('Target distance unit', { exact: true })]) await expect(control).toBeDisabled();
+      await expect(duration).toHaveValue('60');
+      await expect(distance).toHaveValue('20');
+      await expect(page.getByLabel('Target duration unit', { exact: true })).toHaveValue('s');
+      await expect(page.getByLabel('Target distance unit', { exact: true })).toHaveValue('m');
+      expect(backend.createAttempts[0].exercises[0]).toMatchObject({ tracking_type: 'duration_distance', duration_value: '60', duration_unit: 's', distance_value: '20', distance_unit: 'm' });
+    } finally { gate.resolve(); }
+  });
+}
+
+for (const outcome of ['success', 'conflict', 'error']) {
+  test(`R1 current Quick card Start still handles ${outcome}`, async ({ page }) => {
+    const backend = new FakeBackend();
+    await install(page, backend);
+    const card = await savedCard(page, backend, 'Current card');
+    const delay = { operation: 'start', gate: deferred(), done: deferred(), failure: outcome === 'success' ? false : outcome === 'error' ? 'error' : true };
+    backend.followupDelay = delay;
+    await card.getByTestId('coach-log-standalone-workout').click();
+    await expect.poll(() => backend.startCalls.length).toBe(1);
+    await releaseCardReply(page, delay);
+    if (outcome === 'error') {
+      await expect(page).toHaveURL(/\/coach\/clients\/client-1/);
+      await expect(card.getByTestId('coach-log-standalone-workout')).toBeEnabled();
+      expect(await cardNotifications(page)).toContainEqual({ type: 'error', title: 'Old start conflict' });
+    } else await expect(page).toHaveURL(outcome === 'success' ? /\/coach\/workouts\/log-1\/track$/ : /\/coach\/workouts\/old-log\/track$/);
+    expect(backend.startCalls).toHaveLength(1);
+  });
+}
+for (const failure of [false, true]) {
+  test(`R1 current Quick card library still handles ${failure ? 'failure' : 'success'}`, async ({ page }) => {
+    const backend = new FakeBackend();
+    await install(page, backend);
+    const card = await savedCard(page, backend, 'Current library');
+    const delay = { operation: 'library', gate: deferred(), done: deferred(), failure };
+    backend.followupDelay = delay;
+    await card.getByTestId('quick-session-card-save-library').click();
+    await expect.poll(() => backend.libraryCalls.length).toBe(1);
+    await releaseCardReply(page, delay);
+    if (failure) expect(await cardNotifications(page)).toContainEqual({ type: 'error', title: 'Saving to library failed · Old library failure' });
+    else {
+      await expect(card.getByTestId('quick-session-in-library')).toBeVisible();
+      expect(await cardNotifications(page)).toContainEqual({ type: 'success', title: 'Saved to the shared studio library as a hidden template.' });
+    }
+    expect(backend.libraryCalls).toEqual(['qa-1']);
+  });
 }

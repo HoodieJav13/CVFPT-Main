@@ -1,8 +1,18 @@
 # Quick Sessions reconciliation onto released Invite main — 2026-10-14
 
-This is a local integration of already built and independently repaired Quick Sessions. It introduces no new product scope and does not rebuild the original feature. Released baseline is Invite main `8d68a7893f7a84a658ff6545bb0b2b70a0df91ce`; accepted combined source is `9f7ea1198cf2f8ec4ffb7d6f22c1dfd3c7487065`, with accepted standalone F1/F2 repairs at `dfa6df5355c44c3bbd10f36208bbc430e4d1d1a6`. Original author/accepted checkouts are preserved.
+## Independent-review repairs (2026-10-14)
 
-The accepted Quick delta relative to Invite runtime0e431378 applied cleanly onto released main. All223 backend/frontend runtime source files are byte-identical to accepted9f7ea119. All42 released migrations, including applied Invite, and all22 released Invite visual-evidence files remain exact baseline bytes. The new head combines that accepted runtime with the later released Invite evidence; only scoped status records and test-evidence provenance are refreshed. No conflict resolution or new production function was needed.
+Independent review of d6fad27 requested two local corrections: Quick assignment-card Start/library replies needed the same page/client/actor/session and operation fencing as the saved dialog; nested tracking selectors/values/units needed the existing frozen builder lock. The repair changes only QuickSessionBuilder.jsx and ClientDetail.jsx in runtime source. The existing controller, all42 applied migrations, exact accepted Quick SQL, dependencies, Preview implementation and original accepted spec/plan remain unchanged. Original223-file equality describes the earlier checkpoint; the repaired candidate differs in these two frontend files.
+
+Card guards now reuse the hook's live controller lifetime and current auth/client context, with an assignment/operation token. Stale success/conflict/error replies and already-dispatched library reloads cannot navigate, notify or update replacement state. Busy state resets on context changes; ordinary card operations retain their existing behavior. A Quick-only disabled fieldset covers nested typed controls in saving, uncertain, checking and unrecovered phases, preserving the displayed60s/20m values and immutable body used in the behavioral regressions.
+
+The new sealed repair packet records RED→GREEN tests, affected suites and the exact functional/final commits; the original411-entry return packet is preserved unchanged. Fresh visual pairs cover the affected frozen states at320/390/desktop. This local repair requires exact-head independent re-review; it conveys no publication, hosted migration or owner release/visual approval.
+
+## Original integration checkpoint (historical)
+
+The original functional checkpoint d661b146 (visual checkpoint d6fad27) was a local integration of already built and independently repaired Quick Sessions. It introduces no new product scope and does not rebuild the original feature. Released baseline is Invite main `8d68a7893f7a84a658ff6545bb0b2b70a0df91ce`; accepted combined source is `9f7ea1198cf2f8ec4ffb7d6f22c1dfd3c7487065`, with accepted standalone F1/F2 repairs at `dfa6df5355c44c3bbd10f36208bbc430e4d1d1a6`. Original author/accepted checkouts are preserved.
+
+The accepted Quick delta relative to Invite runtime0e431378 applied cleanly onto released main. At that original checkpoint, all223 backend/frontend runtime source files were byte-identical to accepted9f7ea119. All42 released migrations, including applied Invite, and all22 released Invite visual-evidence files remain exact baseline bytes. The new head combines that accepted runtime with the later released Invite evidence; only scoped status records and test-evidence provenance are refreshed. No conflict resolution or new production function was needed.
 
 Preserved identities:
 

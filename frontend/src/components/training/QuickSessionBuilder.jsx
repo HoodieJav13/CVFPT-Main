@@ -53,6 +53,7 @@ export function useQuickSession({ clientId, onStarted }) {
   const startedRef = useRef(onStarted);
   startedRef.current = onStarted;
   const liveRef = useRef(null);
+  const cardOperations = useRef(new Map());
   const [state, setState] = useState(null);
   const [form, setForm] = useState(() => newQuickForm());
   // Stable facade for callers; calls before the effect has run are no-ops.
@@ -83,7 +84,22 @@ export function useQuickSession({ clientId, onStarted }) {
     };
   }, [clientId, actorId, sessionEpoch]);
 
-  return { controller, state: state || IDLE_STATE, form, setForm };
+  // Cards can outlive the saved dialog, but their replies still belong to this
+  // actor/session/client/page and the latest operation for a specific assignment.
+  const beginCardOperation = (operation, assignmentId) => {
+    const live = liveRef.current;
+    const owner = contextRef.current;
+    const token = { assignmentId };
+    cardOperations.current.set(operation, token);
+    return () => Boolean(live && owner.actorId && assignmentId)
+      && liveRef.current === live
+      && contextRef.current.actorId === owner.actorId
+      && contextRef.current.authEpoch === owner.authEpoch
+      && contextRef.current.clientId === owner.clientId
+      && cardOperations.current.get(operation) === token;
+  };
+
+  return { controller, state: state || IDLE_STATE, form, setForm, beginCardOperation };
 }
 
 const IDLE_STATE = {
@@ -176,7 +192,9 @@ export function QuickSessionBuilder({ form, setForm, library, state, onSave, dis
               </Button>
               {open && (
                 <div className="space-y-2" data-testid="quick-session-more-fields">
-                  <ExerciseTrackingFields exercise={row} onChange={(fields) => setRow(index, fields)} />
+                  <fieldset className="min-w-0" disabled={locked}>
+                    <ExerciseTrackingFields exercise={row} onChange={(fields) => setRow(index, fields)} />
+                  </fieldset>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     <Field label="Rest (seconds)">{(id) => (
                       <Input id={id} className="min-h-11" type="number" min="0" step="5" inputMode="numeric" disabled={locked}

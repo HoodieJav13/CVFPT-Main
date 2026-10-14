@@ -222,3 +222,93 @@ test('reload recovery: committed, unrecovered and corrupt records, with scoped d
   expect(status.data.state).toBe('committed');
   expect(await page.evaluate((key) => localStorage.getItem(key), PENDING(unknown))).toBeNull();
 });
+
+async function cardNotifications(page) {
+  return page.evaluate(async () => {
+    const { toast } = await import('/src/components/ui/sonner.jsx');
+    return toast.getHistory().map(({ type, title }) => ({ type, title }));
+  });
+}
+
+// R1: use the actual AuthProvider epoch updates; no production test hooks or auth mocks.
+for (const operation of ['start', 'library']) {
+  for (const failure of [false, true]) {
+    for (const change of ['new session epoch', 'account switch']) {
+      test(`R1 card ${operation} ${failure ? 'failure' : 'success'} is ignored after ${change}`, async ({ page }) => {
+        await openRileyPrograms(page);
+        await page.evaluate((operation) => {
+          return import('/src/lib/api.js').then(({ api }) => {
+            const original = api.defaults.adapter;
+            window.__cardHeld = { calls: 0, done: false };
+            api.defaults.adapter = async (config) => {
+              const match = operation === 'start' ? config.url === '/workout-logs/start' : /\/quick-sessions\/[^/]+\/save-to-library$/.test(config.url);
+              if (!match) return original(config);
+              window.__cardHeld.calls += 1;
+              return new Promise((resolve, reject) => {
+                window.__cardHeld.release = (failure) => {
+                  if (failure) reject({ config, response: { status: operation === 'start' ? 409 : 500, data: { error: 'Stale card failure', active_workout: { id: 'stale-log', workout_name: 'Stale session' } } } });
+                  else resolve({ config, status: 200, data: { workout_log: { id: 'stale-log' }, template_id: 'stale-template' } });
+                  window.__cardHeld.done = true;
+                };
+              });
+            };
+          });
+        }, operation);
+        const card = page.getByTestId('assigned-workout-card').filter({ hasText: 'Mobility reset' });
+        await card.getByTestId(operation === 'start' ? 'coach-log-standalone-workout' : 'quick-session-card-save-library').click();
+        await expect.poll(() => page.evaluate(() => window.__cardHeld.calls)).toBe(1);
+        if (change === 'account switch') {
+          await page.getByTestId('preview-role-select').selectOption('client');
+          await expect(page).toHaveURL(/\/client$/);
+          await page.getByTestId('preview-role-select').selectOption('coach');
+          await page.evaluate(() => {
+            history.pushState({}, '', '/coach/clients/client_riley?tab=programs');
+            dispatchEvent(new PopStateEvent('popstate'));
+          });
+          await expect(page.getByTestId('assign-program-button')).toBeVisible();
+        } else {
+          // Selecting the same role emits a real auth reload/new session epoch in Preview.
+          await page.evaluate(async () => { const preview = await import('/src/lib/previewMode.js'); preview.setPreviewRole('coach'); });
+          await expect(card.getByTestId('coach-log-standalone-workout')).toBeEnabled();
+        }
+        await page.evaluate((failure) => window.__cardHeld.release(failure), failure);
+        await page.waitForTimeout(200);
+        await expect(page).toHaveURL(/\/coach\/clients\/client_riley/);
+        expect(await cardNotifications(page)).toEqual([]);
+        expect(await page.evaluate(() => window.__cardHeld.calls)).toBe(1);
+      });
+    }
+  }
+}
+
+test('R1 a card library reload failure cannot affect a newer auth epoch', async ({ page }) => {
+  await openRileyPrograms(page);
+  await page.evaluate(async () => {
+    const { api } = await import('/src/lib/api.js');
+    const original = api.defaults.adapter;
+    window.__libraryReload = { acknowledged: false, held: false };
+    api.defaults.adapter = async (config) => {
+      if (/\/quick-sessions\/[^/]+\/save-to-library$/.test(config.url)) {
+        const response = await original(config);
+        window.__libraryReload.acknowledged = true;
+        return response;
+      }
+      if (window.__libraryReload.acknowledged && !window.__libraryReload.held && config.url === '/programs/workout-assignments/client/client_riley') {
+        window.__libraryReload.held = true;
+        return new Promise((_resolve, reject) => {
+          window.__libraryReload.release = () => reject({ config, response: { status: 500, data: { error: 'Stale library reload failure' } } });
+        });
+      }
+      return original(config);
+    };
+  });
+  await page.getByTestId('assigned-workout-card').filter({ hasText: 'Mobility reset' }).getByTestId('quick-session-card-save-library').click();
+  await expect.poll(() => page.evaluate(() => window.__libraryReload.held)).toBe(true);
+  const before = await cardNotifications(page);
+  expect(before).toHaveLength(1);
+  await page.evaluate(async () => { const preview = await import('/src/lib/previewMode.js'); preview.setPreviewRole('coach'); });
+  await page.evaluate(() => window.__libraryReload.release());
+  await page.waitForTimeout(200);
+  expect(await cardNotifications(page)).toEqual(before);
+  await expect(page).toHaveURL(/\/coach\/clients\/client_riley/);
+});
