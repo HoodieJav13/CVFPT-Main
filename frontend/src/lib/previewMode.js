@@ -1,4 +1,7 @@
 import {createPreviewInvites} from './previewInvites.js';
+import {
+  MEDIA_SCENARIO_KEY, PREVIEW_MEDIA_READ_LIKE_POSTS, PREVIEW_MEDIA_SAVE_ROUTES, createPreviewExerciseMedia,
+} from './previewExerciseMedia.js';
 import { actualMetrics, normalizeTracking, trackingType } from './workoutMetrics.js';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
@@ -111,6 +114,8 @@ const PREVIEW_SAVE_ROUTES = [
   ['post', /^\/waivers\/versions$/],
   ['post', /^\/waivers\/sign$/],
   ['post', /^\/waivers\/client\/([^/]+)\/sign-paper$/],
+  // Exercise media demo scenario (previewExerciseMedia.js), only while it is on.
+  ...PREVIEW_MEDIA_SAVE_ROUTES,
 ];
 
 // Reads that change fixture data as a side effect: loading a conversation
@@ -122,6 +127,8 @@ const PREVIEW_SAVE_ROUTES = [
 const READS_THAT_CHANGE_DATA = [
   ['get', /^\/messages\/mine$/],
   ['get', /^\/messages\/with\/([^/]+)$/],
+  // Status polls advance the simulated media processing.
+  ['get', /^\/exercise-media\/revisions\/([^/]+)$/],
 ];
 
 const PREVIEW_LATENCY_KEY = 'cvf_preview_latency';
@@ -135,7 +142,7 @@ const SPEED_MS = { slow: 1500, 'very-slow': 4000 };
 const FAIL_MODES = ['write-once', 'reads'];
 // Every key Reset removes. Anything not matched here is left alone, because a
 // local dev origin is shared with real-auth sessions.
-const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure'];
+const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure', MEDIA_SCENARIO_KEY];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // POSTs that change no fixture data. Without this, previewing dates — or the
 // background telemetry ping every page sends — would consume "fail next
@@ -145,6 +152,7 @@ const READ_LIKE_POSTS = [
   /^\/sessions\/series\/preview$/,
   /^\/sessions\/series\/check$/,
   /^\/programs\/import\/parse-(csv|paste|pdf)$/,
+  ...PREVIEW_MEDIA_READ_LIKE_POSTS,
 ];
 
 // The gate lives in previewFlag.js so consumers can check it without
@@ -823,7 +831,7 @@ function previewCompletedLogs(clientId, config, search) {
 function workoutLogDetails(logId) {
   const log = state.workoutLogs.find((row) => row.id === logId && !row.archived);
   if (!log) return null;
-  const exercises = state.workoutLogExercises
+  const exercises = previewMedia().hydrate(state.workoutLogExercises
     .filter((row) => row.workout_log_id === log.id && !row.archived)
     .sort((a, b) => a.position - b.position)
     .map((exercise) => ({
@@ -833,7 +841,7 @@ function workoutLogDetails(logId) {
       sets: state.workoutLogSets
         .filter((set) => set.workout_log_exercise_id === exercise.id && !set.archived)
         .sort((a, b) => a.set_number - b.set_number),
-    }));
+    })), (exercise) => exercise.exercise_library_id || state.workoutExercises.find((row) => row.id === exercise.source_workout_exercise_id)?.exercise_library_id);
   const coachResponses = state.coachResponses
     .filter((row) => row.workout_log_id === log.id && !row.archived)
     .sort((a, b) => {
@@ -1345,9 +1353,16 @@ function previewLatencyFor(path) {
   }
 }
 
+let previewMediaScenario = null;
+function previewMedia() {
+  previewMediaScenario ||= createPreviewExerciseMedia({ state, iso, ok, fail, currentCoachId: () => currentCoach()?.id });
+  return previewMediaScenario;
+}
+
 export function installPreviewApi(api) {
   if (!isPreviewMode) return;
   clearPreviewPendingSeries();
+  previewMedia(); // seeds the separate media scenario rows when it is switched on
   const route = async (config) => {
     const method = String(config.method || 'get').toLowerCase();
     const { path, search } = pathFromConfig(config);
@@ -1359,6 +1374,11 @@ export function installPreviewApi(api) {
     if (unsupported) return rejectUnsupported(config, method, path, unsupported);
 
     if (path === '/auth/me' || path === '/auth/login' || path === '/auth/signup') return ok({ access_token: 'preview', refresh_token: 'preview', ...getPreviewUser() }, config);
+
+    if (path.startsWith('/exercise-media/')) {
+      const media = await previewMedia().handle(config, method, path, payload);
+      if (media !== undefined) return media;
+    }
 
     // Product telemetry is fire-and-forget from ordinary page loads. Preview
     // accepts and discards it (the real route answers 202 the same way).
@@ -2585,13 +2605,17 @@ export function installPreviewApi(api) {
         })), config);
     }
     if (path === '/programs/client/assigned') {
+      const withMedia = (workout) => (workout ? { ...workout, exercises: previewMedia().hydrate(workout.exercises || [], (row) => row.exercise_library_id) } : workout);
       return ok({
-        programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => ({
-          ...a,
-          exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === a.id && !load.archived),
-          program: programDetails(a.program_id),
-        })),
-        workouts: state.workoutAssignments.filter((a) => a.client_id === client.id && !a.archived).map(workoutAssignmentDetails),
+        programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => {
+          const program = programDetails(a.program_id);
+          return {
+            ...a,
+            exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === a.id && !load.archived),
+            program: program && { ...program, days: (program.days || []).map((day) => ({ ...day, workout: withMedia(day.workout) })) },
+          };
+        }),
+        workouts: state.workoutAssignments.filter((a) => a.client_id === client.id && !a.archived).map(workoutAssignmentDetails).map((row) => ({ ...row, workout: withMedia(row.workout) })),
       }, config);
     }
     const programExport = path.match(/^\/programs\/([^/]+)\/export\.pdf$/);

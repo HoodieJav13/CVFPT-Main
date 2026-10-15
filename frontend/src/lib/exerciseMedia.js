@@ -132,7 +132,7 @@ export function createLinkCache({ request, now = () => Date.now(), marginMs = 10
   const inflight = new Map();  // key -> Promise<url|null>
   const keyOf = (actor, context, assetId) => `${actor}|${contextKey(context)}|${assetId}`;
 
-  function get({ actor, context, assetIds, signal }) {
+  function get({ actor, context, assetIds }) {
     const unique = [...new Set(assetIds.filter(Boolean))];
     if (unique.length > MEDIA_LIMITS.links.maxAssets) throw new Error('At most 20 media links per request');
     const result = new Map();
@@ -146,7 +146,9 @@ export function createLinkCache({ request, now = () => Date.now(), marginMs = 10
       needed.push(assetId);
     }
     if (needed.length) {
-      const batch = Promise.resolve().then(() => request(context, needed, { signal }));
+      // A batch is shared by every waiter, so it is never bound to one
+      // caller's AbortSignal; callers that went away simply ignore it.
+      const batch = Promise.resolve().then(() => request(context, needed));
       for (const assetId of needed) {
         const key = keyOf(actor, context, assetId);
         const one = batch.then((response) => {

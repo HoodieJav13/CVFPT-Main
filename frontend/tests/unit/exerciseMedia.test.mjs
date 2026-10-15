@@ -124,3 +124,24 @@ test('helpers: absolute URLs, actor keys, and only the active+next posters load'
   assert.deepEqual([...nextPosterTargets(rows, 'e4')], ['e4']);
   assert.deepEqual([...nextPosterTargets(rows, null)], ['e1', 'e2']);
 });
+
+test('link cache: one caller aborting never fails a shared in-flight request for others', async () => {
+  let release;
+  const cache = createLinkCache({
+    now: () => 0,
+    request: async (_context, ids, options = {}) => {
+      await new Promise((resolve) => { release = resolve; });
+      if (options.signal?.aborted) throw new Error('canceled');
+      return { links: ids.map((id) => ({ asset_id: id, url: `/u/${id}`, expires_at: new Date(60_000).toISOString() })), missing: [] };
+    },
+  });
+  const context = { type: 'workout_log', id: 'l' };
+  const first = new AbortController();
+  const abandoned = cache.get({ actor: 'a', context, assetIds: ['p'], signal: first.signal });
+  first.abort(); // e.g. React dev double-mount or a fast unmount
+  const kept = cache.get({ actor: 'a', context, assetIds: ['p'] });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  release();
+  assert.equal((await kept).get('p'), '/u/p');
+  await abandoned.catch(() => null);
+});

@@ -46,6 +46,9 @@ import {
 } from '@/components/training/TemplateBits';
 import { SupersetGroups } from '@/components/training/SupersetGroups';
 import {
+  ExerciseMediaBadge, ExerciseMediaButton, ExerciseMediaDialog, LibraryMediaSummary, MediaReadinessFilter, matchesMediaFilter, useLibraryMediaStatus,
+} from '@/components/training/media/LibraryMediaControls';
+import {
   authorOptions, exerciseFilterOptions, filterByAuthor, filterExercises, groupVariations, isLegacyLockError,
 } from '@/lib/trainingLibrary';
 
@@ -183,17 +186,22 @@ function ExerciseLibraryTab({ library, reload }) {
   const [equipment, setEquipment] = useState('all');
   const [saving, setSaving] = useState(false);
 
+  const media = useLibraryMediaStatus();
+  const [mediaFilter, setMediaFilter] = useState('all');
+  const [mediaExercise, setMediaExercise] = useState(null);
   const options = useMemo(() => exerciseFilterOptions(library), [library]);
   const filtered = useMemo(
-    () => filterExercises(library, { search, category, muscle, equipment }),
-    [library, search, category, muscle, equipment],
+    () => filterExercises(library, { search, category, muscle, equipment })
+      .filter((exercise) => !media.enabled || matchesMediaFilter(media.byExercise.get(exercise.id), mediaFilter)),
+    [library, search, category, muscle, equipment, media.enabled, media.byExercise, mediaFilter],
   );
-  const filtersActive = category !== 'all' || muscle !== 'all' || equipment !== 'all' || search.trim() !== '';
+  const filtersActive = category !== 'all' || muscle !== 'all' || equipment !== 'all' || mediaFilter !== 'all' || search.trim() !== '';
   const clearFilters = () => {
     setSearch('');
     setCategory('all');
     setMuscle('all');
     setEquipment('all');
+    setMediaFilter('all');
   };
 
   const openCreate = () => {
@@ -305,11 +313,13 @@ function ExerciseLibraryTab({ library, reload }) {
           </Button>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="exercise-library-filters">
+      <div className={cn('grid grid-cols-1 gap-2', media.enabled ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3')} data-testid="exercise-library-filters">
         <LibraryFilter label="Category" allLabel="All categories" value={category} onChange={setCategory} options={options.categories} testId="exercise-library-filter-category" />
         <LibraryFilter label="Muscle" allLabel="All muscles" value={muscle} onChange={setMuscle} options={options.muscles} testId="exercise-library-filter-muscle" />
         <LibraryFilter label="Equipment" allLabel="All equipment" value={equipment} onChange={setEquipment} options={options.equipment} testId="exercise-library-filter-equipment" />
+        {media.enabled && <MediaReadinessFilter value={mediaFilter} onChange={setMediaFilter} />}
       </div>
+      {media.enabled && <LibraryMediaSummary summary={media.summary} />}
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <p aria-live="polite" data-testid="exercise-library-count">
           {filtersActive ? `Showing ${filtered.length} of ${library.length} exercises` : `${library.length} exercises`}
@@ -332,13 +342,14 @@ function ExerciseLibraryTab({ library, reload }) {
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2 font-medium">{exercise.name}{exercise.hidden && <HiddenBadge />}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-medium">{exercise.name}{exercise.hidden && <HiddenBadge />}{media.enabled && <ExerciseMediaBadge item={media.byExercise.get(exercise.id)} />}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {[exercise.category, exercise.equipment, exercise.primary_muscle].filter(Boolean).join(' - ') || 'No tags'}
                   </p>
-                  {safeHttpUrl(exercise.video_url) && <a href={safeHttpUrl(exercise.video_url)} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">Video</a>}
+                  {safeHttpUrl(exercise.video_url) && <a href={safeHttpUrl(exercise.video_url)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">External video</a>}
                 </div>
                 <div className="flex gap-1.5">
+                  {media.enabled && <ExerciseMediaButton exercise={exercise} onOpen={setMediaExercise} />}
                   <IconButton label={exercise.hidden ? `Unhide ${exercise.name}` : `Hide ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(exercise)} data-testid="exercise-library-hide-button">{exercise.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</IconButton>
                   <IconButton label={`Edit ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(exercise)} data-testid="exercise-library-edit-button"><Pencil className="h-3.5 w-3.5" /></IconButton>
                   <IconButton label={`Archive ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(exercise)} data-testid="exercise-library-archive-button"><Archive className="h-3.5 w-3.5" /></IconButton>
@@ -361,12 +372,13 @@ function ExerciseLibraryTab({ library, reload }) {
               <LabeledField label="Primary muscle"><Input value={form.primary_muscle} onChange={(e) => setForm({ ...form, primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="exercise-library-primary-muscle-input" /></LabeledField>
               <LabeledField label="Secondary muscles"><Input value={form.secondary_muscles} onChange={(e) => setForm({ ...form, secondary_muscles: e.target.value })} placeholder="Secondary muscles" data-testid="exercise-library-secondary-muscles-input" /></LabeledField>
             </div>
-            <LabeledField label="YouTube video URL"><Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="YouTube video URL" data-testid="exercise-library-video-input" /></LabeledField>
+            <LabeledField label="External video link (optional)"><Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="https://… (opens in a new tab)" data-testid="exercise-library-video-input" /></LabeledField>
             <LabeledField label="Notes"><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" data-testid="exercise-library-notes-input" /></LabeledField>
             <DialogFooter><Button size="touch" disabled={saving} className="rounded-xl" data-testid="exercise-library-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save exercise'}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+      <ExerciseMediaDialog exercise={mediaExercise} onClose={() => setMediaExercise(null)} onChanged={media.reload} />
     </div>
   );
 }
