@@ -27,6 +27,9 @@ case "$sub" in
       *"label=com.cvfpt.owner=cvfpt-media-test"*) cat "$FAKE_DIR/owned_postgrest" 2>/dev/null || true ;;
       *"name=^/supabase_db_cvfpt-media-test"*)
         if [ -f "$FAKE_DIR/owned_container_running" ]; then echo running; elif [ -s "$FAKE_DIR/owned_containers" ]; then echo exited; fi ;;
+      *"name=^/supabase_db_cvfpt-"*)
+        cat "$FAKE_DIR/other_dbs" 2>/dev/null || true
+        if [ -f "$FAKE_DIR/owned_container_running" ]; then echo supabase_db_cvfpt-media-test; fi ;;
     esac
     exit 0 ;;
   volume)
@@ -71,7 +74,7 @@ sandbox() {
   cp "$HERE/stack.sh" "$SB/repo/supabase/tests/exercise_media/stack.sh"
   write_fakes "$SB/bin"
   : > "$FAKE_DIR/supabase.log"; : > "$FAKE_DIR/docker.log"
-  export PATH="$SB/bin:$ORIG_PATH" TMPDIR="$SB/tmp"
+  export PATH="$SB/bin:$ORIG_PATH" TMPDIR="$SB/tmp" CVFPT_DISPOSABLE_DB_LOCK="$SB/lock"
   STACK="$SB/repo/supabase/tests/exercise_media/stack.sh"
   STACK_DIR="$SB/tmp/cvfpt-media-test-stack"
   OUT="$SB/out.log"
@@ -84,6 +87,8 @@ expect_never_foreign() { ! grep -q "CVFPT-main\|series-test\|quick-sessions" "$F
 done_case() { PASS=$((PASS + 1)); echo "  ok  $CASE"; }
 owned_running() { echo cid1 > "$FAKE_DIR/owned_containers"; echo vol1 > "$FAKE_DIR/owned_volumes"; touch "$FAKE_DIR/owned_container_running"; }
 owned_config() { mkdir -p "$STACK_DIR/supabase"; printf 'project_id = "cvfpt-media-test"\n' > "$STACK_DIR/supabase/config.toml"; }
+lock_ours() { mkdir -p "$SB/lock"; printf 'project=cvfpt-media-test\npid=1\n' > "$SB/lock/owner"; }
+lock_foreign() { mkdir -p "$SB/lock"; printf 'project=cvfpt-quick-sessions-test\npid=1\n' > "$SB/lock/owner"; }
 foreign_config() { mkdir -p "$STACK_DIR/supabase"; printf 'project_id = "CVFPT-main"\n' > "$STACK_DIR/supabase/config.toml"; }
 
 sandbox "foreign scratch config and nothing owned -> down only removes scratch files"
@@ -122,11 +127,11 @@ owned_config; touch "$FAKE_DIR/ps_fail"; stack down
 expect_nonzero; expect_no_supabase_calls; done_case
 
 sandbox "a busy stack port refuses startup before anything starts"
-touch "$FAKE_DIR/busy_58322"; stack up
+lock_ours; touch "$FAKE_DIR/busy_58322"; stack up
 expect_nonzero; grep -q "refusing: port 58322" "$OUT" || fail "should name the busy port"; expect_no_supabase_calls; [ ! -d "$STACK_DIR/supabase" ] || fail "no config staged"; done_case
 
 sandbox "up rewrites the copy to the owned id and 583xx ports, never starting another project"
-stack up
+lock_ours; stack up
 expect_code 0; grep -q 'project_id = "cvfpt-media-test"' "$STACK_DIR/supabase/config.toml" || fail "id not rewritten"
 grep -q "port = 58322" "$STACK_DIR/supabase/config.toml" || fail "db port not shifted"
 ! grep -qE "543[0-9]{2}" "$STACK_DIR/supabase/config.toml" || fail "543xx survived"
@@ -147,5 +152,27 @@ expect_code 0; grep -q "docker rm -f restid" "$FAKE_DIR/docker.log" || fail "own
 
 sandbox "reset/psql refuse when the owned container is absent"
 owned_config; stack reset; expect_code 2; stack psql -c 'select 1'; expect_code 2; expect_no_supabase_calls; done_case
+
+sandbox "up without the host-wide coordination lock refuses before anything starts"
+stack up
+expect_code 3; grep -q "coordination lock" "$OUT" || fail "should name the lock"; expect_no_supabase_calls; [ ! -d "$STACK_DIR/supabase" ] || fail "no config staged"; done_case
+
+sandbox "up refuses while the lock is held by another project, and leaves that lock alone"
+lock_foreign; stack up
+expect_code 3; expect_no_supabase_calls; grep -qx "project=cvfpt-quick-sessions-test" "$SB/lock/owner" || fail "foreign lock must be untouched"; done_case
+
+sandbox "up refuses while another cvfpt test database is running, even with the lock"
+lock_ours; echo supabase_db_cvfpt-quick-sessions-test > "$FAKE_DIR/other_dbs"; stack up
+expect_code 3; grep -q "supabase_db_cvfpt-quick-sessions-test" "$OUT" || fail "should name the other database"; expect_no_supabase_calls; done_case
+
+sandbox "reset refuses without the coordination lock"
+owned_config; owned_running; stack reset
+expect_code 3; expect_no_supabase_calls; done_case
+
+sandbox "lock is taken atomically and unlock releases only this project's lock"
+stack lock; expect_code 0; grep -qx "project=cvfpt-media-test" "$SB/lock/owner" || fail "owner not recorded"
+stack lock; expect_code 0; grep -q "already held" "$OUT" || fail "re-lock by the owner should be a no-op"
+stack unlock; expect_code 0; [ ! -e "$SB/lock" ] || fail "lock not released"
+lock_foreign; stack lock; expect_code 3; stack unlock; expect_code 3; [ -d "$SB/lock" ] || fail "foreign lock must never be removed"; done_case
 
 echo "media stack guard tests passed ($PASS cases)"

@@ -43,6 +43,7 @@ async function down() {
     if (line.includes('vite.media-local.config.mjs') && line.includes(`--port ${runtime.frontend.port}`)) process.kill(runtime.frontend.pid, 'SIGTERM');
   }
   stack(['down']);
+  stack(['unlock']);
   fs.rmSync(RUNTIME, { force: true });
   console.log('exercise media local demo stopped (owned resources only)');
 }

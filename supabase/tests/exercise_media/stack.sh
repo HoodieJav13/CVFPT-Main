@@ -9,6 +9,7 @@
 #   stack.sh postgrest-down        remove only the PostgREST carrying this stack's owner label
 #   stack.sh status                exit 0 running, 1 not running, 2 Docker could not be queried
 #   stack.sh down                  stop THIS stack + its PostgREST, delete volumes and scratch dir
+#   stack.sh lock | unlock         take / release the host-wide disposable-database coordination lock
 #
 # Identity is FIXED: project id "cvfpt-media-test", container "supabase_db_cvfpt-media-test",
 # ports shifted from 543xx to 583xx (series uses 553xx, Quick 573xx), work dir
@@ -23,6 +24,11 @@
 #  - Nothing is stopped because a directory exists. `down` stops only containers/volumes
 #    carrying this project's labels. Every Docker query must SUCCEED; a failed query is a
 #    failure, never "nothing there".
+#  - Exclusive use, with the same protocol as the Quick sessions stack: `up` and `reset` require
+#    the host-wide lock directory ($CVFPT_DISPOSABLE_DB_LOCK, default ~/.cvfpt/disposable-db.lock)
+#    to be held by THIS project, and refuse while any other `supabase_db_cvfpt-*` test database
+#    is running. The lock is an atomic mkdir; a lock held by anyone else (or left by a crash) is
+#    never broken automatically. run.sh and the integration harness take it and release it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -39,7 +45,26 @@ EXCLUDE="gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-me
 TIMEOUT=""
 if command -v timeout >/dev/null 2>&1; then TIMEOUT="timeout 60"; fi
 
+COORD_LOCK="${CVFPT_DISPOSABLE_DB_LOCK:-$HOME/.cvfpt/disposable-db.lock}"
+
 dk() { $TIMEOUT docker "$@"; }
+
+lock_owner() { sed -n 's/^project=//p' "$COORD_LOCK/owner" 2>/dev/null || true; }
+lock_held() { [ -d "$COORD_LOCK" ] && [ "$(lock_owner)" = "$PROJECT_ID" ]; }
+require_exclusive() {
+  if ! lock_held; then
+    echo "refusing: the disposable-database coordination lock $COORD_LOCK is not held by $PROJECT_ID" >&2
+    [ -f "$COORD_LOCK/owner" ] && sed 's/^/  held by: /' "$COORD_LOCK/owner" >&2
+    exit 3
+  fi
+  local others
+  others="$(dk ps --filter "name=^/supabase_db_cvfpt-" --format '{{.Names}}')" || { echo "cannot verify exclusive use: Docker did not answer" >&2; exit 2; }
+  others="$(printf '%s\n' "$others" | grep -v -x "$DB_CONTAINER" | grep -v '^$' || true)"
+  if [ -n "$others" ]; then
+    echo "refusing: another disposable cvfpt test database is running (${others//$'\n'/, }); wait for it to finish" >&2
+    exit 3
+  fi
+}
 sb() { supabase --workdir "$STACK_DIR" "$@"; }   # only ever used after config_is_owned
 
 config_is_owned() {
@@ -91,6 +116,7 @@ case "$cmd" in
   up)
     command -v supabase >/dev/null || { echo "supabase CLI not found" >&2; exit 1; }
     dk info >/dev/null 2>&1 || { echo "Docker engine is not responding; not starting (this script never restarts Docker)" >&2; exit 1; }
+    require_exclusive
     teardown                                         # any previous owned stack, verified gone
     for port in $PORTS; do
       if port_busy "$port"; then echo "refusing: port $port already has a listener that this stack does not own" >&2; exit 1; fi
@@ -120,6 +146,7 @@ case "$cmd" in
   reset)
     config_is_owned || { echo "refusing: no verified owned config in $STACK_DIR" >&2; exit 2; }
     assert_owned
+    require_exclusive
     if [ "${1:-}" = "--version" ]; then sb db reset --local --version "${2:?version required}"; else sb db reset --local; fi
     ;;
   psql)
@@ -160,6 +187,25 @@ case "$cmd" in
     teardown
     echo "owned stack removed"
     ;;
+  lock)
+    mkdir -p "$(dirname "$COORD_LOCK")"
+    if mkdir "$COORD_LOCK" 2>/dev/null; then
+      printf 'project=%s\npid=%s\nworktree=%s\nstarted_utc=%s\npurpose=%s\n' "$PROJECT_ID" "${CVFPT_LOCK_PID:-$PPID}" "$ROOT" \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "exercise media local SQL/integration tests (owned disposable stack only)" > "$COORD_LOCK/owner"
+      echo "coordination lock taken: $COORD_LOCK"
+    elif lock_held; then
+      echo "coordination lock already held by $PROJECT_ID"
+    else
+      echo "refusing: disposable-database coordination lock $COORD_LOCK is held by another user" >&2
+      [ -f "$COORD_LOCK/owner" ] && sed 's/^/  held by: /' "$COORD_LOCK/owner" >&2
+      exit 3
+    fi
+    ;;
+  unlock)
+    if lock_held; then rm -rf "$COORD_LOCK"; echo "coordination lock released"
+    elif [ -d "$COORD_LOCK" ]; then echo "not releasing: the lock belongs to $(lock_owner)" >&2; exit 3
+    else echo "coordination lock not held"; fi
+    ;;
   *)
-    echo "usage: stack.sh up|reset [--version V]|psql [args]|postgrest-up PORT ENVFILE|postgrest-down|status|down" >&2; exit 2 ;;
+    echo "usage: stack.sh up|reset [--version V]|psql [args]|postgrest-up PORT ENVFILE|postgrest-down|status|down|lock|unlock" >&2; exit 2 ;;
 esac

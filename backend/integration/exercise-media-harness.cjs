@@ -57,7 +57,8 @@ async function freePort() {
 }
 
 function stack(args, { input } = {}) {
-  const result = spawnSync('bash', [STACK, ...args], { input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const env = { ...process.env, CVFPT_LOCK_PID: String(process.pid) };
+  const result = spawnSync('bash', [STACK, ...args], { input, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (result.status !== 0) {
     const error = new Error(`stack.sh ${args[0]} failed (exit ${result.status})`);
     error.output = `${result.stdout || ''}\n${result.stderr || ''}`.slice(-4000);
@@ -100,6 +101,8 @@ class MediaHarness {
   async startDatabase({ reset = true } = {}) {
     const status = spawnSync('bash', [STACK, 'status'], { encoding: 'utf8' });
     if (status.status === 2) throw new Error('Docker did not answer; not starting (this harness never restarts Docker)');
+    // Host-wide disposable-database lock shared with the other cvfpt test stacks; held until down().
+    stack(['lock']);
     if (status.status !== 0) stack(['up']);
     if (reset) stack(['reset']);
   }
@@ -271,7 +274,8 @@ class MediaHarness {
   async down({ keepDatabase = false } = {}) {
     for (const name of [...this.children.keys()]) await this.stopChild(name);
     if (this.gatewayServer) await new Promise((resolve) => this.gatewayServer.close(resolve));
-    if (!keepDatabase) stack(['down']);
+    // The coordination lock stays held while a kept demo database is still running.
+    if (!keepDatabase) { stack(['down']); stack(['unlock']); }
     // Remove the runtime manifest only when this run wrote it.
     const runtimeFile = path.join(RUN_DIR, 'runtime.json');
     try { if (JSON.parse(fs.readFileSync(runtimeFile, 'utf8')).run_id === this.runId) fs.rmSync(runtimeFile, { force: true }); } catch { /* absent */ }

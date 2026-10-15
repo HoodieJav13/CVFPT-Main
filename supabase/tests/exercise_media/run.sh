@@ -5,6 +5,8 @@
 #   bash supabase/tests/exercise_media/run.sh --only 02_boundaries.sql --no-reset
 #   bash supabase/tests/exercise_media/run.sh --version V     # reset to an earlier migration (RED evidence)
 #   bash supabase/tests/exercise_media/run.sh --down          # tear the stack down afterwards; a failed teardown fails the run
+# Every run first takes the host-wide disposable-database coordination lock (stack.sh lock) and
+# releases it on exit; stack.sh also refuses while any other cvfpt test database is running.
 # Each 0*.sql group runs inside a transaction that is rolled back; concurrency.sh
 # commits fresh random identities into this disposable database only.
 set -euo pipefail
@@ -26,13 +28,16 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+LOCKED=0
 cleanup() {
   local code=$?
   trap - EXIT
   if [ "$DOWN" = 1 ]; then bash "$STACK" down || code=1; fi
+  if [ "$LOCKED" = 1 ]; then bash "$STACK" unlock || code=1; fi
   exit "$code"
 }
 trap cleanup EXIT
+CVFPT_LOCK_PID=$$ bash "$STACK" lock; LOCKED=1
 if ! bash "$STACK" status >/dev/null 2>&1; then bash "$STACK" up; fi
 if [ -n "$VERSION" ]; then bash "$STACK" reset --version "$VERSION"; elif [ "$RESET" = 1 ]; then bash "$STACK" reset; fi
 
