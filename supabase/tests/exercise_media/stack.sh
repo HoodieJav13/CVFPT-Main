@@ -6,6 +6,7 @@
 #   stack.sh reset [--version V]   rebuild THIS stack's database from the copied migrations
 #   stack.sh psql [psql args...]   run psql inside THIS stack's database container
 #   stack.sh postgrest-up PORT ENVFILE  start THIS stack's PostgREST on 127.0.0.1:PORT
+#   stack.sh postgrest-down        remove only the PostgREST carrying this stack's owner label
 #   stack.sh status                exit 0 running, 1 not running, 2 Docker could not be queried
 #   stack.sh down                  stop THIS stack + its PostgREST, delete volumes and scratch dir
 #
@@ -138,6 +139,15 @@ case "$cmd" in
       -e PGRST_DB_SCHEMAS=public -e PGRST_DB_ANON_ROLE=anon -e PGRST_DB_POOL=10 \
       "$POSTGREST_IMAGE" >/dev/null
     ;;
+  postgrest-down)
+    dk info >/dev/null 2>&1 || { echo "Docker engine is not responding" >&2; exit 1; }
+    rest="$(owned_postgrest)"
+    if [ -n "$rest" ]; then
+      # shellcheck disable=SC2086
+      dk rm -f $rest >/dev/null
+      [ -z "$(owned_postgrest)" ] || { echo "owned PostgREST remains" >&2; exit 1; }
+    fi
+    ;;
   status)
     echo "project=$PROJECT_ID container=$DB_CONTAINER workdir=$STACK_DIR"
     if ! state="$(dk ps -a --filter "name=^/${DB_CONTAINER}\$" --format '{{.State}}')"; then
@@ -151,5 +161,5 @@ case "$cmd" in
     echo "owned stack removed"
     ;;
   *)
-    echo "usage: stack.sh up|reset [--version V]|psql [args]|postgrest-up PORT ENVFILE|status|down" >&2; exit 2 ;;
+    echo "usage: stack.sh up|reset [--version V]|psql [args]|postgrest-up PORT ENVFILE|postgrest-down|status|down" >&2; exit 2 ;;
 esac

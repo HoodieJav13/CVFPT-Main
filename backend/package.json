@@ -12,7 +12,8 @@
     "test:cleanup": "node integration/soft-archive-test-data.mjs",
     "seed": "node scripts/seed.js",
     "seed:test-workout-accounts": "node scripts/seed-workout-test-accounts.js",
-    "test:media": "node --test test/exercise-media-*.test.js"
+    "test:media": "node --test test/exercise-media-*.test.js",
+    "test:media:integration": "node integration/exercise-media-local.cjs"
   },
   "engines": {
     "node": ">=18"

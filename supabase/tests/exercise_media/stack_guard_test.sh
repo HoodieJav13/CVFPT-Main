@@ -141,6 +141,10 @@ grep -q "already exists" "$OUT" || fail "second instance should be refused"
 : > "$FAKE_DIR/owned_postgrest"; stack postgrest-up 58400 "$SB/env"; expect_code 0
 grep -q "127.0.0.1:58400:3000" "$FAKE_DIR/docker.log" || fail "PostgREST must bind loopback only"; done_case
 
+sandbox "postgrest-down removes only the owned PostgREST id and never the stack"
+owned_config; owned_running; echo restid > "$FAKE_DIR/owned_postgrest"; stack postgrest-down
+expect_code 0; grep -q "docker rm -f restid" "$FAKE_DIR/docker.log" || fail "owned PostgREST not removed"; expect_no_supabase_calls; done_case
+
 sandbox "reset/psql refuse when the owned container is absent"
 owned_config; stack reset; expect_code 2; stack psql -c 'select 1'; expect_code 2; expect_no_supabase_calls; done_case
 
