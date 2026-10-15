@@ -272,6 +272,9 @@ class MediaHarness {
     for (const name of [...this.children.keys()]) await this.stopChild(name);
     if (this.gatewayServer) await new Promise((resolve) => this.gatewayServer.close(resolve));
     if (!keepDatabase) stack(['down']);
+    // Remove the runtime manifest only when this run wrote it.
+    const runtimeFile = path.join(RUN_DIR, 'runtime.json');
+    try { if (JSON.parse(fs.readFileSync(runtimeFile, 'utf8')).run_id === this.runId) fs.rmSync(runtimeFile, { force: true }); } catch { /* absent */ }
   }
 }
 

@@ -13,7 +13,9 @@
     "seed": "node scripts/seed.js",
     "seed:test-workout-accounts": "node scripts/seed-workout-test-accounts.js",
     "test:media": "node --test test/exercise-media-*.test.js",
-    "test:media:integration": "node integration/exercise-media-local.cjs"
+    "test:media:integration": "node integration/exercise-media-local.cjs",
+    "dev:media-local": "node integration/exercise-media-dev.cjs --seed-media",
+    "dev:media-local:down": "node integration/exercise-media-dev.cjs --down"
   },
   "engines": {
     "node": ">=18"

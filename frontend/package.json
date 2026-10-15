@@ -72,7 +72,10 @@
     "test:e2e:preview": "playwright test",
     "test:e2e:live": "playwright test --config playwright.live.config.mjs",
     "test:e2e:analytics": "playwright test --config playwright.analytics.config.mjs",
-    "test:e2e:invites": "playwright test --config playwright.invites.config.mjs"
+    "test:e2e:invites": "playwright test --config playwright.invites.config.mjs",
+    "test:e2e:media": "playwright test --config playwright.exercise-media.config.mjs",
+    "test:e2e:media:local": "playwright test --config playwright.exercise-media-local.config.mjs",
+    "capture:media-visual": "playwright test --config playwright.exercise-media-visual.config.mjs"
   },
   "browserslist": {
     "production": [
