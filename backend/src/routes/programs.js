@@ -38,6 +38,7 @@ const {
 const { extractPdfText } = require('../lib/pdfText');
 const { normalizeSupersetGroups } = require('../lib/supersets');
 const { normalizeTracking } = require('../lib/workoutMetrics');
+const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
 
 function trackingExercises(exercises, previous = []) {
   const old = new Map(previous.map((row) => [row.id, row]));
@@ -1044,6 +1045,18 @@ router.patch('/workout-assignments/:assignmentId/archive', requireCoach, async (
   }
 });
 
+// Current exercise guides for every assigned exercise in one batched lookup.
+// Serialized rows already passed the client allowlist; media is its own DTO.
+async function withAssignedExerciseMedia(programs, workouts) {
+  const lists = [
+    ...programs.flatMap((assignment) => (assignment.program?.days || []).map((day) => day.workout).filter(Boolean)),
+    ...workouts.map((assignment) => assignment.workout).filter(Boolean),
+  ];
+  const hydrated = await attachExerciseMedia(lists.flatMap((workout) => workout.exercises || []), (row) => row.exercise_library_id);
+  let index = 0;
+  for (const workout of lists) workout.exercises = (workout.exercises || []).map(() => hydrated[index++]);
+}
+
 router.get('/client/assigned', requireClient, async (req, res) => {
   try {
     const { data: programAssignments, error } = await supabaseAdmin.from('program_assignments')
@@ -1065,6 +1078,7 @@ router.get('/client/assigned', requireClient, async (req, res) => {
       const workout = await workoutWithDetails(assignment.workout_id);
       if (workout) workouts.push(clientSafeWorkoutAssignment({ ...assignment, workout, exercise_loads: await workoutAssignmentLoads(assignment.id) }));
     }
+    await withAssignedExerciseMedia(programs, workouts);
     return res.json({ programs, workouts });
   } catch (e) {
     logError('client programs error', e);
