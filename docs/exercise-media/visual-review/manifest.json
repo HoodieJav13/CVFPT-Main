@@ -1,0 +1,1776 @@
+{
+  "schema_version": 1,
+  "generated_by": "scripts/exercise-media/build-visual-review.mjs",
+  "capture": {
+    "tool": "frontend/e2e/exercise-media-visual.capture.mjs via frontend/playwright.exercise-media-visual.config.mjs",
+    "browser": "Chromium headless shell 149.0.7827.55 (Playwright 1.61.1)",
+    "emulation": "reduced motion; app dark theme; device scale factor 1",
+    "data": "identical intercepted synthetic responses for both variants; fictional actors only"
+  },
+  "sources": {
+    "baseline": {
+      "commit": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+      "tree": "004fbfe3f1faf1785f3af25f6c81fb7110f12d0d",
+      "tracked_changes": [],
+      "note": "prepared released baseline, rendered from a disposable clone under the task folder"
+    },
+    "proposed": {
+      "commit": "fcb0784a294d28656d8398841fc507e382e28c67",
+      "tree": "c59fde161e2f2f80380c35736559616348a7ca71",
+      "tracked_changes": [
+        "M .gitignore"
+      ]
+    }
+  },
+  "directional_variants": {
+    "classification": "Treated as a genuine visual-direction decision (new inline media footprint inside the workout tracker); resolved toward triggering the variant process.",
+    "baseline_compliant": "Compact default: 96x54 px poster slot beside the cues; Larger is an opt-in per-card control.",
+    "bold_probe": "Larger: bounded full-width 16:9 slot on the same card.",
+    "owner_decision": "pending — the owner picks the default footprint",
+    "measurements": [
+      {
+        "viewport": "320x740",
+        "slot": {
+          "compact": [
+            96,
+            54
+          ],
+          "larger": [
+            238,
+            134
+          ]
+        },
+        "first_set_input_top_px": {
+          "baseline": 385,
+          "compact": 493,
+          "larger": 601
+        },
+        "first_set_input_shift_px": {
+          "compact": 108,
+          "larger": 216
+        },
+        "control_dock_top_px": {
+          "baseline": 540,
+          "compact": 540,
+          "larger": 540
+        },
+        "document_width_px": {
+          "baseline": 320,
+          "compact": 320,
+          "larger": 320
+        }
+      },
+      {
+        "viewport": "390x844",
+        "slot": {
+          "compact": [
+            96,
+            54
+          ],
+          "larger": [
+            308,
+            173
+          ]
+        },
+        "first_set_input_top_px": {
+          "baseline": 385,
+          "compact": 493,
+          "larger": 640
+        },
+        "first_set_input_shift_px": {
+          "compact": 108,
+          "larger": 255
+        },
+        "control_dock_top_px": {
+          "baseline": 644,
+          "compact": 644,
+          "larger": 644
+        },
+        "document_width_px": {
+          "baseline": 390,
+          "compact": 390,
+          "larger": 390
+        }
+      },
+      {
+        "viewport": "1440x900",
+        "slot": {
+          "compact": [
+            96,
+            54
+          ],
+          "larger": [
+            448,
+            252
+          ]
+        },
+        "first_set_input_top_px": {
+          "baseline": 280,
+          "compact": 388,
+          "larger": 614
+        },
+        "first_set_input_shift_px": {
+          "compact": 108,
+          "larger": 334
+        },
+        "control_dock_top_px": {
+          "baseline": 770,
+          "compact": 770,
+          "larger": 770
+        },
+        "document_width_px": {
+          "baseline": 1440,
+          "compact": 1440,
+          "larger": 1440
+        }
+      }
+    ]
+  },
+  "limitations": [
+    "Rendered by Playwright 1.61.1 with Chromium headless shell 149.0.7827.55 only. WebKit is not in the local browser cache, so Safari/iOS rendering is not verified.",
+    "Both variants run against identical intercepted synthetic API responses (page.route). The derivative bytes (posters, preview, instruction, captions) were rendered by the real pinned processor from the synthetic fixtures. These captures prove rendered frontend behavior only; authorization, server validation, storage and processing are proven by the backend, SQL and real-local integration lanes.",
+    "The dark arc drawn over the instruction video frame is Chromium's native media-controls loading indicator in headless capture. It was captured after networkState=IDLE, readyState=HAVE_ENOUGH_DATA and seeking=false; it is not product UI.",
+    "New surfaces (Larger probe, full instruction, media editor, refinement checks) have no baseline equivalent; they are shown proposed-only and say so.",
+    "All media is synthetic test pattern content labelled \"SYNTHETIC TEST MEDIA — NOT INSTRUCTION\". No exercise demonstration accuracy is shown or certified.",
+    "Cold visibility, the default footprint choice (compact vs Larger) and actual instruction accuracy are not self-certified; they require owner review.",
+    "The proposed capture ran on commit fcb0784 with one uncommitted tracked change (M .gitignore) that only ignores capture output; no product source differed.",
+    "Cards are framed with the card top just below the app header; coach dialogs are scrolled to the named section. Bottom navigation and the workout control dock are kept in frame."
+  ],
+  "images": [
+    {
+      "file": "images/tracker-top-baseline-320x740.png",
+      "state": "tracker-top",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "d3604407e0340bcc69077172b369b261187548f6fc1e4d35e893c006ca22fe0d",
+      "bytes": 81197,
+      "note": "Active exercise header: proposed compact 96px poster + cues (default); baseline text card.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": {
+          "x": 77,
+          "y": 385,
+          "width": 138,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 258,
+          "width": 288,
+          "height": 721
+        }
+      }
+    },
+    {
+      "file": "images/tracker-video-card-baseline-320x740.png",
+      "state": "tracker-video-card",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "9cdbf10dc98bdcbb7c652e8a61c63aebc78dc00caf94562374b418742f27af73",
+      "bytes": 72128,
+      "note": "Video exercise card (deferred until requested); External video link kept.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": {
+          "x": 77,
+          "y": -1262,
+          "width": 138,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": -1389,
+          "width": 288,
+          "height": 721
+        }
+      }
+    },
+    {
+      "file": "images/tracker-poster-failed-baseline-320x740.png",
+      "state": "tracker-poster-failed",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "d3604407e0340bcc69077172b369b261187548f6fc1e4d35e893c006ca22fe0d",
+      "bytes": 81197,
+      "note": "Expired/404 poster: calm text fallback + Retry; logging unaffected.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": {
+          "x": 77,
+          "y": 385,
+          "width": 138,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 258,
+          "width": 288,
+          "height": 721
+        }
+      }
+    },
+    {
+      "file": "images/history-detail-baseline-320x740.png",
+      "state": "history-detail",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "be3569063f699783dc5ff1aa8ccb0b39e0570e869a1ccc25a4a1ea0f1de023c6",
+      "bytes": 113556,
+      "note": "Completed workout: \"Current exercise guide\" action (proposed) — today's guide, not a historical record.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-library-baseline-320x740.png",
+      "state": "coach-library",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "4768db69776a90a27e6d6da708be7614e21dfe47dbe48397ac62c4635f012bd7",
+      "bytes": 78496,
+      "note": "Exercise library: media readiness filter, summary and badges (proposed).",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-edit-exercise-baseline-320x740.png",
+      "state": "coach-edit-exercise",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "5a2d5e1f3e2d640c4b9bd756cc866c334572fb4521baec9d5bdd459515b864a1",
+      "bytes": 47020,
+      "note": "Exercise edit dialog: external link relabelled \"External video link (optional)\".",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/tracker-top-baseline-390x844.png",
+      "state": "tracker-top",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "9406f5885f699e863ae9ddb3d6c86f8ed63bb8ce4e82a404f7d618270544b648",
+      "bytes": 100408,
+      "note": "Active exercise header: proposed compact 96px poster + cues (default); baseline text card.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": {
+          "x": 77,
+          "y": 385,
+          "width": 208,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 258,
+          "width": 358,
+          "height": 669
+        }
+      }
+    },
+    {
+      "file": "images/tracker-video-card-baseline-390x844.png",
+      "state": "tracker-video-card",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "c46ddaec6def2ec685c934476d3f7ebd1fb0f58a27a625d77bcdce07af7bfeb3",
+      "bytes": 91179,
+      "note": "Video exercise card (deferred until requested); External video link kept.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": {
+          "x": 77,
+          "y": -1158,
+          "width": 208,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": -1285,
+          "width": 358,
+          "height": 669
+        }
+      }
+    },
+    {
+      "file": "images/tracker-poster-failed-baseline-390x844.png",
+      "state": "tracker-poster-failed",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "9406f5885f699e863ae9ddb3d6c86f8ed63bb8ce4e82a404f7d618270544b648",
+      "bytes": 100408,
+      "note": "Expired/404 poster: calm text fallback + Retry; logging unaffected.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": {
+          "x": 77,
+          "y": 385,
+          "width": 208,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 258,
+          "width": 358,
+          "height": 669
+        }
+      }
+    },
+    {
+      "file": "images/history-detail-baseline-390x844.png",
+      "state": "history-detail",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "51c41f055b27cdcad9e7814b833215a08a2c7fae9c8ee28d39082b65196a6ddf",
+      "bytes": 144625,
+      "note": "Completed workout: \"Current exercise guide\" action (proposed) — today's guide, not a historical record.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-library-baseline-390x844.png",
+      "state": "coach-library",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "58359ad8dbf7f4845b958348216bc106f2a2fae3f909c0a507f02de837f9f4bc",
+      "bytes": 114829,
+      "note": "Exercise library: media readiness filter, summary and badges (proposed).",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-edit-exercise-baseline-390x844.png",
+      "state": "coach-edit-exercise",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "4b71c31c997b751de23d2467358b51b93a3d718162ecffdcefcf9f170cdfe44a",
+      "bytes": 62086,
+      "note": "Exercise edit dialog: external link relabelled \"External video link (optional)\".",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/tracker-top-baseline-1440x900.png",
+      "state": "tracker-top",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "488845980c68dde795f0aa235e18fd7e7ec30d7bc04c70d6c1c9542d50ac34c5",
+      "bytes": 269252,
+      "note": "Active exercise header: proposed compact 96px poster + cues (default); baseline text card.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": {
+          "x": 426,
+          "y": 280,
+          "width": 347,
+          "height": 48
+        },
+        "dock": {
+          "x": 365,
+          "y": 770,
+          "width": 960,
+          "height": 90
+        },
+        "firstCard": {
+          "x": 365,
+          "y": 161,
+          "width": 960,
+          "height": 487
+        }
+      }
+    },
+    {
+      "file": "images/tracker-video-card-baseline-1440x900.png",
+      "state": "tracker-video-card",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "f98ae0b83a44bdaf11f1dc914cd8d1b289a6774fb849667507e77932c089e71d",
+      "bytes": 266850,
+      "note": "Video exercise card (deferred until requested); External video link kept.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": {
+          "x": 426,
+          "y": -875,
+          "width": 347,
+          "height": 48
+        },
+        "dock": {
+          "x": 365,
+          "y": 738,
+          "width": 960,
+          "height": 90
+        },
+        "firstCard": {
+          "x": 365,
+          "y": -994,
+          "width": 960,
+          "height": 487
+        }
+      }
+    },
+    {
+      "file": "images/tracker-poster-failed-baseline-1440x900.png",
+      "state": "tracker-poster-failed",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "488845980c68dde795f0aa235e18fd7e7ec30d7bc04c70d6c1c9542d50ac34c5",
+      "bytes": 269252,
+      "note": "Expired/404 poster: calm text fallback + Retry; logging unaffected.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": {
+          "x": 426,
+          "y": 280,
+          "width": 347,
+          "height": 48
+        },
+        "dock": {
+          "x": 365,
+          "y": 770,
+          "width": 960,
+          "height": 90
+        },
+        "firstCard": {
+          "x": 365,
+          "y": 161,
+          "width": 960,
+          "height": 487
+        }
+      }
+    },
+    {
+      "file": "images/history-detail-baseline-1440x900.png",
+      "state": "history-detail",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "36b9e2242ec2ecc2258e00c95db72a44f61586d9508a0687ab08d76bbb7c8d7b",
+      "bytes": 328599,
+      "note": "Completed workout: \"Current exercise guide\" action (proposed) — today's guide, not a historical record.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-library-baseline-1440x900.png",
+      "state": "coach-library",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "1bc6f92f64ec877166cb7008c2f17c0a1512ea7603eb207512a83a7284600227",
+      "bytes": 264259,
+      "note": "Exercise library: media readiness filter, summary and badges (proposed).",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-edit-exercise-baseline-1440x900.png",
+      "state": "coach-edit-exercise",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "3be8864dabde4335cb88156b648c2b08bb3e70955d950ba95350d67da37f6c68",
+      "bytes": 141901,
+      "note": "Exercise edit dialog: external link relabelled \"External video link (optional)\".",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/tracker-top-proposed-320x740.png",
+      "state": "tracker-top",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "647862d083c4e8a8383510bed81aa1eafeed96f59087ef49a2c7c37bbf8f9ad5",
+      "bytes": 80649,
+      "note": "Active exercise header: proposed compact 96px poster + cues (default); baseline text card.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": {
+          "x": 41,
+          "y": 317,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 493,
+          "width": 138,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 258,
+          "width": 288,
+          "height": 829
+        }
+      }
+    },
+    {
+      "file": "images/tracker-larger-proposed-320x740.png",
+      "state": "tracker-larger",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "1546694b699fff1a887706d05aacc47820b8b39dc8c6ea7fda6b8626247aa72c",
+      "bytes": 78444,
+      "note": "Bold probe footprint: the same card with the bounded full-width slot (Larger).",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": {
+          "x": 41,
+          "y": 317,
+          "width": 238,
+          "height": 134
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 601,
+          "width": 138,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 258,
+          "width": 288,
+          "height": 937
+        }
+      }
+    },
+    {
+      "file": "images/tracker-video-card-proposed-320x740.png",
+      "state": "tracker-video-card",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "e029e98e96afd59ba20b31e7a55ae1c7d40c87640dd2a9a0b33024feddf842b8",
+      "bytes": 64648,
+      "note": "Video exercise card (deferred until requested); External video link kept.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": {
+          "x": 41,
+          "y": -1554,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -1378,
+          "width": 138,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 455,
+          "width": 288,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": -1613,
+          "width": 288,
+          "height": 829
+        }
+      }
+    },
+    {
+      "file": "images/tracker-instruction-dialog-proposed-320x740.png",
+      "state": "tracker-instruction-dialog",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "c1754904fc1bbda746509540c7e8a3635caf1552df5a32862ad96587a1bae1e5",
+      "bytes": 43105,
+      "note": "Full instruction dialog (new surface; baseline has no equivalent).",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": {
+          "x": 41,
+          "y": -1554,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -1378,
+          "width": 138,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 455,
+          "width": 288,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": -1613,
+          "width": 288,
+          "height": 829
+        }
+      }
+    },
+    {
+      "file": "images/tracker-poster-failed-proposed-320x740.png",
+      "state": "tracker-poster-failed",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "c437c06ad01151fb41f1f2d25f8f662b1bd40e3ecb309d004384f4bded212c0a",
+      "bytes": 81979,
+      "note": "Expired/404 poster: calm text fallback + Retry; logging unaffected.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": {
+          "x": 41,
+          "y": 317,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 493,
+          "width": 138,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 258,
+          "width": 288,
+          "height": 829
+        }
+      }
+    },
+    {
+      "file": "images/history-detail-proposed-320x740.png",
+      "state": "history-detail",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "a1ca89f7ba3b759df5e1eb3281611c06d47b8ec7e3284c4c30816e6e43a3f2aa",
+      "bytes": 106668,
+      "note": "Completed workout: \"Current exercise guide\" action (proposed) — today's guide, not a historical record.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-library-proposed-320x740.png",
+      "state": "coach-library",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "f8f05d4acbd15b472cd39244bafefb5b5dfc17236328e1f58e79dd26d6940122",
+      "bytes": 71943,
+      "note": "Exercise library: media readiness filter, summary and badges (proposed).",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-edit-exercise-proposed-320x740.png",
+      "state": "coach-edit-exercise",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "3b398af7df70c4551f6c84dac80adc47d05e70a44583d11f51d6d2547163143c",
+      "bytes": 46507,
+      "note": "Exercise edit dialog: external link relabelled \"External video link (optional)\".",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-review-proposed-320x740.png",
+      "state": "coach-media-review",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "fbb6e973e3f0bfeb0dcd4826867a55b43afc20f33447e809502681ed7b1896a0",
+      "bytes": 57073,
+      "note": "Media editor: current guide + a ready draft awaiting explicit review (new surface).",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-review-attest-proposed-320x740.png",
+      "state": "coach-media-review-attest",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "84173faf1b0b8e711adbfe2471f08e30dfbc3d1e3755cc97e63a0bea62349e4c",
+      "bytes": 49569,
+      "note": "Review attestation: exact variant, rights and content must each be confirmed.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-crop-proposed-320x740.png",
+      "state": "coach-media-crop",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "6a52369621cef65253b4d6178edab53cdd92a24ab7cd18232eed67b3f23e8b7a",
+      "bytes": 31565,
+      "note": "Image-only draft: keyboard 16:9 crop over the EXIF-rotated portrait source with live preview.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-video-proposed-320x740.png",
+      "state": "coach-media-video",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "a5184bbad55b19d0212caa9067a38b139b8ca9c24b0af9eac512650b4b1748da",
+      "bytes": 38532,
+      "note": "Video draft: scrub, poster frame, 1–8 s preview in/out and end still with exact-time inputs.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/tracker-top-proposed-390x844.png",
+      "state": "tracker-top",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "83e4819beaca18e17c75049503c330ff18569654a0fd509791aa0940a7f10c5a",
+      "bytes": 99204,
+      "note": "Active exercise header: proposed compact 96px poster + cues (default); baseline text card.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": {
+          "x": 41,
+          "y": 317,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 493,
+          "width": 208,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 258,
+          "width": 358,
+          "height": 777
+        }
+      }
+    },
+    {
+      "file": "images/tracker-larger-proposed-390x844.png",
+      "state": "tracker-larger",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "38c00a454611c687d4b50677594654edc97417370f99f023b7735362b300d70e",
+      "bytes": 97438,
+      "note": "Bold probe footprint: the same card with the bounded full-width slot (Larger).",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": {
+          "x": 41,
+          "y": 317,
+          "width": 308,
+          "height": 173
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 640,
+          "width": 208,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 258,
+          "width": 358,
+          "height": 924
+        }
+      }
+    },
+    {
+      "file": "images/tracker-video-card-proposed-390x844.png",
+      "state": "tracker-video-card",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "3b9bb9fbdb34401c63121da58b55b8e64e1f77c74b9fde877e66a37ddcff8b6f",
+      "bytes": 82687,
+      "note": "Video exercise card (deferred until requested); External video link kept.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": {
+          "x": 41,
+          "y": -1450,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -1274,
+          "width": 208,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 559,
+          "width": 358,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": -1509,
+          "width": 358,
+          "height": 777
+        }
+      }
+    },
+    {
+      "file": "images/tracker-instruction-dialog-proposed-390x844.png",
+      "state": "tracker-instruction-dialog",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "f3b8403905cc401fd9e0568ed6a95309ef9800050c8bff9cbb2f6438283e5c49",
+      "bytes": 50344,
+      "note": "Full instruction dialog (new surface; baseline has no equivalent).",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": {
+          "x": 41,
+          "y": -1450,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -1274,
+          "width": 208,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 559,
+          "width": 358,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": -1509,
+          "width": 358,
+          "height": 777
+        }
+      }
+    },
+    {
+      "file": "images/tracker-poster-failed-proposed-390x844.png",
+      "state": "tracker-poster-failed",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "c013a1cb7b42a12ac7e488597c80b34cce9e485c868aa3c6321400de332b24f4",
+      "bytes": 100525,
+      "note": "Expired/404 poster: calm text fallback + Retry; logging unaffected.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": {
+          "x": 41,
+          "y": 317,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 493,
+          "width": 208,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 258,
+          "width": 358,
+          "height": 777
+        }
+      }
+    },
+    {
+      "file": "images/history-detail-proposed-390x844.png",
+      "state": "history-detail",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "9e107c21b1b43c18e8bb2ed8ffcc121bc045aea4f65a42c91585c0461bdba190",
+      "bytes": 144539,
+      "note": "Completed workout: \"Current exercise guide\" action (proposed) — today's guide, not a historical record.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-library-proposed-390x844.png",
+      "state": "coach-library",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "d72849408f520eac6179b73fbdbfa42636319dc59c6f2cbec381a117082d90a6",
+      "bytes": 97114,
+      "note": "Exercise library: media readiness filter, summary and badges (proposed).",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-edit-exercise-proposed-390x844.png",
+      "state": "coach-edit-exercise",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "40ce96f1369a3ff418ce09f6fdeb8948f81c856668083c6248cc05176543e092",
+      "bytes": 59912,
+      "note": "Exercise edit dialog: external link relabelled \"External video link (optional)\".",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-review-proposed-390x844.png",
+      "state": "coach-media-review",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "44cbbd20294a95cbb1c2fa481e5eafa8168a461bb58636bd58d5a19f72cfad09",
+      "bytes": 75024,
+      "note": "Media editor: current guide + a ready draft awaiting explicit review (new surface).",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-review-attest-proposed-390x844.png",
+      "state": "coach-media-review-attest",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "44ba33aaa1bcfa3fdd832ea1d30fe0952b1526db0e4dcd515557d08006ed2d86",
+      "bytes": 61114,
+      "note": "Review attestation: exact variant, rights and content must each be confirmed.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-crop-proposed-390x844.png",
+      "state": "coach-media-crop",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "62544e1917ca5b0ea2c3889b8378075763501b6ff43b5822366c03c1f6e980d6",
+      "bytes": 43632,
+      "note": "Image-only draft: keyboard 16:9 crop over the EXIF-rotated portrait source with live preview.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-video-proposed-390x844.png",
+      "state": "coach-media-video",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "3141d4d327da57eba7a77792c034c465ac13f52283e670e224516312edbc302f",
+      "bytes": 51184,
+      "note": "Video draft: scrub, poster frame, 1–8 s preview in/out and end still with exact-time inputs.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/tracker-top-proposed-1440x900.png",
+      "state": "tracker-top",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "4f51d8d6d99aa29286a093b0853bf27a75bc4d4215f28e1414560d05fa8198a2",
+      "bytes": 256628,
+      "note": "Active exercise header: proposed compact 96px poster + cues (default); baseline text card.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": {
+          "x": 390,
+          "y": 220,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": 388,
+          "width": 347,
+          "height": 48
+        },
+        "dock": {
+          "x": 365,
+          "y": 770,
+          "width": 960,
+          "height": 90
+        },
+        "firstCard": {
+          "x": 365,
+          "y": 161,
+          "width": 960,
+          "height": 595
+        }
+      }
+    },
+    {
+      "file": "images/tracker-larger-proposed-1440x900.png",
+      "state": "tracker-larger",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "a7d7ba3a5562a2155fdb75875d00451a8b5d3b753178c3a3d0aa570e389039a1",
+      "bytes": 252327,
+      "note": "Bold probe footprint: the same card with the bounded full-width slot (Larger).",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": {
+          "x": 390,
+          "y": 220,
+          "width": 448,
+          "height": 252
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": 614,
+          "width": 347,
+          "height": 48
+        },
+        "dock": {
+          "x": 365,
+          "y": 770,
+          "width": 960,
+          "height": 90
+        },
+        "firstCard": {
+          "x": 365,
+          "y": 161,
+          "width": 960,
+          "height": 821
+        }
+      }
+    },
+    {
+      "file": "images/tracker-video-card-proposed-1440x900.png",
+      "state": "tracker-video-card",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "7a1ab71c23cfecc9c457ddd29758319cfd22ed970a50acc3c5c4e01867282766",
+      "bytes": 259722,
+      "note": "Video exercise card (deferred until requested); External video link kept.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": {
+          "x": 390,
+          "y": -1151,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": -983,
+          "width": 347,
+          "height": 48
+        },
+        "dock": {
+          "x": 365,
+          "y": 738,
+          "width": 960,
+          "height": 90
+        },
+        "firstCard": {
+          "x": 365,
+          "y": -1210,
+          "width": 960,
+          "height": 595
+        }
+      }
+    },
+    {
+      "file": "images/tracker-instruction-dialog-proposed-1440x900.png",
+      "state": "tracker-instruction-dialog",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "0ea37ec4891d9c9efb096fe93b1201e29a13861e35047aa580cba36169158db3",
+      "bytes": 124658,
+      "note": "Full instruction dialog (new surface; baseline has no equivalent).",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": {
+          "x": 390,
+          "y": -1151,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": -983,
+          "width": 347,
+          "height": 48
+        },
+        "dock": {
+          "x": 365,
+          "y": 738,
+          "width": 960,
+          "height": 90
+        },
+        "firstCard": {
+          "x": 365,
+          "y": -1210,
+          "width": 960,
+          "height": 595
+        }
+      }
+    },
+    {
+      "file": "images/tracker-poster-failed-proposed-1440x900.png",
+      "state": "tracker-poster-failed",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "2c58dadf2a3cf6d27e9b282dd401211933a6d21f5d92f8aee6ead19a1cbdd3de",
+      "bytes": 258521,
+      "note": "Expired/404 poster: calm text fallback + Retry; logging unaffected.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": {
+          "x": 390,
+          "y": 220,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": 388,
+          "width": 347,
+          "height": 48
+        },
+        "dock": {
+          "x": 365,
+          "y": 770,
+          "width": 960,
+          "height": 90
+        },
+        "firstCard": {
+          "x": 365,
+          "y": 161,
+          "width": 960,
+          "height": 595
+        }
+      }
+    },
+    {
+      "file": "images/history-detail-proposed-1440x900.png",
+      "state": "history-detail",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "e4221b225f040a9adf56270f47a18a4e0c9e73ce57530560d7adbdab040f94c3",
+      "bytes": 318008,
+      "note": "Completed workout: \"Current exercise guide\" action (proposed) — today's guide, not a historical record.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-library-proposed-1440x900.png",
+      "state": "coach-library",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "4c474d6bb1d12f1bd571e992568addc42bfcd97087e5eb71e57cbe133482aa2c",
+      "bytes": 309600,
+      "note": "Exercise library: media readiness filter, summary and badges (proposed).",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-edit-exercise-proposed-1440x900.png",
+      "state": "coach-edit-exercise",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "3606751ed13b10ddc38b95c957ce0533358c1564cf0678362da8e552be5abad5",
+      "bytes": 157945,
+      "note": "Exercise edit dialog: external link relabelled \"External video link (optional)\".",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-review-proposed-1440x900.png",
+      "state": "coach-media-review",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "1703f94cb9250810f563602adac089e91d1901fc17a6ce5338a9d97457e6aecb",
+      "bytes": 182374,
+      "note": "Media editor: current guide + a ready draft awaiting explicit review (new surface).",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-review-attest-proposed-1440x900.png",
+      "state": "coach-media-review-attest",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "3787c7d785682d9de54489e654a23cbacd81e7e3405a25e18b831d46aa106c90",
+      "bytes": 143499,
+      "note": "Review attestation: exact variant, rights and content must each be confirmed.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-crop-proposed-1440x900.png",
+      "state": "coach-media-crop",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "2620aefe95a0b8ef79f8cd2f3aa5dbcbd3e51fcb50ba9d50b815acf9d870ea46",
+      "bytes": 130560,
+      "note": "Image-only draft: keyboard 16:9 crop over the EXIF-rotated portrait source with live preview.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/coach-media-video-proposed-1440x900.png",
+      "state": "coach-media-video",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "1d3a8cd92170460dfc860311c59b9825f9c882a36d65c28c84cda35e9135df55",
+      "bytes": 128499,
+      "note": "Video draft: scrub, poster frame, 1–8 s preview in/out and end still with exact-time inputs.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "slot": null,
+        "firstSetInput": null,
+        "dock": null,
+        "firstCard": null
+      }
+    },
+    {
+      "file": "images/refine-zoom200-proposed-640x450.png",
+      "state": "refine-zoom200",
+      "variant": "proposed",
+      "viewport": {
+        "width": 640,
+        "height": 450
+      },
+      "sha256": "a8c1427c20e92b3f63764a250fd943d9ed9a0a769cf3485ab11eeb6e426cc53a",
+      "bytes": 65642,
+      "note": "1280x900 at 200% zoom (640x450 CSS px): no overflow, poster bounded.",
+      "metrics": {
+        "scrollWidth": 640,
+        "innerWidth": 640,
+        "slot": {
+          "x": 41,
+          "y": 269,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 437,
+          "width": 171,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 264,
+          "width": 608,
+          "height": 90
+        },
+        "firstCard": {
+          "x": 16,
+          "y": 210,
+          "width": 608,
+          "height": 601
+        }
+      }
+    },
+    {
+      "file": "images/refine-keyboard-short-proposed-390x420.png",
+      "state": "refine-keyboard-short",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 420
+      },
+      "sha256": "6ff231f424551056bd76eeac6ff3cf9159e428f737214bfa8e9f979c3ef7f689",
+      "bytes": 40877,
+      "note": "Short (keyboard-open) viewport: focused weight input stays visible above the controls.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": {
+          "x": 41,
+          "y": -54,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 122,
+          "width": 208,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 220,
+          "width": 358,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": -113,
+          "width": 358,
+          "height": 777
+        }
+      }
+    },
+    {
+      "file": "images/refine-data-saver-proposed-390x844.png",
+      "state": "refine-data-saver",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "3cb630cb762437e6a37533d85b80166347abd5bd26b1bb5b344f3b51ee82bbd9",
+      "bytes": 83829,
+      "note": "Data saver + reduced motion: still only; Play preview shows its size; nothing autoplays.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "slot": {
+          "x": 41,
+          "y": -1450,
+          "width": 96,
+          "height": 54
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -1274,
+          "width": 208,
+          "height": 48
+        },
+        "dock": {
+          "x": 16,
+          "y": 559,
+          "width": 358,
+          "height": 104
+        },
+        "firstCard": {
+          "x": 16,
+          "y": -1509,
+          "width": 358,
+          "height": 777
+        }
+      }
+    }
+  ]
+}
