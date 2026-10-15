@@ -39,6 +39,7 @@ const { extractPdfText } = require('../lib/pdfText');
 const { normalizeSupersetGroups } = require('../lib/supersets');
 const { normalizeTracking } = require('../lib/workoutMetrics');
 const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
+const { unsafeExternalVideoUrls, UNSAFE_MESSAGE } = require('../lib/externalVideo');
 
 function trackingExercises(exercises, previous = []) {
   const old = new Map(previous.map((row) => [row.id, row]));
@@ -365,6 +366,7 @@ router.post('/exercise-library', requireCoach, async (req, res) => {
   try {
     const { name, category, equipment, primary_muscle, secondary_muscles, video_url, notes } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Exercise name is required' });
+    if (unsafeExternalVideoUrls([{ video_url }]).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
     const { data, error } = await supabaseAdmin.from('exercise_library').insert({
       name: String(name).trim(), category: category || null, equipment: equipment || null,
       primary_muscle: primary_muscle || null, secondary_muscles: secondary_muscles || null,
@@ -382,6 +384,8 @@ router.post('/exercise-library/import', requireCoach, libraryImportLimiter, asyn
   try {
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
     if (rows.length > 500) return res.status(413).json({ error: 'Exercise imports are limited to 500 rows' });
+    const unsafeRows = unsafeExternalVideoUrls(rows);
+    if (unsafeRows.length) return res.status(400).json({ error: `${UNSAFE_MESSAGE} Check row ${unsafeRows.map((index) => index + 1).join(', ')}.` });
     const cleaned = rows
       .filter((row) => row.name && String(row.name).trim())
       .map((row) => ({
@@ -412,6 +416,14 @@ router.put('/exercise-library/:id', requireCoach, async (req, res) => {
     for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k] || null;
     if ('hidden' in (req.body || {})) updates.hidden = req.body.hidden === true;
     if (updates.name !== undefined && !String(updates.name).trim()) return res.status(400).json({ error: 'Exercise name is required' });
+    if ('video_url' in updates && unsafeExternalVideoUrls([{ video_url: updates.video_url }]).length) {
+      // Only a NEW unsafe value is refused; re-saving the stored legacy value is not.
+      const { data: existing, error: existingError } = await supabaseAdmin.from('exercise_library').select('id, video_url').eq('id', req.params.id).maybeSingle();
+      if (existingError) throw existingError;
+      if (unsafeExternalVideoUrls([{ id: req.params.id, video_url: updates.video_url }], new Map([[req.params.id, existing?.video_url]])).length) {
+        return res.status(400).json({ error: UNSAFE_MESSAGE });
+      }
+    }
     const { data, error } = await supabaseAdmin.from('exercise_library').update(updates)
       .eq('id', req.params.id).eq('archived', false).select().maybeSingle();
     if (error) throw error;
@@ -451,6 +463,7 @@ router.post('/workouts', requireCoach, async (req, res) => {
   try {
     const { name, description, goal, exercises } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Workout name is required' });
+    if (unsafeExternalVideoUrls(exercises).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
     const hiddenPicked = await newHiddenLibraryExercises(exercises);
     if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
     // Templates are shared, so the creator is always recorded as the author.
@@ -490,6 +503,9 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
     const body = req.body || {};
     const name = 'name' in body ? String(body.name || '').trim() : workout.name;
     if (!name) return res.status(400).json({ error: 'Workout name is required' });
+    if (unsafeExternalVideoUrls(body.exercises, new Map((workout.exercises || []).map((row) => [row.id, row.video_url]))).length) {
+      return res.status(400).json({ error: UNSAFE_MESSAGE });
+    }
     const hiddenPicked = await newHiddenLibraryExercises(body.exercises, workout);
     if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
     const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
