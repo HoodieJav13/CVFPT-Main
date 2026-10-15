@@ -100,6 +100,33 @@ const resourceUploadLimiter = createRateLimiter({
   limit: 10,
 });
 
+// Exercise media: 10 admitted uploads per coach per 15 minutes (counted only
+// after the draft ownership check), bounded processing/frame requests, and a
+// generous link budget that still stops a polling storm.
+const exerciseMediaUploadLimiter = createRateLimiter({
+  identifier: 'exercise-media-upload',
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+});
+
+const exerciseMediaProcessLimiter = createRateLimiter({
+  identifier: 'exercise-media-process',
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+});
+
+const exerciseMediaFrameLimiter = createRateLimiter({
+  identifier: 'exercise-media-frame-preview',
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+});
+
+const exerciseMediaLinkLimiter = createRateLimiter({
+  identifier: 'exercise-media-links',
+  windowMs: 5 * 60 * 1000,
+  limit: 300,
+});
+
 const telemetryLimiter = createRateLimiter({
   identifier: 'product-telemetry',
   windowMs: 15 * 60 * 1000,
@@ -112,6 +139,10 @@ module.exports = {
   clientImportLimiter,
   createRateLimiter,
   csvImportLimiter,
+  exerciseMediaFrameLimiter,
+  exerciseMediaLinkLimiter,
+  exerciseMediaProcessLimiter,
+  exerciseMediaUploadLimiter,
   forgotPasswordLimiter,
   resetPasswordLimiter,
   libraryImportLimiter,

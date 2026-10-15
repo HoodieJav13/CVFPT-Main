@@ -11,7 +11,8 @@
     "test:integration": "node integration/api-hardening.mjs",
     "test:cleanup": "node integration/soft-archive-test-data.mjs",
     "seed": "node scripts/seed.js",
-    "seed:test-workout-accounts": "node scripts/seed-workout-test-accounts.js"
+    "seed:test-workout-accounts": "node scripts/seed-workout-test-accounts.js",
+    "test:media": "node --test test/exercise-media-*.test.js"
   },
   "engines": {
     "node": ">=18"
