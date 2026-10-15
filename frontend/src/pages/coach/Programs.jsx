@@ -338,11 +338,11 @@ function ExerciseLibraryTab({ library, reload }) {
       )}
       <div className="grid gap-3 md:grid-cols-2">
         {filtered.map((exercise) => (
-          <Card key={exercise.id} data-testid="exercise-library-card">
+          <Card key={exercise.id} className="min-w-0" data-testid="exercise-library-card">
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-2 font-medium">{exercise.name}{exercise.hidden && <HiddenBadge />}{media.enabled && <ExerciseMediaBadge item={media.byExercise.get(exercise.id)} />}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-medium [overflow-wrap:anywhere]">{exercise.name}{exercise.hidden && <HiddenBadge />}{media.enabled && <ExerciseMediaBadge item={media.byExercise.get(exercise.id)} />}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {[exercise.category, exercise.equipment, exercise.primary_muscle].filter(Boolean).join(' - ') || 'No tags'}
                   </p>

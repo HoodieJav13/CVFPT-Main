@@ -139,6 +139,28 @@ test('coach library: readiness filter and summary; review and publish a ready dr
   await expect(page.getByText(/Published\. Every workout using this exercise/)).toBeVisible();
 });
 
+test('coach library and media editor never scroll sideways on a 320px phone', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await usePreviewRole(page, 'coach');
+  await mediaScenario(page);
+  await page.goto('/coach/programs');
+  await expect(page.getByTestId('exercise-library-media-summary')).toBeVisible();
+  const overflow = () => page.evaluate(() => {
+    const width = window.innerWidth;
+    const offenders = [...document.querySelectorAll('body *')]
+      .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > width + 0.5; })
+      .slice(0, 5).map((el) => `${el.tagName.toLowerCase()}[${el.getAttribute('data-testid') || el.className}]`);
+    return { scrollWidth: document.documentElement.scrollWidth, width, offenders };
+  });
+  let result = await overflow();
+  expect(result.scrollWidth, result.offenders.join(' | ')).toBeLessThanOrEqual(result.width);
+  const goblet = page.getByTestId('exercise-library-card').filter({ hasText: 'Synthetic Goblet Squat' });
+  await goblet.getByTestId('exercise-library-media-button').click();
+  await expect(page.getByTestId('exercise-media-editor')).toBeVisible();
+  result = await overflow();
+  expect(result.scrollWidth, result.offenders.join(' | ')).toBeLessThanOrEqual(result.width);
+});
+
 test('coach uploads an image with no video, crops by keyboard, processes (simulated), approves and publishes', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await usePreviewRole(page, 'coach');
