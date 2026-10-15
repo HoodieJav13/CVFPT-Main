@@ -191,6 +191,9 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
   const [attest, setAttest] = useState({ variant: false, rights: false, content: false });
   const [frameUrls, setFrameUrls] = useState([]);
+  // Once a draft has a source, its upload panel folds behind "Replace …" so
+  // review and recipe controls are not buried under upload forms.
+  const [replacing, setReplacing] = useState({ source_image: false, source_video: false });
   const seq = useRef(0);
   const live = useRef(true);
   const frameUrlsRef = useRef([]);
@@ -273,6 +276,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
       signal, timeout: 15 * 60 * 1000, onUploadProgress: (event) => event.total && onProgress(event.loaded / event.total),
     });
     replaceDraft(result.revision);
+    setReplacing((current) => ({ ...current, [role]: false }));
     toast.success(role === 'source_image' ? 'Image uploaded. Crop it and add alt text.' : 'Video uploaded. Choose the poster and preview.');
   };
 
@@ -362,7 +366,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
         {data.drafts.length === 0 && <p className="text-sm text-muted-foreground">No drafts. Start one to upload an image or a video.</p>}
         <div className="flex flex-wrap gap-2" role="list">
           {data.drafts.map((d) => (
-            <button key={d.id} type="button" role="listitem" onClick={() => { setSelectedId(d.id); setForm(formFromDraft(d)); setProblem(null); }}
+            <button key={d.id} type="button" role="listitem" onClick={() => { setSelectedId(d.id); setForm(formFromDraft(d)); setProblem(null); setReplacing({ source_image: false, source_video: false }); }}
               className={`min-h-11 rounded-lg border px-3 py-1 text-left text-sm ${d.id === selectedId ? 'border-primary bg-primary/10' : 'border-border'}`} aria-pressed={d.id === selectedId} data-testid="media-draft-chip">
               <StatusBadge draft={d} /> <span className="ml-1 text-xs text-muted-foreground">{new Date(d.created_at).toLocaleString()}</span>
             </button>
@@ -382,9 +386,17 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
           {draft.status === 'failed' && <p className="text-sm text-destructive" role="alert" data-testid="media-failed">{FAILURE_COPY[draft.failure_code] || 'Processing failed. Check the source and retry.'}</p>}
 
           {editable && (
-            <div className="grid gap-3 md:grid-cols-2">
-              <UploadControl role="source_image" disabled={Boolean(busy)} onUpload={upload('source_image')} />
-              <UploadControl role="source_video" disabled={Boolean(busy)} onUpload={upload('source_video')} />
+            <div className="space-y-2">
+              {((image && !replacing.source_image) || (video && !replacing.source_video)) && (
+                <div className="flex flex-wrap gap-2">
+                  {image && !replacing.source_image && <Button type="button" variant="outline" size="touch" disabled={Boolean(busy)} onClick={() => setReplacing((current) => ({ ...current, source_image: true }))} data-testid="media-replace-image"><ImageUp aria-hidden /> Replace image</Button>}
+                  {video && !replacing.source_video && <Button type="button" variant="outline" size="touch" disabled={Boolean(busy)} onClick={() => setReplacing((current) => ({ ...current, source_video: true }))} data-testid="media-replace-video"><Video aria-hidden /> Replace video</Button>}
+                </div>
+              )}
+              <div className="grid gap-3 md:grid-cols-2">
+                {(!image || replacing.source_image) && <UploadControl role="source_image" disabled={Boolean(busy)} onUpload={upload('source_image')} />}
+                {(!video || replacing.source_video) && <UploadControl role="source_video" disabled={Boolean(busy)} onUpload={upload('source_video')} />}
+              </div>
             </div>
           )}
           {(image || video) && (
