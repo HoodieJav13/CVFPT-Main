@@ -20,6 +20,9 @@ export function ExerciseDemoDialog({ demo, exerciseName, media = null, context =
   const posterId = media?.poster?.asset_id || null;
   const links = useMediaLinks(context, posterId ? [posterId] : [], Boolean(open && posterId && context));
   const posterUrl = posterId ? links.urls.get(posterId) : null;
+  // An expired or missing photo falls back to the name; the demo still plays.
+  const [failedPoster, setFailedPoster] = useState(null);
+  const showPoster = Boolean(posterUrl) && failedPoster !== posterUrl;
 
   useEffect(() => {
     if (!open) { setPlaying(false); setStatus({ state: 'idle', code: null }); }
@@ -76,9 +79,9 @@ export function ExerciseDemoDialog({ demo, exerciseName, media = null, context =
               data-testid="exercise-demo-player" />
           ) : (
             <div className="relative flex aspect-video min-h-[200px] w-full items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-secondary/50" data-testid="exercise-demo-facade">
-              {posterUrl ? (
+              {showPoster ? (
                 <img src={posterUrl} alt={media.alt_text || `${exerciseName} photo`} width={640} height={360} crossOrigin="anonymous"
-                  className="h-full w-full object-cover" data-testid="exercise-demo-poster" />
+                  onError={() => setFailedPoster(posterUrl)} className="h-full w-full object-cover" data-testid="exercise-demo-poster" />
               ) : (
                 <span className="px-4 text-center font-display text-lg text-muted-foreground">{exerciseName}</span>
               )}

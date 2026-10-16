@@ -46,7 +46,7 @@ const IFRAME_API_SHIM = `
   if (typeof window.onYouTubeIframeAPIReady === 'function') window.onYouTubeIframeAPIReady();
 `;
 
-async function setup(page, { mode = 'ready', apiBlocked = false, viewport = { width: 390, height: 844 }, reducedMotion = false } = {}) {
+async function setup(page, { mode = 'ready', apiBlocked = false, viewport = { width: 390, height: 844 }, reducedMotion = false, posterStatus = 200 } = {}) {
   const provider = [];
   const writes = [];
   const fixture = log();
@@ -86,7 +86,10 @@ async function setup(page, { mode = 'ready', apiBlocked = false, viewport = { wi
       const body = request.postDataJSON();
       return json({ links: body.assets.map(({ asset_id: id }) => ({ asset_id: id, url: `/api/exercise-media/content/${id}.sig`, expires_at: new Date(Date.now() + 60_000).toISOString() })), missing: [] });
     }
-    if (path.startsWith('/exercise-media/content/')) return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+    if (path.startsWith('/exercise-media/content/')) {
+      if (posterStatus !== 200) return route.fulfill({ status: posterStatus, contentType: 'application/json', body: '{"code":"link_expired"}' });
+      return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+    }
     return json({ error: `unexpected ${request.method()} ${path}` }, 404);
   });
   await page.goto('/client/workouts/guide-log/track');
@@ -208,6 +211,16 @@ test('View demo sits where the external link sat: same left edge and type as Ext
   const external = await measure(cards.nth(2).getByTestId('tracker-exercise-video'));
   expect(demo).toEqual(external);
   expect(demo.height).toBeGreaterThanOrEqual(44);
+});
+
+test('an expired or missing photo falls back to the exercise name in the dialog; Play still works', async ({ page }) => {
+  const { cards } = await setup(page, { posterStatus: 403 });
+  await cards.nth(0).getByTestId('tracker-exercise-demo').click();
+  const dialog = page.getByTestId('exercise-demo-dialog');
+  await expect(dialog.getByTestId('exercise-demo-facade')).toContainText('Synthetic Goblet Squat');
+  await expect(dialog.getByTestId('exercise-demo-poster')).toHaveCount(0);
+  await dialog.getByTestId('exercise-demo-play').click();
+  await expect(dialog.getByTestId('exercise-demo-iframe')).toHaveCount(1);
 });
 
 test('320px phone: the dialog fits, the player keeps 200x200, and keyboard users can open, play and close', async ({ page }) => {
