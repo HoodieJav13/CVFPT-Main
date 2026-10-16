@@ -57,9 +57,11 @@
       "note": "pinned f3c063c, rendered from a disposable local clone in the session scratchpad"
     },
     "proposed": {
-      "commit": "e80d0c985784ec092ca6511285765360657f3e7b",
-      "tree": "3a0ad81243be91265a0a3127d5ccdbcf35ab2cb4",
-      "tracked_changes": []
+      "commit": "88b2d7afa5658ef6ffea4f83a57a5d6718fb1f36",
+      "tree": "43873a9bdc560d6a3391af6d154bcdca0785f467",
+      "tracked_changes": [
+        "M frontend/e2e/exercise-guides-visual.capture.mjs"
+      ]
     }
   },
   "direction": {
@@ -189,7 +191,8 @@
     "New surfaces (demo dialog states, still selection, refinement checks) have no baseline equivalent; they are shown proposed-only and say so.",
     "All media is synthetic test-pattern content labelled \"SYNTHETIC TEST MEDIA — NOT INSTRUCTION\"; YouTube ids are synthetic. No exercise demonstration accuracy is shown or certified.",
     "Cold visibility and visual/content acceptance are not self-certified; they await owner review.",
-    "The proposed capture ran on clean commit e80d0c9; the capture spec/config were not yet committed and are product-neutral test tooling."
+    "Two consecutive full captures at the final code head were 79/84 byte-identical; the other five differed by at most 767 pixels, confined to decoded media (poster downscaling, a video frame) and a one-pixel focus-ring row. No layout differed.",
+    "The proposed capture ran on commit 88b2d7a with uncommitted tracked changes limited to capture tooling (M frontend/e2e/exercise-guides-visual.capture.mjs); no product source differed."
   ],
   "images": [
     {
@@ -460,8 +463,8 @@
         "width": 390,
         "height": 844
       },
-      "sha256": "f4a7f05ed693bf31c717fc8fc0c4ee6ffeff842813388228aa3493e227a88319",
-      "bytes": 100914,
+      "sha256": "80645bf7bb15faae6b02d294d208e431ae9f84cbcfd7eee8371674d021d74aa5",
+      "bytes": 100907,
       "note": "Active exercise: photo + cues. Baseline opens every link externally; proposed shows View demo for a YouTube link.",
       "metrics": {
         "scrollWidth": 390,
@@ -1132,8 +1135,8 @@
         "width": 320,
         "height": 740
       },
-      "sha256": "3ecda32aa0a51350a89a9fdc05f88c4d20dce587af865fd6f0908a9488361332",
-      "bytes": 58726,
+      "sha256": "fd10e0e2c30b7624ba976e1299456eea41bb6afb3909cbd73c96eb78575055c2",
+      "bytes": 62894,
       "note": "Generic (non-YouTube) link: unchanged External video link that opens a new tab.",
       "metrics": {
         "scrollWidth": 320,
@@ -1146,7 +1149,7 @@
         },
         "firstSetInput": {
           "x": 77,
-          "y": 96,
+          "y": -1390,
           "width": 138,
           "height": 48
         },
@@ -1448,8 +1451,8 @@
         "width": 390,
         "height": 844
       },
-      "sha256": "e5318d80a6e35a1e056279d979061dae44138808f790af249a204f0be633bc71",
-      "bytes": 100477,
+      "sha256": "185b6feeb3d67ab5b8926ad3b76a25edd25ec9953e11990bd69f0ca4bc1c5b8e",
+      "bytes": 100485,
       "note": "Active exercise: photo + cues. Baseline opens every link externally; proposed shows View demo for a YouTube link.",
       "metrics": {
         "scrollWidth": 390,
@@ -1481,7 +1484,7 @@
         "width": 390,
         "height": 844
       },
-      "sha256": "472ffcf7e67c5fd2728ebfdd30243d4aee1cb8dcd6e8cbed178a48a70da1a682",
+      "sha256": "559c27ed5b5b2f154eb7915d77ce3c914035e1651a91ca821458f0b7d7dbde6c",
       "bytes": 101279,
       "note": "Keyboard focus on View demo (focus ring, 44px target).",
       "metrics": {
@@ -1600,8 +1603,8 @@
         "width": 390,
         "height": 844
       },
-      "sha256": "8079b1882169f97915145d6a6ed3b65d69215fde236a6faf96df71e123d6370a",
-      "bytes": 77646,
+      "sha256": "d5ddcd6f9a2134eeffb065b01f3b996c082bb5b850a0a50b267fd460184a0d25",
+      "bytes": 79230,
       "note": "Generic (non-YouTube) link: unchanged External video link that opens a new tab.",
       "metrics": {
         "scrollWidth": 390,
@@ -1614,7 +1617,7 @@
         },
         "firstSetInput": {
           "x": 77,
-          "y": 96,
+          "y": -1274,
           "width": 208,
           "height": 48
         },
@@ -1893,8 +1896,8 @@
         "width": 390,
         "height": 844
       },
-      "sha256": "d4943b3d82958e613c652fcafa6587c2292e44e6105af7d8e162822b78a0ecf2",
-      "bytes": 54714,
+      "sha256": "ae13c561fb11018931c4b6b670e0e89676d6ded4f2d8d1c457ecd3b5998caf2b",
+      "bytes": 54418,
       "note": "Local still selection: only the chosen frame is uploaded; the clip stays on this device.",
       "metrics": {
         "scrollWidth": 390,
@@ -2025,7 +2028,7 @@
         "width": 1440,
         "height": 900
       },
-      "sha256": "171391819943b13b00761a142dd83539d53177c2c37ccc04343fc43d0264b6a6",
+      "sha256": "b222378dc0deca9dd6750141473228a55bc872eb4f2728698c480538d33f1ae9",
       "bytes": 99430,
       "note": "After Play: one privacy-enhanced player (stub page here, not YouTube) at least 200x200; Open on YouTube stays.",
       "metrics": {

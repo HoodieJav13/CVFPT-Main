@@ -156,6 +156,18 @@ async function mock(page, role, { failPoster = false, ytMode = 'ready', apiBlock
 // Frames an element just below the fixed app header, whether the tracker
 // scrolls its own region or (short/narrow windows) the document.
 async function frame(locator) {
+  // Focus restoration after a dialog closes can scroll late: settle first, then
+  // position, and repeat until the element's top stops moving.
+  let last = null;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    await locator.page().evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await position(locator);
+    const top = await locator.evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    if (top === last) return;
+    last = top;
+  }
+}
+async function position(locator) {
   await locator.evaluate((el) => {
     el.scrollIntoView({ block: 'start', behavior: 'instant' });
     const header = document.querySelector('header');

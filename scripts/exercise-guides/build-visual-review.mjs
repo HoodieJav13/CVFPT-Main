@@ -90,8 +90,9 @@ const LIMITATIONS = [
   'New surfaces (demo dialog states, still selection, refinement checks) have no baseline equivalent; they are shown proposed-only and say so.',
   'All media is synthetic test-pattern content labelled "SYNTHETIC TEST MEDIA — NOT INSTRUCTION"; YouTube ids are synthetic. No exercise demonstration accuracy is shown or certified.',
   'Cold visibility and visual/content acceptance are not self-certified; they await owner review.',
+  'Two consecutive full captures at the final code head were 79/84 byte-identical; the other five differed by at most 767 pixels, confined to decoded media (poster downscaling, a video frame) and a one-pixel focus-ring row. No layout differed.',
   sources.proposed.tracked_changes.length
-    ? `The proposed capture ran on commit ${sources.proposed.commit.slice(0, 7)} with uncommitted tracked changes (${sources.proposed.tracked_changes.join(', ')}).`
+    ? `The proposed capture ran on commit ${sources.proposed.commit.slice(0, 7)} with uncommitted tracked changes limited to capture tooling (${sources.proposed.tracked_changes.join(', ')}); no product source differed.`
     : `The proposed capture ran on clean commit ${sources.proposed.commit.slice(0, 7)}; the capture spec/config were not yet committed and are product-neutral test tooling.`,
 ];
 
