@@ -1,6 +1,6 @@
 # Exercise Media integration — later decisions and release authority
 
-The code is being integrated locally onto released PT `433784a`; no publish, CI, deployment, hosted data, migration, bucket, worker, credential or cost action is authorized by this task. Integration RETURN and the independent review will identify the exact resulting source and SQL. This file makes the remaining work concrete; it is not an execution request granted by the current task.
+The code is integrated and locally accepted onto released PT `433784a`; no publish, CI, deployment, hosted data, migration, bucket, worker, credential or cost action is authorized by this task. Integration RETURN and the independent review identify exact tested source `98a839b5` and unchanged SQL. This file makes the remaining work concrete; it is not an execution request granted by the current task.
 
 ## What the current code can and cannot run
 

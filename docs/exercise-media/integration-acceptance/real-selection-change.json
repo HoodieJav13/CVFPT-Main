@@ -1,0 +1,25 @@
+{
+  "fixture": "band-row.mp4",
+  "sequence": "Crop poster at saved 0.5 s, then (crop still open) saved time changed to 3.5 s, keyboard crop, save, process",
+  "tolerance": "mean absolute RGB difference at 64x36 against the generated 640x360 JPEG; coach view and new saved-time frame < 12 and at least 2x below the old-phase control",
+  "poster": {
+    "old_saved_ms": 500,
+    "new_saved_ms": 3500,
+    "crop_px": {
+      "x": 440,
+      "y": 124,
+      "width": 840,
+      "height": 472
+    },
+    "coachView": 1.63,
+    "selected": 1.63,
+    "scrubControl": 13.36,
+    "output": {
+      "width": 640,
+      "height": 360,
+      "bytes": 5997,
+      "sha256": "4f442d4c0dfd06181421f4e7d01751455af9aa7085c141f64ca2cd6eb158b986"
+    },
+    "scrubControl_is_old_phase_500ms": 13.36
+  }
+}

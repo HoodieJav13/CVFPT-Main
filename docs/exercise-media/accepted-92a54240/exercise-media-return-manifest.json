@@ -1,0 +1,596 @@
+{
+  "schema_version": 1,
+  "kind": "exercise-media-return-manifest",
+  "assignment": "CVFPT-R2-CROP-SELECTION-FOLLOWUP-20261016.md (residual R2 only; local)",
+  "completion_state": "COMPLETE-LOCAL",
+  "protocol_version": "v1.1",
+  "released_baseline": {
+    "commit": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce"
+  },
+  "correction_baseline": {
+    "commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060",
+    "tree": "d476d551ea60e295bda0f99375c0fe693f086446",
+    "previous_return": {
+      "path": "docs/exercise-media/p2-correction/history-2026-10-16-c64d17c/RETURN.md",
+      "sha256": "c1fe43ab305105bb07194cbb8305492f8e741cc146adc78fce6f49f4a1536990"
+    },
+    "previous_manifest": {
+      "path": "docs/exercise-media/p2-correction/history-2026-10-16-c64d17c/exercise-media-return-manifest.json",
+      "sha256": "cc290f60ced575aa17061ca95eb2ee772df0fc81061c3c5ca5186e6c3047224d"
+    }
+  },
+  "head_at_generation": {
+    "commit": "7aa207a4b5e3755ca229355221d12058e4e40c01",
+    "tree": "4fd522c12f9f1b3d4c09f60020ce32a83073fa15",
+    "branch": "claude/exercise-media-local-20261015",
+    "upstream": null,
+    "pushed": false,
+    "note": "The commit adding RETURN.md and this manifest follows this head; commits after tested_functional_head change documentation only."
+  },
+  "tested_functional_head": {
+    "commit": "c4229d877180bb78554150186bef9696ff4910d9",
+    "tree": "894f7444afded5ae824a97e91b7718504d09bd6f"
+  },
+  "followup_commits": [
+    [
+      "c17f4a6196dd9eb7d5bf97bdaa32094a824462d0",
+      "Tie an open crop to its current saved frame selection"
+    ],
+    [
+      "7627fbac728f382558930bf86d9fb44d953982c5",
+      "Prove the selection-change fix through the real local services"
+    ],
+    [
+      "c4229d877180bb78554150186bef9696ff4910d9",
+      "Add paired before/after evidence for the crop selection-change fix"
+    ],
+    [
+      "7aa207a4b5e3755ca229355221d12058e4e40c01",
+      "Record the residual R2 crop selection-change fix in docs and status"
+    ]
+  ],
+  "scope": "Residual R2 only (crop validity when the open target's saved time/mode changes). R1 is independently verified and untouched; no backend, schema, migration, dependency or lockfile change.",
+  "migration": {
+    "path": "supabase/migrations/20261015213431_exercise_media_library.sql",
+    "sha256": "54028175f398c6367e8cbea18fb40abe56d965c4bc4843db7936d89ba18edc9c",
+    "changed": false
+  },
+  "finding": {
+    "files": [
+      "frontend/src/components/training/media/VideoSelectionEditor.jsx"
+    ],
+    "tests": [
+      "frontend/e2e/exercise-media-frame-selection.spec.mjs (8 new cases, in test:e2e:media)",
+      "frontend/e2e/harness/video-selection-harness.js (test-only patchRecipe)",
+      "frontend/e2e/exercise-media-local.spec.mjs (real selection-change → generated output)"
+    ],
+    "red": {
+      "log": ".exercise-media-local/evidence/r2-followup/raw/red.log",
+      "log_sha256": "df861a7c2fe708c638ace35609647cd141c78e26da3c5aad9cb5bc4ebeb274a0",
+      "source": "VideoSelectionEditor.jsx byte-identical to c64d17c",
+      "result": "10 passed / 8 failed (all 8 new defect cases)"
+    },
+    "green": {
+      "log": ".exercise-media-local/evidence/r2-followup/raw/green.log",
+      "log_sha256": "b5b3b06930e653951056d45be6921d43d4b799cc03b8d28f1c59e660889b0aea",
+      "result": "18/18",
+      "repeats": [
+        {
+          "log": ".exercise-media-local/evidence/r2-followup/raw/green-repeat-1.log",
+          "log_sha256": "b5b3b06930e653951056d45be6921d43d4b799cc03b8d28f1c59e660889b0aea"
+        },
+        {
+          "log": ".exercise-media-local/evidence/r2-followup/raw/green-repeat-2.log",
+          "log_sha256": "44a10bce2aa179da2c9e6c92f77db6e918d2aef3d5eb9cd182c220ed84f3f498"
+        },
+        {
+          "log": ".exercise-media-local/evidence/r2-followup/raw/green-repeat-3.log",
+          "log_sha256": "c0cb41a0fb478651750fac9a2c2fc7c523b778f7541613e2158a71328454e2bb"
+        }
+      ]
+    },
+    "real_selection_change": {
+      "path": ".exercise-media-local/evidence/r2-followup/author-matrix/real-selection-change.json",
+      "sha256": "0bdbb66de3e4a02a931ccbafde081fef85116bf8cd4d017a6b47182368475aca",
+      "old_saved_ms": 500,
+      "new_saved_ms": 3500,
+      "crop_px": {
+        "x": 440,
+        "y": 124,
+        "width": 840,
+        "height": 472
+      },
+      "coachView": 1.63,
+      "selected": 1.63,
+      "scrubControl": 13.36,
+      "output": {
+        "width": 640,
+        "height": 360,
+        "bytes": 5997,
+        "sha256": "4f442d4c0dfd06181421f4e7d01751455af9aa7085c141f64ca2cd6eb158b986"
+      },
+      "scrubControl_is_old_phase_500ms": 13.36,
+      "tolerance": "mean absolute RGB difference at 64x36 against the generated 640x360 JPEG; coach view and new saved-time frame < 12 and at least 2x below the old-phase control"
+    },
+    "original_r2_real_case_still_passing": {
+      "path": ".exercise-media-local/evidence/r2-followup/author-matrix/real-frame-selection.json",
+      "sha256": "fa3e5649cc7c39668222adb0ae302a1a7de744d27336078f2f0d8ea290bfe5c2",
+      "poster": {
+        "coachView": 0.86,
+        "selected": 0.92,
+        "scrubControl": 6.49
+      },
+      "end_still": {
+        "coachView": 1.6,
+        "selected": 1.62,
+        "scrubControl": 7.7
+      }
+    },
+    "paired_capture": {
+      "index": "docs/exercise-media/p2-correction/selection-change/index.html",
+      "index_sha256": "0f3da258ccd8d63c6cb934a7e7f546f853d2b632178c331e12c5a9360f628d66",
+      "records": "docs/exercise-media/p2-correction/selection-change/capture-records.json",
+      "records_sha256": "82675a1fc3b8ce5109c47e253ff58f80855064277e1465f45075581e1338ecf7",
+      "before_clone": "/Users/jav/Documents/Codex/2026-10-15/task-4/r2-before-c64d17c",
+      "render_check": {
+        "path": ".exercise-media-local/evidence/r2-followup/selection-page-render-check.json",
+        "sha256": "53f1e919bc2f9cb6db758b62be8622132bcd0ce707de71033e96e2fde7ce83a9"
+      },
+      "images": [
+        {
+          "file": "images/1-crop-open-500ms-after-1280x900.png",
+          "sha256": "b737a0b4458627afc3ebab895c18ca205ebae8bf841ea56a06d09aa895f85973",
+          "variant": "after",
+          "state": "1-crop-open-500ms",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 500,
+          "horizontal_overflow": false,
+          "source_commit": "7627fbac728f382558930bf86d9fb44d953982c5"
+        },
+        {
+          "file": "images/1-crop-open-500ms-after-320x740.png",
+          "sha256": "29eb16b65e5bef343af24de4107592a8c68c137fed6ae85bebe94ca344756dfe",
+          "variant": "after",
+          "state": "1-crop-open-500ms",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 500,
+          "horizontal_overflow": false,
+          "source_commit": "7627fbac728f382558930bf86d9fb44d953982c5"
+        },
+        {
+          "file": "images/1-crop-open-500ms-after-390x844.png",
+          "sha256": "ccc13c5e741430898b5689f0d00f5065f08506a6109d690a5eed5226313d7805",
+          "variant": "after",
+          "state": "1-crop-open-500ms",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 500,
+          "horizontal_overflow": false,
+          "source_commit": "7627fbac728f382558930bf86d9fb44d953982c5"
+        },
+        {
+          "file": "images/1-crop-open-500ms-before-1280x900.png",
+          "sha256": "c845afafba7a9617611a76a79a5a7ed8b4d3f4e77d9506e7f5f27d1cde69ebbf",
+          "variant": "before",
+          "state": "1-crop-open-500ms",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 500,
+          "horizontal_overflow": false,
+          "source_commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060"
+        },
+        {
+          "file": "images/1-crop-open-500ms-before-320x740.png",
+          "sha256": "29eb16b65e5bef343af24de4107592a8c68c137fed6ae85bebe94ca344756dfe",
+          "variant": "before",
+          "state": "1-crop-open-500ms",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 500,
+          "horizontal_overflow": false,
+          "source_commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060"
+        },
+        {
+          "file": "images/1-crop-open-500ms-before-390x844.png",
+          "sha256": "ccc13c5e741430898b5689f0d00f5065f08506a6109d690a5eed5226313d7805",
+          "variant": "before",
+          "state": "1-crop-open-500ms",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 500,
+          "horizontal_overflow": false,
+          "source_commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060"
+        },
+        {
+          "file": "images/2-saved-time-changed-to-3000ms-after-1280x900.png",
+          "sha256": "cbb1185ed0deb144ca95fb496e43b7aea00925985fbdd7a35310a7dca2fa0afb",
+          "variant": "after",
+          "state": "2-saved-time-changed-to-3000ms",
+          "crop_shows": "new 3000 ms frame",
+          "label": "Poster frame at 0:03.0",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "7627fbac728f382558930bf86d9fb44d953982c5"
+        },
+        {
+          "file": "images/2-saved-time-changed-to-3000ms-after-320x740.png",
+          "sha256": "ec2e90a80b93f8a1048eee4f884a46ce85fe8ea5015bb9b258083c16eccb2ad2",
+          "variant": "after",
+          "state": "2-saved-time-changed-to-3000ms",
+          "crop_shows": "new 3000 ms frame",
+          "label": "Poster frame at 0:03.0",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "7627fbac728f382558930bf86d9fb44d953982c5"
+        },
+        {
+          "file": "images/2-saved-time-changed-to-3000ms-after-390x844.png",
+          "sha256": "da9df79c2fc54df12e1f206e10f68609fdaab49b7a6bf0c7bcc6c5deba9f91a9",
+          "variant": "after",
+          "state": "2-saved-time-changed-to-3000ms",
+          "crop_shows": "new 3000 ms frame",
+          "label": "Poster frame at 0:03.0",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "7627fbac728f382558930bf86d9fb44d953982c5"
+        },
+        {
+          "file": "images/2-saved-time-changed-to-3000ms-before-1280x900.png",
+          "sha256": "5885d3af82b2a245eb95f0b96dd593be405865b6a68a3d4d4b20738e4c90c881",
+          "variant": "before",
+          "state": "2-saved-time-changed-to-3000ms",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060"
+        },
+        {
+          "file": "images/2-saved-time-changed-to-3000ms-before-320x740.png",
+          "sha256": "169b6a24d37ac56434bba2e1fd6c911bb2205fec247886684f31c7e1e1abf3f3",
+          "variant": "before",
+          "state": "2-saved-time-changed-to-3000ms",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060"
+        },
+        {
+          "file": "images/2-saved-time-changed-to-3000ms-before-390x844.png",
+          "sha256": "d3d784e9275e501e06f4480d74e59e9b561f83fff52e53bb2bf474efe445c9a4",
+          "variant": "before",
+          "state": "2-saved-time-changed-to-3000ms",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060"
+        },
+        {
+          "file": "images/3-keyboard-crop-edit-after-1280x900.png",
+          "sha256": "364eafb6f14ac9a4d069f080c319e6505c4e00441603f08e8230d88d69fbf2bf",
+          "variant": "after",
+          "state": "3-keyboard-crop-edit",
+          "crop_shows": "new 3000 ms frame",
+          "label": "Poster frame at 0:03.0",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "7627fbac728f382558930bf86d9fb44d953982c5"
+        },
+        {
+          "file": "images/3-keyboard-crop-edit-after-320x740.png",
+          "sha256": "bfd2fbedc80cedb473a5e6fdd439516a879d62dc2021e8da5c61bf58058ad9fc",
+          "variant": "after",
+          "state": "3-keyboard-crop-edit",
+          "crop_shows": "new 3000 ms frame",
+          "label": "Poster frame at 0:03.0",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "7627fbac728f382558930bf86d9fb44d953982c5"
+        },
+        {
+          "file": "images/3-keyboard-crop-edit-after-390x844.png",
+          "sha256": "fa79f2c00c7fe4184eda8e6f64dbb99c42714b16743aaa129826fdd38dbc34f1",
+          "variant": "after",
+          "state": "3-keyboard-crop-edit",
+          "crop_shows": "new 3000 ms frame",
+          "label": "Poster frame at 0:03.0",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "7627fbac728f382558930bf86d9fb44d953982c5"
+        },
+        {
+          "file": "images/3-keyboard-crop-edit-before-1280x900.png",
+          "sha256": "114111955ee89222925bcf84c9ba48ce389cf463e31e8d1c5023498cbfdc68a5",
+          "variant": "before",
+          "state": "3-keyboard-crop-edit",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060"
+        },
+        {
+          "file": "images/3-keyboard-crop-edit-before-320x740.png",
+          "sha256": "3a5b4ff3fc671514f3d467ac4af3b0b79eeb6d8332b14e626f801b23a304634e",
+          "variant": "before",
+          "state": "3-keyboard-crop-edit",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060"
+        },
+        {
+          "file": "images/3-keyboard-crop-edit-before-390x844.png",
+          "sha256": "9f159a3df50383ddc6bc09fb01370d7514efa6d2159d555558eef3c93de244b8",
+          "variant": "before",
+          "state": "3-keyboard-crop-edit",
+          "crop_shows": "old 500 ms frame",
+          "label": "Poster frame at 0:00.5",
+          "saved_ms": 3000,
+          "horizontal_overflow": false,
+          "source_commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060"
+        }
+      ]
+    }
+  },
+  "tests": {
+    "author": [
+      {
+        "name": "focused-frame-selection",
+        "command": "npx playwright test --config playwright.exercise-media.config.mjs e2e/exercise-media-frame-selection.spec.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/focused-frame-selection.log",
+        "log_sha256": "44a10bce2aa179da2c9e6c92f77db6e918d2aef3d5eb9cd182c220ed84f3f498",
+        "counts": {
+          "passed": 18
+        }
+      },
+      {
+        "name": "contract-validator",
+        "command": "bash .agentic/validate-contract-version.sh .",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/validate-contract.log",
+        "log_sha256": "139eb22746d7c4b7ebd4c8d3a2ebf93c8b3060027442575d5ee96746b744c4bb"
+      },
+      {
+        "name": "boundaries-frontend",
+        "command": "bash scripts/check-boundaries.sh frontend",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/boundaries-frontend.log",
+        "log_sha256": "60381eb78711c6445ba2570159faff25b1feb5179532e98f5ff773e0f8905623"
+      },
+      {
+        "name": "boundaries-backend",
+        "command": "bash scripts/check-boundaries.sh backend",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/boundaries-backend.log",
+        "log_sha256": "59d4b2a113abb76b4f4e69405796437ff725acf9f29f8c6881c26fb9e6f077c1"
+      },
+      {
+        "name": "backend-test",
+        "command": "npm --prefix backend test",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/backend-test.log",
+        "log_sha256": "87cb4059b500b83d71df89184edef30828f694edd6ea87c23d82452f213bb8b4",
+        "counts": {
+          "tests": 584,
+          "pass": 584,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "frontend-unit",
+        "command": "npm --prefix frontend run test:unit",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/frontend-unit.log",
+        "log_sha256": "7bbe0081aafa8c5d5491c546794f68a36746f95b0c3f6818d0a071dc2e0c6252",
+        "counts": {
+          "tests": 103,
+          "pass": 103,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "frontend-build",
+        "command": "npm --prefix frontend run build",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/frontend-build.log",
+        "log_sha256": "246e011c1e44208202a035d13114976a27a39b7e219854a0f13bc2fbb0687eed"
+      },
+      {
+        "name": "media-mocked-and-frame-selection",
+        "command": "npm run test:e2e:media",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/media-mocked-and-frame.log",
+        "log_sha256": "307c8b71997449176ff8977c3a5d04e0a1a4fb5362248c2f4cde448a176a2381",
+        "counts": {
+          "passed": 25
+        }
+      },
+      {
+        "name": "media-real-local",
+        "command": "npm run test:e2e:media:local",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/media-real-local.log",
+        "log_sha256": "80d7ac8718b9255312facbacd1bbccf968a713ff89c0d18bd56944b8280b6d52",
+        "counts": {
+          "passed": 6
+        }
+      },
+      {
+        "name": "preview",
+        "command": "npm run test:e2e:preview",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/preview.log",
+        "log_sha256": "6a1e823e4ca8d14060432a6410a23443a8fce095e6fbabbe8f4f1c402dcd917e",
+        "counts": {
+          "skipped": 8,
+          "passed": 86
+        }
+      },
+      {
+        "name": "workout-ux",
+        "command": "node node_modules/@playwright/test/cli.js test --config playwright.workout-ux.config.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/workout-ux.log",
+        "log_sha256": "bd2182d75b05d9d93d2053c1983228dae29740c599dd96807b4bcb6cbf832e44",
+        "counts": {
+          "passed": 25
+        }
+      },
+      {
+        "name": "media-integration",
+        "command": "npm run test:media:integration",
+        "cwd": "backend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/author-matrix/media-integration.log",
+        "log_sha256": "076517ec39882132961e4582b335b5c2df6823807864bce404e951037f97892a",
+        "counts": {
+          "pass": 22,
+          "fail": 0
+        }
+      }
+    ]
+  },
+  "pr114_compatibility": {
+    "clone": "/Users/jav/Documents/Codex/2026-10-15/task-4/compat-pr114-media-r2f-20261016",
+    "started_from": "634f833afe0f3f43e5f216884e4ea125faeaa2f7 (saved composition, unchanged)",
+    "composition": {
+      "commit": "990a42b1bd0b51fd08d7408df53eedbb6dba88f6",
+      "tree": "7d6741c09873bcce0e94c02eaaf8af04d9486dd5",
+      "parents": [
+        "634f833afe0f3f43e5f216884e4ea125faeaa2f7"
+      ]
+    },
+    "applied_delta": "git diff c64d17c..c4229d8 of VideoSelectionEditor.jsx, exercise-media-frame-selection.spec.mjs, harness/video-selection-harness.js, exercise-media-local.spec.mjs (byte-identical to the author files)",
+    "migration_hashes": [
+      "8842d98ed4dec4abe57000240c2952712f220018d8af785ba0001938376e2119  supabase/migrations/20261009200000_quick_sessions.sql",
+      "54028175f398c6367e8cbea18fb40abe56d965c4bc4843db7936d89ba18edc9c  supabase/migrations/20261015213431_exercise_media_library.sql"
+    ],
+    "tests": [
+      {
+        "name": "frontend-unit",
+        "command": "npm --prefix frontend run test:unit",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/compat-matrix/frontend-unit.log",
+        "log_sha256": "99566758f74385aa3c959ddd2cffe42d807abebdb86c6eaee01699eb9d98a757",
+        "counts": {
+          "tests": 140,
+          "pass": 140,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "frontend-build",
+        "command": "npm --prefix frontend run build",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/compat-matrix/frontend-build.log",
+        "log_sha256": "822c913f904a249a4583ba5891d12c1f627b4ded97d6896b089c6ed48cbb0b42"
+      },
+      {
+        "name": "focused-frame-selection",
+        "command": "npx playwright test --config playwright.exercise-media.config.mjs e2e/exercise-media-frame-selection.spec.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/compat-matrix/focused-frame-selection.log",
+        "log_sha256": "c3bddda5ce8271f7b7d67998e2e5f9d68a85cf3b44755ee13e76595d3acbb88d",
+        "counts": {
+          "passed": 18
+        }
+      },
+      {
+        "name": "media-mocked-and-frame-selection",
+        "command": "npm run test:e2e:media",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/compat-matrix/media-mocked-and-frame.log",
+        "log_sha256": "4bf8ee2ae7c7d217b3dbd9909dc96e090b4b59f1e80cac9e1d8bba3f0da01db2",
+        "counts": {
+          "passed": 25
+        }
+      },
+      {
+        "name": "media-real-local",
+        "command": "npm run test:e2e:media:local",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/compat-matrix/media-real-local.log",
+        "log_sha256": "344353358d177248e061238092f7234c293a84f241c03a5ff14066757aa961dd",
+        "counts": {
+          "passed": 6
+        }
+      },
+      {
+        "name": "quick-mocked",
+        "command": "node node_modules/@playwright/test/cli.js test --config playwright.quick-sessions.config.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/r2-followup/compat-matrix/quick-mocked.log",
+        "log_sha256": "5e08aae75f4023f4363547fd6f65f0ee46d4df80ffed89c723d6c15aaf18dc4d",
+        "counts": {
+          "passed": 30
+        }
+      }
+    ],
+    "not_rerun": "Full Quick SQL, backend and preview matrices were not rerun: the delta is frontend component/test only (evidence boundary disclosed); previous composition 634f833 results stand for those lanes.",
+    "note": "Compatibility evidence only; conveys no Quick release approval."
+  },
+  "not_run": [
+    {
+      "check": "test:e2e:live and hosted checks",
+      "classification": "not-applicable",
+      "reason": "not authorized"
+    },
+    {
+      "check": "Safari/WebKit",
+      "classification": "unavailable",
+      "reason": "not in the local browser cache; downloads not authorized"
+    },
+    {
+      "check": "SQL suites",
+      "classification": "not-applicable",
+      "reason": "no SQL, migration or backend behavior changed in this follow-up"
+    }
+  ],
+  "fixtures": {
+    "browser_clip": {
+      "path": "frontend/e2e/fixtures/exercise-media/synthetic-moving-geometry.mp4",
+      "sha256": "e78d5b71c17da8b2bfa3a9316600e2d09fd2537e0adb4eceb70e5f3fe3c30d48"
+    }
+  },
+  "local_services": {
+    "database": "cvfpt-media-test (583xx), disposable, torn down",
+    "coordination_lock": "~/.cvfpt/disposable-db.lock (released)",
+    "left_running": "none"
+  },
+  "remaining_gates": [
+    "production storage/worker/cost/retention",
+    "owner visual footprint and cold visibility",
+    "coach review of real instruction, variants, rights and captions",
+    "Safari/iOS",
+    "migration reconciliation after Quick and hosted release authority"
+  ],
+  "remaining_review_debt": "Unchanged from the c64d17c packet (poster-mode crop revalidation via API, import video_url, synchronous Docker check, editor polling, fast-start enforcement, preview pause, link-cache eviction, small races, query-count measurement isolation).",
+  "secrets": "none recorded (no credentials, capabilities, signed links or client records)"
+}
