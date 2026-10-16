@@ -1,3 +1,6 @@
+import { ExerciseCatalogAction, useBuilderCatalog } from '@/components/training/ExerciseCatalogAction';
+import { useDiscardChanges, useFormChanges } from '@/context/UnsavedChangesContext';
+import { matchCatalogExercise } from '@/lib/trainingLibrary';
 import { setPrescription } from '@/lib/workoutMetrics';
 import { ExerciseTrackingFields } from '@/components/training/ExerciseTrackingFields';
 import { trackingType } from '@/lib/workoutMetrics';
@@ -92,6 +95,8 @@ function frequencyLabel(value) {
 }
 
 export default function Programs() {
+  const confirmDiscard = useDiscardChanges();
+  const [tab, setTab] = useState('library');
   const [library, setLibrary] = useState(null);
   const [workouts, setWorkouts] = useState(null);
   const [programs, setPrograms] = useState(null);
@@ -143,7 +148,7 @@ export default function Programs() {
   return (
     <div>
       <PageHeader title="Training builder" />
-      <Tabs defaultValue="library">
+      <Tabs value={tab} onValueChange={(next) => { if (next === tab || confirmDiscard()) setTab(next); }}>
         <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade">
           <TabsTrigger className="min-h-11" value="library" data-testid="training-builder-tab-library">Exercise Library</TabsTrigger>
           <TabsTrigger className="min-h-11" value="workouts" data-testid="training-builder-tab-workouts">Workout Days</TabsTrigger>
@@ -424,8 +429,10 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
   // show what is being saved, not the stale list row.
   const inFlightForms = useRef(new Map());
   const formFor = (workout) => inFlightForms.current.get(workout.id) || workoutToForm(workout);
+  const changes = useFormChanges(form, `${editing?.id || 'new'}:${open || paneActive}`, open || paneActive);
 
   const openCreate = () => {
+    if (!changes.confirmDiscard()) return;
     selectionSeq.current += 1;
     setEditing(null);
     setForm(emptyWorkout());
@@ -433,6 +440,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
   };
 
   const openEdit = (workout) => {
+    if (!changes.confirmDiscard()) return;
     selectionSeq.current += 1;
     setEditing(workout);
     setForm(formFor(workout));
@@ -440,6 +448,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
   };
 
   const selectCreate = () => {
+    if (!changes.confirmDiscard()) return;
     selectionSeq.current += 1;
     setEditing(null);
     setForm(emptyWorkout());
@@ -447,6 +456,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
   };
 
   const selectEdit = (workout) => {
+    if (!changes.confirmDiscard()) return;
     selectionSeq.current += 1;
     setEditing(workout);
     setForm(formFor(workout));
@@ -483,7 +493,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
           setPaneActive(false);
         }
       }
-      if (stillSelected()) setOpen(false);
+      if (stillSelected()) { changes.markSaved(); setOpen(false); }
       reload();
     } catch (err) {
       if (isLegacyLockError(err)) setLock({ message: err.response.data.error });
@@ -694,6 +704,7 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
   const [saving, setSaving] = useState(false);
   const [author, setAuthor] = useState('all');
   const [lock, setLock] = useState(null);
+  const changes = useFormChanges(form, `${editing?.id || "new"}:${open}`, open);
   const groups = groupVariations(filterByAuthor(programs, author, user?.profile?.id));
 
   const resetDays = (frequency, existing = []) => Array.from({ length: Number(frequency) }, (_, i) => ({
@@ -873,7 +884,7 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
         ))}
       </div>
       <LegacyLockDialog open={Boolean(lock)} message={lock?.message} busy={saving} onCancel={() => setLock(null)} onSaveVariation={saveVariationFromLock} />
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => { if (next || changes.confirmDiscard()) setOpen(next); }}>
         <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit program' : 'New structured program'}</DialogTitle>
@@ -909,7 +920,8 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
   );
 }
 
-function ProgramImportDialog({ open, onOpenChange, library, reload }) {
+function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, reload }) {
+  const [library, onCatalogCreated] = useBuilderCatalog(initialLibrary);
   const [sourceType, setSourceType] = useState('csv');
   const [file, setFile] = useState(null);
   const [pasteText, setPasteText] = useState('');
@@ -920,6 +932,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const changes = useFormChanges({ pasteText, fileName: file?.name, draft }, open, open);
   const validation = draft ? validateDraft(draft) : { valid: false, errors: [] };
   const exercisePlan = draft ? summarizeExercisePlan(draft, library) : { reused: [], created: [] };
   const requiredReviewDays = draft ? reviewAttentionDayValues(draft, [...errors, ...validation.errors], exercisePlan.created) : [];
@@ -930,7 +943,8 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
   ])];
   if (draft && reviewOpenValues.length === 0 && availableReviewDays.length > 0) reviewOpenValues.push(availableReviewDays[0]);
 
-  const close = (value) => {
+  const close = (value, saved = false) => {
+    if (!value && !saved && !changes.confirmDiscard()) return;
     onOpenChange(value);
     if (!value) {
       setFile(null);
@@ -1078,7 +1092,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
       toast.success('Program imported to vault', {
         description: `${data.created_exercises?.length || 0} new exercises, ${data.reused_exercises?.length || 0} reused`,
       });
-      close(false);
+      close(false, true);
       reload();
     } catch (e) {
       toast.error(errMsg(e, 'Could not save imported program'));
@@ -1236,6 +1250,8 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
                                 <Trash2 className="h-4 w-4" />
                               </IconButton>
                             </div>
+                            <ExerciseCatalogAction exercise={{ ...exercise, custom_name: exercise.name }} library={library} onCreated={onCatalogCreated} disabled={saving || parsing}
+                              onChange={(fields) => setExercise(dayIndex, exerciseIndex, { name: fields.custom_name })} />
                             <ExerciseTrackingFields exercise={exercise} onChange={(fields) => setExercise(dayIndex, exerciseIndex, fields)} />
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                               <Input value={exercise.sets} onChange={(e) => setExercise(dayIndex, exerciseIndex, { sets: e.target.value })} placeholder="Sets" data-testid="program-import-exercise-sets-input" />
@@ -1393,13 +1409,14 @@ function SortableExerciseRow({ id, render }) {
 
 // Shared editor body for the mobile dialog and the desktop pane. The
 // datalist id is prefixed so both mounts can coexist in the DOM.
-function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix = 'workout' }) {
+function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onSubmit, idPrefix = 'workout' }) {
+  const [library, onCatalogCreated] = useBuilderCatalog(initialLibrary);
   const setExercise = (index, updates) => {
     setForm({ ...form, exercises: form.exercises.map((ex, i) => i === index ? { ...ex, ...updates } : ex) });
   };
 
   const chooseExercise = (index, value) => {
-    const match = library.find((ex) => ex.name.toLowerCase() === value.toLowerCase());
+    const match = matchCatalogExercise(library, value);
     if (match) {
       setExercise(index, { exercise_library_id: match.id, custom_name: match.name, video_url: match.video_url || '' });
     } else {
@@ -1473,6 +1490,7 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
             <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
             <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(form.exercises.filter((_, i) => i !== index))} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
           </div>
+          <ExerciseCatalogAction exercise={exercise} library={library} onCreated={onCatalogCreated} onChange={(fields) => setExercise(index, fields)} disabled={saving} />
           <ExerciseTrackingFields exercise={exercise} onChange={(fields) => setExercise(index, fields)} />
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <LabeledField label="Sets"><Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" /></LabeledField>
@@ -1609,8 +1627,9 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
 }
 
 export function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onSubmit, editing }) {
+  const changes = useFormChanges(form, `${editing?.id || "new"}:${open}`, open);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (next || changes.confirmDiscard()) onOpenChange(next); }}>
       <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-2xl grid-cols-1 overflow-y-auto [&>button]:h-11 [&>button]:w-11">
         <DialogHeader>
           <DialogTitle>{editing ? 'Edit workout day' : 'New workout day'}</DialogTitle>

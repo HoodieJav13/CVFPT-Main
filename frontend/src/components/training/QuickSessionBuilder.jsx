@@ -1,3 +1,5 @@
+import { ExerciseCatalogAction, useBuilderCatalog } from './ExerciseCatalogAction';
+import { matchCatalogExercise } from '@/lib/trainingLibrary';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -124,7 +126,8 @@ function validationError(form) {
   return null;
 }
 
-export function QuickSessionBuilder({ form, setForm, library, state, onSave, disabled = false }) {
+export function QuickSessionBuilder({ form, setForm, library: initialLibrary, state, onSave, disabled = false }) {
+  const [library, onCatalogCreated] = useBuilderCatalog(initialLibrary);
   const [more, setMore] = useState({});
   const [libraryToo, setLibraryToo] = useState(false);
   const [touched, setTouched] = useState(false);
@@ -136,7 +139,7 @@ export function QuickSessionBuilder({ form, setForm, library, state, onSave, dis
     ...current, exercises: current.exercises.map((row, i) => (i === index ? { ...row, ...fields } : row)),
   }));
   const chooseExercise = (index, value) => {
-    const match = library.find((exercise) => exercise.name.toLowerCase() === value.toLowerCase());
+    const match = matchCatalogExercise(library, value);
     setRow(index, match ? { exercise_library_id: match.id, custom_name: match.name } : { exercise_library_id: '', custom_name: value });
   };
   const submit = (start) => {
@@ -175,6 +178,10 @@ export function QuickSessionBuilder({ form, setForm, library, state, onSave, dis
                   onClick={() => setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== index) })}
                   data-testid="quick-session-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
               </div>
+              <ExerciseCatalogAction exercise={row} library={library} onCreated={onCatalogCreated} disabled={locked} onChange={(fields) => setRow(index, fields)} />
+              <fieldset className="min-w-0" disabled={locked}>
+                <ExerciseTrackingFields exercise={row} onChange={(fields) => setRow(index, fields)} />
+              </fieldset>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <Field label="Sets">{(id) => <Input id={id} className="min-h-11" inputMode="numeric" value={row.sets} disabled={locked} onChange={(e) => setRow(index, { sets: e.target.value })} data-testid="quick-session-sets-input" />}</Field>
                 {trackingType(row) === 'reps_weight' && <Field label="Reps">{(id) => <Input id={id} className="min-h-11" value={row.reps} disabled={locked} onChange={(e) => setRow(index, { reps: e.target.value })} data-testid="quick-session-reps-input" />}</Field>}
@@ -192,9 +199,6 @@ export function QuickSessionBuilder({ form, setForm, library, state, onSave, dis
               </Button>
               {open && (
                 <div className="space-y-2" data-testid="quick-session-more-fields">
-                  <fieldset className="min-w-0" disabled={locked}>
-                    <ExerciseTrackingFields exercise={row} onChange={(fields) => setRow(index, fields)} />
-                  </fieldset>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     <Field label="Rest (seconds)">{(id) => (
                       <Input id={id} className="min-h-11" type="number" min="0" step="5" inputMode="numeric" disabled={locked}

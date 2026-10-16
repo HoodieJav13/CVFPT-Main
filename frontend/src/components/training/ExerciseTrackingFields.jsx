@@ -1,12 +1,12 @@
 import { WorkoutMetricInput } from './WorkoutMetricInput';
 import { trackingType, tracks } from '@/lib/workoutMetrics';
 
-const labels = { reps_weight: 'Reps / weight', duration: 'Duration', distance: 'Distance', duration_distance: 'Duration + distance' };
+const labels = { reps_weight: 'Reps / weight', duration: 'Time', distance: 'Distance', duration_distance: 'Time + distance' };
 export function ExerciseTrackingFields({ exercise, onChange }) {
   return (
     <div className="space-y-2">
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        Track this exercise
+        Measure by
         <select aria-label="Exercise tracking type" className="h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground"
           value={trackingType(exercise)} onChange={(event) => {
             const type = event.target.value;
@@ -25,7 +25,7 @@ export function ExerciseTrackingFields({ exercise, onChange }) {
             onUnitChange={(unit) => onChange({ [`${metric}_unit`]: unit })} />
         ))}
       </div>
-      {trackingType(exercise) !== 'reps_weight' && <p className="text-xs text-muted-foreground">Targets are instructions. Performed values start blank. Enter values in the selected units; changing a unit keeps the number.</p>}
+      {trackingType(exercise) !== 'reps_weight' && <p className="text-xs text-muted-foreground">Targets are optional instructions. Performed values start blank. Enter values in the selected units; changing a unit keeps the number.</p>}
     </div>
   );
 }
