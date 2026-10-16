@@ -134,7 +134,7 @@ const manifest = [];
 function source(variant) {
   const dir = variant === 'baseline' ? process.env.CVF_VISUAL_BASELINE_DIR : ROOT;
   const git = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
-  return { commit: git('rev-parse', 'HEAD'), tree: git('rev-parse', 'HEAD^{tree}'), tracked_changes: git('status', '--porcelain', '--untracked-files=no').split('\n').filter(Boolean) };
+  return { commit: git('rev-parse', 'HEAD'), tree: git('rev-parse', 'HEAD^{tree}'), tracked_changes: git('status', '--porcelain', '--untracked-files=no', '--', '.', ':(exclude)docs/exercise-media/visual-review').split('\n').filter(Boolean) };
 }
 async function shot(page, state, width, height, note) {
   const variant = test.info().project.name;

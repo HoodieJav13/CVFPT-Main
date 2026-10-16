@@ -79,7 +79,9 @@ const LIMITATIONS = [
   'New surfaces (Larger probe, full instruction, media editor, refinement checks) have no baseline equivalent; they are shown proposed-only and say so.',
   'All media is synthetic test pattern content labelled "SYNTHETIC TEST MEDIA — NOT INSTRUCTION". No exercise demonstration accuracy is shown or certified.',
   'Cold visibility, the default footprint choice (compact vs Larger) and actual instruction accuracy are not self-certified; they require owner review.',
-  `The proposed capture ran on commit ${sources.proposed.commit.slice(0, 7)} with one uncommitted tracked change (${sources.proposed.tracked_changes.join(', ')}) that only ignores capture output; no product source differed.`,
+  sources.proposed.tracked_changes.length
+    ? `The proposed capture ran on commit ${sources.proposed.commit.slice(0, 7)} with uncommitted tracked changes limited to capture tooling (${sources.proposed.tracked_changes.join(', ')}); no product source differed.`
+    : `The proposed capture ran on a clean commit ${sources.proposed.commit.slice(0, 7)}.`,
   'Cards are framed with the card top just below the app header; coach dialogs are scrolled to the named section. Bottom navigation and the workout control dock are kept in frame.',
 ];
 
