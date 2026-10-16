@@ -5,3 +5,10 @@ test('catalog matching ignores outer whitespace and case so inline create does n
   const library = [{ id: 'one', name: 'Hip abduction machine' }];
   assert.equal(catalog.matchCatalogExercise?.(library, '  HIP ABDUCTION MACHINE  ')?.id, 'one');
 });
+
+test('catalog matching uses the import name rules for repeated spaces, tabs and newlines', () => {
+  const library = [{ id: 'one', name: '  Hip  abduction\tmachine\n' }];
+  assert.equal(catalog.matchCatalogExercise(library, ' HIP\tABDUCTION   MACHINE ')?.id, 'one');
+  assert.equal(catalog.matchCatalogExercise(library, ' \t\n '), undefined);
+  assert.equal(catalog.matchCatalogExercise(library, 'Hip adduction machine'), undefined);
+});

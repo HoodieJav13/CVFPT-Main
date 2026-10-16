@@ -3,6 +3,7 @@ import { api, errMsg } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { matchCatalogExercise } from '@/lib/trainingLibrary';
+import { normalizeName } from '@/lib/programDraft';
 
 // Coalesce same-account inline creates across rows/builders. This does not
 // impose a new global uniqueness rule on the existing shared catalog.
@@ -52,11 +53,11 @@ export function ExerciseCatalogAction({ exercise, library, onChange, onCreated, 
     setSaving(true);
     setError('');
     try {
-      const saved = await ensureCatalogExercise(`${actor}:${name.toLowerCase()}`, name, exercise.video_url, () => mounted.current && currentActor.current === actor);
+      const saved = await ensureCatalogExercise(`${actor}:${normalizeName(name)}`, name, exercise.video_url, () => mounted.current && currentActor.current === actor);
       if (!mounted.current || currentActor.current !== actor) return;
       handlers.current.onCreated(saved);
       // A slow response must never replace a different name typed in the meantime.
-      if (String(current.current.custom_name || '').trim().toLowerCase() === name.toLowerCase()) {
+      if (normalizeName(current.current.custom_name) === normalizeName(name)) {
         handlers.current.onChange({ exercise_library_id: saved.id, custom_name: saved.name });
       }
     } catch (err) {
