@@ -13,7 +13,8 @@ import { fmtDate, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
 import { hasQueuedCompleteFor } from '@/lib/workoutOutbox';
 import { trackProductEvent } from '@/lib/telemetry';
-import { safeHttpUrl } from '@/lib/safeUrl';
+import { demoForRow } from '@/lib/exerciseDemo';
+import { ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
 import { downloadBlob, filenameFromDisposition } from '@/lib/download';
 import { SupersetGroups } from '@/components/training/SupersetGroups';
 import { useHistoryPages } from '@/lib/useHistoryPages';
@@ -242,10 +243,13 @@ function WorkoutDay({ day, assignmentId, loads, loading, onStart }) {
 }
 
 function ExerciseList({ exercises, loads = [] }) {
+  const [demoFor, setDemoFor] = useState(null);
   if (exercises.length === 0) return <p className="mt-3 text-sm text-muted-foreground">No exercises added yet.</p>;
   const loadByExercise = new Map(loads.map((load) => [load.workout_exercise_id, load]));
   return (
     <div className="mt-2 divide-y divide-border/70">
+      <ExerciseDemoDialog demo={demoFor ? demoForRow(demoFor) : null} exerciseName={demoFor ? exerciseName(demoFor) : ''}
+        open={Boolean(demoFor)} onOpenChange={(open) => { if (!open) setDemoFor(null); }} />
       <SupersetGroups exercises={exercises} className="py-2.5" innerClassName="divide-y divide-border/70">{(exercise, { index, marker }) => {
         const assignedLoad = loadByExercise.get(exercise.id);
         const load = assignedLoad || (exercise.default_load_value !== null ? { load_value: exercise.default_load_value, load_unit: exercise.default_load_unit } : null);
@@ -254,7 +258,11 @@ function ExerciseList({ exercises, loads = [] }) {
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-medium"><span className="mr-2 text-muted-foreground">{marker}.</span>{exerciseName(exercise)}</p>
               <span className="flex shrink-0 items-center gap-2">
-                {exerciseVideo(exercise) && <a href={exerciseVideo(exercise)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"><Play className="h-3 w-3" /> Video</a>}
+                {demoForRow(exercise)?.kind === 'youtube' && (
+                  <button type="button" onClick={() => setDemoFor(exercise)} aria-label={`View demo: ${exerciseName(exercise)}`}
+                    className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary" data-testid="client-exercise-demo"><Play className="h-3 w-3" /> Demo</button>
+                )}
+                {demoForRow(exercise)?.kind === 'external' && <a href={demoForRow(exercise).url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"><Play className="h-3 w-3" /> Video</a>}
                 {(exercise.sets || (trackingType(exercise) === 'reps_weight' && exercise.reps)) && <Badge variant="outline">{setPrescription(exercise)}</Badge>}
               </span>
             </div>
@@ -313,5 +321,4 @@ function AssignmentNote({ children }) {
 }
 
 function exerciseName(exercise) { return exercise.library_exercise?.name || exercise.custom_name || exercise.name || 'Exercise'; }
-function exerciseVideo(exercise) { return safeHttpUrl(exercise.video_url || exercise.library_exercise?.video_url); }
 function clientExerciseNotes(exercise) { return exercise.client_notes || exercise.notes || ''; }

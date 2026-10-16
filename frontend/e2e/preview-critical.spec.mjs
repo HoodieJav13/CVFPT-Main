@@ -1052,21 +1052,33 @@ test.describe('home-screen install on Android Chrome', () => {
   });
 });
 
-test('the workout tracker links each exercise demo video, workout link first, then library', async ({ page }) => {
+test('the workout tracker offers each exercise demo, workout link first, then library, with no YouTube traffic before Play', async ({ page }) => {
+  // Exercise guides: YouTube demos are click-to-load dialogs; nothing reaches a
+  // provider until Play (this test never presses it; provider hosts are blocked).
+  const provider = [];
+  await page.route((url) => /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|ytimg\.com|googlevideo\.com)$/.test(url.hostname), (route) => { provider.push(route.request().url()); return route.abort('blockedbyclient'); });
   await page.setViewportSize({ width: 390, height: 844 });
   await usePreviewRole(page, 'client');
   await page.goto('/client/programs');
   await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
   await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
   const cards = page.getByTestId('tracker-exercise-card');
-  // Goblet Squat: library video. Pallof Press: the workout's own link.
-  const squatVideo = cards.nth(0).getByTestId('tracker-exercise-video');
-  await expect(squatVideo).toHaveAttribute('href', 'https://www.youtube.com/watch?v=MeIiIdhvXT4');
-  await expect(squatVideo).toHaveAttribute('target', '_blank');
-  await expect(squatVideo).toHaveAttribute('rel', 'noopener noreferrer');
-  await expect(cards.nth(2).getByTestId('tracker-exercise-video')).toHaveAttribute('href', 'https://www.youtube.com/watch?v=ma2OjgP5XDc');
-  const box = await squatVideo.boundingBox();
+  // Goblet Squat: library video. Pallof Press: the workout's own (legacy) link.
+  const squatDemo = cards.nth(0).getByTestId('tracker-exercise-demo');
+  await expect(squatDemo).toHaveText(/View demo/);
+  const box = await squatDemo.boundingBox();
   expect(box.height).toBeGreaterThanOrEqual(44);
+  await squatDemo.click();
+  const dialog = page.getByTestId('exercise-demo-dialog');
+  await expect(dialog.getByTestId('exercise-demo-external')).toHaveAttribute('href', 'https://www.youtube.com/watch?v=MeIiIdhvXT4');
+  await expect(dialog.getByTestId('exercise-demo-external')).toHaveAttribute('target', '_blank');
+  await expect(dialog.getByTestId('exercise-demo-external')).toHaveAttribute('rel', 'noopener noreferrer');
+  await page.keyboard.press('Escape');
+  await cards.nth(2).getByTestId('tracker-exercise-demo').click();
+  await expect(dialog.getByTestId('exercise-demo-external')).toHaveAttribute('href', 'https://www.youtube.com/watch?v=ma2OjgP5XDc');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('iframe')).toHaveCount(0);
+  expect(provider).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
 });
 

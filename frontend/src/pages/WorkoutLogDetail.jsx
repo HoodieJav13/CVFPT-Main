@@ -20,6 +20,8 @@ import { useNotifications } from '@/context/NotificationsContext';
 import { hasQueuedCompleteFor, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
+import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
+import { demoForRow } from '@/lib/exerciseDemo';
 
 // Same identity rule as the exercise-history RPC: match by library exercise
 // when linked, otherwise by the source workout exercise.
@@ -80,6 +82,9 @@ export default function WorkoutLogDetail() {
   const [previousByExercise, setPreviousByExercise] = useState({});
   // Today's guide for an exercise, opened on demand (never preloaded here).
   const [guide, setGuide] = useState(null);
+  // Today's demo for an exercise (live by design), never presented as the
+  // instruction that was shown when this workout happened.
+  const [demoFor, setDemoFor] = useState(null);
   const previousFetchedFor = useRef(null);
   // Drains a completion queued by the tracker before navigation
   // (docs/offline-workout-completion.md). The celebration fires only once
@@ -312,6 +317,8 @@ export default function WorkoutLogDetail() {
                     <BookOpen className="h-4 w-4" aria-hidden /> Current exercise guide
                   </Button>
                 )}
+                <ExerciseDemoAction demo={demoForRow(exercise)} exerciseName={exercise.exercise_name} variant="history"
+                  onView={() => setDemoFor(exercise)} />
               </CardHeader>
               <CardContent>
                 {hasTarget && (
@@ -384,6 +391,15 @@ export default function WorkoutLogDetail() {
         context={{ type: 'workout_log', id }}
         open={Boolean(guide)}
         onOpenChange={(open) => { if (!open) setGuide(null); }}
+        historical
+      />
+      <ExerciseDemoDialog
+        demo={demoFor ? demoForRow(demoFor) : null}
+        exerciseName={demoFor?.exercise_name}
+        media={demoFor?.media || null}
+        context={{ type: 'workout_log', id }}
+        open={Boolean(demoFor)}
+        onOpenChange={(open) => { if (!open) setDemoFor(null); }}
         historical
       />
       <Card className="mt-4" data-testid="coach-responses-card">

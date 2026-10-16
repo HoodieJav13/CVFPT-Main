@@ -4,7 +4,7 @@ import { WorkoutViewport } from '@/components/training/WorkoutViewport';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Play, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -24,13 +24,14 @@ import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import {
   adjustRestEnd, formatRestSeconds, manualRestSeconds, REST_ADJUST_SECONDS,
 } from '@/lib/rest';
-import { safeHttpUrl } from '@/lib/safeUrl';
 import { lastTimeFills } from '@/lib/workoutSync';
 import { trackProductEvent } from '@/lib/telemetry';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 import { nextExercise, restAfterSet, supersetBlocks, supersetRestSeconds } from '@/lib/supersets';
 import { ExerciseMediaInline } from '@/components/training/media/ExerciseMediaInline';
 import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
+import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
+import { demoForRow } from '@/lib/exerciseDemo';
 import { nextPosterTargets } from '@/lib/exerciseMedia';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
@@ -222,6 +223,8 @@ export default function WorkoutTracker() {
   // Exercise guides: only the active + next posters load; others on request.
   const [mediaRequested, setMediaRequested] = useState(() => new Set());
   const [instruction, setInstruction] = useState(null);
+  // One click-to-load demo dialog at a time (no provider traffic until Play).
+  const [demoFor, setDemoFor] = useState(null);
   const mediaContext = useMemo(() => ({ type: 'workout_log', id }), [id]);
   const lastTimeCache = useRef({});
   const intensity = useVisualIntensity();
@@ -633,18 +636,11 @@ export default function WorkoutTracker() {
                 {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
               </div>
               {exercise.prescribed_notes && <p className="text-xs text-muted-foreground">{exercise.prescribed_notes}</p>}
-              {safeHttpUrl(exercise.video_url) && (
-                <a
-                  href={safeHttpUrl(exercise.video_url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                  aria-label={`External video: ${exercise.exercise_name} (opens in a new tab)`}
-                  data-testid="tracker-exercise-video"
-                >
-                  <Play className="h-4 w-4" aria-hidden /> External video
-                </a>
-              )}
+              <ExerciseDemoAction
+                demo={demoForRow(exercise)}
+                exerciseName={exercise.exercise_name}
+                onView={() => setDemoFor({ exerciseId: exercise.id })}
+              />
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="hidden gap-1 px-1 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]">
@@ -770,6 +766,20 @@ export default function WorkoutTracker() {
         onOpenChange={(open) => { if (!open) setInstruction(null); }}
         onRetryMetadata={retryMedia}
       />
+
+      {(() => {
+        const exercise = demoFor && log.exercises.find((row) => row.id === demoFor.exerciseId);
+        return (
+          <ExerciseDemoDialog
+            demo={exercise ? demoForRow(exercise) : null}
+            exerciseName={exercise?.exercise_name}
+            media={exercise?.media || null}
+            context={mediaContext}
+            open={Boolean(exercise)}
+            onOpenChange={(open) => { if (!open) setDemoFor(null); }}
+          />
+        );
+      })()}
 
       <Dialog open={abandonOpen} onOpenChange={setAbandonOpen}>
         <DialogContent className="max-w-sm [&>button]:h-11 [&>button]:w-11" data-testid="workout-abandon-dialog">

@@ -29,7 +29,8 @@ test('switch off: baseline fixtures and screens carry no media UI', async ({ pag
   await expect(page.getByTestId('tracker-exercise-card').first()).toBeVisible();
   await expect(page.getByTestId('exercise-media-inline')).toHaveCount(0);
   await expect(page.getByTestId('exercise-media-deferred')).toHaveCount(0);
-  await expect(page.getByTestId('tracker-exercise-video').first()).toContainText('External video');
+  // Sarah's library demos are YouTube links: a click-to-load demo action, not media UI.
+  await expect(page.getByTestId('tracker-exercise-demo').first()).toContainText('View demo');
 });
 
 test('client tracker: only active+next posters load, preview plays on request, full instruction is separate', async ({ page }) => {

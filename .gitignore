@@ -102,3 +102,7 @@ frontend/test-results-visual/
 frontend/test-results-media/
 frontend/test-results-media-local/
 frontend/test-results-media-visual/
+frontend/test-results-guides/
+frontend/test-results-guides-local/
+frontend/test-results-guides-visual/
+frontend/test-results-guides-proof/

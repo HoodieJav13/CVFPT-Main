@@ -80,3 +80,35 @@ export function resolvedVideoUrl({ workoutExercise = null, libraryExercise = nul
   const url = parsedHttpUrl(candidate);
   return url ? url.toString() : null;
 }
+
+// A server-supplied DemoDTO is re-derived from its URL before any use, so a
+// tampered kind or video_id can never become an embed.
+export function trustedDemo(demo) {
+  if (!demo || typeof demo !== 'object') return null;
+  const source = DEMO_SOURCES.includes(demo.source) ? demo.source : 'library';
+  return demoFor(demo.url, source);
+}
+
+// The current demo for a rendered row: the server DTO when present, otherwise
+// (an API without `demo`) the row's backward-compatible resolved video_url.
+export function demoForRow(row) {
+  if (!row) return null;
+  if (row.demo) return trustedDemo(row.demo);
+  return resolveExerciseDemo({ workoutExercise: { video_url: row.video_url }, libraryExercise: row.library_exercise || null });
+}
+
+// Fixed privacy-enhanced embed for an already-validated id. Only the app
+// origin (never a path, workout, client or token) is passed, as the IFrame API
+// requires for its postMessage channel.
+export function youtubeEmbedUrl(videoId, { origin = null, autoplay = true } = {}) {
+  if (typeof videoId !== 'string' || !YOUTUBE_ID.test(videoId)) return null;
+  const params = new URLSearchParams({ playsinline: '1', rel: '0', cc_load_policy: '1', enablejsapi: '1' });
+  if (autoplay) params.set('autoplay', '1');
+  if (origin) {
+    try {
+      const parsed = new URL(origin);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') params.set('origin', parsed.origin);
+    } catch { /* no origin parameter */ }
+  }
+  return `${YOUTUBE_EMBED_ORIGIN}/embed/${videoId}?${params.toString()}`;
+}

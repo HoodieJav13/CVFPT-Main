@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, CircleAlert, ImageUp, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, Upload, Video, X } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Film, ImageUp, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, Upload, Video, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, errMsg } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { MEDIA_KIND_LABELS, MEDIA_LIMITS, checkFileBeforeUpload, createRefreshGate, defaultCrop, formatMs, uploadPhotoSource } from '@/lib/exerciseMedia';
 import { ImageCropEditor } from './ImageCropEditor';
 import { VideoSelectionEditor } from './VideoSelectionEditor';
+import { LocalStillSelector } from './LocalStillSelector';
 import { useMediaLinks } from './mediaLinks';
 
 const uuid = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID()
@@ -71,6 +72,16 @@ function formFromDraft(draft) {
     instruction_audio: Boolean(draft.text.instruction_audio), ...draft.recipe,
   };
 }
+// The editable form starts from the saved draft, plus the default 16:9 crop the
+// crop editor already DISPLAYS for an uploaded image with no saved crop, so
+// Save stores exactly what is shown (the saved baseline stays unchanged, which
+// marks the form as having unsaved changes).
+function editableForm(draft) {
+  const form = formFromDraft(draft);
+  const image = draft.sources?.image;
+  if (form.poster_mode === 'uploaded_image' && !form.poster_crop && image?.width && image?.height) form.poster_crop = defaultCrop(image);
+  return form;
+}
 function normalized(form) {
   return {
     ...form,
@@ -95,7 +106,10 @@ function StatusBadge({ draft }) {
   return <Badge variant="outline" className={draft.status === 'failed' ? 'border-destructive/40 text-destructive' : 'text-muted-foreground'}>{STATUS_COPY[draft.status]}</Badge>;
 }
 
-function UploadControl({ role, disabled, onUpload }) {
+// presetFile: an image prepared on this device (a still chosen from a local
+// clip). It replaces the chosen file until the coach picks another file; when
+// it is withdrawn (the selection changed) the control goes back to empty.
+function UploadControl({ role, disabled, onUpload, presetFile = null }) {
   const [file, setFile] = useState(null);
   const [rights, setRights] = useState('owned');
   const [confirmed, setConfirmed] = useState(false);
@@ -110,6 +124,18 @@ function UploadControl({ role, disabled, onUpload }) {
   const inputRef = useRef(null);
   const id = `upload-${role}`;
   useEffect(() => () => controller.current?.abort(), []);
+  const presetRef = useRef(null);
+  useEffect(() => {
+    if (presetFile) {
+      presetRef.current = presetFile;
+      setFile(presetFile); setRequestId(null); setFailed(false); setProblem(null);
+      if (inputRef.current) inputRef.current.value = '';
+    } else if (presetRef.current) {
+      setFile((current) => (current === presetRef.current ? null : current));
+      presetRef.current = null;
+      setRequestId(null); setFailed(false);
+    }
+  }, [presetFile]);
   const start = async () => {
     const early = checkFileBeforeUpload(file, role);
     if (early) { setProblem(early.message); return; }
@@ -154,6 +180,9 @@ function UploadControl({ role, disabled, onUpload }) {
         <Label htmlFor={`${id}-note`} className="text-xs text-muted-foreground">Private permission note (optional, coaches only)</Label>
         <Textarea id={`${id}-note`} rows={2} maxLength={MEDIA_LIMITS.text.rightsNoteMax} value={note} onChange={(event) => setNote(event.target.value)} />
       </fieldset>
+      {file && file === presetFile && (
+        <p className="text-xs" data-testid={`media-upload-preset-${role}`}>Ready to upload the still from your clip: {file.name}. Only this image is uploaded.</p>
+      )}
       {problem && <p className="text-sm text-destructive" role="alert">{problem}</p>}
       {progress !== null ? (
         <div className="flex items-center gap-2 text-sm" role="status" aria-live="polite">
@@ -250,6 +279,9 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   // Once a draft has a source, its upload panel folds behind "Replace …" so
   // review and recipe controls are not buried under upload forms.
   const [replacing, setReplacing] = useState({ source_image: false, source_video: false });
+  // Optional still from a clip on this device (photos mode): only the image is uploaded.
+  const [stillOpen, setStillOpen] = useState(false);
+  const [stillFile, setStillFile] = useState(null);
   // Server capabilities decide the authoring mode: photos (default) or full video.
   const [caps, setCaps] = useState(null);
   const photosMode = caps?.mode === 'photos';
@@ -271,7 +303,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
       setData(next); setLoadError(null);
       const pick = next.drafts.find((d) => d.id === selectId) || next.drafts[0] || null;
       setSelectedId(pick?.id || null);
-      setForm(pick ? formFromDraft(pick) : null);
+      setForm(pick ? editableForm(pick) : null);
     } catch (error) {
       if (live.current && mine === seq.current) setLoadError(errMsg(error, 'Could not load exercise media.'));
     }
@@ -286,7 +318,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   const draft = data?.drafts.find((d) => d.id === selectedId) || null;
   const replaceDraft = (next) => {
     setData((current) => current && { ...current, drafts: current.drafts.map((d) => (d.id === next.id ? next : d)) });
-    setForm(formFromDraft(next));
+    setForm(editableForm(next));
   };
 
   // Bounded status polling while processing (<= 5 minutes, stops on close).
@@ -459,7 +491,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
         {data.drafts.length === 0 && <p className="text-sm text-muted-foreground">No drafts. Start one to upload an image or a video.</p>}
         <div className="flex flex-wrap gap-2" role="list">
           {data.drafts.map((d) => (
-            <button key={d.id} type="button" role="listitem" onClick={() => { setSelectedId(d.id); setForm(formFromDraft(d)); setProblem(null); setReplacing({ source_image: false, source_video: false }); }}
+            <button key={d.id} type="button" role="listitem" onClick={() => { setSelectedId(d.id); setForm(editableForm(d)); setProblem(null); setReplacing({ source_image: false, source_video: false }); }}
               className={`min-h-11 rounded-lg border px-3 py-1 text-left text-sm ${d.id === selectedId ? 'border-primary bg-primary/10' : 'border-border'}`} aria-pressed={d.id === selectedId} data-testid="media-draft-chip">
               <StatusBadge draft={d} /> <span className="ml-1 text-xs text-muted-foreground">{new Date(d.created_at).toLocaleString()}</span>
             </button>
@@ -493,7 +525,19 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
                 </div>
               )}
               <div className="grid gap-3 md:grid-cols-2">
-                {(!image || replacing.source_image) && <UploadControl role="source_image" disabled={Boolean(busy)} onUpload={upload('source_image')} />}
+                {(!image || replacing.source_image) && (
+                  <div className="space-y-2">
+                    <UploadControl role="source_image" disabled={Boolean(busy)} onUpload={async (args) => { await upload('source_image')(args); setStillFile(null); setStillOpen(false); }} presetFile={stillFile} />
+                    {photosMode && caps?.local_still_selection && (stillOpen ? (
+                      <LocalStillSelector disabled={Boolean(busy)} onStill={(file) => setStillFile(file)} onInvalidate={() => setStillFile(null)}
+                        onClose={() => { setStillOpen(false); setStillFile(null); }} />
+                    ) : (
+                      <Button type="button" variant="ghost" size="touch" className="text-muted-foreground" disabled={Boolean(busy)} onClick={() => setStillOpen(true)} data-testid="media-still-open">
+                        <Film aria-hidden /> Choose a still from a clip on this device (optional)
+                      </Button>
+                    ))}
+                  </div>
+                )}
                 {!photosMode && (!video || replacing.source_video) && <UploadControl role="source_video" disabled={Boolean(busy)} onUpload={upload('source_video')} />}
               </div>
             </div>
