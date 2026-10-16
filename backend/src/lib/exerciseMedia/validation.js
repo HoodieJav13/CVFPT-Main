@@ -346,6 +346,8 @@ function normalizeRecipePatch(body, sources = {}) {
   for (const key of Object.keys(body)) if (!PATCH_KEYS.has(key)) fail('invalid_field', 400);
   const out = {};
   const { text } = LIMITS;
+  // Alt text may be rewritten but never removed: clients get no media without it.
+  if ('alt_text' in body && body.alt_text === null) fail('alt_text_required');
   if ('alt_text' in body) out.alt_text = plainString(body.alt_text, { max: text.altMax, emptyCode: 'alt_text_required', longCode: 'alt_text_too_long' });
   if ('end_frame_alt_text' in body) out.end_frame_alt_text = plainString(body.end_frame_alt_text, { max: text.altMax, emptyCode: 'alt_text_required', longCode: 'alt_text_too_long' });
   if ('cues' in body) out.cues = normalizeCues(body.cues);

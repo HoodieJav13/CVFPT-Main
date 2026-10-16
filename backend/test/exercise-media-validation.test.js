@@ -179,7 +179,9 @@ test('text: alt/cues/transcript/captions bounded, plain text only', () => {
   assert.equal(bad({ caption_language: 'english' }), 'invalid_caption_language');
   assert.equal(bad({ caption_cues: [{ start_ms: 1000, end_ms: 500, text: 'x' }] }), 'invalid_caption_cues');
   assert.equal(bad({ caption_cues: Array.from({ length: 501 }, (_, i) => ({ start_ms: i, end_ms: i + 1, text: 'x' })) }), 'invalid_caption_cues');
-  assert.deepEqual(normalizeRecipePatch({ alt_text: null, transcript: '' }, {}), { alt_text: null, transcript: null });
+  // Alt text can be rewritten but never removed; an end still may be cleared.
+  assert.equal(bad({ alt_text: null }), 'alt_text_required');
+  assert.deepEqual(normalizeRecipePatch({ end_frame_alt_text: null, transcript: '' }, {}), { end_frame_alt_text: null, transcript: null });
 });
 
 test('captions: escaped WebVTT, bounded size, no markup passes through', () => {

@@ -607,10 +607,12 @@ async function main() {
     await api('POST', `${M}/revisions/${revision.id}/archive`, { token: T['coach-b'], json: {} });
   });
 
-  await check('disabled configuration: 503 for media routes and byte-identical workout payloads without media fields', async () => {
+  await check('disabled configuration: quiet discovery, 503 for every other media route and workout payloads without media fields', async () => {
     const off = await h.startApi({ name: 'api-disabled', media: false });
-    const status = await api('GET', `${M}/capabilities`, { token: T['coach-a'], base: off.url });
-    assert.equal(status.status, 503); assert.equal(status.body.code, 'media_unavailable');
+    const status = await api('GET', `${M}/library-status`, { token: T['coach-a'], base: off.url });
+    assert.equal(status.status, 200); assert.deepEqual(status.body, { enabled: false, items: [], summary: null });
+    const draft = await api('POST', `${M}/exercises/${exercises.goblet}/drafts`, { token: T['coach-a'], base: off.url, json: { request_id: randomUUID(), confirm_exercise_id: exercises.goblet } });
+    assert.equal(draft.status, 503); assert.equal(draft.body.code, 'media_unavailable');
     const detail = (await api('GET', `/api/workout-logs/${completedLog}`, { token: T['client-1'], base: off.url })).body;
     assert.ok(detail.exercises.every((row) => !('media' in row) && !('media_status' in row)));
     await h.stopChild('api-disabled');

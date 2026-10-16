@@ -22,6 +22,8 @@ const MESSAGES = {
   replace_requires_admin: 'Another coach owns the current guide. An admin must approve replacing it.',
   not_ready: 'Process and review this draft before publishing.',
   attestation_required: 'Confirm the exact variant, rights and content before approving.',
+  alt_text_required: 'Describe the image in alt text before approving or publishing.',
+  end_frame_incomplete: 'Describe the end still in alt text before approving or publishing.',
   captions_required: 'Narrated instruction needs captions and a transcript before review.',
   file_too_large: 'That file is too large.',
   link_expired: 'This media link expired. Retry to refresh it.',
@@ -51,12 +53,17 @@ const wrap = (handler) => async (req, res) => {
   }
 };
 
+// Read-only discovery the coach library calls on every visit. While media is
+// disabled these answer 200 { enabled: false } (still auth- and coach-gated),
+// so an environment without media logs no 5xx; every other route fails closed.
+const DISCOVERY = new Set(['/capabilities', '/library-status']);
+
 function createExerciseMediaRouter({ getRuntime, requireAuth, requireCoach, limiters }) {
   const router = express.Router();
 
   router.use((req, res, next) => {
     const runtime = getRuntime();
-    if (!runtime) return res.status(503).json({ error: message('media_unavailable'), code: 'media_unavailable' });
+    if (!runtime && !(req.method === 'GET' && DISCOVERY.has(req.path))) return res.status(503).json({ error: message('media_unavailable'), code: 'media_unavailable' });
     req.media = runtime;
     return next();
   });
@@ -88,8 +95,14 @@ function createExerciseMediaRouter({ getRuntime, requireAuth, requireCoach, limi
   const noStore = (_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); };
   router.use(noStore);
 
-  router.get('/capabilities', requireCoach, wrap(async (req, res) => res.json(req.media.service.capabilities())));
-  router.get('/library-status', requireCoach, wrap(async (req, res) => res.json(await req.media.service.libraryStatus(req.user))));
+  router.get('/capabilities', requireCoach, wrap(async (req, res) => {
+    if (!req.media) return res.json({ enabled: false, processing_available: false });
+    return res.json({ enabled: true, ...req.media.service.capabilities() });
+  }));
+  router.get('/library-status', requireCoach, wrap(async (req, res) => {
+    if (!req.media) return res.json({ enabled: false, items: [], summary: null });
+    return res.json({ enabled: true, ...await req.media.service.libraryStatus(req.user) });
+  }));
   router.post('/exercises/:exerciseId/drafts', requireCoach, wrap(async (req, res) => {
     const result = await req.media.service.createDraft(req.user, req.params.exerciseId, req.body);
     res.status(result.status).json(result.body);

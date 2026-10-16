@@ -115,7 +115,7 @@ function imageForm({ bytes = jpeg(), name = 'synthetic.jpg', type = 'image/jpeg'
 }
 const quarantineEmpty = () => fs.readdirSync(store.quarantine).length === 0;
 
-test('auth boundary: missing/invalid 401, client 403 on every coach route, disabled 503', async () => {
+test('auth boundary: missing/invalid 401, client 403 on every coach route, disabled discovery 200 and everything else 503', async () => {
   reset();
   assert.equal((await call('GET', '/capabilities')).status, 401);
   assert.equal((await call('GET', '/capabilities', { token: 'forged' })).status, 401);
@@ -127,9 +127,19 @@ test('auth boundary: missing/invalid 401, client 403 on every coach route, disab
   assert.equal(stageCalls, 0);
   assert.equal(rpcCalls.length, 0);
   enabled = false;
-  const off = await call('GET', '/capabilities', { token: 'token-coach-a' });
+  // Discovery stays quiet while disabled (no 5xx on every library visit) and
+  // keeps its auth/role gates; every other media route fails closed with 503.
+  const caps = await call('GET', '/capabilities', { token: 'token-coach-a' });
+  assert.equal(caps.status, 200); assert.deepEqual(caps.body, { enabled: false, processing_available: false });
+  const status = await call('GET', '/library-status', { token: 'token-coach-a' });
+  assert.equal(status.status, 200); assert.deepEqual(status.body, { enabled: false, items: [], summary: null });
+  assert.equal((await call('GET', '/library-status')).status, 401);
+  assert.equal((await call('GET', '/library-status', { token: 'token-client' })).status, 403);
+  const off = await call('POST', `/exercises/${EX}/drafts`, { token: 'token-coach-a', body: {} });
   assert.equal(off.status, 503); assert.equal(off.body.code, 'media_unavailable');
+  assert.equal((await call('GET', `/revisions/${id(301)}`, { token: 'token-coach-a' })).status, 503);
   assert.equal((await call('GET', '/content/anything')).status, 503);
+  assert.equal(rpcCalls.length, 0);
 });
 
 test('uploads: ownership is checked before any byte is accepted; size declared too large is refused early', async () => {

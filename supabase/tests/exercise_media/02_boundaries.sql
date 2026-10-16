@@ -77,3 +77,24 @@ begin
     perform pg_temp.expect(public.exercise_media_review(A, rev, v, '{"variant_confirmed":true,"rights_confirmed":true,"content_confirmed":true}')->>'outcome' = 'captions_required', 'narration needs captions');
   end;
 end $$;
+
+-- Raw sources stay with their uploader (or an admin). A draft another coach
+-- seeds from the current guide copies only its alt text and cues: no source
+-- references, and no source-timed recipe, captions or transcript.
+do $$
+declare A uuid := 'a0000000-0000-4000-8000-00000000000a'; B uuid := 'b0000000-0000-4000-8000-00000000000b';
+  ADM uuid := 'ad000000-0000-4000-8000-0000000000ad'; ex uuid := 'e0000000-0000-4000-8000-000000000001';
+  cur uuid; res jsonb; rev uuid;
+begin
+  cur := pg_temp.publish_photo(A, ex, gen_random_uuid(), 0);
+  res := public.exercise_media_create_draft(B, ex, gen_random_uuid(), cur);
+  perform pg_temp.expect(res->>'outcome' = 'created', 'coach B may propose an alternative: ' || res::text);
+  rev := (res->>'revision_id')::uuid;
+  perform pg_temp.expect(not exists (select 1 from public.exercise_media_assets where revision_id = rev), 'no foreign source copied');
+  perform pg_temp.expect((select alt_text = 'Synthetic fixture photo' and cues = array['Synthetic cue'] and poster_mode is null and poster_crop is null
+    and transcript is null and caption_cues = '[]'::jsonb and not include_instruction from public.exercise_media_revisions where id = rev), 'only text starting point copied');
+  res := public.exercise_media_create_draft(ADM, ex, gen_random_uuid(), cur);
+  rev := (res->>'revision_id')::uuid;
+  perform pg_temp.expect((select count(*) from public.exercise_media_assets where revision_id = rev and role = 'source_image') = 1, 'admin keeps the source reference');
+  perform pg_temp.expect((select poster_crop is not null from public.exercise_media_revisions where id = rev), 'admin keeps the recipe');
+end $$;

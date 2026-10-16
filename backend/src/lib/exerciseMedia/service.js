@@ -21,7 +21,7 @@ const OUTCOME_STATUS = {
   invalid_asset: [400, 'invalid_asset'], not_ready: [409, 'not_ready'], attestation_required: [422, 'attestation_required'],
   captions_required: [422, 'captions_required'], replace_requires_admin: [403, 'replace_requires_admin'], draft_limit: [409, 'draft_limit'],
   base_not_current: [409, 'base_not_current'], already_published: [409, 'already_published'], invalid_version: [400, 'invalid_version'],
-  already_ready: [409, 'already_ready'],
+  already_ready: [409, 'already_ready'], alt_text_required: [422, 'alt_text_required'], end_frame_incomplete: [422, 'end_frame_incomplete'],
 };
 function refuse(result) {
   if (result?.outcome === 'invalid_recipe') throw http(422, result.code || 'invalid_recipe');

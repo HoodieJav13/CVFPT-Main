@@ -292,7 +292,7 @@ end $$;
 create function public.exercise_media_create_draft(p_actor uuid, p_exercise_id uuid, p_request_id uuid, p_base_revision_id uuid)
 returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare v_role text := public.exercise_media_actor_role(p_actor); r public.exercise_media_revisions%rowtype;
-  b public.exercise_media_revisions%rowtype; v_open integer;
+  b public.exercise_media_revisions%rowtype; v_open integer; v_keep boolean := false;
 begin
   if v_role is null then return jsonb_build_object('outcome', 'forbidden'); end if;
   if p_request_id is null then raise exception 'Request id required' using errcode = '22023'; end if;
@@ -316,6 +316,12 @@ begin
       join public.exercise_media_revisions rev on rev.id = c.revision_id
       where c.exercise_library_id = p_exercise_id and c.revision_id = p_base_revision_id and not rev.archived;
     if b.id is null then return jsonb_build_object('outcome', 'base_not_current'); end if;
+    -- Raw sources are readable only by their uploader or an admin: anyone else
+    -- seeds from the guide's alt text and cues, never its sources or the
+    -- source-timed recipe, captions and transcript.
+    v_keep := v_role = 'admin' or not exists (
+      select 1 from public.exercise_media_assets a
+      where a.revision_id = b.id and not a.archived and a.role in ('source_video','source_image') and a.uploaded_by_coach_id <> p_actor);
   end if;
   insert into public.exercise_media_revisions (
     exercise_library_id, uploaded_by_coach_id, create_request_id, based_on_revision_id,
@@ -324,12 +330,15 @@ begin
     preview_crop, end_frame_ms, end_frame_crop
   ) values (
     p_exercise_id, p_actor, p_request_id, b.id,
-    b.alt_text, b.end_frame_alt_text, coalesce(b.cues, '{}'::text[]), b.transcript, b.caption_language,
-    coalesce(b.caption_cues, '[]'::jsonb), coalesce(b.instruction_audio, false), coalesce(b.include_instruction, false),
-    b.poster_mode, b.poster_frame_ms, b.poster_crop, b.preview_start_ms, b.preview_end_ms,
-    b.preview_crop, b.end_frame_ms, b.end_frame_crop
+    b.alt_text, case when v_keep then b.end_frame_alt_text end, coalesce(b.cues, '{}'::text[]),
+    case when v_keep then b.transcript end, case when v_keep then b.caption_language end,
+    case when v_keep then coalesce(b.caption_cues, '[]'::jsonb) else '[]'::jsonb end,
+    v_keep and coalesce(b.instruction_audio, false), v_keep and coalesce(b.include_instruction, false),
+    case when v_keep then b.poster_mode end, case when v_keep then b.poster_frame_ms end, case when v_keep then b.poster_crop end,
+    case when v_keep then b.preview_start_ms end, case when v_keep then b.preview_end_ms end,
+    case when v_keep then b.preview_crop end, case when v_keep then b.end_frame_ms end, case when v_keep then b.end_frame_crop end
   ) returning * into r;
-  if b.id is not null then
+  if v_keep then
     -- Source blobs are immutable and retained; the copy keeps the original
     -- uploader and rights record rather than re-attributing them.
     insert into public.exercise_media_assets (revision_id, role, storage_key, mime_type, bytes, width, height,
@@ -605,6 +614,9 @@ begin
   if r.published_at is not null then return jsonb_build_object('outcome', 'published_immutable'); end if;
   if p_expected_version is distinct from r.version then return jsonb_build_object('outcome', 'stale', 'version', r.version); end if;
   if r.status <> 'ready' or not public.exercise_media_has_required(r) then return jsonb_build_object('outcome', 'not_ready'); end if;
+  -- Clients receive no media without alt text, so a guide never publishes without it.
+  if r.alt_text is null then return jsonb_build_object('outcome', 'alt_text_required'); end if;
+  if r.end_frame_ms is not null and r.end_frame_alt_text is null then return jsonb_build_object('outcome', 'end_frame_incomplete'); end if;
   if p_attestation is null or jsonb_typeof(p_attestation) <> 'object'
     or (select array_agg(k order by k) from jsonb_object_keys(p_attestation) k) <> array['content_confirmed','rights_confirmed','variant_confirmed']
     or p_attestation->'variant_confirmed' <> 'true'::jsonb or p_attestation->'rights_confirmed' <> 'true'::jsonb
@@ -645,6 +657,8 @@ begin
   if r.status <> 'ready' or r.review_status <> 'approved' or not public.exercise_media_has_required(r) then
     return jsonb_build_object('outcome', 'not_ready');
   end if;
+  if r.alt_text is null then return jsonb_build_object('outcome', 'alt_text_required'); end if;
+  if r.end_frame_ms is not null and r.end_frame_alt_text is null then return jsonb_build_object('outcome', 'end_frame_incomplete'); end if;
   if c.revision_id is not null and v_role <> 'admin' then
     select * into cur from public.exercise_media_revisions where id = c.revision_id;
     if cur.uploaded_by_coach_id <> p_actor then return jsonb_build_object('outcome', 'replace_requires_admin'); end if;

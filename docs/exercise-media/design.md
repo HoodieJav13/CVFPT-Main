@@ -65,6 +65,9 @@ process/claim/extend/complete/fail/review/publish/archive, plus batched
 
 - Any active coach/admin may read the approved current guide.
 - Drafts and raw sources are readable/editable only by their uploader or an admin.
+  A draft seeded from the current guide keeps its source references and recipe
+  only for the coach who uploaded those sources (or an admin); any other coach's
+  seeded draft starts from the guide's alt text and cues and needs its own upload.
 - A coach may publish their reviewed draft when there is no current guide or
   the current guide is theirs; replacing another coach's current guide needs an admin.
 - Admin may review, publish and withdraw any revision.

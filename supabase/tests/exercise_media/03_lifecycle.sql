@@ -98,3 +98,46 @@ begin
   perform pg_temp.expect((select status from public.exercise_media_revisions where id = rev) = 'draft', 'recipe change returns to draft');
   perform pg_temp.expect(not exists (select 1 from public.exercise_media_assets where revision_id = rev and role = 'poster' and not archived), 'stale derivatives archived');
 end $$;
+
+-- A published guide always carries its alt text (clients get no media without
+-- it): a ready draft whose alt text, or end-still alt text, was cleared cannot
+-- be approved, and publish re-checks the same invariant.
+do $$
+declare A uuid := 'a0000000-0000-4000-8000-00000000000a'; ex uuid := 'e0000000-0000-4000-8000-000000000003';
+  rev uuid; res jsonb; job jsonb; v integer; rc integer;
+  attest jsonb := '{"variant_confirmed":true,"rights_confirmed":true,"content_confirmed":true}';
+  full_crop jsonb := '{"x":0,"y":0,"width":1,"height":1}';
+begin
+  rev := pg_temp.ready_photo(A, ex, gen_random_uuid());
+  v := (select version from public.exercise_media_revisions where id = rev);
+  res := public.exercise_media_update_draft(A, rev, v, '{"alt_text":null}');
+  perform pg_temp.expect(res->>'outcome' = 'updated', 'clearing alt text is a text edit: ' || res::text);
+  res := public.exercise_media_review(A, rev, (res->>'version')::int, attest);
+  perform pg_temp.expect(res->>'outcome' = 'alt_text_required', 'review refuses missing alt text: ' || res::text);
+  -- Defense in depth: an approved revision that somehow lost its alt text is not publishable.
+  update public.exercise_media_revisions set alt_text = 'Synthetic band row photo', version = version + 1 where id = rev;
+  v := (select version from public.exercise_media_revisions where id = rev);
+  perform pg_temp.expect(public.exercise_media_review(A, rev, v, attest)->>'outcome' = 'approved', 're-approve with alt text');
+  update public.exercise_media_revisions set alt_text = null, version = version + 1 where id = rev;
+  res := public.exercise_media_publish(A, ex, rev, 0);
+  perform pg_temp.expect(res->>'outcome' = 'alt_text_required', 'publish refuses missing alt text: ' || res::text);
+  perform pg_temp.expect(not exists (select 1 from public.exercise_media_current where exercise_library_id = ex), 'nothing became current');
+
+  -- End still: cleared end-still alt text blocks approval.
+  rev := (public.exercise_media_create_draft(A, ex, gen_random_uuid(), null)->>'revision_id')::uuid;
+  res := public.exercise_media_attach_source(A, rev, 1, pg_temp.source(gen_random_uuid(), 'source_video', gen_random_uuid()));
+  res := public.exercise_media_update_draft(A, rev, (res->>'version')::int, jsonb_build_object('alt_text', 'Synthetic band row start',
+    'poster_mode', 'video_frame', 'poster_frame_ms', 500, 'poster_crop', full_crop,
+    'end_frame_ms', 4000, 'end_frame_crop', full_crop, 'end_frame_alt_text', 'Synthetic band row finish'));
+  res := public.exercise_media_request_processing(A, rev, (res->>'version')::int);
+  perform pg_temp.expect(res->>'outcome' = 'queued', 'frames queued: ' || res::text);
+  job := public.exercise_media_claim_job('worker-alt', 30);
+  rc := (job->'job'->>'recipe_version')::int;
+  res := public.exercise_media_complete_job((job->'job'->>'id')::uuid, (job->'job'->>'lease_token')::uuid,
+    jsonb_build_array(pg_temp.derivative(rev, rc, 'poster'), pg_temp.derivative(rev, rc, 'end_frame')), 'x');
+  perform pg_temp.expect(res->>'outcome' = 'ready', 'frames ready: ' || res::text);
+  res := public.exercise_media_update_draft(A, rev, (res->>'version')::int, '{"end_frame_alt_text":null}');
+  perform pg_temp.expect(res->>'outcome' = 'updated' and not (res->>'recipe_changed')::boolean, 'end-still alt is text: ' || res::text);
+  res := public.exercise_media_review(A, rev, (res->>'version')::int, attest);
+  perform pg_temp.expect(res->>'outcome' = 'end_frame_incomplete', 'review refuses missing end-still alt text: ' || res::text);
+end $$;
