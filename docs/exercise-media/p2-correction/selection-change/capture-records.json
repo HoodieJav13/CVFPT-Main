@@ -1,0 +1,488 @@
+[
+  {
+    "file": "images/1-crop-open-500ms-after-1280x900.png",
+    "state": "1-crop-open-500ms",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 500,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "b737a0b4458627afc3ebab895c18ca205ebae8bf841ea56a06d09aa895f85973",
+    "bytes": 93596,
+    "variant": "after",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "7627fbac728f382558930bf86d9fb44d953982c5",
+      "tree": "6370d5a658835cff9d1a1d2462ac977705dc6686",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/1-crop-open-500ms-after-320x740.png",
+    "state": "1-crop-open-500ms",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 500,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "29eb16b65e5bef343af24de4107592a8c68c137fed6ae85bebe94ca344756dfe",
+    "bytes": 46310,
+    "variant": "after",
+    "viewport": {
+      "width": 320,
+      "height": 740
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "7627fbac728f382558930bf86d9fb44d953982c5",
+      "tree": "6370d5a658835cff9d1a1d2462ac977705dc6686",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/1-crop-open-500ms-after-390x844.png",
+    "state": "1-crop-open-500ms",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 500,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "ccc13c5e741430898b5689f0d00f5065f08506a6109d690a5eed5226313d7805",
+    "bytes": 57932,
+    "variant": "after",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "7627fbac728f382558930bf86d9fb44d953982c5",
+      "tree": "6370d5a658835cff9d1a1d2462ac977705dc6686",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/1-crop-open-500ms-before-1280x900.png",
+    "state": "1-crop-open-500ms",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 500,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "c845afafba7a9617611a76a79a5a7ed8b4d3f4e77d9506e7f5f27d1cde69ebbf",
+    "bytes": 93570,
+    "variant": "before",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060",
+      "tree": "d476d551ea60e295bda0f99375c0fe693f086446",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/1-crop-open-500ms-before-320x740.png",
+    "state": "1-crop-open-500ms",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 500,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "29eb16b65e5bef343af24de4107592a8c68c137fed6ae85bebe94ca344756dfe",
+    "bytes": 46310,
+    "variant": "before",
+    "viewport": {
+      "width": 320,
+      "height": 740
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060",
+      "tree": "d476d551ea60e295bda0f99375c0fe693f086446",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/1-crop-open-500ms-before-390x844.png",
+    "state": "1-crop-open-500ms",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 500,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "ccc13c5e741430898b5689f0d00f5065f08506a6109d690a5eed5226313d7805",
+    "bytes": 57932,
+    "variant": "before",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060",
+      "tree": "d476d551ea60e295bda0f99375c0fe693f086446",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/2-saved-time-changed-to-3000ms-after-1280x900.png",
+    "state": "2-saved-time-changed-to-3000ms",
+    "cropSrcHash": "5aa78512e174222229a29bfbcde2944faba818caa4c9a94adcb4b459a131cfa1",
+    "label": "Poster frame at 0:03.0",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "cbb1185ed0deb144ca95fb496e43b7aea00925985fbdd7a35310a7dca2fa0afb",
+    "bytes": 94122,
+    "variant": "after",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "crop_shows": "new 3000 ms frame",
+    "source": {
+      "commit": "7627fbac728f382558930bf86d9fb44d953982c5",
+      "tree": "6370d5a658835cff9d1a1d2462ac977705dc6686",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/2-saved-time-changed-to-3000ms-after-320x740.png",
+    "state": "2-saved-time-changed-to-3000ms",
+    "cropSrcHash": "5aa78512e174222229a29bfbcde2944faba818caa4c9a94adcb4b459a131cfa1",
+    "label": "Poster frame at 0:03.0",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "ec2e90a80b93f8a1048eee4f884a46ce85fe8ea5015bb9b258083c16eccb2ad2",
+    "bytes": 47084,
+    "variant": "after",
+    "viewport": {
+      "width": 320,
+      "height": 740
+    },
+    "crop_shows": "new 3000 ms frame",
+    "source": {
+      "commit": "7627fbac728f382558930bf86d9fb44d953982c5",
+      "tree": "6370d5a658835cff9d1a1d2462ac977705dc6686",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/2-saved-time-changed-to-3000ms-after-390x844.png",
+    "state": "2-saved-time-changed-to-3000ms",
+    "cropSrcHash": "5aa78512e174222229a29bfbcde2944faba818caa4c9a94adcb4b459a131cfa1",
+    "label": "Poster frame at 0:03.0",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "da9df79c2fc54df12e1f206e10f68609fdaab49b7a6bf0c7bcc6c5deba9f91a9",
+    "bytes": 58794,
+    "variant": "after",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "crop_shows": "new 3000 ms frame",
+    "source": {
+      "commit": "7627fbac728f382558930bf86d9fb44d953982c5",
+      "tree": "6370d5a658835cff9d1a1d2462ac977705dc6686",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/2-saved-time-changed-to-3000ms-before-1280x900.png",
+    "state": "2-saved-time-changed-to-3000ms",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "5885d3af82b2a245eb95f0b96dd593be405865b6a68a3d4d4b20738e4c90c881",
+    "bytes": 94136,
+    "variant": "before",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060",
+      "tree": "d476d551ea60e295bda0f99375c0fe693f086446",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/2-saved-time-changed-to-3000ms-before-320x740.png",
+    "state": "2-saved-time-changed-to-3000ms",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "169b6a24d37ac56434bba2e1fd6c911bb2205fec247886684f31c7e1e1abf3f3",
+    "bytes": 47186,
+    "variant": "before",
+    "viewport": {
+      "width": 320,
+      "height": 740
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060",
+      "tree": "d476d551ea60e295bda0f99375c0fe693f086446",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/2-saved-time-changed-to-3000ms-before-390x844.png",
+    "state": "2-saved-time-changed-to-3000ms",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "horizontal_overflow": false,
+    "sha256": "d3d784e9275e501e06f4480d74e59e9b561f83fff52e53bb2bf474efe445c9a4",
+    "bytes": 58799,
+    "variant": "before",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060",
+      "tree": "d476d551ea60e295bda0f99375c0fe693f086446",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/3-keyboard-crop-edit-after-1280x900.png",
+    "state": "3-keyboard-crop-edit",
+    "cropSrcHash": "5aa78512e174222229a29bfbcde2944faba818caa4c9a94adcb4b459a131cfa1",
+    "label": "Poster frame at 0:03.0",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0.2084,
+      "y": 0.1355,
+      "width": 0.729,
+      "height": 0.729
+    },
+    "horizontal_overflow": false,
+    "sha256": "364eafb6f14ac9a4d069f080c319e6505c4e00441603f08e8230d88d69fbf2bf",
+    "bytes": 86372,
+    "variant": "after",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "crop_shows": "new 3000 ms frame",
+    "source": {
+      "commit": "7627fbac728f382558930bf86d9fb44d953982c5",
+      "tree": "6370d5a658835cff9d1a1d2462ac977705dc6686",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/3-keyboard-crop-edit-after-320x740.png",
+    "state": "3-keyboard-crop-edit",
+    "cropSrcHash": "5aa78512e174222229a29bfbcde2944faba818caa4c9a94adcb4b459a131cfa1",
+    "label": "Poster frame at 0:03.0",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0.2084,
+      "y": 0.1355,
+      "width": 0.729,
+      "height": 0.729
+    },
+    "horizontal_overflow": false,
+    "sha256": "bfd2fbedc80cedb473a5e6fdd439516a879d62dc2021e8da5c61bf58058ad9fc",
+    "bytes": 42162,
+    "variant": "after",
+    "viewport": {
+      "width": 320,
+      "height": 740
+    },
+    "crop_shows": "new 3000 ms frame",
+    "source": {
+      "commit": "7627fbac728f382558930bf86d9fb44d953982c5",
+      "tree": "6370d5a658835cff9d1a1d2462ac977705dc6686",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/3-keyboard-crop-edit-after-390x844.png",
+    "state": "3-keyboard-crop-edit",
+    "cropSrcHash": "5aa78512e174222229a29bfbcde2944faba818caa4c9a94adcb4b459a131cfa1",
+    "label": "Poster frame at 0:03.0",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0.2084,
+      "y": 0.1355,
+      "width": 0.729,
+      "height": 0.729
+    },
+    "horizontal_overflow": false,
+    "sha256": "fa79f2c00c7fe4184eda8e6f64dbb99c42714b16743aaa129826fdd38dbc34f1",
+    "bytes": 50844,
+    "variant": "after",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "crop_shows": "new 3000 ms frame",
+    "source": {
+      "commit": "7627fbac728f382558930bf86d9fb44d953982c5",
+      "tree": "6370d5a658835cff9d1a1d2462ac977705dc6686",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/3-keyboard-crop-edit-before-1280x900.png",
+    "state": "3-keyboard-crop-edit",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0.2084,
+      "y": 0.1355,
+      "width": 0.729,
+      "height": 0.729
+    },
+    "horizontal_overflow": false,
+    "sha256": "114111955ee89222925bcf84c9ba48ce389cf463e31e8d1c5023498cbfdc68a5",
+    "bytes": 86280,
+    "variant": "before",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060",
+      "tree": "d476d551ea60e295bda0f99375c0fe693f086446",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/3-keyboard-crop-edit-before-320x740.png",
+    "state": "3-keyboard-crop-edit",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0.2084,
+      "y": 0.1355,
+      "width": 0.729,
+      "height": 0.729
+    },
+    "horizontal_overflow": false,
+    "sha256": "3a5b4ff3fc671514f3d467ac4af3b0b79eeb6d8332b14e626f801b23a304634e",
+    "bytes": 42259,
+    "variant": "before",
+    "viewport": {
+      "width": 320,
+      "height": 740
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060",
+      "tree": "d476d551ea60e295bda0f99375c0fe693f086446",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/3-keyboard-crop-edit-before-390x844.png",
+    "state": "3-keyboard-crop-edit",
+    "cropSrcHash": "7fbf7989a5759b4daacfeedb0a9947caf1f0a2beb29aaec29cc6c3420fe1db44",
+    "label": "Poster frame at 0:00.5",
+    "poster_frame_ms": 3000,
+    "poster_crop": {
+      "x": 0.2084,
+      "y": 0.1355,
+      "width": 0.729,
+      "height": 0.729
+    },
+    "horizontal_overflow": false,
+    "sha256": "9f159a3df50383ddc6bc09fb01370d7514efa6d2159d555558eef3c93de244b8",
+    "bytes": 50942,
+    "variant": "before",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "crop_shows": "old 500 ms frame",
+    "source": {
+      "commit": "c64d17cb9596a700515d17f9c514ca9f1dab5060",
+      "tree": "d476d551ea60e295bda0f99375c0fe693f086446",
+      "tracked_changes": []
+    }
+  }
+]
