@@ -145,3 +145,20 @@ test('an unreadable clip explains recovery and ordinary photo upload keeps worki
   await expect(editor.getByTestId('media-still-use')).toHaveCount(0);
   await expect(editor.getByTestId('media-file-source_image')).toBeEnabled();
 });
+
+for (const width of [320, 390]) {
+  test(`${width}px: the photo-first draft editor and still option fit without sideways scrolling`, async ({ page }) => {
+    const { editor } = await setup(page);
+    await page.setViewportSize({ width, height: 740 });
+    await expect(editor.getByTestId('media-still-open')).toBeVisible();
+    const overflow = () => page.getByRole('dialog').evaluate((el) => {
+      const wide = [...el.querySelectorAll('*')].filter((child) => child.getBoundingClientRect().right > el.getBoundingClientRect().right + 1).map((child) => child.getAttribute('data-testid') || child.tagName);
+      return { scroll: el.scrollWidth - el.clientWidth, wide: wide.slice(0, 5) };
+    });
+    expect(await overflow()).toEqual({ scroll: 0, wide: [] });
+    await editor.getByTestId('media-still-open').click();
+    await editor.getByTestId('media-still-file').setInputFiles(CLIP);
+    await expect(editor.getByTestId('media-still-use')).toBeVisible();
+    expect(await overflow()).toEqual({ scroll: 0, wide: [] });
+  });
+}

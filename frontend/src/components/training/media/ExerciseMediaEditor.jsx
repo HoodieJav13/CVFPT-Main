@@ -526,13 +526,13 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
               )}
               <div className="grid gap-3 md:grid-cols-2">
                 {(!image || replacing.source_image) && (
-                  <div className="space-y-2">
+                  <div className="min-w-0 space-y-2">
                     <UploadControl role="source_image" disabled={Boolean(busy)} onUpload={async (args) => { await upload('source_image')(args); setStillFile(null); setStillOpen(false); }} presetFile={stillFile} />
                     {photosMode && caps?.local_still_selection && (stillOpen ? (
                       <LocalStillSelector disabled={Boolean(busy)} onStill={(file) => setStillFile(file)} onInvalidate={() => setStillFile(null)}
                         onClose={() => { setStillOpen(false); setStillFile(null); }} />
                     ) : (
-                      <Button type="button" variant="ghost" size="touch" className="text-muted-foreground" disabled={Boolean(busy)} onClick={() => setStillOpen(true)} data-testid="media-still-open">
+                      <Button type="button" variant="ghost" size="touch" className="h-auto min-h-11 whitespace-normal py-2 text-left text-muted-foreground" disabled={Boolean(busy)} onClick={() => setStillOpen(true)} data-testid="media-still-open">
                         <Film aria-hidden /> Choose a still from a clip on this device (optional)
                       </Button>
                     ))}

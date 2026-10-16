@@ -197,6 +197,19 @@ test('generic and tampered demos stay external links; they never become iframes'
   expect(provider).toEqual([]);
 });
 
+test('View demo sits where the external link sat: same left edge and type as External video', async ({ page }) => {
+  const { cards } = await setup(page);
+  const measure = (locator) => locator.evaluate((el) => {
+    const icon = el.querySelector('svg').getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return { iconLeft: Math.round(icon.left), fontSize: style.fontSize, fontWeight: style.fontWeight, height: Math.round(el.getBoundingClientRect().height) };
+  });
+  const demo = await measure(cards.nth(0).getByTestId('tracker-exercise-demo'));
+  const external = await measure(cards.nth(2).getByTestId('tracker-exercise-video'));
+  expect(demo).toEqual(external);
+  expect(demo.height).toBeGreaterThanOrEqual(44);
+});
+
 test('320px phone: the dialog fits, the player keeps 200x200, and keyboard users can open, play and close', async ({ page }) => {
   const { cards } = await setup(page, { viewport: { width: 320, height: 640 }, reducedMotion: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -259,4 +272,34 @@ test('history labels the demo as today\'s current demo and still loads nothing b
   await expect(page.locator('iframe')).toHaveCount(0);
   await expect(page.getByTestId('history-current-demo-link').first()).toHaveAttribute('href', 'https://example.com/synthetic-coach-override');
   expect(provider).toEqual([]);
+});
+
+test('plan view Demo and Video pills keep a 44px-tall touch target without growing the row', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.addInitScript(() => localStorage.setItem('cvf_access_token', 'synthetic-guides-token'));
+  await page.route((url) => PROVIDER.test(url.hostname), (route) => route.abort('blockedbyclient'));
+  const rows = log().exercises.map((exercise, index) => ({ id: `we-${index}`, exercise_library_id: exercise.exercise_library_id, custom_name: exercise.exercise_name, sets: 2, reps: '8', tracking_type: 'reps_weight', video_url: exercise.video_url, demo: exercise.demo }));
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const p = new URL(request.url()).pathname.replace(/^\/api/, '');
+    const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
+    if (p === '/auth/me') return json({ role: 'client', email: 'client@example.invalid', profile: { id: 'client-1', name: 'Synthetic Client', waiver_signed: true } });
+    if (p === '/telemetry/events') return route.fulfill({ status: 204 });
+    if (p.endsWith('/unread-count')) return json({ unread: 0 });
+    if (p === '/programs/client/assigned') return json({ programs: [], workouts: [{ id: 'wa-1', assignment_mode: 'active', exercise_loads: [], workout: { id: 'wk-1', name: 'Synthetic plan', exercises: rows } }] });
+    if (p === '/workout-logs/active') return json(null);
+    if (p === '/workout-logs/mine') return json({ logs: [], next_cursor: null });
+    return json({ error: `unexpected ${request.method()} ${p}` }, 404);
+  });
+  await page.goto('/client/programs?view=other');
+  const card = page.getByTestId('client-workout-assignment-card');
+  await card.getByRole('button', { name: /Exercises/ }).click();
+  for (const pill of [card.getByTestId('client-exercise-demo').first(), card.getByTestId('client-exercise-row').nth(2).locator('a[target="_blank"]')]) {
+    const box = await pill.boundingBox();
+    const hits = await page.evaluate(({ x, y }) => [-20, 20].map((dy) => {
+      const el = document.elementFromPoint(x, y + dy);
+      return Boolean(el && el.closest('[data-testid="client-exercise-demo"], a[target="_blank"]'));
+    }), { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+    expect(hits, 'taps 20px above and below the pill still hit it').toEqual([true, true]);
+  }
 });

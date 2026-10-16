@@ -260,9 +260,9 @@ function ExerciseList({ exercises, loads = [] }) {
               <span className="flex shrink-0 items-center gap-2">
                 {demoForRow(exercise)?.kind === 'youtube' && (
                   <button type="button" onClick={() => setDemoFor(exercise)} aria-label={`View demo: ${exerciseName(exercise)}`}
-                    className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary" data-testid="client-exercise-demo"><Play className="h-3 w-3" /> Demo</button>
+                    className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary relative after:absolute after:-inset-x-1 after:-inset-y-3" data-testid="client-exercise-demo"><Play className="h-3 w-3" /> Demo</button>
                 )}
-                {demoForRow(exercise)?.kind === 'external' && <a href={demoForRow(exercise).url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"><Play className="h-3 w-3" /> Video</a>}
+                {demoForRow(exercise)?.kind === 'external' && <a href={demoForRow(exercise).url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary relative after:absolute after:-inset-x-1 after:-inset-y-3"><Play className="h-3 w-3" /> Video</a>}
                 {(exercise.sets || (trackingType(exercise) === 'reps_weight' && exercise.reps)) && <Badge variant="outline">{setPrescription(exercise)}</Badge>}
               </span>
             </div>

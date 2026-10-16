@@ -124,21 +124,24 @@ export function ExerciseDemoDialog({ demo, exerciseName, media = null, context =
   );
 }
 
+// Both forms share the slot and type of the original external-video link.
+const ACTION_CLASS = 'inline-flex min-h-11 w-fit items-center gap-1.5 rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
 // The demo action for one exercise: a click-to-load YouTube demo opens the
 // dialog; any other safe link stays an external link that opens in a new tab.
 export function ExerciseDemoAction({ demo, exerciseName, onView, variant = 'row' }) {
   if (!demo) return null;
   if (demo.kind === 'youtube') {
     return (
-      <Button type="button" variant="ghost" size="sm" className="min-h-11 w-fit px-2 text-primary" onClick={onView}
+      <button type="button" className={ACTION_CLASS} onClick={onView}
         aria-label={`View demo: ${exerciseName}`} data-testid={variant === 'history' ? 'history-current-demo' : 'tracker-exercise-demo'}>
         <Play className="h-4 w-4" aria-hidden /> {variant === 'history' ? 'Current demo' : 'View demo'}
-      </Button>
+      </button>
     );
   }
   return (
     <a href={demo.url} target="_blank" rel="noopener noreferrer"
-      className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+      className={ACTION_CLASS}
       aria-label={`External video: ${exerciseName} (opens in a new tab)`} data-testid={variant === 'history' ? 'history-current-demo-link' : 'tracker-exercise-video'}>
       <Play className="h-4 w-4" aria-hidden /> External video
     </a>
