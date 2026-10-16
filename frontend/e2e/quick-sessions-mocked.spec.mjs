@@ -32,6 +32,11 @@ class FakeBackend {
     this.failNextLibrary = false;
     this.followupDelay = null;     // { operation, gate, done, failure } holds a committed follow-up reply
     this.statusDelay = null;      // deferred that holds the next status reply
+    this.exerciseLibraryCalls = 0;
+    this.exerciseLibraryFailures = 0;
+    this.exerciseLibraryDelay = null;
+    this.createHydrationFailures = 0;
+    this.statusFailures = 0;
   }
 
   fingerprint(body) {
@@ -79,7 +84,16 @@ async function install(page, backend) {
       return row && backend.clientAccess.has(row.id) ? json(route, 200, row) : json(route, 404, { error: 'Client not found' });
     }
     if (/^\/waivers\/client\/[^/]+\/status$/.test(path)) return json(route, 200, { has_version: false, signed_latest: false, history: [] });
-    if (path === '/programs/exercise-library') return json(route, 200, LIBRARY);
+    if (path === '/programs/exercise-library') {
+      backend.exerciseLibraryCalls++;
+      const fail = backend.exerciseLibraryFailures-- > 0;
+      const data = backend.exerciseLibraryDelay ? [{ id: 'stale-lib', name: 'Stale library response', hidden: false }] : LIBRARY;
+      if (backend.exerciseLibraryDelay) {
+        const gate = backend.exerciseLibraryDelay; backend.exerciseLibraryDelay = null;
+        await gate.promise;
+      }
+      return fail ? json(route, 500, { error: 'Could not load the exercise library' }) : json(route, 200, data);
+    }
     if (path === '/programs' || path === '/programs/workouts') return json(route, 200, []);
     const assignments = path.match(/^\/programs\/workout-assignments\/client\/([^/]+)$/);
     if (assignments) return json(route, 200, backend.assignments.filter((row) => row.client_id === assignments[1]));
@@ -94,12 +108,14 @@ async function install(page, backend) {
         await gate.promise;   // the request is in flight; the server has not committed yet
       }
       const result = backend.commit(body);
+      if (backend.createHydrationFailures-- > 0) return json(route, 500, { error: 'Failed to save the quick session' });
       if (backend.dropNextCreateResponse) { backend.dropNextCreateResponse = false; return route.abort('failed').catch(() => {}); }
       return json(route, result.status, result.body);
     }
     const status = path.match(/^\/programs\/quick-sessions\/requests\/([^/]+)$/);
     if (status) {
       backend.statusCalls.push(status[1]);
+      if (backend.statusFailures-- > 0) return json(route, 500, { error: 'Failed to recover the quick session' });
       if (backend.statusDelay) { const gate = backend.statusDelay; backend.statusDelay = null; await gate.promise; }
       const receipt = backend.receipts.get(status[1]);
       if (!receipt || !backend.clientAccess.has(receipt.assignment.client_id)) return json(route, 404, { state: 'not_found' });
@@ -560,5 +576,133 @@ for (const failure of [false, true]) {
       expect(await cardNotifications(page)).toContainEqual({ type: 'success', title: 'Saved to the shared studio library as a hidden template.' });
     }
     expect(backend.libraryCalls).toEqual(['qa-1']);
+  });
+}
+
+test('exercise-library failure shows an inline retry across dialog reopen and repeated failures', async ({ page }, testInfo) => {
+  const backend = new FakeBackend();
+  backend.exerciseLibraryFailures = 3;
+  await install(page, backend);
+  await page.goto(`/coach/clients/${CLIENT.id}?tab=programs`);
+  await page.getByTestId('assign-program-button').click();
+  await page.getByTestId('client-assignment-type-select').click();
+  await page.getByRole('option', { name: 'Quick session', exact: true }).click();
+  await expect.poll(() => backend.exerciseLibraryCalls).toBe(1);
+  // Evidence capture also runs on the exact baseline, where no error state exists.
+  if (process.env.CVF_REPAIR_CAPTURE) {
+    await page.screenshot({ path: `${process.env.CVF_REPAIR_CAPTURE}/library-${testInfo.project.name}.png` });
+  }
+  const error = page.getByTestId('quick-session-library-error');
+  await expect(error).toContainText('Could not load the exercise library');
+  await expect(page.getByTestId('quick-session-library-loading')).toHaveCount(0);
+  await error.getByRole('button', { name: 'Try again' }).click();
+  await expect.poll(() => backend.exerciseLibraryCalls).toBe(2);
+  await expect(error).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByTestId('assign-program-button').click();
+  await expect.poll(() => backend.exerciseLibraryCalls).toBe(3);
+  await expect(error).toBeVisible();
+  const gate = deferred();
+  backend.exerciseLibraryDelay = gate;
+  await error.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByTestId('quick-session-library-loading')).toBeVisible();
+  await expect(error).toHaveCount(0);
+  gate.resolve();
+  await expect(page.getByTestId('quick-session-builder')).toBeVisible();
+  await fillAndAssign(page, 'After library retry');
+  await expect(page.getByTestId('quick-session-saved')).toContainText('After library retry');
+  expect(backend.committedCreates).toBe(1);
+  expect(backend.exerciseLibraryCalls).toBe(4);
+});
+
+test('cross-tab removal of an unrecovered key refreshes status and clears the warning without a create', async ({ context }, testInfo) => {
+  const backend = new FakeBackend();
+  const tabA = await context.newPage();
+  const tabB = await context.newPage();
+  await install(tabA, backend); await install(tabB, backend);
+  const gate = deferred(); backend.hold = { gate };
+  await openBuilder(tabA); await fillAndAssign(tabA, 'Committed in another tab');
+  await expect.poll(() => backend.createAttempts.length).toBe(1);
+  await tabB.goto(`/coach/clients/${CLIENT.id}?tab=programs`);
+  await expect(tabB.getByTestId('quick-session-recovery')).toContainText("Couldn't recover");
+  const statuses = backend.statusCalls.length;
+  gate.resolve();
+  await expect(tabA.getByTestId('quick-session-saved')).toContainText('Committed in another tab');
+  if (process.env.CVF_REPAIR_CAPTURE) {
+    if (process.env.CVF_REPAIR_BASELINE) await expect(tabB.getByTestId('quick-session-recovery')).toContainText("Couldn't recover");
+    else {
+      await expect(tabB.getByTestId('quick-session-recovered')).toContainText('Committed in another tab');
+      await expect(tabB.getByTestId('assigned-workout-card')).toHaveCount(1);
+    }
+    await tabB.screenshot({ path: `${process.env.CVF_REPAIR_CAPTURE}/cross-tab-${testInfo.project.name}.png` });
+  }
+  await expect.poll(() => backend.statusCalls.length).toBeGreaterThan(statuses);
+  await expect(tabB.getByTestId('quick-session-recovery')).toHaveCount(0);
+  await expect(tabB.getByTestId('quick-session-recovered')).toContainText('Committed in another tab');
+  await expect(tabB.getByTestId('assigned-workout-card').filter({ hasText: 'Committed in another tab' })).toHaveCount(1);
+  expect(await pendingEntries(tabB)).toEqual([]);
+  expect(backend.createAttempts).toHaveLength(1);
+  expect(backend.startCalls).toHaveLength(0); expect(backend.libraryCalls).toHaveLength(0);
+});
+
+for (const staleFailure of [false, true]) {
+  test(`exercise-library delayed ${staleFailure ? 'failure' : 'success'} after close cannot replace a reopened dialog`, async ({ page }) => {
+    const backend = new FakeBackend();
+    const gate = deferred();
+    backend.exerciseLibraryDelay = gate;
+    backend.exerciseLibraryFailures = staleFailure ? 1 : 0;
+    await install(page, backend);
+    await page.goto(`/coach/clients/${CLIENT.id}?tab=programs`);
+    await page.getByTestId('assign-program-button').click();
+    await page.getByTestId('client-assignment-type-select').click();
+    await page.getByRole('option', { name: 'Quick session', exact: true }).click();
+    await expect.poll(() => backend.exerciseLibraryCalls).toBe(1);
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByTestId('assign-program-button').click();
+    await expect.poll(() => backend.exerciseLibraryCalls).toBe(2);
+    await expect(page.getByTestId('quick-session-builder')).toBeVisible();
+    await page.getByTestId('quick-session-title-input').fill('Keep current editor');
+    const oldResponse = page.waitForResponse((response) => response.url().endsWith('/api/programs/exercise-library'));
+    gate.resolve();
+    await oldResponse;
+    await expect(page.getByTestId('quick-session-title-input')).toHaveValue('Keep current editor');
+    await expect(page.getByTestId('quick-session-library-error')).toHaveCount(0);
+    await expect(page.getByTestId('quick-session-library-loading')).toHaveCount(0);
+    await expect(page.locator('datalist option[value="Goblet Squat"]')).toHaveCount(1);
+    await expect(page.locator('datalist option[value="Stale library response"]')).toHaveCount(0);
+    await fillAndAssign(page, 'Current after stale fetch');
+    await expect(page.getByTestId('quick-session-saved')).toContainText('Current after stale fetch');
+    expect(backend.committedCreates).toBe(1);
+    expect(backend.createAttempts[0].exercises[0].exercise_library_id).toBe('lib-1');
+  });
+}
+
+for (const recovery of ['retry', 'status']) {
+  test(`postcommit hydration 500 remains recoverable by ${recovery} under the same request`, async ({ page }) => {
+    const backend = new FakeBackend(); backend.createHydrationFailures = 1;
+    await install(page, backend); await openBuilder(page);
+    await fillAndAssign(page, 'Committed before read failed');
+    const warning = page.getByTestId('quick-session-recovery');
+    await expect(warning).toContainText("We couldn't confirm");
+    expect(backend.committedCreates).toBe(1);
+    expect(await pendingEntries(page)).toHaveLength(1);
+    if (recovery === 'retry') {
+      await page.getByTestId('quick-session-retry-save').click();
+    } else {
+      backend.statusFailures = 1;
+      await page.getByTestId('quick-session-check-again').click();
+      await expect(warning).toContainText("We couldn't confirm");
+      await page.getByTestId('quick-session-check-again').click();
+    }
+    await expect(page.getByTestId('quick-session-saved')).toContainText('Committed before read failed');
+    if (recovery === 'retry') {
+      expect(backend.createAttempts).toHaveLength(2);
+      expect(backend.createAttempts[1]).toEqual(backend.createAttempts[0]);
+    } else {
+      expect(backend.createAttempts).toHaveLength(1);
+      expect(backend.statusCalls).toHaveLength(2);
+    }
+    expect(backend.committedCreates).toBe(1);
+    expect(await pendingEntries(page)).toEqual([]);
   });
 }
