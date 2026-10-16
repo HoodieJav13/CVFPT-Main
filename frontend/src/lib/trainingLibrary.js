@@ -144,3 +144,8 @@ export function filterExercises(rows, { search = '', category = 'all', muscle = 
     return [row.name, row.category, row.equipment, row.primary_muscle].join(' ').toLowerCase().includes(query);
   });
 }
+
+export function matchCatalogExercise(library, name) {
+  const key = String(name || '').trim().toLowerCase();
+  return key ? library.find((exercise) => exercise.name.trim().toLowerCase() === key) : undefined;
+}

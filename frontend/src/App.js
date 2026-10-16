@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
+import { createBrowserRouter, RouterProvider, Routes, Route, Navigate, useLocation } from 'react-router';
 import { domAnimation, LazyMotion } from 'framer-motion';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
@@ -22,6 +22,7 @@ import ClientWaiver from '@/pages/client/Waiver';
 import WorkoutLogDetail from '@/pages/WorkoutLogDetail';
 import WorkoutTracker from '@/pages/client/WorkoutTracker';
 import '@/App.css';
+import { UnsavedChangesProvider } from '@/context/UnsavedChangesContext';
 
 // The coach/admin tree (including the large Training Builder) loads on
 // demand — phone-first clients no longer download it. Client pages stay
@@ -75,7 +76,16 @@ export default function App() {
     <LazyMotion features={domAnimation} strict>
       <AuthProvider>
         <NotificationsProvider>
-        <BrowserRouter>
+          <RouterProvider router={router} />
+        </NotificationsProvider>
+        <Toaster position="top-center" richColors />
+      </AuthProvider>
+    </LazyMotion>
+  );
+}
+
+function AppRoutes() {
+  return <UnsavedChangesProvider>
           <Suspense fallback={<LoadingScreen />}>
           <Routes>
             <Route path="/" element={<RoleRedirect />} />
@@ -145,10 +155,6 @@ export default function App() {
           <PreviewToolbar />
           <AnnotationOverlay />
           </Suspense>
-        </BrowserRouter>
-        </NotificationsProvider>
-        <Toaster position="top-center" richColors />
-      </AuthProvider>
-    </LazyMotion>
-  );
+  </UnsavedChangesProvider>;
 }
+const router = createBrowserRouter([{ path: "*", element: <AppRoutes /> }]);
