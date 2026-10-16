@@ -1,0 +1,791 @@
+{
+  "schema_version": 1,
+  "kind": "exercise-media-return-manifest",
+  "completion_state": "COMPLETE-LOCAL",
+  "protocol_version": "v1.1",
+  "base": {
+    "commit": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+    "tree": "004fbfe3f1faf1785f3af25f6c81fb7110f12d0d"
+  },
+  "head": {
+    "commit": "66c04d288d29c0cc84b245cbbf2877c7af554846",
+    "tree": "81023b864692b1e4196315a798ab99dd5cafd5f9",
+    "branch": "claude/exercise-media-local-20261015",
+    "upstream": null,
+    "pushed": false,
+    "note": "Head when this manifest was generated; the commit adding RETURN.md and this manifest follows it. Commits after tested_functional_head change documentation only."
+  },
+  "tested_functional_head": {
+    "commit": "9dc347d2fa6dd602f3f39e7b08aed8ff8de0a9a8",
+    "tree": "410e8bf4e9366d764ff315bcf960f0cc07881a39",
+    "app_code_identical_to": "a0c28c0389aed8ffbfaa8bfe7a862395e3600325"
+  },
+  "commits": [
+    [
+      "c919bd3f7aff45e0fc2dd1584ec2eb927d245cda",
+      "Add local exercise media schema draft with owned SQL tests"
+    ],
+    [
+      "8c2efb5ba8ea7a04ac57b2d218098ea658b7420f",
+      "Add pinned local FFmpeg processor image definition"
+    ],
+    [
+      "35541f7982d6fee57d6347a7a4e3b929df0e0454",
+      "Add local exercise media service, processor, worker and routes"
+    ],
+    [
+      "83b2f6fff284ffa38355eb7454e4b62559715a61",
+      "Hydrate current exercise guides into workout reads"
+    ],
+    [
+      "0b95bd8bdcc8e00f4b87681b3a6724749cb81600",
+      "Refuse new unsafe external video links at library and workout writes"
+    ],
+    [
+      "b54f364531c9a99a1aefd8de576adaedc1d5a721",
+      "Add owned local exercise media harness and real-services integration"
+    ],
+    [
+      "d06a52de11d2da68d87094ab30dd2e6c98020583",
+      "Add browser exercise media helpers with actor-scoped link cache"
+    ],
+    [
+      "3ce883fe193d47aa3ed52fa5e2f8a85624144341",
+      "Add coach media editor, inline workout guides and full instruction"
+    ],
+    [
+      "8e00a3d95f2afa753e3bf423b7a8a871050a1d59",
+      "Add local media demo launcher and Quick compatibility check"
+    ],
+    [
+      "80a45573b77dfe2e5b3cf9158f0dc452959d2e37",
+      "Refine media layout from rendered review at 320/390/1440"
+    ],
+    [
+      "fcb0784a294d28656d8398841fc507e382e28c67",
+      "Keep coach library cards within a 320px phone with the media action"
+    ],
+    [
+      "a2eee2aacc567bf9cd8635580151a7725e898da7",
+      "Add paired exercise media visual evidence and review packet"
+    ],
+    [
+      "434b274552945e7c18d2cd05f3a7713fc05c4a15",
+      "Honor the host-wide disposable database lock in the media test stack"
+    ],
+    [
+      "f83764f7a4fe5fcd47f35d5c8d8148e19811baf2",
+      "Document exercise media design, local runbook and production gates"
+    ],
+    [
+      "e15a635a95d61a9c4adc471a7f9c6001f4b9eea4",
+      "Fix final-review findings on the media server side"
+    ],
+    [
+      "a0c28c0389aed8ffbfaa8bfe7a862395e3600325",
+      "Recover the media UI from replaced guides and expired links"
+    ],
+    [
+      "9dc347d2fa6dd602f3f39e7b08aed8ff8de0a9a8",
+      "Refresh paired visual evidence on the reviewed head"
+    ],
+    [
+      "66c04d288d29c0cc84b245cbbf2877c7af554846",
+      "Record exercise media validation, gates and project status"
+    ]
+  ],
+  "migration": {
+    "path": "supabase/migrations/20261015213431_exercise_media_library.sql",
+    "sha256": "54028175f398c6367e8cbea18fb40abe56d965c4bc4843db7936d89ba18edc9c",
+    "created_with": "supabase migration new exercise_media_library",
+    "applied_to": "disposable local databases only (cvfpt-media-test; compatibility clone)",
+    "hosted": "not applied"
+  },
+  "dependencies": {
+    "npm_changes": "none (package.json scripts only; lockfiles unchanged)",
+    "local_tools": {
+      "ffmpeg_image": "cvfpt-media-ffmpeg:6.1.2-r2-a322",
+      "image_id": "sha256:0652d08d74d68b319957f8c20330254db41240d4a16e5c6bbc622c07a0236767",
+      "provenance": "scripts/exercise-media/tool-provenance.json",
+      "provenance_sha256": "b98863ecc0e3eadeb9ae55a0c85dd2cb2f12db2d0ad9119cca07167742e2b336"
+    }
+  },
+  "baseline_results": {
+    "backend": {
+      "counts": {
+        "tests": 540,
+        "pass": 540,
+        "fail": 0
+      },
+      "log": ".exercise-media-local/evidence/history/raw/baseline/backend-test.log",
+      "log_sha256": "fd8b3d83cca89d20c8ea0ebe4040ed2b978f209273140685dd79165fe90d9e92"
+    },
+    "frontend_unit": {
+      "counts": {
+        "tests": 95,
+        "pass": 95,
+        "fail": 0
+      },
+      "log": ".exercise-media-local/evidence/history/raw/baseline/frontend-unit.log",
+      "log_sha256": "45791607569cca9e08a092b365bcb2386dd22b2ef4583d8b7dbccd7ea9d2fc50"
+    },
+    "preview": {
+      "counts": {
+        "skipped": 8,
+        "passed": 80
+      },
+      "log": ".exercise-media-local/evidence/history/raw/baseline/preview-e2e.log",
+      "log_sha256": "e512c4b983878c1e992c019a7509b416f0ad76d5230f25b923df79c1c310d6fa"
+    }
+  },
+  "tests": {
+    "final_head": [
+      {
+        "name": "boundaries-frontend",
+        "command": "bash scripts/check-boundaries.sh frontend",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/boundaries-frontend.log",
+        "log_sha256": "60381eb78711c6445ba2570159faff25b1feb5179532e98f5ff773e0f8905623"
+      },
+      {
+        "name": "boundaries-backend",
+        "command": "bash scripts/check-boundaries.sh backend",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/boundaries-backend.log",
+        "log_sha256": "59d4b2a113abb76b4f4e69405796437ff725acf9f29f8c6881c26fb9e6f077c1"
+      },
+      {
+        "name": "backend-test",
+        "command": "npm --prefix backend test",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/backend-test.log",
+        "log_sha256": "cf31feba5d958d38d4e29fffe2652b8c0ddd5cd55dad7384c5c58854ed25e614",
+        "counts": {
+          "tests": 577,
+          "pass": 577,
+          "fail": 0
+        }
+      },
+      {
+        "name": "backend-test-media",
+        "command": "npm --prefix backend run test:media",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/backend-test-media.log",
+        "log_sha256": "ab29a0d04ff7b0145f2d0ffe3dff0b2ac431d861afe975265cc478a2204b3882",
+        "counts": {
+          "tests": 34,
+          "pass": 34,
+          "fail": 0
+        }
+      },
+      {
+        "name": "frontend-unit",
+        "command": "npm --prefix frontend run test:unit",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/frontend-unit.log",
+        "log_sha256": "c935630ce03eb3aa8c3ae87cb8e2fbdc00f4c0f98872eb06a973e099ff7ef0e0",
+        "counts": {
+          "tests": 103,
+          "pass": 103,
+          "fail": 0
+        }
+      },
+      {
+        "name": "frontend-build",
+        "command": "npm --prefix frontend run build",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/frontend-build.log",
+        "log_sha256": "f5544037596ed06836dbbdab36c2fb8aedddde0181922ee7da618687407c240c"
+      },
+      {
+        "name": "media-stack-guard",
+        "command": "bash supabase/tests/exercise_media/stack_guard_test.sh",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/media-guard.log",
+        "log_sha256": "c47b618ce485ece6350d2ec4bc288ac29951071933bbd5b412a80901bd49a3d1",
+        "counts": {
+          "cases": 18
+        }
+      },
+      {
+        "name": "media-sql",
+        "command": "bash supabase/tests/exercise_media/run.sh --down",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/media-sql.log",
+        "log_sha256": "b9e6c7451d49663f0d2e87f25eee7bf1e925210a3d824b8ebcea8891cce0fae7",
+        "counts": {
+          "sql_groups": 4,
+          "committed_races": 5
+        }
+      },
+      {
+        "name": "media-integration",
+        "command": "npm run test:media:integration",
+        "cwd": "backend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/media-integration.log",
+        "log_sha256": "541d912fdda131223f36b7dbf4c56a48f690f4775bce54899fd5350a2245f140",
+        "counts": {
+          "cases_passed": 21
+        }
+      },
+      {
+        "name": "media-mocked-browser",
+        "command": "npm run test:e2e:media",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/media-mocked.log",
+        "log_sha256": "2c430291a083d3b0fb4dad8b78768e800feed0bcf663bb5c6e66e1e6e7abc2a2",
+        "counts": {
+          "passed": 7
+        }
+      },
+      {
+        "name": "media-real-local-browser",
+        "command": "npm run test:e2e:media:local",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/media-local-browser.log",
+        "log_sha256": "64914484d7864242afa7dac4670294666db53b4a596b84b6e1fbe413383a83c9",
+        "counts": {
+          "passed": 4
+        }
+      },
+      {
+        "name": "workout-ux-browser",
+        "command": "npx playwright test --config playwright.workout-ux.config.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/workout-ux.log",
+        "log_sha256": "9ff80d89125d9f229e73e91472d3a372ab12d81fe451107500ea455c3490fb9b",
+        "counts": {
+          "passed": 25
+        }
+      },
+      {
+        "name": "preview-browser",
+        "command": "npm run test:e2e:preview",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final-head/preview-full.log",
+        "log_sha256": "6a1e823e4ca8d14060432a6410a23443a8fce095e6fbabbe8f4f1c402dcd917e",
+        "counts": {
+          "skipped": 8,
+          "passed": 86
+        }
+      }
+    ],
+    "same_app_code": [
+      {
+        "name": "contract-validator",
+        "command": ".agentic/validate-contract-version.sh .",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/validate-contract.log",
+        "log_sha256": "139eb22746d7c4b7ebd4c8d3a2ebf93c8b3060027442575d5ee96746b744c4bb"
+      },
+      {
+        "name": "production-build-gate",
+        "command": "VERCEL_ENV=production npx vite build --outDir <scratch>",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/frontend-build-production.log",
+        "log_sha256": "6f8d1fdd00771610a52981e72d2e0a15a3d3d3e2aca491dd7440844b45c5f76a"
+      },
+      {
+        "name": "invites-browser",
+        "command": "npx playwright test --config playwright.invites.config.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/e2e-invites.log",
+        "log_sha256": "ccb0a86a20d65222997d4973a897f1d564b11535919f5bb536031f20f14cde17",
+        "counts": {
+          "passed": 17
+        }
+      },
+      {
+        "name": "auth-browser",
+        "command": "npx playwright test --config playwright.auth.config.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/e2e-auth.log",
+        "log_sha256": "f06c64b721d8adcccc3d401d55feec9ab8cbefc82db8ea0384e49a693925cc58",
+        "counts": {
+          "passed": 4
+        }
+      },
+      {
+        "name": "analytics-browser",
+        "command": "npx playwright test --config playwright.analytics.config.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/e2e-analytics.log",
+        "log_sha256": "7f7f8b989bdd9d3d16d4ed7fab3af58481c9a8671564dee02cdf7c41b5e5b08f",
+        "counts": {
+          "passed": 6
+        }
+      },
+      {
+        "name": "series-browser",
+        "command": "npx playwright test --config playwright.series.config.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/e2e-series.log",
+        "log_sha256": "6a3e10eb174fe17acb5d1f14421cf59a8d468f2ec9fbe96e0fdda2c090271a30",
+        "counts": {
+          "passed": 23
+        }
+      },
+      {
+        "name": "metrics-browser",
+        "command": "npx playwright test --config playwright.metrics.config.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/e2e-metrics.log",
+        "log_sha256": "c3c33c4c712e4a866c98eaa30fad01d21764b174c0b198747b497ee8b95eca4c",
+        "counts": {
+          "passed": 3
+        }
+      },
+      {
+        "name": "series-stack-guard",
+        "command": "bash supabase/tests/session_series/stack_guard_test.sh",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/series-guard.log",
+        "log_sha256": "6fbdc76eb17faf68fe6d7a5ca6f67c1a2d478ccf3916ebd632677604d2f83b84",
+        "counts": {
+          "cases": 18
+        }
+      },
+      {
+        "name": "series-isolation-guard",
+        "command": "bash supabase/tests/session_series/isolation_guard_test.sh",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/series-isolation-guard.log",
+        "log_sha256": "163dedd1d9eecb85038c458d6c9df067c2b076c9b3675fad63259937ca4aedde",
+        "counts": {
+          "cases": 11
+        }
+      },
+      {
+        "name": "series-sql",
+        "command": "bash supabase/tests/session_series/run.sh --down",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/series-sql.log",
+        "log_sha256": "94957f6f0beeb8d44ded44c511883eb4fcd499d3a91060c78813a39a1d5f9ef3"
+      },
+      {
+        "name": "client-invites-sql",
+        "command": "bash supabase/tests/client_invites/run.sh",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/invites-sql.log",
+        "log_sha256": "4eaf352c733d5814ba4f47546db5ecc0abd82db1ada100f061a86147d4984a6a"
+      },
+      {
+        "name": "workout-metrics-sql",
+        "command": "bash supabase/tests/workout_metrics/run.sh",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/final/metrics-sql.log",
+        "log_sha256": "fb4b57c6ba072e218e5f132c355c47afefdeaed8e590bacf0fd0c4e1e90d6f4f"
+      }
+    ]
+  },
+  "pr114_compatibility": {
+    "clone": "/Users/jav/Documents/Codex/2026-10-15/task-4/compat-pr114-media-20261015",
+    "pr114_commit": "a8a6a4958697c4d2d663ac9cc147a9b1ecc813b3",
+    "composition": {
+      "commit": "2716f7e99ae770aa82284d40ebefe0b257f86fd8",
+      "tree": "16e62c407eb52c5b111db634f1b8f214a41685f7",
+      "parents": [
+        "a8a6a4958697c4d2d663ac9cc147a9b1ecc813b3",
+        "9dc347d2fa6dd602f3f39e7b08aed8ff8de0a9a8"
+      ]
+    },
+    "conflicts_resolved": [
+      "backend/src/routes/programs.js",
+      "backend/src/routes/workoutLogs.js",
+      "frontend/playwright.config.mjs",
+      "frontend/src/lib/previewMode.js"
+    ],
+    "migration_sha256": {
+      "20261009200000_quick_sessions.sql": "8842d98ed4dec4abe57000240c2952712f220018d8af785ba0001938376e2119",
+      "20261015213431_exercise_media_library.sql": "54028175f398c6367e8cbea18fb40abe56d965c4bc4843db7936d89ba18edc9c"
+    },
+    "tests": [
+      {
+        "name": "boundaries-frontend",
+        "command": "bash scripts/check-boundaries.sh frontend",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/boundaries-frontend.log",
+        "log_sha256": "60381eb78711c6445ba2570159faff25b1feb5179532e98f5ff773e0f8905623"
+      },
+      {
+        "name": "boundaries-backend",
+        "command": "bash scripts/check-boundaries.sh backend",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/boundaries-backend.log",
+        "log_sha256": "59d4b2a113abb76b4f4e69405796437ff725acf9f29f8c6881c26fb9e6f077c1"
+      },
+      {
+        "name": "backend-test",
+        "command": "npm --prefix backend test",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/backend-test.log",
+        "log_sha256": "20e8332710df78d92147ddccb57f2d1135c796dabe929a46ec87d40f2fdeb05b",
+        "counts": {
+          "tests": 602,
+          "pass": 602,
+          "fail": 0
+        }
+      },
+      {
+        "name": "frontend-unit",
+        "command": "npm --prefix frontend run test:unit",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/frontend-unit.log",
+        "log_sha256": "dc66ebd80bb989e3792cf842bbbd5d0a4d1223d604c92f31a303b014f7114a11",
+        "counts": {
+          "tests": 140,
+          "pass": 140,
+          "fail": 0
+        }
+      },
+      {
+        "name": "frontend-build",
+        "command": "npm --prefix frontend run build",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/frontend-build.log",
+        "log_sha256": "4507f9fc7c1310042960febde258d428186e04de2cc35e28425b55478807f781"
+      },
+      {
+        "name": "quick-sql",
+        "command": "bash supabase/tests/quick_sessions/run.sh --all --down",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/quick-sql.log",
+        "log_sha256": "8863c9820d0b69eaca652e975c378acde688fe0a195cf7cd3575b9f76ba1173a",
+        "counts": {
+          "parity_rows_identical": 26,
+          "behavior_grant_assertions": 71,
+          "race_assertions": 21
+        }
+      },
+      {
+        "name": "media-sql",
+        "command": "bash supabase/tests/exercise_media/run.sh --down",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/media-sql.log",
+        "log_sha256": "1a256e84ea141e548e52b82de0be57cd36ae32789b7b1d4c01d63d2c32af2cdb",
+        "counts": {
+          "sql_groups": 4,
+          "committed_races": 5
+        }
+      },
+      {
+        "name": "quick-media-api",
+        "command": "node backend/integration/exercise-media-quick-compat.cjs",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/quick-media-api.log",
+        "log_sha256": "0036e99d67cc580ff92a256609dd8f305c8866909d3c07a4cb9c2017bc35d4cd",
+        "counts": {
+          "cases_passed": 5
+        }
+      },
+      {
+        "name": "media-integration",
+        "command": "npm run test:media:integration",
+        "cwd": "backend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/media-integration.log",
+        "log_sha256": "7a3027d79ea5a999433ffa760e290a4d60ad1af92cc20d227fed86daade5fa02",
+        "counts": {
+          "cases_passed": 21
+        }
+      },
+      {
+        "name": "preview-browser",
+        "command": "npm run test:e2e:preview",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/preview-full.log",
+        "log_sha256": "a48dbe63bbf62575d629c40bb3e3e3267b242a202e592e937e6846b254797b8f",
+        "counts": {
+          "skipped": 8,
+          "passed": 106
+        }
+      },
+      {
+        "name": "quick-mocked-browser",
+        "command": "npm run test:e2e:quick-sessions",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/quick-mocked.log",
+        "log_sha256": "0532849d17dbde972587ccc9b74c718b0a06129f0a02333381f9352bff1d27bc",
+        "counts": {
+          "passed": 30
+        }
+      },
+      {
+        "name": "media-mocked-browser",
+        "command": "npm run test:e2e:media",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/media-mocked.log",
+        "log_sha256": "26f345bcd5d8df2f16e27372d531badc92865cd9a01521f6720d2665a8beabc8",
+        "counts": {
+          "passed": 7
+        }
+      },
+      {
+        "name": "media-real-local-browser",
+        "command": "npm run test:e2e:media:local",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/compat-pr114-r2/media-local-browser.log",
+        "log_sha256": "cce2a2a35b39d2fed9d0edded2c1d322500821fd9e35890c0ab26ee4163da133",
+        "counts": {
+          "passed": 4
+        }
+      }
+    ],
+    "follow_up": "POST /quick-sessions stores per-exercise video_url as free text; whichever lands second should apply unsafeExternalVideoUrls before normalizeQuickSessionCreate (rendering is safe via safeHttpUrl).",
+    "note": "Compatibility evidence only; conveys no Quick release approval. PR114 unchanged."
+  },
+  "not_run": [
+    {
+      "check": "test:e2e:live and any hosted check",
+      "classification": "not-applicable",
+      "reason": "not authorized (local build only)"
+    },
+    {
+      "check": "Safari/WebKit rendering",
+      "classification": "unavailable",
+      "reason": "WebKit not in the local Playwright cache; download not authorized"
+    },
+    {
+      "check": "backend/integration/invite-quick-local.cjs (PR114)",
+      "classification": "not-applicable",
+      "reason": "launcher lives outside the repository; media changes no invite/claim code"
+    },
+    {
+      "check": "ESLint",
+      "classification": "not-applicable",
+      "reason": "repository has no ESLint configuration"
+    }
+  ],
+  "fixtures": {
+    "generator": "node backend/scripts/generate-exercise-media-fixtures.cjs <output-dir>",
+    "seed": 20261015,
+    "label": "SYNTHETIC TEST MEDIA — NOT INSTRUCTION",
+    "manifest": ".exercise-media-local/fixtures/fixtures-manifest.json",
+    "files": [
+      {
+        "file": ".exercise-media-local/fixtures/goblet-squat-photo.jpg",
+        "sha256": "af88d561a97a61ef66ea4eb57601d9fdd26a97fc553cd4260d0f0b9afea80e8f",
+        "bytes": 65956,
+        "identity": "Synthetic Goblet Squat",
+        "scenario": "photo-only",
+        "duration_ms": null
+      },
+      {
+        "file": ".exercise-media-local/fixtures/goblet-squat-photo.webp",
+        "sha256": "3f25a891fc3b62c2f26b05fe337f45dca93919795e32d3602c52722c4ae9e694",
+        "bytes": 17010,
+        "identity": "Synthetic Goblet Squat",
+        "scenario": "replace photo (static WebP)",
+        "duration_ms": null
+      },
+      {
+        "file": ".exercise-media-local/fixtures/split-squat-portrait.jpg",
+        "sha256": "85a9809c5c84a7a1728fb187dab9a4984896debf638742b8de3dc456685c755e",
+        "bytes": 65868,
+        "identity": "Synthetic Split Squat",
+        "scenario": "photo-only, EXIF-rotated portrait",
+        "duration_ms": null
+      },
+      {
+        "file": ".exercise-media-local/fixtures/band-row.mp4",
+        "sha256": "9848f2641dfbc1dd83118e967fd20a6aae1827378a46a1a73d6b3ff79cd36f62",
+        "bytes": 45376,
+        "identity": "Synthetic Band Row",
+        "scenario": "video + custom poster",
+        "duration_ms": 6000
+      },
+      {
+        "file": ".exercise-media-local/fixtures/band-row-thumbnail.png",
+        "sha256": "7031b4d616acc09437f0adb51068cd182f825e656715df26da675ba4c9b6cc76",
+        "bytes": 30819,
+        "identity": "Synthetic Band Row",
+        "scenario": "custom poster image",
+        "duration_ms": null
+      },
+      {
+        "file": ".exercise-media-local/fixtures/plank.webm",
+        "sha256": "ec3a6f489849ed4cc5165a1c04760524be747e4cd257ac7379c68eb96515a06e",
+        "bytes": 65577,
+        "identity": "Synthetic Plank",
+        "scenario": "start/end stills from video",
+        "duration_ms": 5000
+      },
+      {
+        "file": ".exercise-media-local/fixtures/shuttle-walk.mov",
+        "sha256": "d6f5da2899628c6d3fceeb336bc64d6b9764adc24e3373f8f76f2262b2b0482b",
+        "bytes": 118113,
+        "identity": "Synthetic Shuttle Walk",
+        "scenario": "video-frame poster + preview + full instruction with audio",
+        "duration_ms": 6000
+      },
+      {
+        "file": ".exercise-media-local/fixtures/goblet-squat-replacement.mp4",
+        "sha256": "e78d5b71c17da8b2bfa3a9316600e2d09fd2537e0adb4eceb70e5f3fe3c30d48",
+        "bytes": 36367,
+        "identity": "Synthetic Goblet Squat",
+        "scenario": "image-only → add video later",
+        "duration_ms": 4000
+      }
+    ],
+    "rights_origin": "generated locally by the project generator; synthetic geometry, no people or exercise demonstration"
+  },
+  "evidence": {
+    "visual_review": {
+      "index": "docs/exercise-media/visual-review/index.html",
+      "index_sha256": "a4e081b2b82f51891e00a2c3a9b6204447fa227d57b847322d4e22745c695391",
+      "manifest": "docs/exercise-media/visual-review/manifest.json",
+      "manifest_sha256": "1f5c9f8c4bad38debdebaafffd10a7c27201e97f56cf8adc397d53f204b3718c",
+      "images": 57,
+      "sources": {
+        "baseline": {
+          "commit": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+          "tree": "004fbfe3f1faf1785f3af25f6c81fb7110f12d0d",
+          "tracked_changes": [],
+          "note": "prepared released baseline, rendered from a disposable clone under the task folder"
+        },
+        "proposed": {
+          "commit": "a0c28c0389aed8ffbfaa8bfe7a862395e3600325",
+          "tree": "edf9747fe6d595fe1d7993180cdf6a5067966c57",
+          "tracked_changes": [
+            "M frontend/e2e/exercise-media-visual.capture.mjs"
+          ]
+        }
+      }
+    },
+    "integration_results": {
+      "path": ".exercise-media-local/evidence/final-head/integration-results.json",
+      "sha256": "5d5041aac13c1e06d3f5da67b02dd2240820bec5a38d3063fbb7cfd9872917ed"
+    },
+    "browser_local_network": {
+      "path": ".exercise-media-local/evidence/final-head/browser-local-network.json",
+      "sha256": "b48b9eb5d3473186f5f8cf15b6a6bc6d1d1df7b1510120e4233cbc2d8de467bd"
+    },
+    "visual_review_render_check": {
+      "path": ".exercise-media-local/evidence/final/visual-review-render-check.json",
+      "sha256": "343d2e4d3817b7fca0b7948247edb766683a414980f41a6c7119424d6ecaf100"
+    },
+    "ledger": {
+      "path": ".exercise-media-local/evidence/history/ledger.md",
+      "sha256": "e93a01e12e6507f77bda45737213ec939225f765761d47522c4bada07a929e0e"
+    },
+    "red_green_history": ".exercise-media-local/evidence/history/raw/"
+  },
+  "measurements": {
+    "photo_upload_ms": 350,
+    "photo_processing_ms": 879,
+    "photo_poster_bytes": 20028,
+    "video_processing_ms": 3248,
+    "band_row_poster_bytes": 20939,
+    "band_row_preview_bytes": 13367,
+    "band_row_instruction_bytes": 44708,
+    "band_row_captions_bytes": 159,
+    "heavy_1080p_90s": {
+      "source_bytes": 56740459,
+      "instruction_bytes": 5771389,
+      "preview_bytes": 48200
+    },
+    "hydration_queries": {
+      "seven_exercises": 9,
+      "fifty_exercises": 9
+    },
+    "fifty_exercise_log_json_bytes": 75865,
+    "log_bytes_scanned": 3314
+  },
+  "browser_network": {
+    "initial_content_requests": 2,
+    "initial_poster_bytes": 27963,
+    "preview": {
+      "type": "video/mp4",
+      "length": 13367,
+      "status": 206
+    },
+    "external_origins": []
+  },
+  "local_services": {
+    "database": {
+      "project_id": "cvfpt-media-test",
+      "container": "supabase_db_cvfpt-media-test",
+      "ports": "58320-58329",
+      "published_host": "0.0.0.0:58322 (Supabase CLI default; fictional data only)"
+    },
+    "postgrest": {
+      "container": "cvfpt-media-test-postgrest",
+      "owner_label": "com.cvfpt.owner=cvfpt-media-test",
+      "bind": "127.0.0.1:<free port>"
+    },
+    "api_worker_gateway": {
+      "bind": "127.0.0.1:<free ports>",
+      "process_marker": "--cvf-media-run=<run id>",
+      "network_guard": "backend/integration/local-guard.cjs (non-loopback refused)"
+    },
+    "frontend_demo": {
+      "url": "http://127.0.0.1:42771/__media-demo",
+      "start": "npm --prefix backend run dev:media-local",
+      "stop": "npm --prefix backend run dev:media-local:down",
+      "runtime_manifest": ".exercise-media-local/run/runtime.json"
+    },
+    "test_ports": {
+      "mocked_browser": 42761,
+      "preview_browser": 42731,
+      "real_local_browser": 42771,
+      "visual_capture": [
+        42791,
+        42792
+      ]
+    },
+    "coordination_lock": "~/.cvfpt/disposable-db.lock",
+    "left_running": "none (no cvfpt containers; lock released)"
+  },
+  "production_gates": [
+    "Gate 1: owner review of the UX direction (compact vs Larger), cold visibility, ownership policy, and coach review of real instruction, variants, rights and accessibility text",
+    "Gate 2: hosted private storage, upload transport, worker placement, budgets, retention/purge and monitoring",
+    "Gate 3: reconcile onto released main after Quick Sessions, re-reserve the migration slot, independent exact-file SQL/permission review",
+    "Gate 4: separate authority for migration PR, both hosted migrations with labels, exact-head CI, owner merge and deployment verification"
+  ],
+  "limitations": [
+    "Chromium headless only; Safari/iOS unverified.",
+    "Measurements use small synthetic media; real footage will be larger.",
+    "Fixture review is not coach approval of real instruction, rights or accessibility content.",
+    "Cold visibility and the default footprint are owner decisions, not self-certified.",
+    "Preview mode verifies UI only; authorization, storage and processing are proven by backend, SQL and real-services lanes.",
+    "Deferred minors from the final review are listed in RETURN.md."
+  ],
+  "secrets": "none recorded (no credentials, capabilities, signed links or client records)"
+}

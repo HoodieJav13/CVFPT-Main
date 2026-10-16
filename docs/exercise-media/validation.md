@@ -1,4 +1,4 @@
-# Exercise media — validation record (local build, 2026-10-15)
+# Exercise media — validation record (local build, 2026-10-15; P2 corrections 2026-10-16)
 
 Everything here ran on this Mac against task-owned, loopback-only local
 services with fictional actors and synthetic media. Nothing touched a hosted
@@ -6,6 +6,94 @@ project, bucket, worker, provider or real record. Hosted live-auth suites were
 not run (not authorized). Raw logs live in the gitignored
 `.exercise-media-local/evidence/` folder; `exercise-media-return-manifest.json`
 records their SHA-256 hashes.
+
+## P2 corrections (2026-10-16)
+
+An independent review of candidate `335588ec0c00a8c6ec65a9b13526f3bfd80688bd`
+reproduced two P2 defects that the green normal-path lanes did not cover.
+Both are corrected locally; independent acceptance is a later review.
+
+| Finding | Regression | RED (pinned behaviour) | GREEN |
+|---|---|---|---|
+| R1 — a post-commit source-file install failure deleted the only staged bytes; a same-request retry answered 200 with the recorded file still missing | `backend/test/exercise-media-upload-recovery.test.js` (real temporary `LocalMediaStore`, synthetic JPEG, repository mirroring the SQL commit/replay rules, test-only fault at `commitUpload`) | 3 pass / 4 fail against `git archive 335588e backend` with the final test (`p2-correction/raw/r1-red.log`) | 7/7 |
+| R2 — crops used the current scrub frame (and the server fallback the scrub time) instead of each target's saved frame | `frontend/e2e/exercise-media-frame-selection.spec.mjs` (real `VideoSelectionEditor` in a test-only harness page, labelled synthetic moving geometry), now in `test:e2e:media` | 0 pass / 9 fail with the component byte-identical to `335588e` (`p2-correction/raw/r2-red.log`) | 9/9 |
+
+Real-service proof:
+- **R1 integration case** (`test:media:integration`, 22 cases): a real
+  filesystem fault after the SQL attach commits (read-only object directory)
+  → HTTP 500 and the validated bytes kept as `quarantine/<asset id>.part` →
+  the same request id and bytes return 200 `replayed: true`, the recorded key
+  holds the recorded SHA-256, one source row, no further draft version →
+  processing, review, publication and a client poster read succeed.
+- **R2 real-local browser case** (`test:e2e:media:local`, 5 tests): band-row
+  clip, poster saved at 0.5 s and end still at 5.0 s, source scrubbed to 4.0 s /
+  1.0 s before each crop. Mean RGB difference at 64×36 between the generated
+  640×360 JPEG and (a) the coach's crop view, (b) the saved-time frame, (c) the
+  scrub-position control: poster 0.86 / 0.92 / 6.49, end still 1.6 / 1.62 / 7.7
+  (`p2-correction/author-matrix/real-frame-selection.json`; tolerance: < 12 and
+  at least 2× below the control).
+- **Paired crop-frame captures** (`docs/exercise-media/p2-correction/frame-selection`):
+  the pinned candidate shows the scrub-position frame in all 4 captures; the
+  corrected tree shows the saved frame in all 4.
+
+### Corrected author matrix (tested head `15487cffae02fbfa463fdff6783280dbfbecd2fe`, tree `42882f3e62abccbaf48f4edb2c4cf682945a0747`, clean)
+
+Logs: `.exercise-media-local/evidence/p2-correction/author-matrix/`.
+
+| Command | Result | Candidate (`335588e`) |
+|---|---|---|
+| `node --test backend/test/exercise-media-upload-recovery.test.js` | 7/7 | 3/7 |
+| `npx playwright test --config playwright.exercise-media.config.mjs e2e/exercise-media-frame-selection.spec.mjs` (frontend) | 9/9 | 0/9 |
+| `bash .agentic/validate-contract-version.sh .` | pass | pass |
+| `bash scripts/check-boundaries.sh frontend` / `backend` | pass / pass | pass / pass |
+| `npm --prefix backend run test:media` | 41/41 | 34/34 |
+| `npm --prefix backend test` | 584/584 | 577/577 |
+| `npm --prefix frontend run test:unit` | 103/103 | 103/103 |
+| `npm --prefix frontend run build` | pass (harness not in `dist`) | pass |
+| `bash supabase/tests/exercise_media/stack_guard_test.sh` | 18 | 18 |
+| `bash supabase/tests/exercise_media/run.sh --down` | 4 SQL groups + 5 races | same |
+| `npm --prefix backend run test:media:integration` | 22/22 | 21/21 |
+| `npm --prefix frontend run test:e2e:media` | 16/16 (7 mocked + 9 frame selection) | 7/7 |
+| `npm --prefix frontend run test:e2e:media:local` | 5/5 | 4/4 |
+| `npm --prefix frontend run test:e2e:preview` | 86 passed, 8 skipped (credential-gated live auth) | 86 / 8 |
+| `node node_modules/@playwright/test/cli.js test --config playwright.workout-ux.config.mjs` (frontend) | 25/25 | 25/25 |
+
+Every DB-owning lane ran serially under `~/.cvfpt/disposable-db.lock`; no
+`cvfpt` container and no lock remained afterwards.
+
+### PR114 composition with the corrections
+
+Disposable clone `../compat-pr114-media-p2-20261016`: composition `634f833afe0f3f43e5f216884e4ea125faeaa2f7`
+(tree `a6ec973c…`), parents pinned PR114 `a8a6a495…` and corrected media `15487cf…`. Conflicts were
+resolved as follows:
+- `programs.js`, `workoutLogs.js` and `previewMode.js`: byte-identical to the earlier reviewed
+  resolution (media side unchanged since `9dc347d`).
+- `playwright.config.mjs`: union.
+- `CLAUDE.md`: both entries.
+
+Migrations: Quick unchanged (`8842d98e…`), media unchanged (`54028175…`). Results, from logs in
+`p2-correction/compat-matrix/`:
+
+| Lane | Result |
+|---|---|
+| boundaries | 2/2 |
+| backend | 609/609 |
+| unit | 140/140 |
+| build | pass |
+| focused R1 / R2 | 7/7 / 9/9 |
+| media SQL | 4 groups + 5 races |
+| Quick SQL `--all` | parity identical (26 rows), 71 behavior/grant, 21 races |
+| Quick×media API | 5/5 executed |
+| media integration | 22/22 |
+| `test:e2e:media` | 16/16 |
+| real-local | 5/5 |
+| Quick mocked | 30/30 |
+| preview | 106 passed / 8 skipped |
+
+Local compatibility evidence only, with no Quick release approval.
+
+The sections below are the candidate's original 2026-10-15 record, kept as
+history.
 
 ## Tested source
 

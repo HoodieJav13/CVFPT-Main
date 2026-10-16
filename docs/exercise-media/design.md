@@ -24,6 +24,14 @@ gates ([production-gates.md](production-gates.md)). Nothing here is deployed.
 - **Video recipe.** Scrub to a poster frame, optionally pick a movement preview
   in/out and an end still (paired start/end stills), crop each to 16:9, add
   alt text and cues, optionally offer the full video with captions/transcript.
+  Each crop is drawn on the frame at that target's SAVED time — the time the
+  worker renders — never on the current scrub position: poster at
+  `poster_frame_ms`, end still at `end_frame_ms`, and the preview on its
+  selected start (one rectangle covers the whole segment). The player pauses,
+  seeks and waits for that decoded frame; browsers that cannot decode the
+  source get a server still at the same time. A newer capture, a source change
+  or closing the editor invalidates older ones, and the crop tools appear only
+  for a ready frame of the current target (P2 correction R2, 2026-10-16).
 - **Deliberate review.** Upload success is never approval. Approval requires
   three explicit confirmations (exact exercise/variant, rights, content
   accuracy) on a revision whose outputs were actually generated.
@@ -138,9 +146,18 @@ Client DTO fields are an explicit allowlist (see `serialization.js`).
 
 `LocalMediaStore` keeps objects outside any web root (`.exercise-media-local/…`
 in the harness), stages uploads in quarantine, validates bytes, records the
-asset row, then renames atomically; reads refuse symlinks; a bounded sweep
-removes only expired quarantine parts and stale worker scratch. The worker
-finishes renames interrupted by a crash on start.
+asset row, then installs the file at its recorded key (hard link, never
+overwriting; size and SHA-256 verified) before removing the staged copy;
+reads refuse symlinks. Staged bytes are deleted only for definite pre-commit
+rejections. After a committed attach, or when the attach outcome is unknown,
+they stay in quarantine under the recorded asset id: a same-request retry
+finishes installing the ORIGINAL recorded asset/key (from the original copy,
+or the retry's identical bytes re-filed under that id), an already installed
+matching file is left untouched, and success is reported only once the
+recorded file is in place. The worker's recovery pass installs committed
+staged parts (verified against the record) on start and never sweeps them; a
+bounded sweep removes only expired uncommitted parts and stale worker scratch
+(P2 correction R1, 2026-10-16).
 
 `FfmpegMediaProcessor` runs FFmpeg/FFprobe 6.1.2 from a task-built container
 (official Alpine digest + signed `ffmpeg=6.1.2-r2`) with `--network none`, a

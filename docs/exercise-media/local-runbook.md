@@ -62,11 +62,13 @@ database for inspection on stop).
 | `npm --prefix backend run test:media` | validation, real-bytes processor (Docker; skips with a reason if the image is missing), authorization/serialization, mounted routes with the real auth middleware, hydration, limits parity |
 | `bash supabase/tests/exercise_media/run.sh --down` | SQL contracts, ownership, lifecycle, grants and committed races on the owned stack |
 | `bash supabase/tests/exercise_media/stack_guard_test.sh` | stack ownership, teardown and coordination-lock guards (18 cases, no Docker needed) |
-| `npm --prefix backend run test:media:integration` | real HTTP → PostgREST → SQL → store → FFmpeg worker → capability bytes (21 cases) |
+| `node --test backend/test/exercise-media-upload-recovery.test.js` | source upload commit/recovery boundary: kept bytes after a post-commit install failure, same-request retry finishing the recorded key, uncertain outcomes (also part of `test:media`) |
+| `npm --prefix backend run test:media:integration` | real HTTP → PostgREST → SQL → store → FFmpeg worker → capability bytes (22 cases, including a real post-commit install fault and same-request retry) |
 | `npm --prefix frontend run test:unit` | browser helpers incl. link cache |
 | `npm --prefix frontend run test:e2e:preview` | preview lane incl. `exercise-media-preview.spec.mjs` |
-| `npm --prefix frontend run test:e2e:media` | normal-mode mocked lane (network budgets, expiry, failures) |
-| `npm --prefix frontend run test:e2e:media:local` | real frontend against the real local stack (starts/stops the launcher itself) |
+| `npm --prefix frontend run test:e2e:media` | normal-mode mocked lane (network budgets, expiry, failures) plus the frame-selection regression on the real `VideoSelectionEditor` (test-only harness page `frontend/e2e/harness`) |
+| `npm --prefix frontend run test:e2e:media:local` | real frontend against the real local stack (starts/stops the launcher itself); includes the saved-frame crop → generated output comparison |
+| `CVF_P2_BEFORE_DIR=<pinned clone> npx playwright test --config playwright.exercise-media-p2-frame.config.mjs` (from `frontend/`) | regenerates the paired before/after crop-frame evidence in `docs/exercise-media/p2-correction/frame-selection` |
 
 Run the stack-owning commands (`run.sh`, `test:media:integration`,
 `test:e2e:media:local`, `dev:media-local`) one at a time: they share the owned
