@@ -73,6 +73,23 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:series
 
+  # Quick-session recovery/race browser suite: its own mock server that survives reloads.
+  frontend-quick-sessions:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:quick-sessions
+
   database:
     runs-on: ubuntu-latest
     steps:
@@ -84,8 +101,10 @@ jobs:
         run: |
           bash supabase/tests/session_series/stack_guard_test.sh
           bash supabase/tests/session_series/isolation_guard_test.sh
+          bash supabase/tests/quick_sessions/stack_guard_test.sh
       - name: Recurring-sessions database tests (owned disposable stack)
         run: bash supabase/tests/session_series/run.sh --down
-
       - name: Invite database contracts and races (owned disposable stack)
         run: bash supabase/tests/client_invites/run.sh
+      - name: Quick-sessions database tests (parity, behavior, grants, races; owned disposable stack)
+        run: bash supabase/tests/quick_sessions/run.sh --all --down

@@ -7,6 +7,7 @@ const { addDays, buildWeekRhythm } = require('../lib/rhythm');
 const { dispatchPush, sendToCoaches } = require('../services/push');
 
 const { actualMetrics, trackingType } = require('../lib/workoutMetrics');
+const { quickLogKinds } = require('../lib/quickSessionReads');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -383,8 +384,11 @@ async function workoutLogWithDetails(id) {
     rows.push(set);
     setsByExercise.set(set.workout_log_exercise_id, rows);
   });
+  const kinds = await quickLogKinds([log], { db: supabaseAdmin });
   const detailed = {
     ...log,
+    // Safe provenance enum ('quick' | 'assigned' | null); distinct from quick_completed.
+    workout_assignment_kind: kinds.get(log.id) ?? null,
     coach_responses: (coachResponses || []).sort(newestCoachResponseFirst),
     exercises: (exercises || []).map((exercise) => ({
       ...exercise,
@@ -441,11 +445,13 @@ async function workoutLogsWithDetailsBulk(ids) {
     rows.push(response);
     responsesByLog.set(response.workout_log_id, rows);
   }
+  const kinds = await quickLogKinds(logs || [], { db: supabaseAdmin });
   const position = new Map(ids.map((id, index) => [id, index]));
   return (logs || [])
     .map((log) => {
       const detailed = {
         ...log,
+        workout_assignment_kind: kinds.get(log.id) ?? null,
         coach_responses: (responsesByLog.get(log.id) || []).sort(newestCoachResponseFirst),
         exercises: exercisesByLog.get(log.id) || [],
       };
@@ -1015,6 +1021,7 @@ router.post('/:id/complete', async (req, res) => {
 
 module.exports = router;
 module.exports.workoutLogWithDetails = workoutLogWithDetails;
+module.exports.workoutLogsWithDetailsBulk = workoutLogsWithDetailsBulk;
 module.exports.resolveExerciseVideos = resolveExerciseVideos;
 module.exports.canReadLog = canReadLog;
 module.exports.canWriteLog = canWriteLog;

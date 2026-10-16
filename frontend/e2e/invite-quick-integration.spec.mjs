@@ -1,0 +1,45 @@
+// Combined preview wiring only; actual SQL/auth/concurrency are checked separately.
+import { test, expect, usePreviewRole, callPreviewApi } from './preview-test.mjs';
+
+test('a newly created uninvited client can receive a private quick session and later change invite permission independently', async ({ page }) => {
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients');
+  await page.getByTestId('add-client-button').click();
+  await page.getByTestId('client-name-input').fill('Integration Fictional');
+  await page.getByTestId('client-email-input').fill('integration@example.invalid');
+  await expect(page.getByTestId('client-send-invite-checkbox')).not.toBeChecked();
+  await page.getByTestId('client-save-button').click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  const clients = await callPreviewApi(page, 'get', '/clients');
+  const client = clients.data.find((row) => row.name === 'Integration Fictional');
+  expect(client).toMatchObject({ invited: false, auth_user_id: null });
+  await page.getByText('Integration Fictional', { exact: true }).click();
+  await expect(page.getByTestId('client-claim-permission')).toHaveText('Can claim account: no');
+  await page.getByRole('tab', { name: 'Programs' }).click();
+  await page.getByTestId('assign-program-button').click();
+  await page.getByTestId('client-assignment-type-select').click();
+  await page.getByRole('option', { name: 'Quick session' }).click();
+  await page.getByTestId('quick-session-title-input').fill('Integration quick');
+  await page.getByTestId('quick-session-exercise-name-input').first().fill('Fictional carry');
+  await page.getByTestId('quick-session-sets-input').first().fill('2');
+  await page.getByTestId('quick-session-assign-button').click();
+  await expect(page.getByTestId('quick-session-saved')).toContainText('Integration quick');
+  await page.getByTestId('quick-session-save-library').click();
+  await expect(page.getByTestId('quick-session-library-saved')).toBeVisible();
+  await page.getByTestId('quick-session-done').click();
+  const assignments = await callPreviewApi(page, 'get', `/programs/workout-assignments/client/${client.id}`);
+  expect(assignments.data).toHaveLength(1);
+  expect(assignments.data[0]).toMatchObject({ kind: 'quick', client_id: client.id, workout: { is_template: false } });
+  await page.getByRole('tab', { name: 'Overview' }).click();
+  await page.getByTestId('client-invite-switch').click();
+  await expect(page.getByTestId('client-claim-permission')).toHaveText('Can claim account: yes');
+  await expect(page.getByTestId('client-invite-outcome')).toHaveText('Accepted for sending');
+  await page.getByTestId('client-invite-switch').click();
+  await expect(page.getByTestId('client-claim-permission')).toHaveText('Can claim account: no');
+  await page.getByRole('tab', { name: 'Programs' }).click();
+  await expect(page.getByTestId('assigned-workout-card').filter({ hasText: 'Integration quick' })).toHaveCount(1);
+  const after = await callPreviewApi(page, 'get', `/programs/workout-assignments/client/${client.id}`);
+  expect(after.data[0].id).toBe(assignments.data[0].id);
+  expect(after.data[0].library_template_id).toBe(assignments.data[0].library_template_id);
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('cvf_client_create_pending') || key.startsWith('cvf_quick_session_pending')))).toEqual([]);
+});

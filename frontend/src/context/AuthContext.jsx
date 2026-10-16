@@ -8,6 +8,10 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // In-memory only: changes whenever the signed-in user/session is replaced (login,
+  // logout, account switch), even if the same account signs in again. Quick-session
+  // replies captured under an older epoch are ignored. Never stored.
+  const [sessionEpoch, setSessionEpoch] = useState(0);
   const analyticsActive = useRef(false);
   const authEpoch = useRef(0);
   const updateUser = useCallback((nextUser, epoch = authEpoch.current) => {
@@ -16,6 +20,7 @@ export function AuthProvider({ children }) {
     if (!analyticsActive.current || epoch !== authEpoch.current) return false;
     setCoachAnalyticsRole(nextUser?.role);
     setUser(nextUser);
+    setSessionEpoch(epoch);
     return true;
   }, []);
 
@@ -112,7 +117,7 @@ export function AuthProvider({ children }) {
   }, [updateUser]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, reload: loadMe }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, reload: loadMe, sessionEpoch }}>
       {children}
     </AuthContext.Provider>
   );

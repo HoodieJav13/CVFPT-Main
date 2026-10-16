@@ -35,7 +35,10 @@ test('migration adds constrained labels, snapshots them, and writes/copies them 
 });
 
 test('both workout write routes normalize labels before save_workout', () => {
-  assert.equal((routes.match(/normalizeSupersetGroups\(/g) || []).length, 1);
+  // The shared backend normalizer (also used by quick sessions) owns labeling.
+  const normalizer = fs.readFileSync(path.join(root, 'backend', 'src', 'lib', 'quickSessions.js'), 'utf8');
+  assert.match(normalizer, /function trackingExercises\([^)]*\) \{\n[^]*?return normalizeSupersetGroups\(/);
+  assert.match(routes, /\btrackingExercises \} = require\('\.\.\/lib\/quickSessions'\);/);
   assert.equal((routes.match(/p_exercises:.*trackingExercises\(/g) || []).length, 2);
 });
 

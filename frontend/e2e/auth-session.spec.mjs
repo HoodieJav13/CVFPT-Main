@@ -27,7 +27,7 @@ async function install(page, { role = 'coach', stored = true, meStatus = 200 } =
   }, { stored, destination, access: ACCESS, refresh: REFRESH });
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
-    if (url.origin !== 'http://127.0.0.1:42734') {
+    if (url.origin !== new URL(test.info().project.use.baseURL).origin) {
       external.push(url.origin);
       return route.abort();
     }

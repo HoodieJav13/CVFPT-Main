@@ -37,6 +37,11 @@ import { SupersetGroups } from '@/components/training/SupersetGroups';
 import { HistoryShowMore } from '@/components/training/HistoryShowMore';
 import { useHistoryPages } from '@/lib/useHistoryPages';
 import { WorkoutDialog, workoutToForm } from '@/pages/coach/Programs';
+import {
+  QuickSessionBuilder, QuickSessionRecovery, QuickSessionSaved, newQuickForm, useQuickSession,
+} from '@/components/training/QuickSessionBuilder';
+import { QuickSessionBadge } from '@/components/training/QuickSessionBadge';
+import { activeCardAssignments, isQuickAssignment, isQuickSessionLog } from '@/lib/quickSessions';
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -865,7 +870,9 @@ function SessionsTab({ clientId }) {
 
 function ProgramsTab({ clientId, sessionContextId = null }) {
   const navigate = useNavigate();
+  const { user, sessionEpoch } = useAuth();
   const [starting, setStarting] = useState(null);
+  useEffect(() => { setStarting(null); }, [clientId, user?.profile?.id, sessionEpoch]);
   const [programs, setPrograms] = useState(null);
   const [workouts, setWorkouts] = useState(null);
   const [workoutAssignments, setWorkoutAssignments] = useState(null);
@@ -889,8 +896,16 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   const [copySaving, setCopySaving] = useState(false);
   const [templateTarget, setTemplateTarget] = useState(null); // { kind, id, name, parent, label }
   const [templateSaving, setTemplateSaving] = useState(false);
+  // Quick sessions: one page-lifetime controller; workout data stays in memory.
+  const quick = useQuickSession({
+    clientId,
+    onStarted: (log) => { if (log?.id) navigate(`/coach/workouts/${log.id}/track`); },
+  });
+  const [quickLibrary, setQuickLibrary] = useState(null);
+  const savedQuickId = quick.state.assignment?.id || null;
+  const recoveredCount = quick.state.recovered.length;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isCurrent = () => true) => {
     try {
       const [programRes, workoutRes, assignmentRes, historyRes, programAssignmentRes] = await Promise.all([
         api.get('/programs'),
@@ -899,6 +914,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         fetchHistory(),
         api.get(`/programs/program-assignments/client/${clientId}`),
       ]);
+      if (!isCurrent()) return;
       setPrograms(programRes.data);
       setWorkouts(workoutRes.data);
       setProgramAssignments(programAssignmentRes.data);
@@ -906,6 +922,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       setHistoryPage(historyRes);
       setLoadError(null);
     } catch (e) {
+      if (!isCurrent()) return;
       const message = errMsg(e);
       setLoadError(message);
       toast.error(message);
@@ -913,6 +930,12 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   }, [clientId, fetchHistory, setHistoryPage]);
 
   useEffect(() => { load(); }, [load]);
+  // A confirmed or recovered quick session appears as a card without a manual refresh.
+  useEffect(() => { if (savedQuickId || recoveredCount) load(); }, [savedQuickId, recoveredCount, load]);
+  useEffect(() => {
+    if (assignmentType !== 'quick' || quickLibrary) return;
+    api.get('/programs/exercise-library').then(({ data }) => setQuickLibrary(data || [])).catch((err) => toast.error(errMsg(err, 'Could not load the exercise library')));
+  }, [assignmentType, quickLibrary]);
 
   const awaitingInitialData = !programs || !workouts || !workoutAssignments || !workoutHistory || !programAssignments;
   if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="client-detail-programs" onRetry={() => { setLoadError(null); load(); }} />;
@@ -930,8 +953,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   const assignedSourceIds = new Set(programAssignments.map((a) => a.program.source_program_id || a.program.id));
   const available = programs.filter((p) => !p.hidden && !assignedSourceIds.has(p.id));
   const assignableWorkouts = workouts.filter((w) => !w.hidden);
-  const activeWorkouts = workoutAssignments.filter((a) => a.assignment_mode === 'active');
-  const datedWorkouts = workoutAssignments
+  // Completed quick sessions leave the active cards (history keeps them).
+  const cardAssignments = activeCardAssignments(workoutAssignments);
+  const activeWorkouts = cardAssignments.filter((a) => a.assignment_mode === 'active');
+  const datedWorkouts = cardAssignments
     .filter((a) => a.assignment_mode === 'dated')
     .sort((a, b) => String(a.assigned_for || '').localeCompare(String(b.assigned_for || '')));
 
@@ -951,6 +976,8 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
 
   const assign = async (e) => {
     e.preventDefault();
+    // Quick sessions save only through their own explicit Assign / Start now actions.
+    if (assignmentType === 'quick') return;
     setSaving(true);
     try {
       if (assignmentType === 'program') {
@@ -1009,7 +1036,37 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
     }
   };
 
-  const noAssignments = assigned.length === 0 && workoutAssignments.length === 0;
+  const noAssignments = assigned.length === 0 && cardAssignments.length === 0;
+
+  const finishQuickSession = () => {
+    quick.controller.resetForNew();
+    quick.setForm(newQuickForm());
+    setAssignOpen(false);
+    setAssignmentType('program');
+    load();
+  };
+
+  const saveQuickToLibrary = async (assignment) => {
+    const isCurrent = quick.beginCardOperation('library', assignment.id);
+    if (!isCurrent()) return;
+    try {
+      await api.post(`/programs/quick-sessions/${assignment.id}/save-to-library`);
+      if (!isCurrent()) return;
+      toast.success('Saved to the shared studio library as a hidden template.');
+      load(isCurrent);
+    } catch (err) {
+      if (!isCurrent()) return;
+      toast.error(`Saving to library failed · ${errMsg(err, 'Try again')}`);
+    }
+  };
+
+  const quickStartedEdit = (err) => {
+    if (err?.response?.data?.code !== 'quick_session_started') return false;
+    toast.error(err.response.data.error);
+    setCopyEditor(null);
+    load();
+    return true;
+  };
 
   const openCopyEditor = async (workout) => {
     try {
@@ -1035,6 +1092,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       setCopyEditor(null);
       load();
     } catch (err) {
+      if (quickStartedEdit(err)) return;
       toast.error(errMsg(err));
     } finally {
       setCopySaving(false);
@@ -1066,7 +1124,9 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
     return workouts.find((template) => template.id === id) || null;
   };
 
-  const startWorkout = async (key, source) => {
+  const startWorkout = async (key, source, quickSession = false) => {
+    const isCurrent = quickSession ? quick.beginCardOperation('start', source.workout_assignment_id) : () => true;
+    if (!isCurrent()) return;
     setStarting(key);
     try {
       const { data } = await api.post('/workout-logs/start', {
@@ -1074,8 +1134,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         client_id: clientId,
         ...(sessionContextId ? { session_id: sessionContextId } : {}),
       });
+      if (!isCurrent()) return;
       navigate(`/coach/workouts/${data.workout_log.id}/track`);
     } catch (error) {
+      if (!isCurrent()) return;
       const active = error.response?.data?.active_workout;
       if (error.response?.status === 409 && active?.id) {
         toast.info(`${active.workout_name} is already in progress — opening it.`);
@@ -1084,7 +1146,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         toast.error(errMsg(error, 'Could not start workout'));
       }
     } finally {
-      setStarting(null);
+      if (isCurrent()) setStarting(null);
     }
   };
 
@@ -1097,7 +1159,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
               <Plus className="h-4 w-4 mr-1.5" /> Assign training
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg" aria-describedby={undefined}>
+          <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>Assign training</DialogTitle>
             </DialogHeader>
@@ -1107,9 +1169,27 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                 <SelectContent>
                   <SelectItem value="program">Long-term program</SelectItem>
                   <SelectItem value="workout">Standalone workout</SelectItem>
+                  <SelectItem value="quick">Quick session</SelectItem>
                 </SelectContent>
               </Select>
-              {assignmentType === 'program' ? (
+              {assignmentType === 'quick' ? (
+                quick.state.phase === 'saved'
+                  ? <QuickSessionSaved state={quick.state} controller={quick.controller} onDone={finishQuickSession} onOpenActive={(id) => navigate(`/coach/workouts/${id}/track`)} />
+                  : quickLibrary === null
+                    ? <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                    : (
+                      <>
+                        <QuickSessionRecovery state={quick.state} controller={quick.controller} />
+                        <QuickSessionBuilder
+                          form={quick.form}
+                          setForm={quick.setForm}
+                          library={quickLibrary.filter((exercise) => !exercise.hidden)}
+                          state={quick.state}
+                          onSave={(intent) => quick.controller.save(quick.form, intent)}
+                        />
+                      </>
+                    )
+              ) : assignmentType === 'program' ? (
                 <>
                   <Select value={selectedProgram} onValueChange={(value) => { setSelectedProgram(value); setExerciseLoads({}); }}>
                     <SelectTrigger className="rounded-xl" data-testid="assign-program-select">
@@ -1146,7 +1226,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                   </div>
                 </div>
               )}
-              {selectedTraining && (
+              {assignmentType !== 'quick' && selectedTraining && (
                 <AssignmentLoadFields
                   type={assignmentType}
                   selection={selectedTraining}
@@ -1154,12 +1234,12 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                   onChange={setExerciseLoads}
                 />
               )}
-              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" data-testid="client-assignment-notes-input" />
-              <DialogFooter>
+              {assignmentType !== 'quick' && <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" data-testid="client-assignment-notes-input" />}
+              {assignmentType !== 'quick' && <DialogFooter>
                 <Button type="submit" disabled={saving || (assignmentType === 'program' ? !selectedProgram : !selectedWorkout)} className="rounded-xl w-full sm:w-auto" data-testid="assign-confirm-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign'}
                 </Button>
-              </DialogFooter>
+              </DialogFooter>}
             </form>
           </DialogContent>
         </Dialog>
@@ -1170,6 +1250,13 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
           <p className="text-xs">Workouts started here link to the selected session.</p>
         </div>
       )}
+      {!assignOpen && <QuickSessionRecovery state={quick.state} controller={quick.controller} onReentered={() => { quick.setForm(newQuickForm()); setAssignmentType('quick'); setAssignOpen(true); }} />}
+      {quick.state.recovered.map((entry) => (
+        <div key={entry.request_id} className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-sm" role="status" data-testid="quick-session-recovered">
+          <span className="min-w-0 flex-1">An earlier quick session was saved: {entry.assignment?.workout?.name || 'Quick session'}.</span>
+          <Button size="sm" variant="ghost" className="min-h-11 rounded-lg sm:min-h-0" onClick={() => quick.controller.dismissRecovered(entry.request_id)} data-testid="quick-session-recovered-dismiss">Dismiss</Button>
+        </div>
+      ))}
       {noAssignments && <EmptyState icon={Dumbbell} title="No training assigned" />}
       {assigned.map((p) => {
         const assignment = (p.active_assignments || []).find((row) => row.client?.id === clientId);
@@ -1223,10 +1310,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         );
       })}
       {activeWorkouts.map((assignment) => (
-        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} onEdit={openCopyEditor} onSaveTemplate={(workout) => setTemplateTarget({ kind: 'workout', id: workout.id, name: `${workout.name} (variation)`, parent: workoutTemplateParent(workout), label: 'workout day' })} />
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} onEdit={openCopyEditor} onSaveTemplate={(workout) => setTemplateTarget({ kind: 'workout', id: workout.id, name: `${workout.name} (variation)`, parent: workoutTemplateParent(workout), label: 'workout day' })} onSaveQuickToLibrary={saveQuickToLibrary} />
       ))}
       {datedWorkouts.map((assignment) => (
-        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} onEdit={openCopyEditor} onSaveTemplate={(workout) => setTemplateTarget({ kind: 'workout', id: workout.id, name: `${workout.name} (variation)`, parent: workoutTemplateParent(workout), label: 'workout day' })} />
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} onEdit={openCopyEditor} onSaveTemplate={(workout) => setTemplateTarget({ kind: 'workout', id: workout.id, name: `${workout.name} (variation)`, parent: workoutTemplateParent(workout), label: 'workout day' })} onSaveQuickToLibrary={saveQuickToLibrary} />
       ))}
       <SaveTemplateDialog
         open={Boolean(templateTarget)}
@@ -1253,7 +1340,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         <h3 className="font-display text-lg font-semibold">Workout history</h3>
         {workoutHistory.length === 0 ? <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">No completed workouts yet.</p> : workoutHistory.map((log) => (
           <Link key={log.id} to={`/coach/workouts/${log.id}`} className="flex min-h-14 items-center justify-between rounded-md border border-border bg-card/60 px-4 py-3 hover:bg-card">
-            <span><span className="block font-medium">{log.workout_name}</span><span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)}</span></span>
+            <span><span className="block font-medium">{log.workout_name}</span>{isQuickSessionLog(log) && <span className="block text-xs font-medium text-primary" data-testid="coach-history-quick-session-label">Quick session</span>}<span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)}</span></span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
         ))}
@@ -1352,6 +1439,8 @@ function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
       onSaved();
     } catch (error) {
       toast.error(errMsg(error));
+      // A begun quick session is read-only now: close and refresh instead of retrying.
+      if (error?.response?.data?.code === 'quick_session_started') { setOpen(false); onSaved(); }
     } finally {
       setSaving(false);
     }
@@ -1370,8 +1459,9 @@ function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
   );
 }
 
-function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onStart, onEdit, onSaveTemplate }) {
+function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onStart, onEdit, onSaveTemplate, onSaveQuickToLibrary }) {
   const workout = assignment.workout || {};
+  const quickSession = isQuickAssignment(assignment);
   const label = assignment.assignment_mode === 'dated'
     ? `Dated: ${assignment.assigned_for ? fmtDate(assignment.assigned_for) : 'No date'}`
     : 'Active template';
@@ -1382,6 +1472,7 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
         {/* Phones: actions stack under the title and wrap, so the card never forces a sideways scroll. */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
           <div className="min-w-0">
+            {quickSession && <QuickSessionBadge className="mb-1" />}
             <p className="font-display font-semibold">{workout.name}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{label} - {(workout.exercises || []).length} exercises</p>
           </div>
@@ -1390,7 +1481,7 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
               <Button
                 size="sm" variant="secondary" className="min-h-11 rounded-lg sm:min-h-0"
                 disabled={starting === assignment.id}
-                onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })}
+                onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id }, quickSession)}
                 data-testid="coach-log-standalone-workout"
               >
                 {starting === assignment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log workout'}
@@ -1400,7 +1491,11 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
             {onEdit && workout.is_template === false && (
               <Button size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onEdit(workout)} aria-label={`Edit ${workout.name || 'workout'}`} title="Edit" data-testid="edit-client-workout-button"><Pencil aria-hidden /></Button>
             )}
-            {onSaveTemplate && (
+            {quickSession ? (
+              assignment.library_template_id
+                ? <span className="flex min-h-11 items-center px-2 text-xs text-muted-foreground sm:min-h-0" data-testid="quick-session-in-library">In studio library</span>
+                : onSaveQuickToLibrary && <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onSaveQuickToLibrary(assignment)} data-testid="quick-session-card-save-library">Save to library</Button>
+            ) : onSaveTemplate && (
               <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onSaveTemplate(workout)} data-testid="save-workout-template-button">Save as template</Button>
             )}
             <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">Unassign</Button>
