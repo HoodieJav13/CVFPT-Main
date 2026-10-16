@@ -172,7 +172,7 @@ export function LocalStillSelector({ disabled = false, onStill, onInvalidate, on
       {stillUrl && current && (
         <figure className="space-y-1">
           <img src={stillUrl} alt="Chosen still from your clip" className="aspect-video w-full max-w-sm rounded-lg border border-border/60 object-contain" data-testid="media-still-preview" />
-          <figcaption className="text-xs" data-testid="media-still-confirmed">Still at {formatMs(confirmed.timeMs)} is ready below. Only this image will be uploaded.</figcaption>
+          <figcaption className="text-xs" data-testid="media-still-confirmed">Still at {formatMs(confirmed.timeMs)} is ready to upload above. Only this image will be uploaded.</figcaption>
         </figure>
       )}
       {stale && !current && (

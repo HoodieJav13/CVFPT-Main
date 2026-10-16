@@ -103,6 +103,11 @@ test('a still from a local clip uploads only the exported image; the clip is not
   await expect(editor.getByTestId('media-still-preview')).toBeVisible();
   await expect(editor.getByTestId('media-still-confirmed')).toContainText('0:01.0');
   await expect(editor.getByTestId('media-upload-preset-source_image')).toContainText(/still-0m01\.0s/);
+  // The confirmation points to where the still actually waits: the upload above.
+  await expect(editor.getByTestId('media-still-confirmed')).toContainText(/above/);
+  const preset = await editor.getByTestId('media-upload-preset-source_image').boundingBox();
+  const selector = await editor.getByTestId('media-still-selector').boundingBox();
+  expect(preset.y).toBeLessThan(selector.y);
   await editor.getByTestId('media-rights-confirm-source_image').click();
   await editor.getByTestId('media-upload-start-source_image').click();
   await expect(editor.getByTestId('media-source-facts')).toContainText('Image');
