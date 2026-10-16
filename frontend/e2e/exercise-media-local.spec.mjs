@@ -273,3 +273,61 @@ test('coach: poster and end still crop their saved frames after scrubbing; publi
   }
   await approveAndPublish(page, editor);
 });
+
+// R2 follow-up through the real upload → FFmpeg worker path: changing the
+// saved poster time while its crop is open reloads the NEW frame before any
+// crop edit; the published poster shows the new phase (the old phase is the
+// negative control).
+const CHANGE_EVIDENCE = path.join(ROOT, '.exercise-media-local/evidence/r2-followup/real-selection-change.json');
+
+test('coach: changing the saved poster time with the crop open reloads that frame; the published poster shows the new phase', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await signIn(page, 'coach-a');
+  const editor = await openMedia(page, 'Synthetic Shuttle Walk');
+  await editor.getByTestId('media-confirm-identity').click();
+  await editor.getByTestId('media-new-draft').click();
+  await editor.getByTestId('media-file-source_video').setInputFiles(fixture('band-row.mp4'));
+  await editor.getByTestId('media-rights-confirm-source_video').click();
+  await editor.getByTestId('media-upload-start-source_video').click();
+  await expect(editor.getByTestId('media-source-facts')).toContainText('Video 1280×720');
+  const video = editor.getByTestId('video-selection-video');
+  await expect.poll(() => video.evaluate((el) => el.readyState)).toBeGreaterThanOrEqual(1);
+  const posterField = editor.getByLabel('Poster', { exact: true });
+  await posterField.fill('0.5'); await posterField.press('Enter');
+  await editor.getByRole('button', { name: 'Crop poster', exact: true }).click();
+  const img = editor.getByTestId('crop-poster').locator('img');
+  await expect(img).toHaveAttribute('src', /^data:image\/jpeg/);
+  await expect(editor.getByTestId('video-frame-target')).toContainText('0:00.5');
+  const oldView = await img.getAttribute('src');
+  // Change the saved time while the crop is open.
+  await posterField.fill('3.5'); await posterField.press('Enter');
+  await expect(editor.getByTestId('video-frame-target')).toContainText('0:03.5');
+  await expect.poll(async () => (await img.getAttribute('src').catch(() => null)) || '').toMatch(/^data:image\/jpeg/);
+  await expect.poll(async () => (await img.getAttribute('src')) !== oldView).toBe(true);
+  const area = editor.getByTestId('crop-poster-area');
+  await area.focus();
+  for (let i = 0; i < 4; i += 1) await page.keyboard.press('+');
+  await page.keyboard.press('Shift+ArrowRight');
+  const readout = await editor.getByTestId('crop-poster-readout').textContent();
+  const [, width, height, x, y] = readout.match(/(\d+)×(\d+) px from \((\d+), (\d+)\)/).map(Number);
+  const viewSrc = await img.getAttribute('src');
+  await editor.getByTestId('video-frame-crop').getByRole('button', { name: 'Done' }).click();
+  await editor.getByTestId('media-alt-text').fill('Synthetic shuttle walk start still');
+  await editor.getByTestId('media-save').click();
+  await expect(editor.getByTestId('media-process')).toBeEnabled();
+  await editor.getByTestId('media-process').click();
+  await expect(editor.getByTestId('media-draft-editor')).toHaveAttribute('data-status', 'ready', { timeout: 180_000 });
+  const review = editor.getByTestId('media-derivative-review');
+  await expect.poll(() => review.getByTestId('review-poster').evaluate((el) => el.complete && el.naturalWidth)).toBe(640);
+  const url = await review.getByTestId('review-poster').getAttribute('src');
+  await expect.poll(() => video.evaluate((el) => el.readyState)).toBeGreaterThanOrEqual(1);
+  const result = await compareOutput(page, { targetMs: 3500, controlMs: 500, rect: { x, y, width, height }, viewSrc, url });
+  fs.mkdirSync(path.dirname(CHANGE_EVIDENCE), { recursive: true });
+  fs.writeFileSync(CHANGE_EVIDENCE, `${JSON.stringify({ fixture: 'band-row.mp4', sequence: 'Crop poster at saved 0.5 s, then (crop still open) saved time changed to 3.5 s, keyboard crop, save, process', tolerance: 'mean absolute RGB difference at 64x36 against the generated 640x360 JPEG; coach view and new saved-time frame < 12 and at least 2x below the old-phase control', poster: { old_saved_ms: 500, new_saved_ms: 3500, crop_px: { x, y, width, height }, ...result, scrubControl_is_old_phase_500ms: result.scrubControl } }, null, 2)}\n`);
+  expect(result.output).toMatchObject({ width: 640, height: 360 });
+  expect(result.selected).toBeLessThan(12);
+  expect(result.coachView).toBeLessThan(12);
+  expect(result.selected * 2).toBeLessThan(result.scrubControl);
+  expect(result.coachView * 2).toBeLessThan(result.scrubControl);
+  await approveAndPublish(page, editor);
+});
