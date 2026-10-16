@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffe
 import { useBlocker } from 'react-router';
 
 const Context = createContext(null);
+const snapshot = (form) => JSON.stringify(form, (key, value) => key === '_uid' ? undefined : value);
 const WARNING = 'You have unsaved workout changes. Discard them and continue?';
 export function UnsavedChangesProvider({ children }) {
   const entries = useRef(new Map());
@@ -30,15 +31,15 @@ export function useUnsavedChanges(dirty) {
   useLayoutEffect(() => register(id, dirty), [id, dirty, register]);
 }
 export function useFormChanges(form, identity, active = true) {
-  const [baseline, setBaseline] = useState(() => JSON.stringify(form));
+  const [baseline, setBaseline] = useState(() => snapshot(form));
   const lastIdentity = useRef(identity);
   // Reset synchronously when selecting another editor; never treat loaded data as an edit.
   if (lastIdentity.current !== identity) {
     lastIdentity.current = identity;
-    setBaseline(JSON.stringify(form));
+    setBaseline(snapshot(form));
   }
-  const dirty = active && baseline !== JSON.stringify(form);
+  const dirty = active && baseline !== snapshot(form);
   useUnsavedChanges(dirty);
-  return { dirty, markSaved: (saved = form) => setBaseline(JSON.stringify(saved)),
+  return { dirty, markSaved: (saved = form) => setBaseline(snapshot(saved)),
     confirmDiscard: () => !dirty || window.confirm(WARNING) };
 }

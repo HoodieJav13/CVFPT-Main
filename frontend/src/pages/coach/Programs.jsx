@@ -1,3 +1,5 @@
+import { exerciseSummary } from '@/lib/builderMetrics';
+import { ExerciseRemovalNotice, useExerciseRemoval } from '@/components/training/ExerciseRemoval';
 import { ExerciseCatalogAction, useBuilderCatalog } from '@/components/training/ExerciseCatalogAction';
 import { useDiscardChanges, useFormChanges } from '@/context/UnsavedChangesContext';
 import { matchCatalogExercise } from '@/lib/trainingLibrary';
@@ -133,6 +135,7 @@ export default function Programs() {
 
   // A save response is the freshest copy of that workout: show it right away
   // instead of waiting for the list reload (keeps list-derived fields).
+  const catalogCreated = useCallback((item) => setLibrary((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item]), []);
   const mergeSavedWorkout = useCallback((saved) => {
     if (!saved?.id) return;
     setWorkouts((current) => (current || []).map((workout) => (workout.id === saved.id ? { ...workout, ...saved } : workout)));
@@ -156,8 +159,8 @@ export default function Programs() {
           <TabsTrigger className="min-h-11" value="assignments" data-testid="training-builder-tab-assignments">Assignments</TabsTrigger>
         </TabsList>
         <TabsContent value="library"><ExerciseLibraryTab library={library} reload={load} /></TabsContent>
-        <TabsContent value="workouts"><WorkoutsTab workouts={workouts} library={pickerLibrary} reload={load} onSaved={mergeSavedWorkout} /></TabsContent>
-        <TabsContent value="programs"><StructuredProgramsTab programs={programs} workouts={workouts} library={pickerLibrary} reload={load} /></TabsContent>
+        <TabsContent value="workouts"><WorkoutsTab onCatalogCreated={catalogCreated} workouts={workouts} library={pickerLibrary} reload={load} onSaved={mergeSavedWorkout} /></TabsContent>
+        <TabsContent value="programs"><StructuredProgramsTab onCatalogCreated={catalogCreated} programs={programs} workouts={workouts} library={pickerLibrary} reload={load} /></TabsContent>
         <TabsContent value="assignments"><AssignmentsTab programs={programs} workouts={workouts} clients={clients} reload={load} /></TabsContent>
       </Tabs>
     </div>
@@ -407,7 +410,7 @@ export function workoutToForm(workout) {
   };
 }
 
-function WorkoutsTab({ workouts, library, reload, onSaved }) {
+function WorkoutsTab({ workouts, library, reload, onSaved, onCatalogCreated }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -613,7 +616,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
                   </div>
                 )}
               </div>
-              <WorkoutFormFields form={form} setForm={setForm} library={library} saving={saving} onSubmit={save} />
+              <WorkoutFormFields onCatalogCreated={onCatalogCreated} key={selectionSeq.current} form={form} setForm={setForm} library={library} saving={saving} onSubmit={save} />
             </>
           )}
         </section>
@@ -664,7 +667,7 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
           </div>
         ))}
       </div>
-      <WorkoutDialog open={open} onOpenChange={setOpen} form={form} setForm={setForm} library={library} saving={saving} onSubmit={save} editing={editing} />
+      <WorkoutDialog onCatalogCreated={onCatalogCreated} open={open} onOpenChange={setOpen} form={form} setForm={setForm} library={library} saving={saving} onSubmit={save} editing={editing} />
       <LegacyLockDialog open={Boolean(lock)} message={lock?.message} busy={saving} onCancel={() => setLock(null)} onSaveVariation={saveVariationFromLock} />
     </div>
   );
@@ -695,7 +698,7 @@ function WorkoutRailRow({ workout, active, onSelect }) {
   );
 }
 
-function StructuredProgramsTab({ programs, workouts, library, reload }) {
+function StructuredProgramsTab({ programs, workouts, library, reload, onCatalogCreated }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -915,13 +918,14 @@ function StructuredProgramsTab({ programs, workouts, library, reload }) {
           </form>
         </DialogContent>
       </Dialog>
-      <ProgramImportDialog open={importOpen} onOpenChange={setImportOpen} library={library} reload={reload} />
+      <ProgramImportDialog onCatalogCreated={onCatalogCreated} open={importOpen} onOpenChange={setImportOpen} library={library} reload={reload} />
     </div>
   );
 }
 
-function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, reload }) {
-  const [library, onCatalogCreated] = useBuilderCatalog(initialLibrary);
+function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, reload, onCatalogCreated: notifyCreated }) {
+  const [library, rememberCreated] = useBuilderCatalog(initialLibrary);
+  const onCatalogCreated = (item) => { rememberCreated(item); notifyCreated?.(item); };
   const [sourceType, setSourceType] = useState('csv');
   const [file, setFile] = useState(null);
   const [pasteText, setPasteText] = useState('');
@@ -958,6 +962,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
   };
 
   const selectSource = (nextSource) => {
+    if (nextSource !== sourceType && !changes.confirmDiscard()) return;
     if (sourceType === 'paste' || nextSource === 'paste') {
       setFile(null);
       setPasteText('');
@@ -1250,7 +1255,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                                 <Trash2 className="h-4 w-4" />
                               </IconButton>
                             </div>
-                            <ExerciseCatalogAction exercise={{ ...exercise, custom_name: exercise.name }} library={library} onCreated={onCatalogCreated} disabled={saving || parsing}
+                            <ExerciseCatalogAction linkMatches={false} exercise={{ ...exercise, custom_name: exercise.name }} library={library} onCreated={onCatalogCreated} disabled={saving || parsing}
                               onChange={(fields) => setExercise(dayIndex, exerciseIndex, { name: fields.custom_name })} />
                             <ExerciseTrackingFields exercise={exercise} onChange={(fields) => setExercise(dayIndex, exerciseIndex, fields)} />
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -1409,10 +1414,12 @@ function SortableExerciseRow({ id, render }) {
 
 // Shared editor body for the mobile dialog and the desktop pane. The
 // datalist id is prefixed so both mounts can coexist in the DOM.
-function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onSubmit, idPrefix = 'workout' }) {
-  const [library, onCatalogCreated] = useBuilderCatalog(initialLibrary);
+function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onSubmit, idPrefix = 'workout', onCatalogCreated: notifyCreated }) {
+  const [library, rememberCreated] = useBuilderCatalog(initialLibrary);
+  const onCatalogCreated = (item) => { rememberCreated(item); notifyCreated?.(item); };
+  const removal = useExerciseRemoval(setForm);
   const setExercise = (index, updates) => {
-    setForm({ ...form, exercises: form.exercises.map((ex, i) => i === index ? { ...ex, ...updates } : ex) });
+    setForm((current) => ({ ...current, exercises: current.exercises.map((ex, i) => i === index ? { ...ex, ...updates } : ex) }));
   };
 
   const chooseExercise = (index, value) => {
@@ -1477,8 +1484,12 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
           <AccordionTrigger className="min-h-11 min-w-0 py-3 hover:no-underline">
             <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
               <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md bg-primary/15 px-1.5 text-xs font-semibold tabular-nums text-primary" data-testid="workout-exercise-marker">{markers[index]}</span>
-              <span className="min-w-0 flex-1 truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
-              {(exercise.sets || exercise.reps) && <Badge variant="outline" className="hidden shrink-0 tabular-nums sm:inline-flex">{setPrescription(exercise)}</Badge>}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
+                <span className="block text-xs font-normal tabular-nums text-muted-foreground" data-testid="workout-exercise-summary">
+                  {exerciseSummary(exercise)}{parseRestSeconds(exercise.rest) != null ? `${exerciseSummary(exercise) ? ' · ' : ''}${parseRestSeconds(exercise.rest)} sec rest` : ''}
+                </span>
+              </span>
             </span>
           </AccordionTrigger>
           <IconButton label={`Move ${rowName(exercise, index)} up`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" disabled={!canMoveExercise(form.exercises, index, -1)} onClick={() => setExercises(moveExercise(form.exercises, index, -1))} data-testid="workout-exercise-move-up-button"><ArrowUp className="h-4 w-4" /></IconButton>
@@ -1488,13 +1499,13 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
           <div className="flex items-center gap-2">
             <LabeledField label="Exercise name"><Input className="min-w-0" list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" /></LabeledField>
             <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
-            <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(form.exercises.filter((_, i) => i !== index))} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
+            <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => removal.remove(form.exercises, index)} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
           </div>
           <ExerciseCatalogAction exercise={exercise} library={library} onCreated={onCatalogCreated} onChange={(fields) => setExercise(index, fields)} disabled={saving} />
           <ExerciseTrackingFields exercise={exercise} onChange={(fields) => setExercise(index, fields)} />
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <LabeledField label="Sets"><Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" /></LabeledField>
-            {trackingType(exercise) === 'reps_weight' && <LabeledField label="Reps"><Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" /></LabeledField>}
+            {trackingType(exercise) === 'reps_weight' && <LabeledField label="Reps (optional)"><Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" /></LabeledField>}
             <div className="min-w-0 space-y-1">
               {/* Numeric authoring, serialized as canonical "Ns" text; the
                   DB fill trigger derives rest_seconds from it. */}
@@ -1619,6 +1630,7 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
           <Button size="touch" type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setExercises([...form.exercises, newExerciseRow()])} data-testid="workout-exercise-add-button">
             <Plus className="h-4 w-4 mr-1.5" /> Add exercise
           </Button>
+          <ExerciseRemovalNotice removal={removal} disabled={saving} />
           <div className="flex justify-end">
             <Button size="touch" disabled={saving} className="rounded-xl" data-testid="workout-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save workout'}</Button>
           </div>
@@ -1626,7 +1638,7 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
   );
 }
 
-export function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onSubmit, editing }) {
+export function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onSubmit, editing, onCatalogCreated }) {
   const changes = useFormChanges(form, `${editing?.id || "new"}:${open}`, open);
   return (
     <Dialog open={open} onOpenChange={(next) => { if (next || changes.confirmDiscard()) onOpenChange(next); }}>
@@ -1634,7 +1646,7 @@ export function WorkoutDialog({ open, onOpenChange, form, setForm, library, savi
         <DialogHeader>
           <DialogTitle>{editing ? 'Edit workout day' : 'New workout day'}</DialogTitle>
                   </DialogHeader>
-        <WorkoutFormFields form={form} setForm={setForm} library={library} saving={saving} onSubmit={onSubmit} idPrefix="workout-dialog" />
+        <WorkoutFormFields key={`${editing?.id || "new"}:${open}`} onCatalogCreated={onCatalogCreated} form={form} setForm={setForm} library={library} saving={saving} onSubmit={onSubmit} idPrefix="workout-dialog" />
       </DialogContent>
     </Dialog>
   );

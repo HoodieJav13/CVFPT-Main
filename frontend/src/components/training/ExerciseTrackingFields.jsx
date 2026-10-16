@@ -19,7 +19,7 @@ export function ExerciseTrackingFields({ exercise, onChange }) {
       </label>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => (
-          <WorkoutMetricInput key={metric} metric={metric} label={`Target ${metric}`} value={exercise[`${metric}_value`]}
+          <WorkoutMetricInput allowConversion key={metric} metric={metric} label={`Target ${metric}`} value={exercise[`${metric}_value`]}
             unit={exercise[`${metric}_unit`]} placeholder="Optional target"
             onValueChange={(value) => onChange({ [`${metric}_value`]: value, [`${metric}_unit`]: value === '' ? null : (exercise[`${metric}_unit`] || (metric === 'duration' ? 's' : 'm')) })}
             onUnitChange={(unit) => onChange({ [`${metric}_unit`]: unit })} />

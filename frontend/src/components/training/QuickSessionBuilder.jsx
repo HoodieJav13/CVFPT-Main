@@ -1,7 +1,8 @@
+import { ExerciseRemovalNotice, useExerciseRemoval } from './ExerciseRemoval';
 import { ExerciseCatalogAction, useBuilderCatalog } from './ExerciseCatalogAction';
 import { matchCatalogExercise } from '@/lib/trainingLibrary';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Copy, Loader2, Plus, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -126,8 +127,10 @@ function validationError(form) {
   return null;
 }
 
-export function QuickSessionBuilder({ form, setForm, library: initialLibrary, state, onSave, disabled = false }) {
-  const [library, onCatalogCreated] = useBuilderCatalog(initialLibrary);
+export function QuickSessionBuilder({ form, setForm, library: initialLibrary, state, onSave, disabled = false, onCatalogCreated: notifyCreated }) {
+  const [library, rememberCreated] = useBuilderCatalog(initialLibrary);
+  const onCatalogCreated = (item) => { rememberCreated(item); notifyCreated?.(item); };
+  const removal = useExerciseRemoval(setForm);
   const [more, setMore] = useState({});
   const [libraryToo, setLibraryToo] = useState(false);
   const [touched, setTouched] = useState(false);
@@ -175,8 +178,23 @@ export function QuickSessionBuilder({ form, setForm, library: initialLibrary, st
                 )}</Field>
                 <IconButton label={`Remove exercise ${index + 1}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground"
                   disabled={locked || form.exercises.length === 1}
-                  onClick={() => setForm({ ...form, exercises: form.exercises.filter((_, i) => i !== index) })}
+                  onClick={() => removal.remove(form.exercises, index)}
                   data-testid="quick-session-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                <IconButton type="button" label={`Duplicate exercise ${index + 1}`} size="touchIcon" variant="ghost" disabled={locked}
+                  onClick={() => setForm((current) => {
+                    const { _uid, ...fields } = current.exercises[index];
+                    const exercises = [...current.exercises]; exercises.splice(index + 1, 0, newQuickRow(fields));
+                    return { ...current, exercises };
+                  })}><Copy className="h-4 w-4" /></IconButton>
+                {[-1, 1].map((direction) => <IconButton key={direction} type="button" label={`Move exercise ${index + 1} ${direction < 0 ? 'up' : 'down'}`} size="touchIcon" variant="ghost"
+                  disabled={locked || index + direction < 0 || index + direction >= form.exercises.length}
+                  onClick={() => setForm((current) => {
+                    const exercises = [...current.exercises];
+                    [exercises[index], exercises[index + direction]] = [exercises[index + direction], exercises[index]];
+                    return { ...current, exercises };
+                  })}>{direction < 0 ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}</IconButton>)}
               </div>
               <ExerciseCatalogAction exercise={row} library={library} onCreated={onCatalogCreated} disabled={locked} onChange={(fields) => setRow(index, fields)} />
               <fieldset className="min-w-0" disabled={locked}>
@@ -184,7 +202,7 @@ export function QuickSessionBuilder({ form, setForm, library: initialLibrary, st
               </fieldset>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <Field label="Sets">{(id) => <Input id={id} className="min-h-11" inputMode="numeric" value={row.sets} disabled={locked} onChange={(e) => setRow(index, { sets: e.target.value })} data-testid="quick-session-sets-input" />}</Field>
-                {trackingType(row) === 'reps_weight' && <Field label="Reps">{(id) => <Input id={id} className="min-h-11" value={row.reps} disabled={locked} onChange={(e) => setRow(index, { reps: e.target.value })} data-testid="quick-session-reps-input" />}</Field>}
+                {trackingType(row) === 'reps_weight' && <Field label="Reps (optional)">{(id) => <Input id={id} className="min-h-11" value={row.reps} disabled={locked} onChange={(e) => setRow(index, { reps: e.target.value })} data-testid="quick-session-reps-input" />}</Field>}
                 <Field label="Weight (optional)">{(id) => <Input id={id} className="min-h-11" type="number" min="0" step="0.5" inputMode="decimal" value={row.default_load_value} disabled={locked} onChange={(e) => setRow(index, { default_load_value: e.target.value })} data-testid="quick-session-weight-input" />}</Field>
                 <Field label="Unit">{(id) => (
                   <select id={id} className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm" value={row.default_load_unit} disabled={locked}
@@ -219,6 +237,7 @@ export function QuickSessionBuilder({ form, setForm, library: initialLibrary, st
         onClick={() => setForm({ ...form, exercises: [...form.exercises, newQuickRow()] })} data-testid="quick-session-add-exercise-button">
         <Plus className="mr-1.5 h-4 w-4" /> Add exercise
       </Button>
+      <ExerciseRemovalNotice removal={removal} disabled={locked} />
       <Field label="Session notes">{(id) => (
         <Textarea id={id} rows={2} value={form.notes} disabled={locked} onChange={(e) => setForm({ ...form, notes: e.target.value })} data-testid="quick-session-notes-input" />
       )}</Field>

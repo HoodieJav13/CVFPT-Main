@@ -903,7 +903,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
     onStarted: (log) => { if (log?.id) navigate(`/coach/workouts/${log.id}/track`); },
   });
   const [quickLibrary, setQuickLibrary] = useState(null);
-  const quickChanges = useFormChanges(quick.form, `${clientId}:${assignOpen}`, assignOpen && assignmentType === 'quick' && ['editing', 'rejected'].includes(quick.state.phase));
+  const quickChanges = useFormChanges(quick.form, clientId, assignOpen && assignmentType === 'quick' && ['editing', 'rejected'].includes(quick.state.phase));
   const savedQuickId = quick.state.assignment?.id || null;
   const recoveredCount = quick.state.recovered.length;
 
@@ -1155,7 +1155,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   return (
     <div className="space-y-3 mt-1">
       <div className="flex justify-end">
-        <Dialog open={assignOpen} onOpenChange={(next) => { if (next || quickChanges.confirmDiscard()) setAssignOpen(next); }}>
+        <Dialog open={assignOpen} onOpenChange={(next) => { if (next || quickChanges.confirmDiscard()) { if (!next && quickChanges.dirty) quick.setForm(newQuickForm()); setAssignOpen(next); } }}>
           <DialogTrigger asChild>
             <Button size="sm" className="rounded-xl" data-testid="assign-program-button">
               <Plus className="h-4 w-4 mr-1.5" /> Assign training
@@ -1166,7 +1166,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
               <DialogTitle>Assign training</DialogTitle>
             </DialogHeader>
             <form onSubmit={assign} className="space-y-4">
-              <Select value={assignmentType} onValueChange={(value) => { if (value !== assignmentType && !quickChanges.confirmDiscard()) return; setAssignmentType(value); setExerciseLoads({}); }}>
+              <Select value={assignmentType} onValueChange={(value) => { if (value !== assignmentType && !quickChanges.confirmDiscard()) return; if (value !== assignmentType && quickChanges.dirty) quick.setForm(newQuickForm()); setAssignmentType(value); setExerciseLoads({}); }}>
                 <SelectTrigger className="rounded-xl" data-testid="client-assignment-type-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="program">Long-term program</SelectItem>
@@ -1183,6 +1183,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                       <>
                         <QuickSessionRecovery state={quick.state} controller={quick.controller} />
                         <QuickSessionBuilder
+                          onCatalogCreated={(item) => setQuickLibrary((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item])}
                           form={quick.form}
                           setForm={quick.setForm}
                           library={quickLibrary.filter((exercise) => !exercise.hidden)}
@@ -1328,6 +1329,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       />
       {copyEditor && (
         <WorkoutDialog
+          onCatalogCreated={(item) => setCopyLibrary((current) => (current || []).some((entry) => entry.id === item.id) ? current : [...(current || []), item])}
           open
           onOpenChange={(next) => { if (!next) setCopyEditor(null); }}
           form={copyEditor.form}
