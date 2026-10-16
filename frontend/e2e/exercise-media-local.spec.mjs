@@ -172,3 +172,104 @@ test('coach B sees the current guide but cannot withdraw or silently replace coa
   await expect(editor.getByTestId('media-withdraw')).toHaveCount(0);
   await expect(editor.getByTestId('media-draft-chip')).toHaveCount(0, { timeout: 5_000 });
 });
+
+// P2 correction R2 through the real upload → FFmpeg worker path: the poster and
+// end still are cropped on their SAVED frames even after unrelated scrubbing,
+// and the generated outputs show that same movement phase (compared at 64×36
+// with a JPEG/scaling tolerance; the scrub-position frame is the control).
+const FRAME_EVIDENCE = path.join(ROOT, '.exercise-media-local/evidence/p2-correction/real-frame-selection.json');
+
+async function cropOnTarget(page, editor, { button, testId, label }) {
+  await editor.getByRole('button', { name: button, exact: true }).click();
+  const img = editor.getByTestId(testId).locator('img');
+  await expect(img).toHaveAttribute('src', /^data:image\/jpeg/);
+  await expect(editor.getByTestId('video-frame-target')).toContainText(label);
+  const area = editor.getByTestId(`${testId}-area`);
+  await area.focus();
+  for (let i = 0; i < 4; i += 1) await page.keyboard.press('+');
+  await page.keyboard.press('Shift+ArrowLeft');
+  const readout = await editor.getByTestId(`${testId}-readout`).textContent();
+  const [, width, height, x, y] = readout.match(/(\d+)×(\d+) px from \((\d+), (\d+)\)/).map(Number);
+  const viewSrc = await img.getAttribute('src'); // the frame the coach is cropping
+  await editor.getByTestId('video-frame-crop').getByRole('button', { name: 'Done' }).click();
+  return { rect: { x, y, width, height }, viewSrc };
+}
+
+function compareOutput(page, { targetMs, controlMs, rect, viewSrc, url }) {
+  return page.evaluate(async (args) => {
+    const video = document.querySelector('[data-testid="video-selection-video"]');
+    const W = 64; const H = 36;
+    const toPixels = (source, sx, sy, sw, sh) => {
+      const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+      const g = canvas.getContext('2d'); g.imageSmoothingQuality = 'high';
+      g.drawImage(source, sx, sy, sw, sh, 0, 0, W, H);
+      return g.getImageData(0, 0, W, H).data;
+    };
+    const frame = async (ms) => {
+      await new Promise((resolve) => { video.addEventListener('seeked', resolve, { once: true }); video.currentTime = ms / 1000; });
+      return toPixels(video, args.rect.x, args.rect.y, args.rect.width, args.rect.height);
+    };
+    const blob = await (await fetch(args.url)).blob();
+    const bitmap = await createImageBitmap(blob);
+    const output = toPixels(bitmap, 0, 0, bitmap.width, bitmap.height);
+    const meanDiff = (pixels) => {
+      let sum = 0; let n = 0;
+      for (let i = 0; i < pixels.length; i += 4) { for (let c = 0; c < 3; c += 1) { sum += Math.abs(pixels[i + c] - output[i + c]); n += 1; } }
+      return Math.round((sum / n) * 100) / 100;
+    };
+    const view = new Image();
+    view.src = args.viewSrc;
+    await view.decode();
+    const coachView = meanDiff(toPixels(view, args.rect.x, args.rect.y, args.rect.width, args.rect.height));
+    const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))).map((b) => b.toString(16).padStart(2, '0')).join('');
+    return { coachView, selected: meanDiff(await frame(args.targetMs)), scrubControl: meanDiff(await frame(args.controlMs)), output: { width: bitmap.width, height: bitmap.height, bytes: blob.size, sha256: digest } };
+  }, { targetMs, controlMs, rect, viewSrc, url });
+}
+
+test('coach: poster and end still crop their saved frames after scrubbing; published outputs show the same phase', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await signIn(page, 'coach-a');
+  const editor = await openMedia(page, 'Synthetic Wall Sit (no media)');
+  await editor.getByTestId('media-confirm-identity').click();
+  await editor.getByTestId('media-new-draft').click();
+  await editor.getByTestId('media-file-source_video').setInputFiles(fixture('band-row.mp4'));
+  await editor.getByTestId('media-rights-confirm-source_video').click();
+  await editor.getByTestId('media-upload-start-source_video').click();
+  await expect(editor.getByTestId('media-source-facts')).toContainText('Video 1280×720');
+  const video = editor.getByTestId('video-selection-video');
+  await expect.poll(() => video.evaluate((el) => el.readyState)).toBeGreaterThanOrEqual(1);
+  const exact = async (label, seconds) => { const field = editor.getByLabel(label, { exact: true }); await field.fill(seconds); await field.press('Enter'); };
+  await exact('Poster', '0.5');
+  await exact('End still', '5');
+  const scrub = async (ms) => {
+    await editor.getByTestId('video-selection-scrub').fill(String(ms));
+    await expect.poll(() => video.evaluate((el, target) => !el.seeking && Math.abs(el.currentTime * 1000 - target) < 50 && el.readyState >= 2, ms)).toBe(true);
+  };
+  await scrub(4000);
+  const posterCrop = await cropOnTarget(page, editor, { button: 'Crop poster', testId: 'crop-poster', label: '0:00.5' });
+  await scrub(1000);
+  const endCrop = await cropOnTarget(page, editor, { button: 'Crop end still', testId: 'crop-end', label: '0:05.0' });
+  await editor.getByTestId('media-alt-text').fill('Synthetic wall sit start still');
+  await editor.getByLabel('End still alt text').fill('Synthetic wall sit end still');
+  await editor.getByTestId('media-save').click();
+  await expect(editor.getByTestId('media-process')).toBeEnabled();
+  await editor.getByTestId('media-process').click();
+  await expect(editor.getByTestId('media-draft-editor')).toHaveAttribute('data-status', 'ready', { timeout: 180_000 });
+  const review = editor.getByTestId('media-derivative-review');
+  await expect.poll(() => review.getByTestId('review-poster').evaluate((img) => img.complete && img.naturalWidth)).toBe(640);
+  const posterUrl = await review.getByTestId('review-poster').getAttribute('src');
+  const endUrl = await review.getByRole('img', { name: 'Synthetic wall sit end still' }).getAttribute('src');
+  await expect.poll(() => video.evaluate((el) => el.readyState)).toBeGreaterThanOrEqual(1);
+  const poster = await compareOutput(page, { targetMs: 500, controlMs: 4000, ...posterCrop, url: posterUrl });
+  const end = await compareOutput(page, { targetMs: 5000, controlMs: 1000, ...endCrop, url: endUrl });
+  fs.mkdirSync(path.dirname(FRAME_EVIDENCE), { recursive: true });
+  fs.writeFileSync(FRAME_EVIDENCE, `${JSON.stringify({ fixture: 'band-row.mp4', tolerance: 'mean absolute RGB difference at 64x36 against the generated 640x360 JPEG; the coach crop view and the saved-time frame must be < 12 and at least 2x below the scrub-position control', poster: { saved_ms: 500, scrub_ms: 4000, crop_px: posterCrop.rect, ...poster }, end_still: { saved_ms: 5000, scrub_ms: 1000, crop_px: endCrop.rect, ...end } }, null, 2)}\n`);
+  for (const result of [poster, end]) {
+    expect(result.output).toMatchObject({ width: 640, height: 360 });
+    expect(result.selected).toBeLessThan(12);
+    expect(result.coachView).toBeLessThan(12);
+    expect(result.selected * 2).toBeLessThan(result.scrubControl);
+    expect(result.coachView * 2).toBeLessThan(result.scrubControl);
+  }
+  await approveAndPublish(page, editor);
+});

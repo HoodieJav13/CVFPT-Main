@@ -556,6 +556,52 @@ async function main() {
     await api('POST', `${M}/revisions/${revision.id}/archive`, { token: T['coach-a'], json: {} });
   });
 
+  await check('committed source whose file install fails: bytes kept, same-request retry finalizes the recorded key once, then processing and client reads succeed', async () => {
+    let revision = await draft(T['coach-a'], exercises.wall);
+    const file = path.join(FIXTURES, 'goblet-squat-photo.jpg');
+    const bytes = fs.readFileSync(file);
+    const requestId = randomUUID();
+    const sourcesDir = path.join(mediaRoot, 'objects', 'sources');
+    fs.mkdirSync(sourcesDir, { recursive: true });
+    // Real filesystem fault after the database attach commits: the object
+    // directory refuses the install (no code switch, test-owned media root).
+    fs.chmodSync(sourcesDir, 0o500);
+    let failed;
+    try { failed = await upload(T['coach-a'], revision, 'source_image', file, { request_id: requestId }); } finally { fs.chmodSync(sourcesDir, 0o700); }
+    assert.equal(failed.status, 500, `install failure is not success: ${JSON.stringify(failed.body)}`);
+    const recorded = sql(`select id || '|' || storage_key || '|' || sha256 || '|' || bytes from public.exercise_media_assets where revision_id = '${revision.id}' and role = 'source_image' and not archived`).split('|');
+    assert.equal(recorded.length, 4, 'the attachment committed in SQL');
+    const [assetId, key, recordedSha, recordedBytes] = recorded;
+    assert.equal(recordedSha, sha(bytes)); assert.equal(Number(recordedBytes), bytes.length);
+    assert.equal(fs.existsSync(path.join(mediaRoot, 'objects', key)), false, 'recorded file not installed yet');
+    assert.ok(fs.existsSync(path.join(quarantine, `${assetId}.part`)), 'validated bytes kept under the recorded asset id');
+    const versionAfterAttach = Number(sql(`select version from public.exercise_media_revisions where id = '${revision.id}'`));
+    assert.equal(versionAfterAttach, revision.version + 1);
+    // Same request id, same bytes: finishes the ORIGINAL recorded asset/key.
+    const retry = await upload(T['coach-a'], revision, 'source_image', file, { request_id: requestId });
+    assert.equal(retry.status, 200, `retry ${JSON.stringify(retry.body)}`);
+    assert.equal(retry.body.replayed, true);
+    assert.equal(sha(fs.readFileSync(path.join(mediaRoot, 'objects', key))), recordedSha, 'recorded key holds the recorded bytes');
+    assert.equal(sql(`select count(*) from public.exercise_media_assets where revision_id = '${revision.id}'`), '1', 'one source record');
+    assert.equal(Number(sql(`select version from public.exercise_media_revisions where id = '${revision.id}'`)), versionAfterAttach, 'replay does not advance the draft');
+    assert.ok(quarantineEmpty(), 'no staged copies left behind');
+    // Processing, review, publication and a client read use the recorded key.
+    revision = await patch(T['coach-a'], retry.body.revision, { alt_text: 'Synthetic wall sit photo', poster_crop: FULL });
+    const ready = await processAndWait(T['coach-a'], revision);
+    assert.equal(ready.status, 'ready', ready.failure_code);
+    const currentVersion = Number(sql(`select coalesce(max(version), 0) from public.exercise_media_current where exercise_library_id = '${exercises.wall}'`));
+    await reviewAndPublish(T['coach-a'], ready, currentVersion);
+    const log2 = sql(`select id from public.workout_logs where client_id = '${IDENTITIES['client-2'].profile}' and status = 'active'`);
+    const wall = exerciseOf((await api('GET', `/api/workout-logs/${log2}`, { token: T['client-2'] })).body, 'wall');
+    assert.equal(wall.media.revision_id, ready.id);
+    const link = (await links(T['client-2'], { type: 'workout_log', id: log2 }, [wall.media.poster.asset_id])).body.links[0].url;
+    const poster = await api('GET', link);
+    assert.equal(poster.status, 200); assert.equal(poster.headers.get('content-type'), 'image/jpeg');
+    // Withdraw again: later cases rely on the wall sit having no guide.
+    const withdrawn = await api('POST', `${M}/revisions/${ready.id}/archive`, { token: T['coach-a'], json: { expected_current_version: currentVersion + 1 } });
+    assert.equal(withdrawn.status, 200, `withdraw ${JSON.stringify(withdrawn.body)}`);
+  });
+
   await check('media lookup failure never blocks reading, editing or completing a workout', async () => {
     const log2 = sql(`select id from public.workout_logs where client_id = '${IDENTITIES['client-2'].profile}' and status = 'active'`);
     sql('revoke execute on function public.exercise_media_current_bundle(uuid[]) from service_role');
