@@ -39,6 +39,8 @@ const { extractPdfText } = require('../lib/pdfText');
 const { normalizeQuickSessionCreate, quickSessionHash, trackingExercises } = require('../lib/quickSessions');
 const { annotateQuickCompletion, quickCompletionFlags } = require('../lib/quickSessionReads');
 const { todayDateInTz } = require('../utils/time');
+const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
+const { unsafeExternalVideoUrls, UNSAFE_MESSAGE } = require('../lib/externalVideo');
 const {
   generateLogSheetPdf,
   generateProgramPdf,
@@ -403,6 +405,7 @@ router.post('/exercise-library', requireCoach, async (req, res) => {
   try {
     const { name, category, equipment, primary_muscle, secondary_muscles, video_url, notes } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Exercise name is required' });
+    if (unsafeExternalVideoUrls([{ video_url }]).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
     const { data, error } = await supabaseAdmin.from('exercise_library').insert({
       name: String(name).trim(), category: category || null, equipment: equipment || null,
       primary_muscle: primary_muscle || null, secondary_muscles: secondary_muscles || null,
@@ -420,6 +423,8 @@ router.post('/exercise-library/import', requireCoach, libraryImportLimiter, asyn
   try {
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
     if (rows.length > 500) return res.status(413).json({ error: 'Exercise imports are limited to 500 rows' });
+    const unsafeRows = unsafeExternalVideoUrls(rows);
+    if (unsafeRows.length) return res.status(400).json({ error: `${UNSAFE_MESSAGE} Check row ${unsafeRows.map((index) => index + 1).join(', ')}.` });
     const cleaned = rows
       .filter((row) => row.name && String(row.name).trim())
       .map((row) => ({
@@ -450,6 +455,14 @@ router.put('/exercise-library/:id', requireCoach, async (req, res) => {
     for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k] || null;
     if ('hidden' in (req.body || {})) updates.hidden = req.body.hidden === true;
     if (updates.name !== undefined && !String(updates.name).trim()) return res.status(400).json({ error: 'Exercise name is required' });
+    if ('video_url' in updates && unsafeExternalVideoUrls([{ video_url: updates.video_url }]).length) {
+      // Only a NEW unsafe value is refused; re-saving the stored legacy value is not.
+      const { data: existing, error: existingError } = await supabaseAdmin.from('exercise_library').select('id, video_url').eq('id', req.params.id).maybeSingle();
+      if (existingError) throw existingError;
+      if (unsafeExternalVideoUrls([{ id: req.params.id, video_url: updates.video_url }], new Map([[req.params.id, existing?.video_url]])).length) {
+        return res.status(400).json({ error: UNSAFE_MESSAGE });
+      }
+    }
     const { data, error } = await supabaseAdmin.from('exercise_library').update(updates)
       .eq('id', req.params.id).eq('archived', false).select().maybeSingle();
     if (error) throw error;
@@ -489,6 +502,7 @@ router.post('/workouts', requireCoach, async (req, res) => {
   try {
     const { name, description, goal, exercises } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Workout name is required' });
+    if (unsafeExternalVideoUrls(exercises).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
     const hiddenPicked = await newHiddenLibraryExercises(exercises);
     if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
     // Templates are shared, so the creator is always recorded as the author.
@@ -528,6 +542,9 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
     const body = req.body || {};
     const name = 'name' in body ? String(body.name || '').trim() : workout.name;
     if (!name) return res.status(400).json({ error: 'Workout name is required' });
+    if (unsafeExternalVideoUrls(body.exercises, new Map((workout.exercises || []).map((row) => [row.id, row.video_url]))).length) {
+      return res.status(400).json({ error: UNSAFE_MESSAGE });
+    }
     const hiddenPicked = await newHiddenLibraryExercises(body.exercises, workout);
     if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
     const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
@@ -676,6 +693,8 @@ router.post('/import/commit', requireCoach, programCommitLimiter, async (req, re
   try {
     const validation = validateDraft(req.body?.draft || req.body);
     if (!validation.valid) return res.status(422).json({ error: 'Fix import draft errors before saving.', errors: validation.errors, draft: validation.draft });
+    const importedExercises = validation.draft.days.flatMap((day) => day.exercises || []);
+    if (unsafeExternalVideoUrls(importedExercises).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
     const source = sourceForImport(validation.draft.import_meta.source_type);
     const { data, error } = await supabaseAdmin.rpc('commit_program_import', {
       p_coach_id: req.user.coach.id,
@@ -1090,6 +1109,7 @@ const QUICK_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
 
 router.post('/quick-sessions', requireCoach, async (req, res) => {
   let normalized;
+  if (unsafeExternalVideoUrls(req.body?.exercises).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
   try {
     normalized = normalizeQuickSessionCreate(req.body, { today: todayDateInTz() });
   } catch (e) {
@@ -1166,6 +1186,18 @@ router.post('/quick-sessions/:assignmentId/save-to-library', requireCoach, async
   }
 });
 
+// Current exercise guides for every assigned exercise in one batched lookup.
+// Serialized rows already passed the client allowlist; media is its own DTO.
+async function withAssignedExerciseMedia(programs, workouts) {
+  const lists = [
+    ...programs.flatMap((assignment) => (assignment.program?.days || []).map((day) => day.workout).filter(Boolean)),
+    ...workouts.map((assignment) => assignment.workout).filter(Boolean),
+  ];
+  const hydrated = await attachExerciseMedia(lists.flatMap((workout) => workout.exercises || []), (row) => row.exercise_library_id);
+  let index = 0;
+  for (const workout of lists) workout.exercises = (workout.exercises || []).map(() => hydrated[index++]);
+}
+
 router.get('/client/assigned', requireClient, async (req, res) => {
   try {
     const { data: programAssignments, error } = await supabaseAdmin.from('program_assignments')
@@ -1187,6 +1219,7 @@ router.get('/client/assigned', requireClient, async (req, res) => {
       const workout = await workoutWithDetails(assignment.workout_id);
       if (workout) workouts.push(clientSafeWorkoutAssignment({ ...assignment, workout, exercise_loads: await workoutAssignmentLoads(assignment.id) }));
     }
+    await withAssignedExerciseMedia(programs, workouts);
     return res.json({ programs, workouts });
   } catch (e) {
     logError('client programs error', e);

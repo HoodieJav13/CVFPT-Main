@@ -44,7 +44,8 @@ test('tracker videos: the workout link wins, then the library link, http(s) only
 test('tracker videos are resolved live for the single-log read and rendered safely', () => {
   const routes = read('backend/src/routes/workoutLogs.js');
   const tracker = read('frontend/src/pages/client/WorkoutTracker.jsx');
-  assert.match(routes, /const exercises = await withExerciseVideos\(loggedExercises \|\| \[\]\);/);
+  // The options argument only skips current-guide hydration on auth-only loads.
+  assert.match(routes, /const exercises = await withExerciseVideos\(loggedExercises \|\| \[\](, \{ media \})?\);/);
   // Read-only lookups; no writes to the snapshot.
   assert.match(routes, /from\('workout_exercises'\)\s*\.select\('id, video_url, exercise_library_id'\)/);
   assert.match(routes, /from\('exercise_library'\)\s*\.select\('id, video_url'\)/);
