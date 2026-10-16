@@ -12,7 +12,10 @@ const PROVIDER = /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|ytimg\.com
 const ID_A = 'SYNTHdemo01';
 const ID_B = 'SYNTHdemo02';
 const sets = (id) => [1, 2].map((n) => ({ id: `${id}-set-${n}`, workout_log_exercise_id: id, set_number: n, status: 'pending', set_origin: 'prescribed', actual_load_value: null, actual_load_unit: 'lb', actual_reps: null, actual_rpe: null }));
-const photo = (n) => ({ exercise_id: `lib-${n}`, revision_id: `rev-${n}`, version: 1, kind: 'photo', alt_text: `Synthetic photo ${n}`, cues: ['Synthetic cue one', 'Synthetic cue two'], poster: { asset_id: `poster-${n}`, width: 640, height: 360 }, end_frame: null, preview: null, instruction: null, transcript_available: false });
+const photo = (n, cues = ['Synthetic cue one', 'Synthetic cue two']) => ({ exercise_id: `lib-${n}`, revision_id: `rev-${n}`, version: 1, kind: 'photo', alt_text: `Synthetic photo ${n}`, cues, poster: { asset_id: `poster-${n}`, width: 640, height: 360 }, end_frame: null, preview: null, instruction: null, transcript_available: false });
+// Long unbroken fictional text: nothing may depend on the short sample name.
+const LONG_NAME = 'SyntheticUnbrokenExerciseIdentifierWithoutAnySpacesForWrappingChecks0123456789';
+const LONG_CUE = 'SyntheticCueWithoutAnySpacesThatMustWrapInsideTheDialogOnSmallPhones0123456789';
 
 function log() {
   const demo = (id) => ({ kind: 'youtube', url: `https://www.youtube.com/watch?v=${id}`, video_id: id, source: 'library', current_guide: true });
@@ -24,6 +27,8 @@ function log() {
       { id: 'ex-2', exercise_name: 'Synthetic Band Row', exercise_library_id: 'lib-2', tracking_type: 'reps_weight', prescribed_reps: '8', position: 2, sets: sets('ex-2'), media: null, demo: { kind: 'external', url: 'https://example.com/synthetic-coach-override', source: 'override', current_guide: true }, video_url: 'https://example.com/synthetic-coach-override' },
       // A tampered DTO must not become an embed: the URL is generic.
       { id: 'ex-3', exercise_name: 'Synthetic Tampered', exercise_library_id: 'lib-3', tracking_type: 'reps_weight', prescribed_reps: '8', position: 3, sets: sets('ex-3'), media: null, demo: { kind: 'youtube', url: 'https://example.com/not-youtube', video_id: ID_A, source: 'library', current_guide: true }, video_url: 'https://example.com/not-youtube' },
+      { id: 'ex-4', exercise_name: LONG_NAME, exercise_library_id: 'lib-4', tracking_type: 'reps_weight', prescribed_reps: '8', position: 4, sets: sets('ex-4'), media: photo(4, [LONG_CUE, 'Synthetic cue two']), demo: demo(ID_A), video_url: `https://youtu.be/${ID_A}` },
+      { id: 'ex-5', exercise_name: `${LONG_NAME} (no photo)`, exercise_library_id: 'lib-5', tracking_type: 'reps_weight', prescribed_reps: '8', position: 5, sets: sets('ex-5'), media: null, demo: demo(ID_B), video_url: `https://youtu.be/${ID_B}` },
     ],
   };
 }
@@ -237,6 +242,110 @@ test('a short window (200% zoom) caps the player at 60% of its height, never bel
   expect(frame.height).toBeLessThanOrEqual(Math.ceil(450 * 0.6));
   expect(frame.height).toBeGreaterThanOrEqual(200);
   expect(frame.width).toBeGreaterThanOrEqual(200);
+});
+
+// Opens a card's demo dialog and lets the entrance animation, fonts and any
+// photo decode settle. Never scrolls the dialog sideways.
+async function openSettled(page, card, { keyboard = false } = {}) {
+  const action = card.getByTestId('tracker-exercise-demo');
+  if (keyboard) { await action.focus(); await page.keyboard.press('Enter'); } else await action.click();
+  const dialog = page.getByTestId('exercise-demo-dialog');
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await dialog.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => {}))));
+  const poster = dialog.getByTestId('exercise-demo-poster');
+  if (await poster.count()) await expect.poll(() => poster.evaluate((img) => img.complete && img.naturalWidth > 0)).toBe(true);
+  return dialog;
+}
+
+// Before Play: no sideways scrolling in the dialog or the document, every part
+// inside the dialog's PADDED CONTENT box (not just the outer dialog box), no
+// clipped text, the close button inside the dialog, and an undistorted photo.
+async function expectContained(dialog) {
+  const g = await dialog.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    const left = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+    const right = box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
+    const parts = [
+      ...['exercise-demo-facade', 'exercise-demo-poster', 'exercise-demo-cues', 'exercise-demo-notice', 'exercise-demo-play', 'exercise-demo-external'].map((id) => [id, el.querySelector(`[data-testid="${id}"]`)]),
+      ['title', el.querySelector('h2')], ['description', el.querySelector('p[id]')],
+    ].filter(([, node]) => node);
+    const outside = parts.filter(([, node]) => { const r = node.getBoundingClientRect(); return r.left < left - 0.5 || r.right > right + 0.5; })
+      .map(([id, node]) => `${id} ${node.getBoundingClientRect().left.toFixed(1)}..${node.getBoundingClientRect().right.toFixed(1)}`);
+    const clipped = parts.filter(([id, node]) => id !== 'exercise-demo-poster' && node.scrollWidth > node.clientWidth + 1).map(([id]) => id);
+    const close = [...el.querySelectorAll('button')].find((button) => /close/i.test(button.textContent || ''));
+    const c = close.getBoundingClientRect();
+    const img = el.querySelector('[data-testid="exercise-demo-poster"]');
+    const ratio = img ? img.getBoundingClientRect().width / img.getBoundingClientRect().height : null;
+    return { scrollLeft: el.scrollLeft, client: el.clientWidth, scroll: el.scrollWidth, doc: document.documentElement.scrollWidth, inner: innerWidth, outside, clipped, closeInside: c.left >= box.left && c.right <= box.right, ratio, content: `${left.toFixed(1)}..${right.toFixed(1)}` };
+  });
+  expect(g.scrollLeft).toBe(0);
+  expect(g.scroll, 'no sideways scrolling inside the dialog').toBeLessThanOrEqual(g.client);
+  expect(g.doc, 'no sideways scrolling in the document').toBeLessThanOrEqual(g.inner);
+  expect(g.outside, `every part inside the padded content box ${g.content}`).toEqual([]);
+  expect(g.clipped, 'no clipped text or controls').toEqual([]);
+  expect(g.closeInside, 'Close stays inside the dialog').toBe(true);
+  if (g.ratio !== null) expect(Math.abs(g.ratio - 16 / 9), 'the photo keeps its 16:9 shape').toBeLessThan(0.02);
+  return g;
+}
+
+// Pairwise: width x photo state x name length x motion, each case once.
+for (const [label, options, index] of [
+  ['photo, 320px, reduced motion', { viewport: { width: 320, height: 740 }, reducedMotion: true }, 0],
+  ['photo, 390px, ordinary motion', { viewport: { width: 390, height: 740 } }, 0],
+  ['no photo, 320px, ordinary motion', { viewport: { width: 320, height: 740 } }, 1],
+  ['failed photo, 390px, reduced motion', { viewport: { width: 390, height: 740 }, reducedMotion: true, posterStatus: 403 }, 0],
+  ['long unbroken name and cue with photo, 320px, reduced motion', { viewport: { width: 320, height: 740 }, reducedMotion: true }, 4],
+  ['long unbroken name without photo, 390px, ordinary motion', { viewport: { width: 390, height: 740 } }, 5],
+]) {
+  test(`before Play the demo dialog fits its content width: ${label}`, async ({ page }) => {
+    const { cards, provider } = await setup(page, options);
+    const dialog = await openSettled(page, cards.nth(index));
+    if (options.posterStatus) await expect(dialog.getByTestId('exercise-demo-facade')).toContainText('Synthetic Goblet Squat');
+    await expectContained(dialog);
+    expect(provider, 'still nothing from the provider before Play').toEqual([]);
+  });
+}
+
+test('before Play at 320px, keyboard reaches Play, the fallback and Close in view; Enter plays and Escape restores the opener', async ({ page }) => {
+  const { cards } = await setup(page, { viewport: { width: 320, height: 740 }, reducedMotion: true });
+  const opener = cards.nth(0).getByTestId('tracker-exercise-demo');
+  const dialog = await openSettled(page, cards.nth(0), { keyboard: true });
+  await expectContained(dialog);
+  const stops = [];
+  for (let i = 0; i < 3; i += 1) {
+    stops.push(await page.evaluate(() => {
+      const el = document.activeElement;
+      const r = el.getBoundingClientRect();
+      return { id: el.getAttribute('data-testid') || el.textContent.trim(), inView: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight };
+    }));
+    await page.keyboard.press('Tab');
+  }
+  expect(stops.map((stop) => stop.id)).toEqual(['exercise-demo-play', 'exercise-demo-external', 'Close']);
+  expect(stops.every((stop) => stop.inView), JSON.stringify(stops)).toBe(true);
+  await expect(dialog.getByTestId('exercise-demo-play')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByTestId('exercise-demo-player')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('iframe')).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
+test('a short landscape window keeps every action reachable by vertical scrolling only', async ({ page }) => {
+  const { cards } = await setup(page, { viewport: { width: 640, height: 360 }, reducedMotion: true });
+  const dialog = await openSettled(page, cards.nth(4));
+  await expectContained(dialog);
+  for (const id of ['exercise-demo-play', 'exercise-demo-external']) {
+    const reached = await dialog.evaluate((el, testId) => {
+      const target = el.querySelector(`[data-testid="${testId}"]`);
+      el.scrollTop += Math.max(0, target.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom + 8);
+      const r = target.getBoundingClientRect();
+      const d = el.getBoundingClientRect();
+      return { scrollLeft: el.scrollLeft, visible: r.top >= d.top && r.bottom <= d.bottom && r.left >= d.left && r.right <= d.right && r.bottom <= innerHeight };
+    }, id);
+    expect(reached, id).toEqual({ scrollLeft: 0, visible: true });
+  }
 });
 
 test('320px phone: the dialog fits, the player keeps 200x200, and keyboard users can open, play and close', async ({ page }) => {
