@@ -1,0 +1,99 @@
+PR #114 P2 repair checks — 2026-10-16, local fictional fixtures only
+Baseline: 433784a42287a8d7049b8df5de4fca6a9a00bbad
+Runtime candidate: 152bc80af4aa5f1c3b4f2edba09c0b277a018922
+Evidence basis: directly verified by executor unless marked otherwise.
+
+PASS .agentic/validate-contract-version.sh .                  v1.1
+PASS bash scripts/check-boundaries.sh backend                no cross-root imports
+PASS bash scripts/check-boundaries.sh frontend               no cross-root imports
+PASS node --test scripts/prepare-test-accounts.test.mjs       10/10, mocked, no hosted access
+PASS backend/npm test                                       569/569
+PASS frontend/npm run test:unit                             135/135
+PASS frontend/npm run build                                 Vite production build; existing >500kB chunk warning
+PASS backend/npm audit --omit=dev                           0 vulnerabilities
+PASS frontend/npm audit --omit=dev                          0 vulnerabilities
+PASS backend quick-session mounted routes (reviewer)       15/15
+PASS frontend recovery controller units (executor/reviewer)  40/40
+PASS node --check frontend/e2e/quick-sessions-mocked.spec.mjs
+PASS git diff --check
+PASS bash supabase/tests/session_series/stack_guard_test.sh     18 cases
+PASS bash supabase/tests/session_series/isolation_guard_test.sh 11 cases
+PASS bash supabase/tests/quick_sessions/stack_guard_test.sh      25 cases
+
+Browser suites: repository configs with /usr/bin/chromium 151.0.7922.173,
+Playwright 1.61.1, temporary local wrapper, default single-worker/retry=0.
+These runs are equivalents of the npm scripts listed; no tracked config changed.
+Raw output: /tmp/cvfpt-final-browser-<suite>.log.
+
+PASS npm run test:e2e:quick-sessions  36/36
+PASS npm run test:e2e:series          23/23
+PASS npm run test:e2e:invites         17/17
+PASS npm run test:e2e:auth             4/4 (local mocked sessions)
+PASS npm run test:e2e:analytics        6/6 (local fixtures/collector)
+FAIL npm run test:e2e:preview         99 passed / 8 skipped / 1 failed
+     Failure: preview-critical.spec.mjs:843
+     "Same as last time keeps reps typed while history is still loading"
+     Test timeout 60s while waiting for the second start-program-workout click.
+     Snapshot remains on completed Lower Strength A after synthetic navigation.
+     Raw log: /tmp/cvfpt-final-browser-preview.log
+     Trace/context: /tmp/cvfpt-repair-browser-results-preview/
+     Classification: baseline-unrelated (INFERRED, not a baseline full-suite reproduction).
+     Reason: changed runtime surfaces are coach quick-session recovery/library UI
+     and backend HTTP hydration/archive; this test uses unchanged client workout
+     runtime/preview fixtures. Exact baseline isolated retry PASSED 1/1 (14.1s),
+     candidate isolated retry PASSED 1/1 (17.8s). A timing/navigation race is
+     inferred. The failed full run is retained, not converted into an all-pass
+     claim. No unrelated fix was made. Parent should assess this caveat before
+     publication/release; this local task does not establish a clean CI run.
+     Eight skips are existing hosted/live-auth gated cases; credentials and
+     hosted access are intentionally outside this task (not-applicable).
+
+Paired UI evidence:
+PASS exercise-library retry at 320x800 / 390x844 / 1280x900  3/3
+PASS cross-tab recovery at 320x800 / 390x844 / 1280x900      3/3
+RED baseline library error absent at all three viewports   3 expected failures
+RED baseline cross-tab status does not refresh              3 expected failures
+PASS 12 PNG dimensions/hashes, 3 runtime-source hashes and candidate commit verified
+PASS rendered comparison page, all 12 images loaded; actual pixels inspected
+     Review render: /tmp/cvfpt-repair-evidence/review-rendered.png
+     Browser plugin unavailable; repository Playwright workflow used.
+     Full viewport context preserved; no real data. HTTP500 faults intentionally
+     injected. This evidence is not comprehensive console/real-auth/SQL proof.
+
+Database suites: UNAVAILABLE
+- Repository-pinned npm Supabase CLI 2.118.0 attempts config initialization at
+  /home/agent/.supabase, which is read-only. --version fails before any DB test.
+- The same package's Go component reports version2.118.0 but lacks the required
+  start command (help exposes db/functions). The exclusively owned series
+  runner fails "unknown command start", cleans its scratch directory, and
+  starts no Docker container. Raw logs: /tmp/cvfpt-supabase-cli.log,
+  /tmp/cvfpt-supabase-go.log, /tmp/cvfpt-database-series.log.
+- Client-invite and quick-session SQL suites share this unavailable CLI startup
+  dependency and were not attempted further. No alternate CLI version, runner,
+  migration or schema was substituted. Docker itself was available and idle.
+- No SQL changed; no fresh transactional/grant/race acceptance is claimed.
+
+Independent review: no actionable findings (reviewer-reported).
+Reviewer directly reran backend routes15/15 and controller40/40 twice, checked
+runtime fixes, final added regressions, syntax and diff whitespace. Browser,
+database and deployment acceptance were outside the reviewer's own execution.
+The suggested delayed-fetch cancellation coverage was added and passes in the
+36-test browser run. Final source was reread by executor; manifest is filled.
+
+Judgment calls / deviations:
+1. Used the existing coachAssignment sanitizer, preserving intentional creator
+   and library-template visibility. Receipt fingerprint is not a credential.
+2. Recheck vanished entries through existing guarded status reads, rather than
+   interpreting key disappearance as successful or authorized completion.
+3. Reused existing error envelopes and 500 status; UUID/fingerprint/SQL unchanged.
+4. Retry/reopen loads unfinished library reads; cancel stale replies in effect
+   cleanup and preserve successful cache. No added preview control or new feature.
+5. Used installed Chromium after bundled browser CDN download returned403
+   Domain forbidden. No dependency/config version change; browser coverage is
+   Chromium-only and differs from Playwright's bundled Chromium149.
+6. Preserved the broader preview failure and unavailable SQL suites as limits;
+   no unrelated test, toolchain or feature repair. This is not release-ready.
+7. Updated the stale Quick-session status paragraph using the user-identified
+   released baseline, without inferring hosted migration/deployment receipts.
+8. No push/PR: user explicitly withheld publication pending automatic preview
+   deployment review. No hosted data/credentials, merge, production or cost action.
