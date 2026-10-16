@@ -167,3 +167,44 @@ for (const width of [320, 390]) {
     expect(await overflow()).toEqual({ scroll: 0, wide: [] });
   });
 }
+
+// Holds the canvas export until the test releases it.
+async function holdExports(page) {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.toBlob;
+    window.__exportGate = null;
+    HTMLCanvasElement.prototype.toBlob = function (callback, ...rest) {
+      if (!window.__holdExport) return original.call(this, callback, ...rest);
+      return original.call(this, (blob) => { window.__exportGate = () => callback(blob); }, ...rest);
+    };
+  });
+}
+async function startHeldExport(page, editor) {
+  await chooseClipAndTime(page, editor, 1);
+  await page.evaluate(() => { window.__holdExport = true; });
+  await editor.getByTestId('media-still-use').click();
+  await expect.poll(() => page.evaluate(() => typeof window.__exportGate)).toBe('function');
+}
+
+test('while a frame exports, the clip cannot be swapped and the selector cannot close under it', async ({ page }) => {
+  await holdExports(page);
+  const { editor } = await setup(page);
+  await startHeldExport(page, editor);
+  await expect(editor.getByTestId('media-still-file')).toBeDisabled();
+  await expect(editor.getByTestId('media-still-close')).toBeDisabled();
+  await page.evaluate(() => window.__exportGate());
+  await expect(editor.getByTestId('media-still-confirmed')).toContainText('0:01.0');
+  await expect(editor.getByTestId('media-still-file')).toBeEnabled();
+});
+
+test('a frame that finishes after the editor closed is dropped, and no blob URL leaks', async ({ page }) => {
+  await holdExports(page);
+  const { editor } = await setup(page);
+  await startHeldExport(page, editor);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('exercise-media-editor')).toHaveCount(0);
+  await page.evaluate(() => window.__exportGate());
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 150)));
+  const [created, revoked] = await page.evaluate(() => [window.__created, window.__revoked]);
+  expect(revoked, `blob URLs created ${created}, revoked ${revoked}`).toBe(created);
+});

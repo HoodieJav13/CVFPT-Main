@@ -18,6 +18,9 @@ export function LocalStillSelector({ disabled = false, onStill, onInvalidate, on
   const id = useId();
   const videoRef = useRef(null);
   const urls = useRef({ clip: null, still: null });
+  // Bumped whenever the clip changes or the selector closes/unmounts: an export
+  // still in flight from an earlier generation is dropped, never delivered.
+  const generation = useRef(0);
   const [file, setFile] = useState(null);
   const [clipUrl, setClipUrl] = useState(null);
   const [status, setStatus] = useState('idle'); // idle | loading | ready | error
@@ -34,7 +37,7 @@ export function LocalStillSelector({ disabled = false, onStill, onInvalidate, on
   const revoke = (which) => {
     if (urls.current[which]) { URL.revokeObjectURL(urls.current[which]); urls.current[which] = null; }
   };
-  useEffect(() => () => { revoke('clip'); revoke('still'); }, []);
+  useEffect(() => () => { generation.current += 1; revoke('clip'); revoke('still'); }, []);
 
   // No metadata in time: treat the clip as unreadable here.
   useEffect(() => {
@@ -53,6 +56,7 @@ export function LocalStillSelector({ disabled = false, onStill, onInvalidate, on
   };
 
   const choose = (next) => {
+    generation.current += 1;
     invalidate();
     setStale(false);
     revoke('clip');
@@ -88,11 +92,15 @@ export function LocalStillSelector({ disabled = false, onStill, onInvalidate, on
   const useFrame = async () => {
     const video = videoRef.current;
     if (!video || !file) return;
+    const run = generation.current;
+    const live = () => generation.current === run;
     setBusy(true);
     setProblem(null);
     try {
       await seekVideo(video, timeMs);
+      if (!live()) return;
       const { blob } = await exportStill(video);
+      if (!live()) return;
       const issue = checkStillBlob(blob);
       if (issue) { setProblem(issue.message); return; }
       const still = new File([blob], stillFileName(timeMs, blob.type, file.name), { type: blob.type, lastModified: Date.now() });
@@ -105,24 +113,25 @@ export function LocalStillSelector({ disabled = false, onStill, onInvalidate, on
       setStale(false);
       onStill?.(still, next);
     } catch (error) {
+      if (!live()) return;
       setProblem(error?.code === 'too_small' ? 'This clip is too small for a useful still. Upload a photo instead.' : 'This frame could not be exported here. Try another frame or upload a photo.');
-    } finally { setBusy(false); }
+    } finally { if (live()) setBusy(false); }
   };
 
-  const close = () => { invalidate(); revoke('clip'); revoke('still'); onClose?.(); };
+  const close = () => { generation.current += 1; invalidate(); revoke('clip'); revoke('still'); onClose?.(); };
   const current = confirmationIsCurrent(confirmed, { file, timeMs });
 
   return (
     <div className="space-y-2 rounded-lg border border-border/60 p-3" data-testid="media-still-selector">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 font-medium"><Film className="h-4 w-4" aria-hidden /> Still from a clip on this device</div>
-        <Button type="button" variant="ghost" size="touchIcon" onClick={close} aria-label="Close still selection" data-testid="media-still-close"><X aria-hidden /></Button>
+        <Button type="button" variant="ghost" size="touchIcon" onClick={close} disabled={busy} aria-label="Close still selection" data-testid="media-still-close"><X aria-hidden /></Button>
       </div>
       <p className="text-xs text-muted-foreground" data-testid="media-still-disclosure">
         Only the still image you choose is uploaded. The original clip is not uploaded or backed up, so keep your original video file.
       </p>
       <label htmlFor={`${id}-file`} className="text-xs text-muted-foreground">Clip (stays on this device)</label>
-      <Input id={`${id}-file`} type="file" accept="video/*,.mov,.mp4,.webm" className="h-11" disabled={disabled}
+      <Input id={`${id}-file`} type="file" accept="video/*,.mov,.mp4,.webm" className="h-11" disabled={disabled || busy}
         onChange={(event) => choose(event.target.files?.[0] || null)} data-testid="media-still-file" />
       {status === 'error' && (
         <p className="text-sm text-destructive" role="alert" data-testid="media-still-error">
