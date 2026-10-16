@@ -14,15 +14,18 @@ const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
 const WATCH_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com']);
 const SHORT_HOST = 'youtu.be';
 // Whitespace/controls (the URL parser silently strips tabs/newlines), quotes,
-// angle brackets and backslashes never appear in a pasted single-video link.
+// angle brackets and backslashes never appear in a pasted single-video link, so
+// they bar EMBEDDING. Generic external links keep the released rule (any http(s)
+// URL the parser accepts, without credentials; rendered as the normalized href),
+// so every link the save path accepts resolves and old links keep rendering.
 const UNSAFE_CHARS = /[\s\u0000-\u001f\u007f<>"'`\\]/;
 const YOUTUBE_EMBED_ORIGIN = 'https://www.youtube-nocookie.com';
 const DEMO_SOURCES = ['library', 'override', 'legacy'];
 
-function parsedHttpUrl(value) {
+function parsedHttpUrl(value, { strict = false } = {}) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
-  if (!trimmed || trimmed.length > MAX_LENGTH || UNSAFE_CHARS.test(trimmed)) return null;
+  if (!trimmed || trimmed.length > MAX_LENGTH || (strict && UNSAFE_CHARS.test(trimmed))) return null;
   let url;
   try { url = new URL(trimmed); } catch { return null; }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
@@ -34,7 +37,7 @@ function parsedHttpUrl(value) {
 // /shorts/<id> or /embed/<id> link with exactly one valid id; otherwise null.
 // Every other parameter (list, t, si, feature, start) is dropped.
 function parseYouTubeDemo(value) {
-  const url = parsedHttpUrl(value);
+  const url = parsedHttpUrl(value, { strict: true });
   if (!url || url.protocol !== 'https:' || url.port !== '') return null;
   const host = url.hostname.toLowerCase();
   let id = null;

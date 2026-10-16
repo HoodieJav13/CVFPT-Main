@@ -171,3 +171,35 @@ test('resolvedVideoUrl keeps the backward-compatible safe string for the same ch
     assert.equal(frontend.resolvedVideoUrl({ workoutExercise, libraryExercise }), expected);
   }
 });
+
+// A link the save path accepts must resolve for clients, and a legacy link the
+// released tracker rendered (any http(s) URL the URL parser accepts) must keep
+// rendering as an external link. Strictness belongs to YouTube embedding only.
+test('every link the save path accepts resolves as a demo, and released legacy links keep rendering (both copies)', async () => {
+  const frontend = await loadFrontend();
+  const { isSafeExternalVideoUrl } = require('../src/lib/externalVideo');
+  const links = [
+    "https://example.com/farmer's-walk",
+    'https://example.com/a b/clip',
+    'https://example.com/"quoted"',
+    'https://example.com/back`tick',
+    'http://example.com/plain',
+  ];
+  for (const link of links) {
+    assert.equal(isSafeExternalVideoUrl(link), true, `save accepts ${link}`);
+    for (const copy of [backend, frontend]) {
+      for (const workoutExercise of [{ video_link_mode: 'override', video_url: link }, { video_link_mode: null, video_url: link }]) {
+        const demo = copy.resolveExerciseDemo({ workoutExercise, libraryExercise: { video_url: LIB_A } });
+        assert.equal(demo?.kind, 'external', `${workoutExercise.video_link_mode} ${link}`);
+        assert.equal(demo.url, new URL(link).href);
+        assert.equal(demo.source, workoutExercise.video_link_mode ? 'override' : 'legacy');
+      }
+      assert.equal(copy.resolvedVideoUrl({ workoutExercise: { video_link_mode: null, video_url: link }, libraryExercise: null }), new URL(link).href);
+    }
+  }
+  // A YouTube-looking link with unsafe characters is still never an embed.
+  for (const copy of [backend, frontend]) {
+    const demo = copy.resolveExerciseDemo({ workoutExercise: { video_link_mode: 'override', video_url: `https://www.youtube.com/watch?v=${ID}'` }, libraryExercise: null });
+    assert.notEqual(demo?.kind, 'youtube');
+  }
+});

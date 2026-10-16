@@ -11,15 +11,18 @@ const MAX_LENGTH = 2048;
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
 const WATCH_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com']);
 const SHORT_HOST = 'youtu.be';
+// Quotes, angle brackets, backslashes and whitespace never appear in a pasted
+// single-video link, so they bar EMBEDDING only; generic external links keep
+// the released rule (same as backend/src/lib/exerciseDemo.js).
 const UNSAFE_CHARS = /[\s\u0000-\u001f\u007f<>"'`\\]/;
 
 export const YOUTUBE_EMBED_ORIGIN = 'https://www.youtube-nocookie.com';
 export const DEMO_SOURCES = ['library', 'override', 'legacy'];
 
-function parsedHttpUrl(value) {
+function parsedHttpUrl(value, { strict = false } = {}) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
-  if (!trimmed || trimmed.length > MAX_LENGTH || UNSAFE_CHARS.test(trimmed)) return null;
+  if (!trimmed || trimmed.length > MAX_LENGTH || (strict && UNSAFE_CHARS.test(trimmed))) return null;
   let url;
   try { url = new URL(trimmed); } catch { return null; }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
@@ -28,7 +31,7 @@ function parsedHttpUrl(value) {
 }
 
 export function parseYouTubeDemo(value) {
-  const url = parsedHttpUrl(value);
+  const url = parsedHttpUrl(value, { strict: true });
   if (!url || url.protocol !== 'https:' || url.port !== '') return null;
   const host = url.hostname.toLowerCase();
   let id = null;
