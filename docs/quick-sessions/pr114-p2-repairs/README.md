@@ -1,5 +1,7 @@
 # PR #114: four P2 repairs, local evidence
 
+Latest follow-through: [2026-10-16 verification and publication gates](followthrough-2026-10-16.md). The initial outcomes below are preserved as historical evidence.
+
 Baseline: released merge `433784a42287a8d7049b8df5de4fca6a9a00bbad` of
 HoodieJav13/CVFPT-Main. Review input:
 https://github.com/HoodieJav13/CVFPT-Main/pull/114#pullrequestreview-5542923386.

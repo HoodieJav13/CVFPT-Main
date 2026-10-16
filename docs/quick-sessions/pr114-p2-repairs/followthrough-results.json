@@ -1,0 +1,182 @@
+{
+  "baseline_commit": "507d23d426c4dcf7eb853d1535473fb0f6110915",
+  "verified_test_commit": "1fa821f78d75a9e25c40f026e9f709bad2ae8d9b",
+  "runtime_unchanged_from": "507d23d426c4dcf7eb853d1535473fb0f6110915",
+  "test_file": "frontend/e2e/preview-critical.spec.mjs",
+  "test_sha256": "b08084f4e51f1d8b6149d3ba3a78cdda4b919d763dd0d69f55ec5ddc3352d926",
+  "preview_before": {
+    "startTime": "2026-10-16T12:01:28.842Z",
+    "duration": 437115.028,
+    "expected": 99,
+    "skipped": 8,
+    "unexpected": 1,
+    "flaky": 0
+  },
+  "preview_interfered": {
+    "cli_passed": 54,
+    "cli_skipped": 8,
+    "cli_failed": 3,
+    "cli_interrupted": 1,
+    "cli_not_run": 42,
+    "exit_code": 130,
+    "classification": "unavailable: Docker network changes caused ERR_NETWORK_CHANGED; explicitly interrupted, not accepted as full-suite evidence"
+  },
+  "preview_final": {
+    "stats": {
+      "startTime": "2026-10-16T12:15:15.368Z",
+      "duration": 359142.056,
+      "expected": 100,
+      "skipped": 8,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "exit_code": 0,
+    "workers": 1,
+    "retries": 0,
+    "fully_parallel": false,
+    "other_browser_suites": false,
+    "docker_lifecycle_concurrent": false,
+    "node": "24.19.0",
+    "playwright": "1.61.1",
+    "chromium": "151.0.7922.173",
+    "server": "http://127.0.0.1:42731",
+    "reuse_existing_server": false,
+    "raw_log_sha256": "82c4ffccede2ba75af6e48be53dfd53a943ff4a70c93c2264a01fe5249b55296",
+    "target_test": [
+      {
+        "file": "preview-critical.spec.mjs",
+        "title": "Same as last time keeps reps typed while history is still loading",
+        "status": "expected",
+        "retries": [
+          0
+        ]
+      }
+    ],
+    "skipped_cases": [
+      {
+        "file": "live-auth.spec.mjs",
+        "title": "auth forms reject invalid login and non-invited signup without creating an account",
+        "status": "skipped",
+        "retries": [
+          0
+        ]
+      },
+      {
+        "file": "live-auth.spec.mjs",
+        "title": "live client and coach loads expose recoverable error states",
+        "status": "skipped",
+        "retries": [
+          0
+        ]
+      },
+      {
+        "file": "live-auth.spec.mjs",
+        "title": "real client auth covers check-in, booking, messaging, route protection, and navigation",
+        "status": "skipped",
+        "retries": [
+          0
+        ]
+      },
+      {
+        "file": "live-auth.spec.mjs",
+        "title": "real coach auth covers ownership surfaces and archives created test data",
+        "status": "skipped",
+        "retries": [
+          0
+        ]
+      },
+      {
+        "file": "live-auth.spec.mjs",
+        "title": "real session, progress, booking, and messaging controls complete end to end",
+        "status": "skipped",
+        "retries": [
+          0
+        ]
+      },
+      {
+        "file": "live-auth.spec.mjs",
+        "title": "real admin auth covers management, safe waiver gate, reassignment, and role boundaries",
+        "status": "skipped",
+        "retries": [
+          0
+        ]
+      },
+      {
+        "file": "live-auth.spec.mjs",
+        "title": "notification badge treats zero as a hydrated baseline and animates only later visible increases",
+        "status": "skipped",
+        "retries": [
+          0
+        ]
+      },
+      {
+        "file": "live-auth.spec.mjs",
+        "title": "hosted workout completion is idempotent and notifies the assigned coach and active admin",
+        "status": "skipped",
+        "retries": [
+          0
+        ]
+      }
+    ]
+  },
+  "database_suites": [
+    {
+      "suite": "database-series-slim",
+      "exit_code": 0,
+      "basis": "observed executor process completion",
+      "migrations_applied_across_start_and_resets": 86,
+      "pass_records": 0,
+      "teardown_verified": true,
+      "log_sha256": "a70a1421f054ea231593d20181bee69a4a2062ab87649ef9c41baf5b4adf06cc"
+    },
+    {
+      "suite": "database-invites-slim",
+      "exit_code": 0,
+      "basis": "observed executor process completion",
+      "migrations_applied_across_start_and_resets": 86,
+      "pass_records": 0,
+      "teardown_verified": true,
+      "log_sha256": "20ccf95018be133062dca6ff40622ac93e448e16e1cbc864959d2ff71d691da1"
+    },
+    {
+      "suite": "database-quick-slim",
+      "exit_code": 0,
+      "basis": "observed executor process completion",
+      "migrations_applied_across_start_and_resets": 170,
+      "pass_records": 93,
+      "teardown_verified": true,
+      "log_sha256": "9116ec960ddb7bbd4b93293e2c6c0ddd8fb9c5ba8ae1daafee18e43a3387088f"
+    }
+  ],
+  "quick_parity_rows": 26,
+  "quick_pass_records": 93,
+  "guard_cases": {
+    "series_stack": 18,
+    "isolation": 11,
+    "quick_stack": 25
+  },
+  "cli": {
+    "version": "2.118.0",
+    "main_binary_sha256": "563ad5e20fdaa2e26235667d0de93c5d6e4eb31d58fa4a75b37eb20d06af54fa",
+    "source_commit": "70b42b8bf64b8cf1fd14c02c013d99dd655626e2",
+    "inherited_environment": "empty",
+    "personal_state_accessed": false,
+    "credential_keyring_disabled": true,
+    "telemetry_disabled": true,
+    "state_directory": "/tmp/cvfpt-followthrough/cli-home",
+    "slim_images": true,
+    "image": "ghcr.io/supabase/cli/postgres:17.6.1.171",
+    "image_digest": "sha256:58e0eab0578c67a26500bc28c77e3993bf9d096f59ad7c0613b08fba35009ef4"
+  },
+  "cleanup": {
+    "containers_remaining": 0,
+    "volumes_remaining": 0,
+    "coordination_lock_remaining": false
+  },
+  "remaining_gates": [
+    "No push/PR is authorized; owner must authorize preview deployments or suppression in both deploy roots before publication",
+    "Default full-image GitHub CI with Node22/bundled browser has not run at this candidate; local DB tests used the official slim image at the same pinned version",
+    "No hosted verification, merge, production data or deployment is authorized"
+  ],
+  "independent_review": "No findings in test-only synchronization; source relationship, syntax and diff verified; browser/DB outputs executor-verified"
+}

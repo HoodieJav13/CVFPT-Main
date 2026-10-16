@@ -1,3 +1,6 @@
+INITIAL SESSION RECORD — historical outcomes retained.
+Latest results and corrected CLI diagnosis: followthrough-2026-10-16.md / followthrough-results.json.
+
 PR #114 P2 repair checks — 2026-10-16, local fictional fixtures only
 Baseline: 433784a42287a8d7049b8df5de4fca6a9a00bbad
 Runtime candidate: 152bc80af4aa5f1c3b4f2edba09c0b277a018922
