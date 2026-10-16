@@ -212,6 +212,10 @@ test('320px phone: the dialog fits, the player keeps 200x200, and keyboard users
   expect((await play.boundingBox()).height).toBeGreaterThanOrEqual(44);
   await play.focus();
   await page.keyboard.press('Enter');
+  // Play unmounts its own button: focus lands on the player region (in this
+  // document, so Escape still closes the dialog), and Tab enters the player.
+  await expect(dialog.getByTestId('exercise-demo-player')).toBeFocused();
+  await expect(dialog.getByTestId('exercise-demo-player')).toHaveAccessibleName(/Synthetic Goblet Squat demo player/);
   const box = await dialog.getByTestId('exercise-demo-iframe').boundingBox();
   expect(box.width).toBeGreaterThanOrEqual(200);
   expect(box.height).toBeGreaterThanOrEqual(200);
@@ -219,6 +223,9 @@ test('320px phone: the dialog fits, the player keeps 200x200, and keyboard users
   expect(dialogBox.x).toBeGreaterThanOrEqual(0);
   expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(320);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByTestId('exercise-demo-iframe')).toBeFocused();
+  await dialog.getByTestId('exercise-demo-player').focus();
   await page.keyboard.press('Escape');
   await expect(page.locator('iframe')).toHaveCount(0);
   await expect(open).toBeFocused();

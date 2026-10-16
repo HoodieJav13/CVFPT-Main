@@ -33,6 +33,10 @@ export function ExerciseDemoDialog({ demo, exerciseName, media = null, context =
       title: `${exerciseName} demo video (YouTube)`,
       onState: (state, code = null) => setStatus({ state, code }),
     });
+    // Play (or Try again) unmounts the control that had focus. Focus the player
+    // region in this document, not the cross-origin iframe, so Escape still
+    // closes the dialog; Tab moves into the player.
+    slot.current.focus();
     const onHidden = () => { if (document.hidden) player.pause(); };
     document.addEventListener('visibilitychange', onHidden);
     return () => {
@@ -67,7 +71,9 @@ export function ExerciseDemoDialog({ demo, exerciseName, media = null, context =
         </DialogHeader>
         <div className="space-y-3">
           {playing ? (
-            <div ref={slot} className="w-full min-w-[200px] overflow-hidden rounded-lg border border-border/60 bg-black" data-testid="exercise-demo-player" />
+            <div ref={slot} tabIndex={-1} role="group" aria-label={`${exerciseName} demo player`}
+              className="w-full min-w-[200px] overflow-hidden rounded-lg border border-border/60 bg-black outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="exercise-demo-player" />
           ) : (
             <div className="relative flex aspect-video min-h-[200px] w-full items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-secondary/50" data-testid="exercise-demo-facade">
               {posterUrl ? (
