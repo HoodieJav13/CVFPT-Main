@@ -60,14 +60,16 @@ export function ExerciseDemoDialog({ demo, exerciseName, media = null, context =
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[92dvh] max-w-2xl overflow-y-auto [&>button]:h-11 [&>button]:w-11"
+        // One column no wider than the padded content box: a child's intrinsic
+        // (min-content) width can never widen the dialog into sideways scrolling.
+        className="max-h-[92dvh] max-w-2xl grid-cols-[minmax(0,1fr)] overflow-y-auto [&>button]:h-11 [&>button]:w-11"
         // Opened programmatically (no DialogTrigger): return focus to the opener.
         onOpenAutoFocus={() => { opener.current = document.activeElement; }}
         onCloseAutoFocus={(event) => { event.preventDefault(); opener.current?.focus?.(); }}
         data-testid="exercise-demo-dialog"
       >
         <DialogHeader>
-          <DialogTitle className="pr-10 font-display">{exerciseName}</DialogTitle>
+          <DialogTitle className="pr-10 font-display [overflow-wrap:anywhere]">{exerciseName}</DialogTitle>
           <DialogDescription>
             {historical ? 'Current demo: today\'s demo for this exercise, not a record of what was shown during this workout.' : 'Demo video'}
           </DialogDescription>
@@ -78,12 +80,15 @@ export function ExerciseDemoDialog({ demo, exerciseName, media = null, context =
               className="w-full min-w-[200px] overflow-hidden rounded-lg border border-border/60 bg-black outline-none focus-visible:ring-2 focus-visible:ring-ring"
               data-testid="exercise-demo-player" />
           ) : (
-            <div className="relative flex aspect-video max-h-[60dvh] min-h-[200px] w-full items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-secondary/50" data-testid="exercise-demo-facade">
+            // The first-party facade is a 16:9 frame at the available width (not
+            // the player's 200x200 minimum); short windows narrow it to stay
+            // within 60% of the height. A text fallback may grow to fit its name.
+            <div className={`relative mx-auto flex aspect-video w-full max-w-[calc(60dvh*16/9)] items-center justify-center rounded-lg border border-border/60 bg-secondary/50 ${showPoster ? 'overflow-hidden' : 'py-3'}`} data-testid="exercise-demo-facade">
               {showPoster ? (
                 <img src={posterUrl} alt={media.alt_text || `${exerciseName} photo`} width={640} height={360} crossOrigin="anonymous"
                   onError={() => setFailedPoster(posterUrl)} className="h-full w-full object-cover" data-testid="exercise-demo-poster" />
               ) : (
-                <span className="px-4 text-center font-display text-lg text-muted-foreground">{exerciseName}</span>
+                <span className="min-w-0 px-4 text-center font-display text-lg text-muted-foreground [overflow-wrap:anywhere]">{exerciseName}</span>
               )}
             </div>
           )}
