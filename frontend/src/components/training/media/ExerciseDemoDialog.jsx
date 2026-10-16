@@ -52,7 +52,7 @@ export function ExerciseDemoDialog({ demo, exerciseName, media = null, context =
   const statusText = {
     loading: 'Loading the YouTube player…',
     ready: 'Player ready. Use its controls to play, pause, turn on captions or go full screen.',
-    limited: 'Player controls are limited because the YouTube player script did not load. The video may still play; Open on YouTube always works when YouTube is reachable.',
+    limited: 'Player controls are limited because the YouTube player script did not load. The video may still play here, or you can open it on YouTube.',
     error: '',
     idle: '',
   }[status.state];
@@ -78,7 +78,7 @@ export function ExerciseDemoDialog({ demo, exerciseName, media = null, context =
               className="w-full min-w-[200px] overflow-hidden rounded-lg border border-border/60 bg-black outline-none focus-visible:ring-2 focus-visible:ring-ring"
               data-testid="exercise-demo-player" />
           ) : (
-            <div className="relative flex aspect-video min-h-[200px] w-full items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-secondary/50" data-testid="exercise-demo-facade">
+            <div className="relative flex aspect-video max-h-[60dvh] min-h-[200px] w-full items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-secondary/50" data-testid="exercise-demo-facade">
               {showPoster ? (
                 <img src={posterUrl} alt={media.alt_text || `${exerciseName} photo`} width={640} height={360} crossOrigin="anonymous"
                   onError={() => setFailedPoster(posterUrl)} className="h-full w-full object-cover" data-testid="exercise-demo-poster" />
@@ -88,7 +88,7 @@ export function ExerciseDemoDialog({ demo, exerciseName, media = null, context =
             </div>
           )}
           {status.state === 'error' && (
-            <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm" role="alert" data-testid="exercise-demo-error">
+            <div className="space-y-2 rounded-lg border border-border/60 bg-secondary/50 p-3 text-sm" role="alert" data-testid="exercise-demo-error">
               <p>{playerErrorMessage(status.code)}</p>
               <Button type="button" variant="outline" size="touch" onClick={() => { setStatus({ state: 'idle', code: null }); setAttempt((n) => n + 1); }}>
                 <RotateCcw className="h-4 w-4" aria-hidden /> Try again
@@ -132,21 +132,22 @@ const ACTION_CLASS = 'inline-flex min-h-11 w-fit items-center gap-1.5 rounded-sm
 
 // The demo action for one exercise: a click-to-load YouTube demo opens the
 // dialog; any other safe link stays an external link that opens in a new tab.
+// In history it pairs with the "Current exercise guide" action's style.
 export function ExerciseDemoAction({ demo, exerciseName, onView, variant = 'row' }) {
   if (!demo) return null;
+  const history = variant === 'history';
   if (demo.kind === 'youtube') {
-    return (
-      <button type="button" className={ACTION_CLASS} onClick={onView}
-        aria-label={`View demo: ${exerciseName}`} data-testid={variant === 'history' ? 'history-current-demo' : 'tracker-exercise-demo'}>
-        <Play className="h-4 w-4" aria-hidden /> {variant === 'history' ? 'Current demo' : 'View demo'}
-      </button>
-    );
+    const label = <><Play className="h-4 w-4" aria-hidden /> {history ? 'Current demo' : 'View demo'}</>;
+    const props = { onClick: onView, 'aria-label': `View demo: ${exerciseName}`, 'data-testid': history ? 'history-current-demo' : 'tracker-exercise-demo' };
+    return history
+      ? <Button type="button" variant="ghost" size="sm" className="min-h-11 w-fit px-2 text-primary" {...props}>{label}</Button>
+      : <button type="button" className={ACTION_CLASS} {...props}>{label}</button>;
   }
-  return (
-    <a href={demo.url} target="_blank" rel="noopener noreferrer"
-      className={ACTION_CLASS}
-      aria-label={`External video: ${exerciseName} (opens in a new tab)`} data-testid={variant === 'history' ? 'history-current-demo-link' : 'tracker-exercise-video'}>
+  const link = (
+    <a href={demo.url} target="_blank" rel="noopener noreferrer" className={history ? undefined : ACTION_CLASS}
+      aria-label={`External video: ${exerciseName} (opens in a new tab)`} data-testid={history ? 'history-current-demo-link' : 'tracker-exercise-video'}>
       <Play className="h-4 w-4" aria-hidden /> External video
     </a>
   );
+  return history ? <Button asChild variant="ghost" size="sm" className="min-h-11 w-fit px-2 text-primary">{link}</Button> : link;
 }

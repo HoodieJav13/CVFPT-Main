@@ -89,7 +89,8 @@ export function mountYouTubePlayer({ container, videoId, title, onState = () => 
   iframe.height = String(height);
   iframe.style.width = '100%';
   iframe.style.minWidth = `${PLAYER_MIN}px`;
-  iframe.style.height = `${height}px`;
+  // Short windows (landscape phones, 200% zoom) keep the dialog's actions near.
+  iframe.style.height = `min(${height}px, 60dvh)`;
   iframe.style.minHeight = `${PLAYER_MIN}px`;
   iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
   iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');

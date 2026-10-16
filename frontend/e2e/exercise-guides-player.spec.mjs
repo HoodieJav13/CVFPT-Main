@@ -184,6 +184,8 @@ test('a blocked IFrame API still leaves the privacy-enhanced embed and the exter
   await dialog.getByTestId('exercise-demo-play').click();
   await expect(dialog.getByTestId('exercise-demo-iframe')).toHaveCount(1);
   await expect(dialog.getByTestId('exercise-demo-status')).toContainText(/limited|unavailable/i);
+  // Honest: the external link is a fallback, never promised to work.
+  await expect(dialog.getByTestId('exercise-demo-status')).not.toContainText(/always/i);
   await expect(dialog.getByTestId('exercise-demo-external')).toBeVisible();
 });
 
@@ -221,6 +223,20 @@ test('an expired or missing photo falls back to the exercise name in the dialog;
   await expect(dialog.getByTestId('exercise-demo-poster')).toHaveCount(0);
   await dialog.getByTestId('exercise-demo-play').click();
   await expect(dialog.getByTestId('exercise-demo-iframe')).toHaveCount(1);
+});
+
+test('a short window (200% zoom) caps the player at 60% of its height, never below 200px', async ({ page }) => {
+  const { cards } = await setup(page, { viewport: { width: 640, height: 450 } });
+  await cards.nth(0).getByTestId('tracker-exercise-demo').click();
+  const dialog = page.getByTestId('exercise-demo-dialog');
+  const facade = await dialog.getByTestId('exercise-demo-facade').boundingBox();
+  expect(facade.height).toBeLessThanOrEqual(Math.ceil(450 * 0.6));
+  expect(facade.height).toBeGreaterThanOrEqual(200);
+  await dialog.getByTestId('exercise-demo-play').click();
+  const frame = await dialog.getByTestId('exercise-demo-iframe').boundingBox();
+  expect(frame.height).toBeLessThanOrEqual(Math.ceil(450 * 0.6));
+  expect(frame.height).toBeGreaterThanOrEqual(200);
+  expect(frame.width).toBeGreaterThanOrEqual(200);
 });
 
 test('320px phone: the dialog fits, the player keeps 200x200, and keyboard users can open, play and close', async ({ page }) => {
@@ -279,6 +295,13 @@ test('history labels the demo as today\'s current demo and still loads nothing b
   await page.goto('/client/workouts/guide-log');
   const demo = page.getByTestId('history-current-demo').first();
   await expect(demo).toHaveText(/Current demo/);
+  // Sits with the "Current exercise guide" action as a matching pair.
+  const look = (locator) => locator.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { iconLeft: Math.round(el.querySelector('svg').getBoundingClientRect().left), fontSize: style.fontSize, height: Math.round(el.getBoundingClientRect().height) };
+  });
+  expect(await look(demo)).toEqual(await look(page.getByTestId('history-current-guide').first()));
+  expect(await look(page.getByTestId('history-current-demo-link').first())).toEqual(await look(page.getByTestId('history-current-guide').first()));
   await demo.click();
   const dialog = page.getByTestId('exercise-demo-dialog');
   await expect(dialog).toContainText(/today's demo for this exercise, not a record of what was shown/);
