@@ -9,6 +9,7 @@ const { dispatchPush, sendToCoaches } = require('../services/push');
 const { actualMetrics, trackingType } = require('../lib/workoutMetrics');
 const { quickLogKinds } = require('../lib/quickSessionReads');
 const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
+const { resolveExerciseDemo, resolvedVideoUrl } = require('../lib/exerciseDemo');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -310,27 +311,20 @@ function computeLogAttribution(log) {
   return 'mixed';
 }
 
-// Demo video for each logged exercise: the coach's per-workout link wins,
-// then the library exercise's. Only http(s) links are ever returned. The
-// snapshot has no video column, so this is resolved live (no schema change).
-function safeVideoUrl(value) {
-  if (typeof value !== 'string' || !value.trim()) return null;
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
+// Demo for each logged exercise, resolved LIVE from the source workout row's
+// reference mode (docs/exercise-guides/design.md): 'inherit' follows the
+// current library link, 'override' keeps the coach's per-workout link, and
+// unclassified legacy rows keep the old precedence (nonempty safe workout
+// link, then the library). Only http(s) links are ever returned. The snapshot
+// has no video column and is never rewritten; `demo` is the current guide.
 function resolveExerciseVideos(exercises, workoutExercises = [], libraryExercises = []) {
   const bySource = new Map(workoutExercises.map((row) => [row.id, row]));
-  const libraryVideo = new Map(libraryExercises.map((row) => [row.id, row.video_url]));
+  const library = new Map(libraryExercises.map((row) => [row.id, row]));
   return exercises.map((exercise) => {
-    const source = bySource.get(exercise.source_workout_exercise_id);
+    const source = bySource.get(exercise.source_workout_exercise_id) || null;
     const libraryId = exercise.exercise_library_id || source?.exercise_library_id;
-    const video = safeVideoUrl(source?.video_url) || safeVideoUrl(libraryVideo.get(libraryId));
-    return { ...exercise, video_url: video };
+    const reference = { workoutExercise: source, libraryExercise: library.get(libraryId) || null };
+    return { ...exercise, video_url: resolvedVideoUrl(reference), demo: resolveExerciseDemo(reference) };
   });
 }
 
@@ -340,7 +334,7 @@ async function withExerciseVideos(exercises, { media = true } = {}) {
   let sources = [];
   if (sourceIds.length) {
     const { data, error } = await supabaseAdmin.from('workout_exercises')
-      .select('id, video_url, exercise_library_id').in('id', sourceIds);
+      .select('id, video_url, video_link_mode, exercise_library_id').in('id', sourceIds);
     if (error) throw error;
     sources = data || [];
   }

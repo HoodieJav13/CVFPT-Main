@@ -5,6 +5,7 @@ import {
 import { actualMetrics, normalizeTracking, trackingType } from './workoutMetrics.js';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
+import { resolveExerciseDemo, resolvedVideoUrl } from '@/lib/exerciseDemo';
 import { normalizeSupersets } from '@/lib/supersets';
 import {
   checkSlots, expandSeriesRule, parseRule, pastError, slotHorizonError, todayInDenver,
@@ -667,8 +668,26 @@ function workoutDetails(workoutId) {
   const exercises = state.workoutExercises
     .filter((e) => e.workout_id === workout.id && !e.archived)
     .sort((a, b) => a.position - b.position)
-    .map((exercise) => ({ ...exercise, library_exercise: exercise.exercise_library_id ? libraryById(exercise.exercise_library_id) : null }));
+    .map((exercise) => {
+      const library = exercise.exercise_library_id ? libraryById(exercise.exercise_library_id) : null;
+      // Mirrors the API: the current demo resolves live from the row's reference mode.
+      return { ...exercise, library_exercise: library, demo: resolveExerciseDemo({ workoutExercise: exercise, libraryExercise: library }) };
+    });
   return { ...workout, exercises, exercise_count: exercises.length };
+}
+
+// Mirrors the shared SQL writer's demo reference handling: a present
+// video_link_mode is an explicit choice ('inherit' stores no URL); an old
+// request shape keeps a still-consistent stored mode, otherwise legacy NULL.
+function previewDemoReference(row, exercise) {
+  const url = exercise.video_url || null;
+  if (Object.prototype.hasOwnProperty.call(exercise, 'video_link_mode')) {
+    const mode = exercise.video_link_mode ?? null;
+    return { video_link_mode: mode, video_url: mode === 'inherit' ? null : url };
+  }
+  if (row?.video_link_mode === 'inherit' && !url) return { video_link_mode: 'inherit', video_url: null };
+  if (row?.video_link_mode === 'override' && url && url.trim()) return { video_link_mode: 'override', video_url: url };
+  return { video_link_mode: null, video_url: url };
 }
 
 function replaceWorkoutExercises(workoutId, exercises = []) {
@@ -697,7 +716,7 @@ function replaceWorkoutExercises(workoutId, exercises = []) {
         notes: exercise.client_notes || exercise.notes || null,
         client_notes: exercise.client_notes || exercise.notes || null,
         coach_notes: exercise.coach_notes || null,
-        video_url: exercise.video_url || null,
+        ...previewDemoReference(row, exercise),
         superset_group: exercise.superset_group || null,
         position: index,
         archived: false,
@@ -861,10 +880,12 @@ function prescribedSetCount(value) {
   return Math.max(1, match ? Number(match[0]) : 1);
 }
 
-function previewExerciseVideo(logExercise) {
-  const source = state.workoutExercises.find((row) => row.id === logExercise.source_workout_exercise_id);
+// Mirrors the API: the source row's reference mode decides live (inherit ->
+// library, override -> the row, legacy NULL -> nonempty row link, then library).
+function previewExerciseDemoReference(logExercise) {
+  const source = state.workoutExercises.find((row) => row.id === logExercise.source_workout_exercise_id) || null;
   const libraryId = logExercise.exercise_library_id || source?.exercise_library_id;
-  return source?.video_url || libraryById(libraryId)?.video_url || null;
+  return { workoutExercise: source, libraryExercise: libraryById(libraryId) };
 }
 
 // Mirrors GET /workout-logs/mine and /client/:id: an array by default, or
@@ -911,8 +932,8 @@ function workoutLogDetails(logId) {
     .sort((a, b) => a.position - b.position)
     .map((exercise) => ({
       ...exercise,
-      // Mirrors the API: the workout's link wins, then the library's.
-      video_url: previewExerciseVideo(exercise),
+      video_url: resolvedVideoUrl(previewExerciseDemoReference(exercise)),
+      demo: resolveExerciseDemo(previewExerciseDemoReference(exercise)),
       sets: state.workoutLogSets
         .filter((set) => set.workout_log_exercise_id === exercise.id && !set.archived)
         .sort((a, b) => a.set_number - b.set_number),
@@ -2601,6 +2622,9 @@ export function installPreviewApi(api) {
     if (path === '/programs/quick-sessions' && method === 'post') {
       if (role === 'client') return fail(config, 403, 'Coach access required');
       if (typeof payload.request_id !== 'string' || !UUID_RE.test(payload.request_id)) return fail(config, 400, 'A quick session request id is required');
+      if ((payload.exercises || []).some((exercise) => exercise && Object.prototype.hasOwnProperty.call(exercise, 'video_link_mode'))) {
+        return fail(config, 400, 'Unsupported exercise field "video_link_mode"');
+      }
       const kept = (payload.exercises || []).filter((exercise) => exercise.exercise_library_id || String(exercise.custom_name || '').trim());
       if (!kept.length) return fail(config, 400, 'Add at least one exercise');
       try { kept.forEach((exercise) => normalizeTracking(exercise)); } catch (error) { return fail(config, 400, error.message); }
@@ -2624,6 +2648,11 @@ export function installPreviewApi(api) {
       const workout = { id: id('workout_quick'), coach_id: target.coach_id, name: payload.name, description: null, goal: null, is_template: false, client_id: target.id, hidden: false, archived: false, created_at: createdAt, updated_at: createdAt };
       state.workouts.push(workout);
       replaceWorkoutExercises(workout.id, kept);
+      // Fresh rows only, from the hashed v1 facts (as create_quick_session does).
+      state.workoutExercises.filter((exercise) => exercise.workout_id === workout.id).forEach((exercise) => {
+        const url = String(exercise.video_url || '').trim();
+        exercise.video_link_mode = url ? 'override' : (exercise.exercise_library_id && !exercise.video_url ? 'inherit' : null);
+      });
       const row = {
         id: id('quick_assign'), client_id: target.id, workout_id: workout.id, assignment_mode: 'dated', assigned_for: payload.assigned_for,
         notes: payload.notes || null, archived: false, created_at: createdAt, kind: 'quick', created_by_coach_id: actorId,
@@ -2749,7 +2778,11 @@ export function installPreviewApi(api) {
         })), config);
     }
     if (path === '/programs/client/assigned') {
-      const withMedia = (workout) => (workout ? { ...workout, exercises: previewMedia().hydrate(workout.exercises || [], (row) => row.exercise_library_id) } : workout);
+      // Client allowlist: the demo DTO is included, the internal reference mode is not.
+      const withMedia = (workout) => (workout ? {
+        ...workout,
+        exercises: previewMedia().hydrate((workout.exercises || []).map(({ video_link_mode: _mode, ...row }) => row), (row) => row.exercise_library_id),
+      } : workout);
       return ok({
         programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => {
           const program = programDetails(a.program_id);

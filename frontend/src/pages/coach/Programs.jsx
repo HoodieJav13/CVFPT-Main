@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import {
   AlertTriangle, Archive, ArrowDown, ArrowUp, BookOpen, CalendarDays, CheckCircle2, CircleAlert, Copy, Download,
-  Dumbbell, Eye, EyeOff, FileText, FileUp, GripVertical, Link2, Loader2, Pencil, Plus, Trash2, Unlink, UserPlus, Video,
+  Dumbbell, Eye, EyeOff, FileText, FileUp, GripVertical, Link2, Loader2, Pencil, Plus, Trash2, Unlink, UserPlus,
 } from 'lucide-react';
 import {
   DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors,
@@ -49,8 +49,10 @@ import {
   ExerciseMediaBadge, ExerciseMediaButton, ExerciseMediaDialog, LibraryMediaSummary, MediaReadinessFilter, matchesMediaFilter, useLibraryMediaStatus,
 } from '@/components/training/media/LibraryMediaControls';
 import {
-  authorOptions, exerciseFilterOptions, filterByAuthor, filterExercises, groupVariations, isLegacyLockError,
+  authorOptions, chooseLibraryExercise, demoFieldsFromRow, demoProblem, exerciseFilterOptions, filterByAuthor, filterExercises,
+  groupVariations, isLegacyLockError,
 } from '@/lib/trainingLibrary';
+import { DemoLinkField } from '@/components/training/DemoLinkField';
 
 const {
   normalizeDraft,
@@ -60,7 +62,7 @@ const {
 } = draftTools;
 
 const EMPTY_LIBRARY = { name: '', category: '', equipment: '', primary_muscle: '', secondary_muscles: '', video_url: '', notes: '' };
-const EMPTY_EXERCISE = { tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null, id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '', superset_group: null };
+const EMPTY_EXERCISE = { tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null, id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '', video_link_mode: null, superset_group: null };
 // Builder rows carry a client-only _uid so accordion state follows an
 // exercise when it is reordered (the save RPC ignores unknown keys).
 let exerciseUid = 0;
@@ -408,7 +410,8 @@ export function workoutToForm(workout) {
       default_load_unit: ex.default_load_unit || 'lb',
       client_notes: ex.client_notes || ex.notes || '',
       coach_notes: ex.coach_notes || '',
-      video_url: ex.video_url || ex.library_exercise?.video_url || '',
+      // Never the library link: an inheriting row follows the library live.
+      ...demoFieldsFromRow(ex),
       superset_group: ex.superset_group || null,
     })) : [newExerciseRow()],
   };
@@ -469,6 +472,11 @@ function WorkoutsTab({ workouts, library, reload, onSaved }) {
     e.preventDefault();
     if (!form.exercises.some((ex) => ex.exercise_library_id || ex.custom_name.trim())) {
       toast.error('Add at least one exercise');
+      return;
+    }
+    const demoIssue = form.exercises.map(demoProblem).find(Boolean);
+    if (demoIssue) {
+      toast.error(`Demo video: ${demoIssue}`);
       return;
     }
     setSaving(true);
@@ -1260,7 +1268,7 @@ function ProgramImportDialog({ open, onOpenChange, library, reload }) {
                               <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" data-testid="program-import-exercise-coach-notes-input" />
                             </div>
                             <div className="grid gap-2 sm:grid-cols-4">
-                              <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value })} placeholder="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
+                              <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value, video_link_mode: e.target.value.trim() ? 'override' : 'inherit' })} placeholder="Video URL (optional; blank uses the library demo)" aria-label="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
                               <Input value={exercise.equipment} onChange={(e) => setExercise(dayIndex, exerciseIndex, { equipment: e.target.value })} placeholder="Equipment" data-testid="program-import-exercise-equipment-input" />
                               <Input value={exercise.primary_muscle} onChange={(e) => setExercise(dayIndex, exerciseIndex, { primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="program-import-exercise-primary-muscle-input" />
                             </div>
@@ -1410,13 +1418,10 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
     setForm({ ...form, exercises: form.exercises.map((ex, i) => i === index ? { ...ex, ...updates } : ex) });
   };
 
+  // Picking a library exercise inherits its demo live; the link is never copied.
   const chooseExercise = (index, value) => {
-    const match = library.find((ex) => ex.name.toLowerCase() === value.toLowerCase());
-    if (match) {
-      setExercise(index, { exercise_library_id: match.id, custom_name: match.name, video_url: match.video_url || '' });
-    } else {
-      setExercise(index, { exercise_library_id: '', custom_name: value });
-    }
+    const match = library.find((ex) => ex.name.toLowerCase() === value.toLowerCase()) || null;
+    setExercise(index, chooseLibraryExercise(form.exercises[index], match, value));
   };
 
   const setExercises = (exercises) => setForm({ ...form, exercises });
@@ -1521,10 +1526,11 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
             </Select>
             </div>
           </div>
-          <div className="relative">
-            <Video className="absolute bottom-3.5 left-3 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-            <LabeledField label="Video URL"><Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" /></LabeledField>
-          </div>
+          <DemoLinkField
+            exercise={exercise}
+            libraryExercise={library.find((ex) => ex.id === exercise.exercise_library_id)}
+            onChange={(fields) => setExercise(index, fields)}
+          />
           <LabeledField label="Client notes"><Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" /></LabeledField>
           <LabeledField label="Coach notes (internal)"><Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" /></LabeledField>
         </AccordionContent>

@@ -144,3 +144,72 @@ export function filterExercises(rows, { search = '', category = 'all', muscle = 
     return [row.name, row.category, row.equipment, row.primary_muscle].join(' ').toLowerCase().includes(query);
   });
 }
+
+// ----- Workout exercise demo references (docs/exercise-guides/design.md) -----
+// video_link_mode: 'inherit' follows the library exercise's demo live (no URL is
+// stored), 'override' keeps an explicit per-workout link, null is unclassified
+// legacy (or no demo on a custom exercise). Opening, selecting, duplicating and
+// saving never copy a library link into the row; only an explicit coach action
+// changes a row's mode.
+const isBlank = (value) => value === null || value === undefined || String(value).trim() === '';
+
+export function demoFieldsFromRow(row) {
+  return { video_link_mode: row?.video_link_mode ?? null, video_url: row?.video_url || '' };
+}
+
+// The datalist picker: `match` is the library exercise named by `value`, or null.
+export function chooseLibraryExercise(row, match, value) {
+  if (match) {
+    if (match.id === row.exercise_library_id) return { exercise_library_id: match.id, custom_name: match.name };
+    return { exercise_library_id: match.id, custom_name: match.name, video_link_mode: 'inherit', video_url: '' };
+  }
+  if (row.video_link_mode === 'inherit') return { exercise_library_id: '', custom_name: value, video_link_mode: null, video_url: '' };
+  return { exercise_library_id: '', custom_name: value };
+}
+
+// 'library' | 'custom' | 'legacy' | 'none'. An empty legacy row on a library
+// exercise already shows the library demo, so it reads as 'library' without
+// being reclassified.
+export function demoChoice(row) {
+  if (row.video_link_mode === 'override') return 'custom';
+  if (row.video_link_mode === 'inherit') return 'library';
+  if (!isBlank(row.video_url)) return 'legacy';
+  return row.exercise_library_id ? 'library' : 'none';
+}
+
+export function applyDemoChoice(row, choice) {
+  if (choice === 'library') return { video_link_mode: 'inherit', video_url: '' };
+  if (choice === 'custom') return { video_link_mode: 'override', video_url: row.video_url || '' };
+  return { video_link_mode: null, video_url: '' };
+}
+
+// Typing a link is an explicit per-workout choice.
+export function applyDemoUrl(row, value) {
+  if (isBlank(value) && !row.exercise_library_id) return { video_link_mode: null, video_url: '' };
+  return { video_link_mode: 'override', video_url: value };
+}
+
+export function demoProblem(row) {
+  if (row.video_link_mode !== 'override') return null;
+  if (isBlank(row.video_url)) return 'Add a link, or choose the library demo.';
+  try {
+    const url = new URL(String(row.video_url).trim());
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password) return null;
+  } catch { /* fall through */ }
+  return 'Use an http(s) link.';
+}
+
+// Quick create keeps its exact v1 wire schema: before the request body is built
+// and frozen, an inheriting row projects to the existing empty video_url and an
+// override to its existing URL. The internal mode key never crosses the boundary
+// (and is never inferred from a current library URL).
+export function projectQuickForm(form) {
+  return {
+    ...form,
+    exercises: (form.exercises || []).map((row) => {
+      const { video_link_mode: mode, ...rest } = row;
+      if (mode === 'inherit') return { ...rest, video_url: '' };
+      return rest;
+    }),
+  };
+}

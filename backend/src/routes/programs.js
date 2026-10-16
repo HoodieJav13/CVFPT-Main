@@ -40,7 +40,8 @@ const { normalizeQuickSessionCreate, quickSessionHash, trackingExercises } = req
 const { annotateQuickCompletion, quickCompletionFlags } = require('../lib/quickSessionReads');
 const { todayDateInTz } = require('../utils/time');
 const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
-const { unsafeExternalVideoUrls, UNSAFE_MESSAGE } = require('../lib/externalVideo');
+const { normalizeDemoModes, unsafeExternalVideoUrls, UNSAFE_MESSAGE } = require('../lib/externalVideo');
+const { resolveExerciseDemo } = require('../lib/exerciseDemo');
 const {
   generateLogSheetPdf,
   generateProgramPdf,
@@ -150,7 +151,12 @@ async function workoutWithDetails(workoutId) {
     .eq('archived', false)
     .order('position');
   if (error) throw error;
-  return { ...workout, exercises: exercises || [], exercise_count: (exercises || []).length };
+  // Current demo resolved live from the row's reference mode and the joined
+  // library exercise (never written back).
+  const withDemos = (exercises || []).map((row) => ({
+    ...row, demo: resolveExerciseDemo({ workoutExercise: row, libraryExercise: row.library_exercise }),
+  }));
+  return { ...workout, exercises: withDemos, exercise_count: withDemos.length };
 }
 
 function cleanExerciseLoads(loads, { program = false } = {}) {
@@ -503,7 +509,8 @@ router.post('/workouts', requireCoach, async (req, res) => {
     const { name, description, goal, exercises } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Workout name is required' });
     if (unsafeExternalVideoUrls(exercises).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
-    const hiddenPicked = await newHiddenLibraryExercises(exercises);
+    const rows = normalizeDemoModes(exercises);
+    const hiddenPicked = await newHiddenLibraryExercises(rows);
     if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
     // Templates are shared, so the creator is always recorded as the author.
     const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
@@ -512,7 +519,7 @@ router.post('/workouts', requireCoach, async (req, res) => {
       p_name: String(name).trim(),
       p_description: description || null,
       p_goal: goal || null,
-      p_exercises: Array.isArray(exercises) ? trackingExercises(exercises) : [],
+      p_exercises: Array.isArray(rows) ? trackingExercises(rows) : [],
     });
     if (error) throw error;
     return res.status(201).json(await workoutWithDetails(workoutId));
@@ -545,7 +552,10 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
     if (unsafeExternalVideoUrls(body.exercises, new Map((workout.exercises || []).map((row) => [row.id, row.video_url]))).length) {
       return res.status(400).json({ error: UNSAFE_MESSAGE });
     }
-    const hiddenPicked = await newHiddenLibraryExercises(body.exercises, workout);
+    const rows = Array.isArray(body.exercises)
+      ? normalizeDemoModes(body.exercises, new Map((workout.exercises || []).map((row) => [row.id, row])))
+      : workout.exercises;
+    const hiddenPicked = await newHiddenLibraryExercises(rows, workout);
     if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
     const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
       p_workout_id: workout.id,
@@ -553,7 +563,7 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
       p_name: name,
       p_description: 'description' in body ? body.description || null : workout.description,
       p_goal: 'goal' in body ? body.goal || null : workout.goal,
-      p_exercises: trackingExercises(Array.isArray(body.exercises) ? body.exercises : workout.exercises, workout.exercises),
+      p_exercises: trackingExercises(rows, workout.exercises),
     });
     if (error && isQuickSessionStarted(error)) return sendQuickSessionStarted(res);
     if (error) throw error;

@@ -47,7 +47,8 @@ test('tracker videos are resolved live for the single-log read and rendered safe
   // The options argument only skips current-guide hydration on auth-only loads.
   assert.match(routes, /const exercises = await withExerciseVideos\(loggedExercises \|\| \[\](, \{ media \})?\);/);
   // Read-only lookups; no writes to the snapshot.
-  assert.match(routes, /from\('workout_exercises'\)\s*\.select\('id, video_url, exercise_library_id'\)/);
+  // The source row's reference mode decides inherit/override/legacy (exercise guides).
+  assert.match(routes, /from\('workout_exercises'\)\s*\.select\('id, video_url, video_link_mode, exercise_library_id'\)/);
   assert.match(routes, /from\('exercise_library'\)\s*\.select\('id, video_url'\)/);
   assert.match(tracker, /href=\{safeHttpUrl\(exercise\.video_url\)\}/);
   assert.match(tracker, /rel="noopener noreferrer"/);

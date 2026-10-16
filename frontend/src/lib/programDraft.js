@@ -42,6 +42,19 @@ function nullableString(value) {
   return cleaned || '';
 }
 
+// Demo reference for an imported or copied row (docs/exercise-guides/design.md).
+// An explicit mode is kept as given (null = an unclassified legacy copy) and
+// checked by validateDraft; otherwise a per-row link is an explicit override and
+// no link inherits the library demo live. A library exercise's own link is never
+// copied into the row.
+function draftDemoReference(exercise) {
+  const videoUrl = nullableString(exercise.video_url);
+  if (Object.prototype.hasOwnProperty.call(exercise, 'video_link_mode')) {
+    return { video_url: videoUrl, video_link_mode: exercise.video_link_mode ?? null };
+  }
+  return { video_url: videoUrl, video_link_mode: videoUrl ? 'override' : 'inherit' };
+}
+
 function parseCsv(text) {
   const rows = [];
   const parsed = [];
@@ -404,7 +417,7 @@ function normalizeDraft(input = {}) {
         tempo: nullableString(exercise.tempo),
         client_notes: nullableString(exercise.client_notes || exercise.notes),
         coach_notes: nullableString(exercise.coach_notes),
-        video_url: nullableString(exercise.video_url || exercise.library_exercise?.video_url),
+        ...draftDemoReference(exercise),
         category: nullableString(exercise.category || exercise.library_exercise?.category),
         equipment: nullableString(exercise.equipment || exercise.library_exercise?.equipment),
         primary_muscle: nullableString(exercise.primary_muscle || exercise.library_exercise?.primary_muscle),
@@ -446,6 +459,10 @@ function validateDraft(input) {
     day.exercises.forEach((exercise, exerciseIndex) => {
       try { normalizeTracking(exercise); } catch (error) { errors.push({ path: `days.${dayIndex}.exercises.${exerciseIndex}.tracking_type`, message: error.message }); }
       if (!exercise.name) errors.push({ path: `days.${dayIndex}.exercises.${exerciseIndex}.name`, message: 'Exercise name is required' });
+      const demoPath = `days.${dayIndex}.exercises.${exerciseIndex}.video_link_mode`;
+      if (![null, 'inherit', 'override'].includes(exercise.video_link_mode)) errors.push({ path: demoPath, message: 'Choose the library demo or a custom link' });
+      else if (exercise.video_link_mode === 'inherit' && exercise.video_url) errors.push({ path: demoPath, message: 'Use the library demo or a custom link, not both' });
+      else if (exercise.video_link_mode === 'override' && !exercise.video_url) errors.push({ path: demoPath, message: 'Add a link, or choose the library demo' });
     });
   });
   return { valid: errors.length === 0, errors, draft };
@@ -473,7 +490,8 @@ function draftFromProgram(program) {
         tempo: exercise.tempo,
         client_notes: exercise.client_notes || exercise.notes || '',
         coach_notes: exercise.coach_notes || '',
-        video_url: exercise.video_url || exercise.library_exercise?.video_url || '',
+        video_url: exercise.video_url || '',
+        video_link_mode: exercise.video_link_mode ?? null,
         category: exercise.library_exercise?.category || '',
         equipment: exercise.library_exercise?.equipment || '',
         primary_muscle: exercise.library_exercise?.primary_muscle || '',
