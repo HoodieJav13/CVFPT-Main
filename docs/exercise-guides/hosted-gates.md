@@ -15,8 +15,15 @@ and [../exercise-media/production-gates.md](../exercise-media/production-gates.m
 - **YouTube demos need no infrastructure.** They are ordinary `video_url`
   metadata plus a browser-side player. They still need the reference-mode
   migration before the mode-aware writers exist hosted.
-  - Without that migration, a release must not ship code that writes
-    `video_link_mode`.
+  - Without that migration, a release must not ship this backend at all:
+    it **reads** `video_link_mode` on workout and log reads (those queries
+    would fail) as well as writing it. The migration must land on each
+    database before its backend deploys.
+  - **Rolling deploys.** A browser still running the released editor can save
+    an inheriting row with the copied library link and no mode key. The
+    shared writer then records it as unclassified legacy: the demo it shows
+    does not change, but it stops following later library replacements. Ship
+    both roots together, and ask coaches to reload open editors.
 - **The Supabase private-image adapter** (`supabaseImageStore.js`) exists and
   is contract-tested against a fake object client only:
   - no bucket exists, and no key has been read or copied;

@@ -94,6 +94,10 @@ client-specific or health footage on this route.
 - **Output:** `watchUrl` is always the canonical
   `https://www.youtube.com/watch?v=<id>`. Unsupported but safe links stay
   external-only and are never rewritten.
+- **The character rules bar embedding only.** Generic external links keep
+  the released rule: any http(s) URL the URL parser accepts, without
+  credentials, rendered as its normalized href. So every link the save path
+  accepts resolves, and old links keep rendering.
 
 `backend/test/exercise-demo.test.js` holds the shared accept/reject/resolve
 vectors and checks that both copies agree. There is no server-side fetch,
@@ -124,6 +128,11 @@ Rules:
   - rendering never changes the row.
 - **Picking a library exercise** inherits; the library URL is never copied
   into the row.
+- **Duplicating a row** gives the copy the explicit mode that keeps the demo
+  its source resolved to: a legacy link becomes the same custom link; an
+  empty legacy row on a library exercise follows the library. A copy is a
+  new row, so it is never unclassified legacy, and save flags any new row
+  that still carries an unclassified link.
 - **Server validation** (`normalizeDemoModes`) rejects contradictory new
   writes:
   - inherit on a custom row, or inherit with a URL;
@@ -220,6 +229,9 @@ resolved safe URL for older consumers.
   uploaded or backed up, and the UI says so.
 - The confirmed still is bound to the clip identity and time; changing either
   clears it. Blob URLs are revoked.
+- While a frame exports, the clip picker and Close are disabled. An export
+  that finishes after the clip changed, or after the selector closed or
+  unmounted, is dropped.
 - An unreadable clip explains recovery, and photo upload keeps working.
 - There is no server-verified frame provenance, and no YouTube extraction.
 
