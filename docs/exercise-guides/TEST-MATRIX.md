@@ -1,31 +1,35 @@
 # Exercise guides — verification matrix (2026-10-16)
 
-**What was tested.** The final sweep ran at functional head
-`fb5d06e34a2ecc30e9411f28d74d24294ae9bcdc`, with no tracked changes at
-start. It used host Node v26.7.0 and Chromium headless shell 149.0.7827.55
-(Playwright 1.61.1).
+**What was tested.** The final sweep ran at
+`88b2d7afa5658ef6ffea4f83a57a5d6718fb1f36`. Its product code is the same as
+functional head `49d30a6`, which includes the review fixes. There were no
+tracked changes at start. It used host Node v26.7.0 and Chromium headless
+shell 149.0.7827.55 (Playwright 1.61.1).
 
 - **Serial.** Stack-owning suites ran one at a time under the canonical
   host-wide lock `~/.cvfpt/disposable-db.lock`.
 - **Clean teardown.** Afterwards the lock was released, and no `cvfpt`
   containers, volumes or owned ports remained.
-- **Later commits.** Commits after `fb5d06e` change documentation and the
-  return packet only.
-- **Raw logs.** They are in the return packet's `evidence/logs/final/`.
+- **Earlier sweep.** An identical sweep at the pre-review head `fb5d06e`
+  also passed all 18 checks: backend 673, units 160, guides browser 19, and
+  the rest identical. Both are kept as raw logs in the return packet's
+  `evidence/logs/final/` and `evidence/logs/final2/`.
+- **Later commits.** Commits after `88b2d7a` change evidence, documentation
+  and the return packet only.
 - **No total.** No aggregate sum is claimed, because some focused suites
   overlap.
 
 ## Final sweep
 
-All checks exited 0.
+All 18 checks exited 0.
 
 | Check | Command | Result |
 |---|---|---|
-| Backend unit/route | `npm --prefix backend test` | 673/673 |
-| Frontend units | `npm --prefix frontend run test:unit` | 160/160 |
+| Backend unit/route | `npm --prefix backend test` | 674/674 |
+| Frontend units | `npm --prefix frontend run test:unit` | 162/162 |
 | Deploy boundaries | `bash scripts/check-boundaries.sh backend` and `... frontend` | no cross-root references (both) |
 | Production build | `npm --prefix frontend run build` | built; existing chunk-size warning only |
-| Guides mocked browser | `npm --prefix frontend run test:e2e:guides` | 19/19 |
+| Guides mocked browser | `npm --prefix frontend run test:e2e:guides` | 22/22 (player, still and editor specs) |
 | Media mocked browser | `npm --prefix frontend run test:e2e:media` | 25/25 |
 | Quick mocked browser | `npm --prefix frontend run test:e2e:quick-sessions` | 30/30 |
 | Full preview | `npm --prefix frontend run test:e2e:preview` | 107 passed, 8 skipped (credential-gated live-auth specs), 0 failed |
@@ -40,12 +44,8 @@ All checks exited 0.
 | Real-provider proof, missing id | `CVF_YT_PROOF_ID=SYNTHdemo01 npm --prefix frontend run test:e2e:youtube-proof` | see below |
 
 **Real-provider sample** (Google's documentation id `M7lc1UVf-VE`): 1/1
-passed.
-
-- Zero requests before Play; the state reached `ready`.
-- The embed was nocookie, and `embed_referer` was the origin only.
-- Hosts contacted after Play: youtube-nocookie.com, youtube.com,
-  googlevideo.com, i.ytimg.com, gstatic.com, google.com and googleapis.com.
+passed. Zero requests before Play; the state reached `ready`; the embed was
+nocookie, and `embed_referer` was the origin only.
 
 **Real-provider missing id:** 1/1 passed. Zero requests before Play, and the
 real provider returned error 150.
@@ -76,6 +76,16 @@ real provider returned error 150.
 | M4 | "always works" copy | — |
 | M4 | still confirmation direction | — |
 
+**Independent-review fix pass.** Each fix was RED, then GREEN:
+
+| Finding | Test | RED | GREEN |
+|---|---|---|---|
+| Duplicated legacy-link row | `exercise-guides-editor.spec.mjs` drives the real editor and checks the saved body against the real backend rules | server rule 400 | passes |
+| Duplicated legacy-link row | 2 unit tests (`demoFieldsForCopy`, `demoProblem` for new rows) | 2 failing | 6/6 |
+| In-flight still export: controls | held-`toBlob` stub; controls disabled while exporting | enabled | disabled |
+| In-flight still export: late frame | held-`toBlob` stub; frame finishing after close | blob URLs created 2, revoked 1 | balanced |
+| Save/read link agreement (both copies) | `exercise-demo.test.js` | apostrophe link resolved to nothing | 11/11 |
+
 **Quick v1:**
 
 - Golden canonical hashes are pinned from baseline code.
@@ -87,15 +97,17 @@ real provider returned error 150.
 
 **Linux Node 24.22** (`node:24-bookworm-slim`): on both arm64 and amd64,
 `npm ci` installed sharp 0.35.5 / libvips 8.18.7 and the photo tests passed
-30/30.
+30/30. This ran during M2 (commit `81d7f90`) and was not rerun at the final
+head; the backend `package.json` and lockfile are unchanged since M2.
 
 **Dependency audit:** `npm audit` (backend) found 0 vulnerabilities.
 
 ## Visual evidence
 
-- **Captures.** 84 headless captures of baseline `f3c063c` and proposed
-  `e80d0c9` (clean), at 320×740, 390×844 and 1440×900, plus proposed-only
-  player states and refinement checks. See
+- **Captures.** 84 headless captures of baseline `f3c063c` and the proposed
+  final code (commit `88b2d7a`; the capture-tooling framing change was
+  uncommitted at capture time), at 320×740, 390×844 and 1440×900, plus
+  proposed-only player states and refinement checks. See
   [visual-review/index.html](visual-review/index.html).
 - **Hashes.** The SHA-256 of every image is re-verified by
   `scripts/exercise-guides/build-visual-review.mjs`.
@@ -106,6 +118,9 @@ real provider returned error 150.
   viewport.
 - **Player size.** The player was 270×202, 340×202 and 622×351 at the three
   widths, and 590×272 at 200% zoom.
+- **Run-to-run stability.** Two consecutive full captures were 79/84
+  byte-identical. The other five differed by at most 767 pixels, confined to
+  decoded media and a 1-pixel focus-ring row.
 - **Rendered check.** The comparison page passed a headless check with 0
   errors at 390px and 1280px in dark mode.
 
