@@ -179,10 +179,15 @@ test('uploads: server actor and server-derived facts only; fake MIME and missing
   assert.equal(fake.status, 415); assert.equal(fake.body.code, 'unsupported_image_type'); assert.equal(rpcCalls.length, 0); assert.ok(quarantineEmpty());
   const noRights = await call('POST', `/revisions/${id(301)}/sources?role=source_image`, { token: 'token-coach-a', body: imageForm({ fields: { rights_confirmed: 'false' } }) });
   assert.equal(noRights.status, 422); assert.equal(noRights.body.code, 'rights_confirmation_required'); assert.ok(quarantineEmpty());
-  // Same request id replayed: the new bytes are discarded, the existing source stays.
-  state.rpc.exercise_media_attach_source = () => ({ outcome: 'attached', asset_id: id(777), version: 2, replayed: true });
+  // Same request id replayed with the same bytes: the database answers with the
+  // source it already recorded; that file is verified in place (untouched) and
+  // the retry's bytes are discarded.
+  const recordedKey = args.p_asset.storage_key;
+  const before = fs.statSync(store.pathFor(recordedKey));
+  state.rpc.exercise_media_attach_source = () => ({ outcome: 'attached', asset_id: args.p_asset.id, version: 2, replayed: true });
   const replay = await call('POST', `/revisions/${id(301)}/sources?role=source_image`, { token: 'token-coach-a', body: imageForm() });
-  assert.equal(replay.status, 200); assert.equal(replay.body.replayed, true); assert.ok(quarantineEmpty());
+  assert.equal(replay.status, 200, JSON.stringify(replay.body)); assert.equal(replay.body.replayed, true); assert.ok(quarantineEmpty());
+  assert.equal(fs.statSync(store.pathFor(recordedKey)).ino, before.ino, 'recorded source not replaced');
   state.rpc.exercise_media_attach_source = () => ({ outcome: 'request_mismatch' });
   assert.equal((await call('POST', `/revisions/${id(301)}/sources?role=source_image`, { token: 'token-coach-a', body: imageForm() })).status, 409);
   assert.ok(quarantineEmpty());

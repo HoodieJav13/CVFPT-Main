@@ -56,6 +56,39 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
     return coachRevisionDto(revision, { assets, actor, current, job, ownerName: names.get(revision.uploaded_by_coach_id) || null });
   }
 
+  // The attach call failed in transit, so it may or may not have committed.
+  // Only the recorded row (keyed by this upload's own asset id) can tell; if
+  // it cannot be read, the caller keeps the bytes and reports the failure.
+  async function reconcileAttach(uploadId, error) {
+    const recorded = await repo.asset(uploadId).catch(() => undefined);
+    if (!recorded) throw error;
+    return { outcome: 'attached', asset_id: recorded.id, replayed: false };
+  }
+
+  // A same-request retry: the database already records an asset and key for
+  // this request. Install THAT asset from a verified copy (the original staged
+  // bytes when still present and intact, otherwise this retry's identical
+  // bytes re-filed under the recorded id); an already-installed matching file
+  // is left untouched. The retry's own staging key is never recorded or used.
+  async function finishReplay(assetId, staged) {
+    const recorded = await repo.asset(assetId);
+    if (!recorded) throw http(500, 'source_record_missing');
+    const expected = { bytes: recorded.bytes, sha256: recorded.sha256 };
+    if (staged.uploadId !== recorded.id) {
+      if (staged.sha256 !== recorded.sha256 || staged.bytes !== Number(recorded.bytes)) {
+        await store.discardUpload(staged.uploadId).catch(() => {});
+        throw http(409, 'request_mismatch');
+      }
+      const original = await store.checkStaged(recorded.id, expected);
+      if (original === 'match') await store.discardUpload(staged.uploadId);
+      else {
+        if (original === 'mismatch') await store.discardUpload(recorded.id);
+        await store.adoptStaged(staged.uploadId, recorded.id);
+      }
+    }
+    await store.commitUpload(recorded.id, recorded.storage_key, expected);
+  }
+
   async function ownedRevision(actor, id) {
     const revision = await repo.revision(requireUuid(id));
     if (!revision || revision.archived || (actor.role !== 'admin' && revision.uploaded_by_coach_id !== actor.coach.id)) throw http(404, 'not_found');
@@ -141,7 +174,13 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
       return revision;
     },
 
+    // Staged bytes are disposable only until the database records this upload.
+    // Once the attach committed (or its outcome is unknown) they stay in
+    // quarantine under the recorded asset id, where a same-request retry or
+    // the worker's recovery pass can still install them; success is reported
+    // only once the recorded file is in place and verified.
     async attachSource(actor, revision, role, staged, fields) {
+      let disposable = true;
       try {
         const requestId = requireUuid(fields.request_id, 'invalid_request_id');
         const expected = requireVersion(Number(fields.expected_version));
@@ -164,21 +203,28 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
           descriptor = { mime_type: container.mime, ext: container.ext, width: facts.width, height: facts.height, duration_ms: facts.durationMs, has_audio: facts.hasAudio };
         }
         const key = `sources/${staged.uploadId}.${descriptor.ext}`;
-        const result = await repo.rpc('exercise_media_attach_source', {
-          p_actor: actor.coach.id, p_revision_id: revision.id, p_expected_version: expected,
-          p_asset: {
-            id: staged.uploadId, role, storage_key: key, mime_type: descriptor.mime_type, bytes: staged.bytes, width: descriptor.width,
-            height: descriptor.height, duration_ms: descriptor.duration_ms, has_audio: descriptor.has_audio, sha256: staged.sha256,
-            rights_basis: fields.rights_basis, rights_note: note, display_name: sanitizeDisplayName(fields.original_name),
-            upload_request_id: requestId,
-          },
-        });
+        let result;
+        try {
+          result = await repo.rpc('exercise_media_attach_source', {
+            p_actor: actor.coach.id, p_revision_id: revision.id, p_expected_version: expected,
+            p_asset: {
+              id: staged.uploadId, role, storage_key: key, mime_type: descriptor.mime_type, bytes: staged.bytes, width: descriptor.width,
+              height: descriptor.height, duration_ms: descriptor.duration_ms, has_audio: descriptor.has_audio, sha256: staged.sha256,
+              rights_basis: fields.rights_basis, rights_note: note, display_name: sanitizeDisplayName(fields.original_name),
+              upload_request_id: requestId,
+            },
+          });
+        } catch (error) {
+          disposable = false;
+          result = await reconcileAttach(staged.uploadId, error);
+        }
         if (result?.outcome !== 'attached') refuse(result);
-        if (result.replayed) await store.discardUpload(staged.uploadId);
-        else await store.commitUpload(staged.uploadId, key);
+        disposable = false;
+        if (result.replayed) await finishReplay(result.asset_id, staged);
+        else await store.commitUpload(staged.uploadId, key, { bytes: staged.bytes, sha256: staged.sha256 });
         return { status: result.replayed ? 200 : 201, body: { revision: await revisionView(actor, await repo.revision(revision.id)), replayed: Boolean(result.replayed) } };
       } catch (error) {
-        await store.discardUpload(staged.uploadId).catch(() => {});
+        if (disposable) await store.discardUpload(staged.uploadId).catch(() => {});
         throw error;
       }
     },

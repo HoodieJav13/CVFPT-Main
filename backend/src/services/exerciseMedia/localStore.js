@@ -104,7 +104,57 @@ class LocalMediaStore {
     return path.join(this.quarantine, name);
   }
 
-  async commitUpload(uploadId, key) { await this.#install(this.stagedPath(uploadId), key); }
+  // 'missing' | 'match' | 'mismatch' for a file against an expected
+  // {bytes, sha256} (no expectation: any regular file matches). Never follows
+  // a symlink; a symlink or non-file is a mismatch.
+  async #check(file, expected) {
+    let stat;
+    try { stat = await fsp.lstat(file); } catch (error) {
+      if (error.code === 'ENOENT') return 'missing';
+      throw error;
+    }
+    if (!stat.isFile()) return 'mismatch';
+    if (!expected) return 'match';
+    if (stat.size !== Number(expected.bytes)) return 'mismatch';
+    const hash = createHash('sha256');
+    await pipeline(fs.createReadStream(file, { flags: fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW }), hash);
+    return hash.digest('hex') === expected.sha256 ? 'match' : 'mismatch';
+  }
+
+  // Installs a staged upload at its recorded key and never overwrites an
+  // object already there: a present object must match `expected`
+  // ({bytes, sha256}), and the staged bytes are verified before they are
+  // linked into place. The staged copy is removed only after the object is in
+  // place, so a failure leaves it recoverable. Returns { installed } (false
+  // when a matching object was already present).
+  async commitUpload(uploadId, key, expected = null) {
+    const staged = this.stagedPath(uploadId);
+    const target = this.pathFor(key);
+    const present = await this.#check(target, expected);
+    if (present === 'mismatch') throw new MediaError('stored_source_mismatch', 500);
+    if (present === 'missing') {
+      if (expected && (await this.#check(staged, expected)) !== 'match') throw new MediaError('staged_source_mismatch', 500);
+      await fsp.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+      try {
+        await fsp.link(staged, target);
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        if ((await this.#check(target, expected)) !== 'match') throw new MediaError('stored_source_mismatch', 500);
+      }
+    }
+    await fsp.rm(staged, { force: true });
+    return { installed: present === 'missing' };
+  }
+
+  async checkStaged(uploadId, expected) { return this.#check(this.stagedPath(uploadId), expected); }
+
+  // Re-files a staged copy under another upload id (e.g. a same-request retry
+  // becoming the recoverable copy of the recorded asset); never overwrites.
+  async adoptStaged(fromId, toId) {
+    const from = this.stagedPath(fromId);
+    await fsp.link(from, this.stagedPath(toId));
+    await fsp.rm(from, { force: true });
+  }
 
   async discardUpload(uploadId) { await fsp.rm(this.stagedPath(uploadId), { force: true }); }
 

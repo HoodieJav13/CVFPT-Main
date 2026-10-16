@@ -24,17 +24,26 @@ class MediaWorker {
 
   // Finish uploads interrupted between their DB row and the final rename, then
   // sweep expired quarantine parts and stale scratch directories.
+  // A staged part whose asset row exists is committed source bytes: it is
+  // installed (verified against the recorded size/hash) or, if that fails or
+  // the row cannot be read, kept out of the age-based sweep.
   async recover({ olderThanMs = 60 * 60 * 1000 } = {}) {
-    const recovered = [];
+    let recovered = 0;
+    const keep = new Set();
     for (const uploadId of await this.store.listStagedUploads()) {
-      const asset = await this.repo.asset(uploadId);
-      if (asset && !(await this.store.exists(asset.storage_key))) {
-        await this.store.commitUpload(uploadId, asset.storage_key);
-        recovered.push(uploadId);
+      let asset;
+      try { asset = await this.repo.asset(uploadId); } catch { keep.add(uploadId); continue; }
+      if (!asset) continue;
+      try {
+        const { installed } = await this.store.commitUpload(uploadId, asset.storage_key, { bytes: asset.bytes, sha256: asset.sha256 });
+        if (installed) recovered += 1;
+      } catch (error) {
+        keep.add(uploadId);
+        this.log('source recovery deferred', { asset: uploadId, code: error.code || 'error' });
       }
     }
-    const swept = await this.store.removeTemporary({ olderThanMs });
-    return { recovered: recovered.length, ...swept };
+    const swept = await this.store.removeTemporary({ olderThanMs, keep });
+    return { recovered, ...swept };
   }
 
   async runOnce() {
