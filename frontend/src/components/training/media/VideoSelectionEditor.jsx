@@ -72,7 +72,7 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
   const [playing, setPlaying] = useState(false);
   const [undecodable, setUndecodable] = useState(false);
   const [cropTarget, setCropTarget] = useState(null); // poster | preview | end
-  // { target, ms, status: 'loading' | 'ready' | 'error', src?, dims? }
+  // { target, ms, source, status: 'loading' | 'ready' | 'error', src?, dims? }
   const [frame, setFrame] = useState(null);
   const [positionFrame, setPositionFrame] = useState(null); // server still of the scrub position (no cropping)
   const captureSeq = useRef(0); // a newer capture, a source change or unmount invalidates older ones
@@ -89,6 +89,15 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
   }, [src]);
   useEffect(() => () => { captureSeq.current += 1; }, []);
 
+  // A capture belongs to one selection: this source, the open target and that
+  // target's CURRENT saved time (null when cleared or, for the poster, when it
+  // is not a video frame). Only a capture of the current selection is shown or
+  // may write crop coordinates — checked at render and on every write, so a
+  // changed selection never leaves an editable stale frame.
+  const selectedMs = cropTarget ? cropTargetMs(cropTarget, recipe) : null;
+  const isCurrent = (candidate) => Boolean(candidate) && candidate.target === cropTarget && candidate.ms === selectedMs && candidate.source === src;
+  const selection = useRef({});
+  selection.current = { target: cropTarget, ms: selectedMs, source: src };
   const seek = (ms) => {
     const target = clampTime(ms, durationMs);
     setNow(target);
@@ -110,13 +119,14 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
     if (video.paused) video.play().catch(() => {}); else video.pause();
   };
 
-  const captureFrame = async (target) => {
+  const captureFrame = async (target, { recapture = false } = {}) => {
     const ms = cropTargetMs(target, recipe);
     if (ms == null) return;
     const seq = ++captureSeq.current;
-    if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) opener.current = document.activeElement;
+    const source = src;
+    if (!recapture && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) opener.current = document.activeElement;
     setCropTarget(target);
-    setFrame({ target, ms, status: 'loading' });
+    setFrame({ target, ms, source, status: 'loading' });
     try {
       let shot;
       if (undecodable) {
@@ -133,11 +143,28 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
         shot = { src: canvas.toDataURL('image/jpeg', 0.85), dims: { width: video.videoWidth, height: video.videoHeight } };
       }
       if (seq !== captureSeq.current) return; // superseded: never show a late frame
-      setFrame({ target, ms, status: 'ready', ...shot });
+      setFrame({ target, ms, source, status: 'ready', ...shot });
     } catch {
-      if (seq === captureSeq.current) setFrame({ target, ms, status: 'error' });
+      if (seq === captureSeq.current) setFrame({ target, ms, source, status: 'error' });
     }
   };
+
+  // The open target's saved time changed (edited, cleared, or the poster left
+  // video-frame mode): drop any pending capture — a new generation, even if the
+  // time later returns to an earlier value — and recapture the new time, or
+  // close the crop when there is no time to crop. Scrubbing and crop edits do
+  // not change the saved time, so they never trigger this. Source changes
+  // close the crop above.
+  useEffect(() => {
+    if (!cropTarget || !frame || frame.target !== cropTarget || frame.ms === selectedMs) return;
+    captureSeq.current += 1;
+    if (selectedMs == null) {
+      setCropTarget(null);
+      setFrame(null);
+      return;
+    }
+    captureFrame(cropTarget, { recapture: true });
+  }, [cropTarget, selectedMs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const closeCrop = () => {
     captureSeq.current += 1;
@@ -161,8 +188,15 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
 
   const previewError = recipe.preview_start_ms == null && recipe.preview_end_ms == null ? null : validatePreview(recipe.preview_start_ms, recipe.preview_end_ms, durationMs);
   const cropKey = { poster: 'poster_crop', preview: 'preview_crop', end: 'end_frame_crop' }[cropTarget];
-  const readyFrame = frame && frame.status === 'ready' && frame.target === cropTarget ? frame : null;
+  const frameIsCurrent = isCurrent(frame);
+  const readyFrame = frameIsCurrent && frame.status === 'ready' ? frame : null;
   const dims = readyFrame?.dims || { width: facts.width, height: facts.height };
+  // Crop writes re-check the selection the editor belongs to (no stale window).
+  const writeCrop = (crop) => {
+    const now = selection.current;
+    if (!readyFrame || readyFrame.target !== now.target || readyFrame.ms !== now.ms || readyFrame.source !== now.source) return;
+    onChange({ [cropKey]: crop });
+  };
 
   return (
     <div className="space-y-3" data-testid="video-selection-editor">
@@ -257,24 +291,24 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
         <SecondsField id={`${baseId}-end`} label="End still" value={recipe.end_frame_ms} durationMs={durationMs} disabled={disabled}
           onCommit={(ms) => onChange(ms == null ? { end_frame_ms: null, end_frame_crop: null } : { end_frame_ms: ms, end_frame_crop: recipe.end_frame_crop || defaultCrop(dims) })} />
       </fieldset>
-      {cropTarget && frame && (
+      {cropTarget && frame && selectedMs != null && (
         <div className="space-y-2 rounded-lg border border-border/60 p-3" data-testid="video-frame-crop">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="text-sm font-medium">Crop {cropTarget === 'end' ? 'end still' : cropTarget}</p>
-              <p className="text-xs text-muted-foreground" data-testid="video-frame-target">{TARGET_LABELS[cropTarget]} at {formatMs(frame.ms)}</p>
+              <p className="text-xs text-muted-foreground" data-testid="video-frame-target">{TARGET_LABELS[cropTarget]} at {formatMs(selectedMs)}</p>
             </div>
             <Button type="button" size="touch" variant="ghost" onClick={closeCrop}>Done</Button>
           </div>
           {readyFrame ? (
-            <ImageCropEditor src={readyFrame.src} dims={dims} crop={recipe[cropKey]} onChange={(crop) => onChange({ [cropKey]: crop })} label={`Crop ${cropTarget}`} disabled={disabled} testId={`crop-${cropTarget}`} />
-          ) : frame.status === 'error' ? (
+            <ImageCropEditor src={readyFrame.src} dims={dims} crop={recipe[cropKey]} onChange={writeCrop} label={`Crop ${cropTarget}`} disabled={disabled} testId={`crop-${cropTarget}`} />
+          ) : frameIsCurrent && frame.status === 'error' ? (
             <div className="flex flex-wrap items-center gap-2 text-sm" role="alert" data-testid="video-frame-error">
-              <span className="text-muted-foreground">Couldn't load the frame at {formatMs(frame.ms)}.</span>
-              <Button type="button" size="touch" variant="outline" onClick={() => captureFrame(frame.target)}>Retry</Button>
+              <span className="text-muted-foreground">Couldn't load the frame at {formatMs(selectedMs)}.</span>
+              <Button type="button" size="touch" variant="outline" onClick={() => captureFrame(cropTarget)}>Retry</Button>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground" role="status" data-testid="video-frame-loading">Loading the frame at {formatMs(frame.ms)}…</p>
+            <p className="text-sm text-muted-foreground" role="status" data-testid="video-frame-loading">Loading the frame at {formatMs(selectedMs)}…</p>
           )}
         </div>
       )}

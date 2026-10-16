@@ -48,10 +48,13 @@ async function openHarness(page, { recipe, video = 'valid', frames = {} } = {}) 
     }
     return route.fulfill({ status: 200, contentType: 'video/mp4', body: VIDEO, headers: { 'accept-ranges': 'bytes' } });
   });
+  const seen = {};
   await page.route('**/__media-frame*', async (route) => {
     const ms = Number(new URL(route.request().url()).searchParams.get('time_ms'));
     calls.frames.push(ms);
-    const spec = frames[ms] || { color: GREEN };
+    // An array answers successive requests for the same time in order.
+    const index = (seen[ms] = (seen[ms] ?? -1) + 1);
+    const spec = Array.isArray(frames[ms]) ? frames[ms][Math.min(index, frames[ms].length - 1)] : frames[ms] || { color: GREEN };
     if (spec.delayMs) await new Promise((resolve) => setTimeout(resolve, spec.delayMs));
     if (spec.status && spec.status !== 200) return route.fulfill({ status: spec.status, contentType: 'application/json', body: '{"code":"processor_unavailable"}' });
     return route.fulfill({ status: 200, contentType: 'image/png', body: png(spec.color) });
@@ -255,3 +258,164 @@ for (const [width, height] of [[320, 740], [390, 844], [1280, 900]]) {
     expect(await video(page).evaluate((el) => el.paused && !el.autoplay)).toBe(true);
   });
 }
+
+// ---- Selection validity while a crop is open (R2 follow-up) -----------------
+// A capture and its crop edits belong to the current source, target, poster
+// mode and saved time. Changing that selection must never leave the old frame
+// editable, and old async responses must never come back.
+
+const field = (page, label) => page.getByLabel(label, { exact: true });
+async function commitSeconds(page, label, seconds) {
+  await field(page, label).fill(seconds);
+  await field(page, label).press('Enter');
+}
+// Right after a commit (same task, no waiting): is the old image still shown?
+const stillShows = (page, testId, oldSrc) => page.evaluate(({ id, old }) => {
+  const el = document.querySelector(`[data-testid="${id}"] img`);
+  return Boolean(el) && el.getAttribute('src') === old;
+}, { id: testId, old: oldSrc });
+const cardOf = (page, title) => page.getByText(title, { exact: true }).locator('..');
+
+for (const item of [
+  { name: 'poster', button: 'Crop poster', testId: 'crop-poster', label: 'Poster', recipe: { poster_mode: 'video_frame', poster_frame_ms: 500, poster_crop: FULL }, newSeconds: '3.000', newMs: 3000, shown: '0:03.0', key: 'poster_frame_ms', cropKey: 'poster_crop' },
+  { name: 'end still', button: 'Crop end still', testId: 'crop-end', label: 'End still', recipe: { poster_mode: 'video_frame', poster_frame_ms: 500, poster_crop: FULL, end_frame_ms: 3500, end_frame_crop: FULL }, newSeconds: '1.500', newMs: 1500, shown: '0:01.5', key: 'end_frame_ms', cropKey: 'end_frame_crop' },
+  { name: 'preview start', button: 'Crop preview', testId: 'crop-preview', label: 'Preview start', recipe: { preview_start_ms: 1000, preview_end_ms: 3000, preview_crop: FULL }, newSeconds: '2.000', newMs: 2000, shown: '0:02.0', key: 'preview_start_ms', cropKey: 'preview_crop' },
+]) {
+  test(`changing the ${item.name} time while its crop is open never leaves the old frame editable`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await openHarness(page, { recipe: item.recipe });
+    await readyToScrub(page);
+    await page.getByRole('button', { name: item.button, exact: true }).click();
+    const img = page.getByTestId(item.testId).locator('img');
+    await expect(img).toHaveAttribute('src', /^data:image\/jpeg/);
+    const oldSrc = await img.getAttribute('src');
+    await commitSeconds(page, item.label, item.newSeconds);
+    expect(await stillShows(page, item.testId, oldSrc), 'old frame still editable right after the change').toBe(false);
+    expect((await recipeOf(page))[item.key]).toBe(item.newMs);
+    await expect(page.getByTestId('video-frame-target')).toContainText(item.shown);
+    await expect(img).toHaveAttribute('src', /^data:image\/jpeg/);
+    const shown = h(await img.getAttribute('src'));
+    expect(shown).not.toBe(h(oldSrc));
+    expect(shown).toBe(h(await frameAt(page, item.newMs)));
+    // Keyboard crop edits now apply to the new selection, which stays put.
+    await page.getByTestId(`${item.testId}-area`).focus();
+    await page.keyboard.press('+');
+    await expect.poll(async () => (await recipeOf(page))[item.cropKey].width).toBeLessThan(1);
+    expect((await recipeOf(page))[item.key]).toBe(item.newMs);
+  });
+}
+
+test('a time change while the browser capture is still pending shows the new frame', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openHarness(page, { recipe: { poster_mode: 'video_frame', poster_frame_ms: 500, poster_crop: FULL } });
+  await readyToScrub(page);
+  await page.getByRole('button', { name: 'Crop poster', exact: true }).click();
+  await commitSeconds(page, 'Poster', '3.000'); // without waiting for the first capture
+  const img = page.getByTestId('crop-poster').locator('img');
+  await expect(page.getByTestId('video-frame-target')).toContainText('0:03.0');
+  await expect(img).toHaveAttribute('src', /^data:image\/jpeg/);
+  await page.waitForTimeout(500);
+  expect(h(await img.getAttribute('src'))).toBe(h(await frameAt(page, 3000)));
+});
+
+test('server fallback: away-and-back while pending needs a fresh capture; obsolete success and failure never return', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  const calls = await openHarness(page, {
+    video: 'broken',
+    recipe: { poster_mode: 'video_frame', poster_frame_ms: 500, poster_crop: FULL },
+    frames: { 500: [{ color: RED, delayMs: 1500 }, { color: GREEN, delayMs: 600 }], 3000: { color: BLUE, delayMs: 300 } },
+  });
+  await expect(page.getByTestId('video-undecodable')).toBeVisible();
+  await page.getByRole('button', { name: 'Crop poster', exact: true }).click();
+  await expect(page.getByTestId('video-frame-loading')).toBeVisible();
+  await commitSeconds(page, 'Poster', '3.000');
+  await commitSeconds(page, 'Poster', '0.500');
+  await expect(page.getByTestId('crop-poster').locator('img')).toBeVisible();
+  expect(near(await cropColor(page, 'crop-poster'), GREEN)).toBe(true);
+  await page.waitForTimeout(1800); // the first 500 ms response (RED) has landed by now
+  expect(near(await cropColor(page, 'crop-poster'), GREEN)).toBe(true);
+  expect(calls.frames).toEqual([500, 3000, 500]);
+
+  // An obsolete failure cannot replace the current selection's frame either.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
+
+test('server fallback: a late failure for the old time never replaces the new frame', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openHarness(page, {
+    video: 'broken',
+    recipe: { poster_mode: 'video_frame', poster_frame_ms: 500, poster_crop: FULL },
+    frames: { 500: { status: 503, delayMs: 1200 }, 3000: { color: BLUE } },
+  });
+  await expect(page.getByTestId('video-undecodable')).toBeVisible();
+  await page.getByRole('button', { name: 'Crop poster', exact: true }).click();
+  await commitSeconds(page, 'Poster', '3.000');
+  await expect(page.getByTestId('crop-poster').locator('img')).toBeVisible();
+  await page.waitForTimeout(1500);
+  await expect(page.getByTestId('video-frame-error')).toHaveCount(0);
+  expect(near(await cropColor(page, 'crop-poster'), BLUE)).toBe(true);
+});
+
+test('clearing a target or switching the poster mode closes its crop; a pending capture cannot reopen it', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openHarness(page, { recipe: { poster_mode: 'video_frame', poster_frame_ms: 500, poster_crop: FULL, preview_start_ms: 1000, preview_end_ms: 3000, preview_crop: FULL, end_frame_ms: 3500, end_frame_crop: FULL } });
+  await readyToScrub(page);
+  // Ready end-still crop, then Clear.
+  await page.getByRole('button', { name: 'Crop end still', exact: true }).click();
+  await expect(page.getByTestId('crop-end').locator('img')).toBeVisible();
+  await cardOf(page, 'End still (optional)').getByRole('button', { name: 'Clear' }).click();
+  await expect(page.getByTestId('video-frame-crop')).toHaveCount(0);
+  // Ready preview crop, then Clear.
+  await page.getByRole('button', { name: 'Crop preview', exact: true }).click();
+  await expect(page.getByTestId('crop-preview').locator('img')).toBeVisible();
+  await cardOf(page, 'Movement preview (optional, 1–8 s)').getByRole('button', { name: 'Clear' }).click();
+  await expect(page.getByTestId('video-frame-crop')).toHaveCount(0);
+  // Ready poster crop, then the poster switches to an uploaded image.
+  await page.getByRole('button', { name: 'Crop poster', exact: true }).click();
+  await expect(page.getByTestId('crop-poster').locator('img')).toBeVisible();
+  await page.evaluate(() => window.__harness.patchRecipe({ poster_mode: 'uploaded_image' }));
+  await expect(page.getByTestId('video-frame-crop')).toHaveCount(0);
+});
+
+test('a pending server capture for a cleared end still cannot reopen the crop', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openHarness(page, {
+    video: 'broken',
+    recipe: { poster_mode: 'video_frame', poster_frame_ms: 500, poster_crop: FULL, end_frame_ms: 3500, end_frame_crop: FULL },
+    frames: { 3500: { color: BLUE, delayMs: 1200 } },
+  });
+  await expect(page.getByTestId('video-undecodable')).toBeVisible();
+  await page.getByRole('button', { name: 'Crop end still', exact: true }).click();
+  await expect(page.getByTestId('video-frame-loading')).toBeVisible();
+  await cardOf(page, 'End still (optional)').getByRole('button', { name: 'Clear' }).click();
+  await page.waitForTimeout(1600);
+  await expect(page.getByTestId('video-frame-crop')).toHaveCount(0);
+  expect((await recipeOf(page)).end_frame_ms).toBe(null);
+});
+
+test('crop edits, unrelated text changes and unrelated scrubbing keep the open crop and its saved frame', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openHarness(page, { recipe: { poster_mode: 'video_frame', poster_frame_ms: 500, poster_crop: FULL } });
+  await readyToScrub(page);
+  await page.getByRole('button', { name: 'Crop poster', exact: true }).click();
+  const img = page.getByTestId('crop-poster').locator('img');
+  await expect(img).toHaveAttribute('src', /^data:image\/jpeg/);
+  const src = await img.getAttribute('src');
+  const area = page.getByTestId('crop-poster-area');
+  await area.focus();
+  await page.keyboard.press('+');
+  await page.keyboard.press('+');
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await recipeOf(page)).poster_crop.width).toBeLessThan(1);
+  await expect(area).toBeFocused();
+  await page.evaluate(() => window.__harness.patchRecipe({ alt_text: 'Synthetic alt text changed', cues: ['Synthetic cue'] }));
+  await scrubTo(page, 2000);
+  await expect(img).toHaveAttribute('src', src);
+  await expect(page.getByTestId('video-frame-target')).toContainText('0:00.5');
+  expect((await recipeOf(page)).poster_frame_ms).toBe(500);
+  const before = (await recipeOf(page)).poster_crop;
+  await area.focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(async () => (await recipeOf(page)).poster_crop.x).not.toBe(before.x);
+});
+

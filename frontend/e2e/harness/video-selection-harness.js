@@ -19,7 +19,8 @@ async function serverFrame(timeMs) {
 function Harness() {
   const [src, setSrc] = useState(params.get('src') || '/__media-fixture/moving.mp4');
   const [recipe, setRecipe] = useState({ ...EMPTY, ...JSON.parse(params.get('recipe') || '{}') });
-  window.__harness = { recipe, setSrc };
+  // patchRecipe stages changes made outside this editor (poster mode, alt text, cues).
+  window.__harness = { recipe, setSrc, patchRecipe: (patch) => setRecipe((current) => ({ ...current, ...patch })) };
   return React.createElement('main', { className: 'mx-auto max-w-3xl p-4' },
     React.createElement(VideoSelectionEditor, {
       src,
