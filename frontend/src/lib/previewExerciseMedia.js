@@ -190,9 +190,12 @@ export function createPreviewExerciseMedia({ state, iso, ok, fail, currentCoachI
 
   async function handle(config, method, path, payload) {
     if (!path.startsWith('/exercise-media/')) return undefined;
+    // Mirrors the server: discovery answers { enabled: false } while media is off.
+    if (!enabled && method === 'get' && path === '/exercise-media/capabilities') return ok({ enabled: false, processing_available: false }, config);
+    if (!enabled && method === 'get' && path === '/exercise-media/library-status') return ok({ enabled: false, items: [], summary: null }, config);
     if (!enabled) return Promise.reject({ response: { data: { error: 'Exercise media is not available in this environment.', code: 'media_unavailable' }, status: 503, statusText: 'Unavailable', headers: {}, config }, config });
     const refuse = (status, code) => Promise.reject({ response: { data: { error: code, code }, status, statusText: 'Error', headers: {}, config }, config });
-    if (path === '/exercise-media/capabilities' && method === 'get') return ok({ processing_available: true, simulation: true, limits: {} }, config);
+    if (path === '/exercise-media/capabilities' && method === 'get') return ok({ enabled: true, processing_available: true, simulation: true, limits: {} }, config);
     if (path === '/exercise-media/library-status' && method === 'get') {
       const items = state.exerciseLibrary.filter((e) => !e.archived).map((e) => {
         const dto = clientDto(e.id);
@@ -212,7 +215,7 @@ export function createPreviewExerciseMedia({ state, iso, ok, fail, currentCoachI
         if (item.drafts_processing) summary.processing += 1;
         if (item.drafts_failed) summary.processing_failed += 1;
       }
-      return ok({ items, summary }, config);
+      return ok({ enabled: true, items, summary }, config);
     }
     let match = path.match(/^\/exercise-media\/exercises\/([^/]+)\/revisions$/);
     if (match && method === 'get') {
@@ -227,12 +230,16 @@ export function createPreviewExerciseMedia({ state, iso, ok, fail, currentCoachI
     if (match && method === 'post') {
       if (payload.confirm_exercise_id !== match[1]) return refuse(400, 'exercise_confirmation_required');
       const base = payload.base_revision_id ? revisions.get(payload.base_revision_id) : null;
+      // Mirrors the server: only the source uploader or an admin keeps the
+      // guide's sources and recipe; anyone else starts from its alt text and cues.
+      const keep = Boolean(base) && (base.uploaded_by_coach_id === currentCoachId() || Boolean(state.coaches.find((c) => c.id === currentCoachId())?.is_admin));
+      const emptyText = { alt_text: null, end_frame_alt_text: null, cues: [], transcript: null, caption_language: null, caption_cues: [], instruction_audio: false };
       const id = nextId('rev_media_new');
       const revision = { id, exercise_library_id: match[1], uploaded_by_coach_id: currentCoachId(), status: 'draft', review_status: 'needs_review', version: 1, recipe_version: 1, failure_code: null, published_at: null, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        text: base ? { ...base.text } : { alt_text: null, end_frame_alt_text: null, cues: [], transcript: null, caption_language: null, caption_cues: [], instruction_audio: false },
-        recipe: base ? { ...base.recipe } : { include_instruction: false, poster_mode: null, poster_frame_ms: null, poster_crop: null, preview_start_ms: null, preview_end_ms: null, preview_crop: null, end_frame_ms: null, end_frame_crop: null },
-        sources: base ? JSON.parse(JSON.stringify(base.sources)) : { image: null, video: null }, simulation: true };
-      if (base) {
+        text: keep ? { ...base.text } : base ? { ...emptyText, alt_text: base.text.alt_text, cues: [...base.text.cues] } : emptyText,
+        recipe: keep ? { ...base.recipe } : { include_instruction: false, poster_mode: null, poster_frame_ms: null, poster_crop: null, preview_start_ms: null, preview_end_ms: null, preview_crop: null, end_frame_ms: null, end_frame_crop: null },
+        sources: keep ? JSON.parse(JSON.stringify(base.sources)) : { image: null, video: null }, simulation: true };
+      if (keep) {
         for (const role of ['image', 'video']) {
           if (!revision.sources[role]) continue;
           const original = assets.get(revision.sources[role].asset_id);

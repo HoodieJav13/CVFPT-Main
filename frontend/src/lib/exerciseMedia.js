@@ -127,6 +127,17 @@ export function absoluteMediaUrl(pathname, apiBaseUrl) {
 const contextKey = (context) => (context?.type === 'library' ? `library:${context.exercise_id}` : `${context?.type}:${context?.id}`);
 
 // request(context, assetIds) -> { links: [{asset_id,url,expires_at}], missing }
+// Capability links expire (60 s, 300 s for sources). A media element that fails
+// asks for one fresh link per successful load; a second failure is real.
+export function createRefreshGate(max = 1) {
+  let used = 0;
+  return {
+    onError() { if (used < max) { used += 1; return 'refresh'; } return 'failed'; },
+    onLoaded() { used = 0; },
+    reset() { used = 0; },
+  };
+}
+
 export function createLinkCache({ request, now = () => Date.now(), marginMs = 10_000 }) {
   const entries = new Map();   // key -> { url, expiresAt }
   const inflight = new Map();  // key -> Promise<url|null>

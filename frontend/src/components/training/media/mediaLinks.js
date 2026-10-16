@@ -35,7 +35,7 @@ export function resolveMediaUrl(link) {
 export function useMediaLinks(context, assetIds, enabled = true) {
   const actor = useActor();
   const key = `${context?.type}:${context?.id || context?.exercise_id}:${assetIds.filter(Boolean).join(',')}`;
-  const [state, setState] = useState({ status: 'idle', urls: new Map(), key: null });
+  const [state, setState] = useState({ status: 'idle', urls: new Map(), missing: [], key: null });
   const [attempt, setAttempt] = useState(0);
   const ids = useRef(assetIds);
   ids.current = assetIds;
@@ -46,14 +46,14 @@ export function useMediaLinks(context, assetIds, enabled = true) {
   useEffect(() => {
     const wanted = ids.current.filter(Boolean);
     if (!enabled || !actor || !wanted.length || !contextRef.current) {
-      setState({ status: 'idle', urls: new Map(), key });
+      setState({ status: 'idle', urls: new Map(), missing: [], key });
       return undefined;
     }
     let live = true;
     if (retried.current) {
       // A retry never shows the failed URL again while the fresh one loads.
       retried.current = false;
-      setState({ status: 'loading', urls: new Map(), key });
+      setState({ status: 'loading', urls: new Map(), missing: [], key });
     } else {
       setState((current) => ({ ...current, status: current.key === key && current.urls.size ? 'ready' : 'loading', key }));
     }
@@ -61,9 +61,11 @@ export function useMediaLinks(context, assetIds, enabled = true) {
       .then((links) => {
         if (!live) return;
         const urls = new Map([...links].map(([assetId, link]) => [assetId, resolveMediaUrl(link)]).filter(([, url]) => url));
-        setState({ status: 'ready', urls, key });
+        // Assets the server no longer links (a replaced or withdrawn guide) are
+        // reported, so callers show a retry instead of waiting forever.
+        setState({ status: 'ready', urls, missing: wanted.filter((assetId) => !urls.has(assetId)), key });
       })
-      .catch(() => { if (live) setState({ status: 'error', urls: new Map(), key }); });
+      .catch(() => { if (live) setState({ status: 'error', urls: new Map(), missing: [], key }); });
     return () => { live = false; };
   }, [actor, enabled, key, attempt]);
 
@@ -74,7 +76,8 @@ export function useMediaLinks(context, assetIds, enabled = true) {
     setAttempt((value) => value + 1);
   }, [actor]);
 
-  return { status: state.key === key ? state.status : 'loading', urls: state.key === key ? state.urls : new Map(), retry };
+  const current = state.key === key;
+  return { status: current ? state.status : 'loading', urls: current ? state.urls : new Map(), missing: current ? state.missing : [], retry };
 }
 
 // One preview/instruction player may play at a time.

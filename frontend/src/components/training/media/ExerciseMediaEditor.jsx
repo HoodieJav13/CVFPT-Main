@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { MEDIA_KIND_LABELS, MEDIA_LIMITS, checkFileBeforeUpload, defaultCrop, formatMs } from '@/lib/exerciseMedia';
+import { MEDIA_KIND_LABELS, MEDIA_LIMITS, checkFileBeforeUpload, createRefreshGate, defaultCrop, formatMs } from '@/lib/exerciseMedia';
 import { ImageCropEditor } from './ImageCropEditor';
 import { VideoSelectionEditor } from './VideoSelectionEditor';
 import { useMediaLinks } from './mediaLinks';
@@ -163,6 +163,33 @@ function CaptionRows({ cues, onChange, durationMs, disabled }) {
   );
 }
 
+// Review player: an expired 60 s link refreshes once and resumes; a repeated
+// failure shows a retry instead of a broken player.
+function ReviewVideo({ url, retry, label, muted = false }) {
+  const gate = useRef(createRefreshGate());
+  const resumeAt = useRef(null);
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-lg border border-border/60 bg-secondary/40 p-3 text-center text-sm text-muted-foreground" role="status">
+        <span>{label} unavailable right now.</span>
+        <Button type="button" variant="outline" size="touch" onClick={() => { gate.current.reset(); setFailed(false); retry(); }}><RefreshCw aria-hidden /> Retry</Button>
+      </div>
+    );
+  }
+  if (!url) return <div className="aspect-video w-full rounded-lg border border-border/60 bg-black" aria-hidden />;
+  return (
+    <video
+      src={url} controls muted={muted} playsInline preload="none" crossOrigin="anonymous" className="aspect-video w-full rounded-lg border border-border/60 bg-black" aria-label={label}
+      onLoadedMetadata={(event) => { gate.current.onLoaded(); if (resumeAt.current != null) { event.currentTarget.currentTime = resumeAt.current; resumeAt.current = null; } }}
+      onError={(event) => {
+        if (gate.current.onError() === 'refresh') { resumeAt.current = event.currentTarget.currentTime || 0; retry(); return; }
+        setFailed(true);
+      }}
+    />
+  );
+}
+
 function DerivativeReview({ draft }) {
   const context = useMemo(() => ({ type: 'revision', id: draft.id }), [draft.id]);
   const ids = draft.derivatives.filter((d) => d.role !== 'captions').map((d) => d.asset_id);
@@ -173,8 +200,8 @@ function DerivativeReview({ draft }) {
     <div className="grid gap-3 sm:grid-cols-2" data-testid="media-derivative-review">
       {by.poster && <figure><img src={url('poster')} alt={draft.text.alt_text || ''} width={640} height={360} crossOrigin="anonymous" className="aspect-video w-full rounded-lg border border-border/60 bg-secondary/50 object-cover" data-testid="review-poster" /><figcaption className="mt-1 text-xs text-muted-foreground">Generated poster · {(by.poster.bytes / 1024).toFixed(0)} KB</figcaption></figure>}
       {by.end_frame && <figure><img src={url('end_frame')} alt={draft.text.end_frame_alt_text || ''} width={640} height={360} crossOrigin="anonymous" className="aspect-video w-full rounded-lg border border-border/60 bg-secondary/50 object-cover" /><figcaption className="mt-1 text-xs text-muted-foreground">Generated end still</figcaption></figure>}
-      {by.preview && <figure><video src={url('preview')} controls muted playsInline preload="none" crossOrigin="anonymous" className="aspect-video w-full rounded-lg border border-border/60 bg-black" aria-label="Generated movement preview" /><figcaption className="mt-1 text-xs text-muted-foreground">Preview · {formatMs(by.preview.duration_ms)} · {(by.preview.bytes / 1024).toFixed(0)} KB · silent</figcaption></figure>}
-      {by.instruction && <figure><video src={url('instruction')} controls playsInline preload="none" crossOrigin="anonymous" className="aspect-video w-full rounded-lg border border-border/60 bg-black" aria-label="Generated full instruction video" /><figcaption className="mt-1 text-xs text-muted-foreground">Full instruction · {formatMs(by.instruction.duration_ms)} · {(by.instruction.bytes / (1024 * 1024)).toFixed(1)} MB{by.instruction.has_audio ? ' · audio' : ''}</figcaption></figure>}
+      {by.preview && <figure><ReviewVideo url={url('preview')} retry={links.retry} muted label="Generated movement preview" /><figcaption className="mt-1 text-xs text-muted-foreground">Preview · {formatMs(by.preview.duration_ms)} · {(by.preview.bytes / 1024).toFixed(0)} KB · silent</figcaption></figure>}
+      {by.instruction && <figure><ReviewVideo url={url('instruction')} retry={links.retry} label="Generated full instruction video" /><figcaption className="mt-1 text-xs text-muted-foreground">Full instruction · {formatMs(by.instruction.duration_ms)} · {(by.instruction.bytes / (1024 * 1024)).toFixed(1)} MB{by.instruction.has_audio ? ' · audio' : ''}</figcaption></figure>}
     </div>
   );
 }
@@ -246,6 +273,18 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   const sourceContext = useMemo(() => (draft ? { type: 'revision', id: draft.id } : null), [draft?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const sourceIds = draft?.sources ? [draft.sources.image?.asset_id, draft.sources.video?.asset_id] : [];
   const sources = useMediaLinks(sourceContext, sourceIds.filter(Boolean), Boolean(draft?.sources));
+  // The source scrubber may remount while a fresh link loads, so the editor
+  // owns its refresh budget: one fresh 300 s link per successful load.
+  const sourceGate = useRef(createRefreshGate());
+  const sourceResume = useRef(null);
+  useEffect(() => { sourceGate.current.reset(); sourceResume.current = null; }, [draft?.id]);
+  const onSourceError = (atMs) => {
+    if (sourceGate.current.onError() !== 'refresh') return false;
+    sourceResume.current = atMs;
+    sources.retry();
+    return true;
+  };
+  const onSourceLoaded = () => { sourceGate.current.onLoaded(); const at = sourceResume.current; sourceResume.current = null; return at; };
   const currentContext = useMemo(() => ({ type: 'library', exercise_id: exercise.id }), [exercise.id]);
   const currentPoster = data?.current?.derivatives.find((d) => d.role === 'poster')?.asset_id;
   const currentLinks = useMediaLinks(currentContext, currentPoster ? [currentPoster] : [], Boolean(currentPoster));
@@ -421,7 +460,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
             <div className="space-y-2">
               <p className="text-sm font-medium">Choose from video</p>
               {videoUrl ? (
-                <VideoSelectionEditor src={videoUrl} facts={{ durationMs: video.duration_ms, width: video.width, height: video.height }} recipe={form} onChange={set} onServerFrame={serverFrame} disabled={!editable} />
+                <VideoSelectionEditor src={videoUrl} facts={{ durationMs: video.duration_ms, width: video.width, height: video.height }} recipe={form} onChange={set} onServerFrame={serverFrame} onSourceError={onSourceError} onSourceLoaded={onSourceLoaded} disabled={!editable} />
               ) : <p className="text-sm text-muted-foreground">Loading source…</p>}
             </div>
           )}

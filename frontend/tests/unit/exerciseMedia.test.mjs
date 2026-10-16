@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MEDIA_LIMITS, checkFileBeforeUpload, defaultCrop, cropAspectOk, moveCrop, zoomCrop, validatePreview, clampTime, formatMs,
-  createLinkCache, absoluteMediaUrl, actorKey, nextPosterTargets,
+  createLinkCache, absoluteMediaUrl, actorKey, nextPosterTargets, createRefreshGate,
 } from '../../src/lib/exerciseMedia.js';
 
 const landscape = { width: 1600, height: 900 };
@@ -144,4 +144,15 @@ test('link cache: one caller aborting never fails a shared in-flight request for
   release();
   assert.equal((await kept).get('p'), '/u/p');
   await abandoned.catch(() => null);
+});
+
+test('refresh gate: one fresh link per successful load, then a real failure', () => {
+  const gate = createRefreshGate();
+  assert.equal(gate.onError(), 'refresh');
+  assert.equal(gate.onError(), 'failed', 'a second failure without a successful load is real');
+  gate.onLoaded();
+  assert.equal(gate.onError(), 'refresh', 'a later expiry after a good load refreshes again');
+  assert.equal(gate.onError(), 'failed');
+  gate.reset();
+  assert.equal(gate.onError(), 'refresh', 'an explicit retry restores the budget');
 });

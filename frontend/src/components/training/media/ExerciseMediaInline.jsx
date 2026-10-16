@@ -58,7 +58,7 @@ export function ExerciseMediaInline({ media, mediaStatus, context, exerciseName,
     return (
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-testid="exercise-media-unavailable" role="status">
         <span>Exercise guide unavailable right now.</span>
-        {onRetryMetadata && <Button type="button" variant="ghost" size="sm" className="min-h-11 px-2" onClick={onRetryMetadata}>Retry</Button>}
+        {onRetryMetadata && <Button type="button" variant="ghost" size="sm" className="min-h-11 px-2" onClick={() => onRetryMetadata()}>Retry</Button>}
       </div>
     );
   }
@@ -81,9 +81,16 @@ export function ExerciseMediaInline({ media, mediaStatus, context, exerciseName,
 
   const posterUrl = posters.urls.get(media.poster.asset_id);
   const endUrl = media.end_frame ? posters.urls.get(media.end_frame.asset_id) : null;
-  const failed = (posterUrl && failedUrl === posterUrl) || posters.status === 'error';
-  const retryPoster = () => { posters.retry(); };
-  const showVideo = previewRequested && playback !== 'error';
+  // A poster the server no longer links means the guide changed since this
+  // workout loaded: Retry re-resolves the current guide before asking again.
+  const posterMissing = posters.missing.includes(media.poster.asset_id);
+  const failed = (posterUrl && failedUrl === posterUrl) || posters.status === 'error' || posterMissing;
+  const refreshGuide = async (stale) => { if (stale && onRetryMetadata) await onRetryMetadata(media.exercise_id); };
+  const retryPoster = async () => { await refreshGuide(posterMissing); posters.retry(); };
+  const previewMissing = previewRequested && preview.missing.length > 0;
+  const previewFailed = playback === 'error' || previewMissing || (previewRequested && preview.status === 'error');
+  const retryPreview = async () => { await refreshGuide(previewMissing); preview.retry(); setPlayback('idle'); };
+  const showVideo = previewRequested && !previewFailed;
   const startPreview = () => {
     if (previewUrl && videoRef.current) {
       claimPlayback(videoRef.current);
@@ -167,8 +174,8 @@ export function ExerciseMediaInline({ media, mediaStatus, context, exerciseName,
           <Button type="button" variant="ghost" size="sm" className="min-h-11 px-2" onClick={() => videoRef.current?.pause()} data-testid="exercise-media-pause">
             <Pause className="h-4 w-4" aria-hidden /> Pause
           </Button>
-        ) : playback === 'error' ? (
-          <Button type="button" variant="ghost" size="sm" className="min-h-11 px-2" onClick={() => { preview.retry(); setPlayback('idle'); }}>
+        ) : previewFailed ? (
+          <Button type="button" variant="ghost" size="sm" className="min-h-11 px-2" onClick={retryPreview}>
             <RotateCcw className="h-4 w-4" aria-hidden /> Retry preview
           </Button>
         ) : (

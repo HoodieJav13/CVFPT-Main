@@ -33,7 +33,9 @@ function SecondsField({ id, label, value, onCommit, durationMs, disabled }) {
 
 // Coach scrubbing aid. Times are SELECTIONS (milliseconds), not promises of an
 // exact source frame; the backend regenerates every output from the original.
-export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFrame, disabled = false }) {
+// onSourceError(atMs) -> true when the owner refreshed an expired link (this
+// player may remount while it loads); onSourceLoaded() -> position to resume.
+export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFrame, onSourceError, onSourceLoaded, disabled = false }) {
   const videoRef = useRef(null);
   const baseId = useId();
   const [now, setNow] = useState(0);
@@ -98,7 +100,12 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
           <video
             ref={videoRef} src={src} muted playsInline preload="metadata" crossOrigin="anonymous" className="h-full w-full object-contain"
             aria-label="Source video for selecting frames"
-            onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={() => setUndecodable(true)}
+            onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+            onLoadedMetadata={(event) => {
+              const resumeMs = onSourceLoaded?.();
+              if (resumeMs != null) { event.currentTarget.currentTime = resumeMs / 1000; setNow(resumeMs); }
+            }}
+            onError={() => { if (!onSourceError?.(now)) setUndecodable(true); }}
             data-testid="video-selection-video"
           />
         </div>

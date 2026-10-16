@@ -7,8 +7,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ExerciseMediaEditor } from './ExerciseMediaEditor';
 
-// Server-computed catalog readiness. A 503 means media is not enabled in this
-// environment: every control here hides and the library works as before.
+// Server-computed catalog readiness. { enabled: false } (or any failure) means
+// media is off in this environment: every control here hides and the library
+// works as before.
 export function useLibraryMediaStatus() {
   const [state, setState] = useState({ enabled: false, byExercise: new Map(), summary: null });
   const seq = useRef(0);
@@ -17,6 +18,7 @@ export function useLibraryMediaStatus() {
     try {
       const { data } = await api.get('/exercise-media/library-status');
       if (mine !== seq.current) return;
+      if (data?.enabled === false) { setState({ enabled: false, byExercise: new Map(), summary: null }); return; }
       setState({ enabled: true, byExercise: new Map(data.items.map((item) => [item.exercise_id, item])), summary: data.summary });
     } catch {
       if (mine === seq.current) setState({ enabled: false, byExercise: new Map(), summary: null });

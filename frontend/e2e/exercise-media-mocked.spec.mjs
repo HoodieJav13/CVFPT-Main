@@ -166,3 +166,82 @@ test('data saver and reduced motion: stills only, preview size shown, video load
   // An undecodable preview degrades to a retry, never a broken player.
   await expect(card.getByRole('button', { name: 'Retry preview' })).toBeVisible();
 });
+
+test('a guide replaced mid-workout: missing links show Retry, never an endless spinner, and Retry loads the current guide', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const instruction = { asset_id: 'instr-0', duration_ms: 6000, width: 640, height: 360, bytes: 400_000, has_audio: false, captions_available: false, captions_asset_id: null, caption_language: null };
+  const log = workout(2, (i) => (i === 0 ? { media: media(0, { kind: 'video', instruction }) } : {}));
+  const stale = new Set(['poster-0', 'instr-0']);
+  const calls = await mockApi(page, log, {
+    links: (body, json) => json({
+      links: body.assets.filter(({ asset_id: id }) => !stale.has(id)).map(({ asset_id: id }) => ({ asset_id: id, url: `/api/exercise-media/content/${id}.sig`, expires_at: new Date(Date.now() + 60_000).toISOString() })),
+      missing: body.assets.map(({ asset_id: id }) => id).filter((id) => stale.has(id)),
+    }),
+    resolve: (json) => json({ media: [media(0, { revision_id: 'rev-0b', kind: 'video', poster: { asset_id: 'poster-0b', width: 640, height: 360 }, instruction: { ...instruction, asset_id: 'instr-0b' } }), log.exercises[1].media] }),
+  });
+  await openTracker(page);
+  const card = page.getByTestId('tracker-exercise-card').first();
+  await expect(card.getByText('Preview unavailable')).toBeVisible();
+  await expect(card.locator('.animate-spin')).toHaveCount(0);
+
+  // The full instruction of the replaced guide is unavailable too, with a retry.
+  await card.getByTestId('exercise-media-instruction').click();
+  const dialog = page.getByTestId('exercise-instruction-dialog');
+  await expect(dialog.getByText('The full instruction video is unavailable right now.')).toBeVisible();
+  await expect(dialog.locator('.animate-spin')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Retry' }).click();
+  // The dialog switched to the current guide: its video was requested (the mock
+  // serves image bytes, so the player itself then reports unavailable).
+  await expect.poll(() => calls.content.some((token) => token.startsWith('instr-0b'))).toBe(true);
+  expect(calls.content.some((token) => token.startsWith('instr-0.'))).toBe(false);
+  expect(calls.resolve).toBe(1);
+  await page.keyboard.press('Escape');
+
+  // Retry on the card shows the current guide's poster; logging was never touched.
+  await expect(card.getByTestId('exercise-media-poster')).toHaveAttribute('src', /poster-0b/);
+  expect(calls.writes).toHaveLength(0);
+});
+
+test('coach source scrubber: an expired source link refreshes once instead of claiming the video cannot play', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const library = [{ id: 'lib-row', name: 'Synthetic Band Row', category: 'Synthetic', equipment: 'Band', primary_muscle: 'Synthetic', video_url: null, hidden: false, archived: false }];
+  const draft = {
+    id: 'rev-row-draft', exercise_id: 'lib-row', status: 'draft', review_status: 'needs_review', version: 2, recipe_version: 1, failure_code: null, based_on_revision_id: null, owned_by_you: true, owner_name: 'Synthetic Coach', published_at: null, is_current: false, archived: false,
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    text: { alt_text: 'Synthetic band row frame', end_frame_alt_text: null, cues: [], transcript: null, caption_language: null, caption_cues: [], instruction_audio: false },
+    recipe: { include_instruction: false, poster_mode: 'video_frame', poster_frame_ms: 500, poster_crop: { x: 0, y: 0, width: 1, height: 1 }, preview_start_ms: null, preview_end_ms: null, preview_crop: null, end_frame_ms: null, end_frame_crop: null },
+    reviewed: null, derivatives: [], job: null,
+    sources: { image: null, video: { asset_id: 'source-row', mime_type: 'video/mp4', bytes: 45376, width: 1280, height: 720, duration_ms: 6000, has_audio: false, display_name: 'band-row.mp4', rights_basis: 'owned', rights_note: null, uploaded_by_you: true, copied: false } },
+    permissions: { can_edit: true, can_upload: true, can_process: true, can_review: false, can_publish: false, publish_requires_admin: false, can_archive: true },
+  };
+  const sourceLinks = [];
+  await page.addInitScript(() => localStorage.setItem('cvf_access_token', 'synthetic-coach-token'));
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api/, '');
+    const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
+    if (path === '/auth/me') return json({ role: 'coach', email: 'coach@example.invalid', profile: { id: 'coach-a', name: 'Synthetic Coach', is_admin: false } });
+    if (path === '/telemetry/events') return route.fulfill({ status: 204 });
+    if (path.endsWith('/unread-count')) return json({ unread: 0 });
+    if (path === '/programs/exercise-library') return json(library);
+    if (path === '/programs/workouts' || path === '/programs' || path === '/clients') return json([]);
+    if (path === '/exercise-media/library-status') return json({ enabled: true, items: [], summary: null });
+    if (path === '/exercise-media/exercises/lib-row/revisions') return json({ exercise: { id: 'lib-row', name: 'Synthetic Band Row', equipment: 'Band', category: 'Synthetic', primary_muscle: 'Synthetic', hidden: false }, current: null, current_version: 0, drafts: [draft], next_before: null });
+    if (path === '/exercise-media/links') {
+      const body = request.postDataJSON();
+      if (body.assets.some(({ asset_id: id }) => id === 'source-row')) sourceLinks.push(body.context);
+      return json({ links: body.assets.map(({ asset_id: id }) => ({ asset_id: id, url: `/api/exercise-media/content/${id}.sig${sourceLinks.length}`, expires_at: new Date(Date.now() + 300_000).toISOString() })), missing: [] });
+    }
+    // Every source byte request is refused as an expired capability.
+    if (path.startsWith('/exercise-media/content/')) return route.fulfill({ status: 403, contentType: 'application/json', body: '{"code":"link_expired"}' });
+    return json({ error: `unexpected ${request.method()} ${path}` }, 404);
+  });
+  await page.goto('/coach/programs');
+  await page.getByTestId('exercise-library-media-button').first().click();
+  await expect(page.getByTestId('video-selection-editor')).toBeVisible();
+  // One refresh after the first failure, and only a repeated failure is reported.
+  await expect(page.getByTestId('video-undecodable')).toBeVisible();
+  expect(sourceLinks).toHaveLength(2);
+  await page.waitForTimeout(500);
+  expect(sourceLinks).toHaveLength(2);
+});

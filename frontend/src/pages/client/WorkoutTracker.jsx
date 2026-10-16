@@ -271,18 +271,26 @@ export default function WorkoutTracker() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Re-resolve guide metadata after a failed lookup. Never touches set data or
-  // the outbox; a failure here leaves the text-only card as it was.
-  const retryMedia = useCallback(async () => {
+  // Re-resolve guide metadata after a failed lookup, or for one exercise whose
+  // guide changed since the workout loaded (libraryId). Never touches set data
+  // or the outbox; a failure here leaves the card as it was.
+  const retryMedia = useCallback(async (libraryId) => {
     try {
       const { data } = await api.post('/exercise-media/resolve', { context: mediaContext });
       const byExercise = new Map((data.media || []).map((item) => [item.exercise_id, item]));
+      const target = (exercise) => Boolean(exercise.exercise_library_id)
+        && (libraryId ? exercise.exercise_library_id === libraryId : exercise.media_status === 'unavailable');
       setLog((current) => current && ({
         ...current,
-        exercises: current.exercises.map((exercise) => (exercise.media_status === 'unavailable' && exercise.exercise_library_id
+        exercises: current.exercises.map((exercise) => (target(exercise)
           ? { ...exercise, media: byExercise.get(exercise.exercise_library_id) || null, media_status: undefined }
           : exercise)),
       }));
+      if (libraryId) {
+        const fresh = byExercise.get(libraryId) || null;
+        setInstruction((current) => (current?.media?.exercise_id === libraryId ? (fresh ? { ...current, media: fresh } : null) : current));
+        if (!fresh) toast.message('This exercise guide is no longer available. Your workout is unaffected.');
+      }
     } catch {
       toast.message('Exercise guides are still unavailable. Your workout is unaffected.');
     }
@@ -760,6 +768,7 @@ export default function WorkoutTracker() {
         context={mediaContext}
         open={Boolean(instruction)}
         onOpenChange={(open) => { if (!open) setInstruction(null); }}
+        onRetryMetadata={retryMedia}
       />
 
       <Dialog open={abandonOpen} onOpenChange={setAbandonOpen}>

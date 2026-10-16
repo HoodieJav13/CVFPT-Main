@@ -10,7 +10,7 @@ import { claimPlayback, releasePlayback, useMediaLinks } from './mediaLinks';
 // native controls, a captions toggle and an on-demand transcript. Historical
 // views label it "Current exercise guide" — it is today's guide, not a record
 // of what was shown when the workout happened.
-export function ExerciseInstructionDialog({ media, context, exerciseName, open, onOpenChange, historical = false }) {
+export function ExerciseInstructionDialog({ media, context, exerciseName, open, onOpenChange, historical = false, onRetryMetadata }) {
   const videoRef = useRef(null);
   const opener = useRef(null);
   const resumeAt = useRef(0);
@@ -64,6 +64,15 @@ export function ExerciseInstructionDialog({ media, context, exerciseName, open, 
   };
 
   if (!media) return null;
+  // Assets the server no longer links belong to a replaced or withdrawn guide.
+  const videoMissing = Boolean(instruction) && links.missing.includes(instruction.asset_id);
+  const stillsMissing = !instruction && links.missing.includes(media.poster.asset_id);
+  const retryAll = async () => {
+    refreshed.current = false;
+    setVideoFailed(false);
+    if ((videoMissing || stillsMissing) && onRetryMetadata) await onRetryMetadata(media.exercise_id);
+    links.retry();
+  };
   const title = historical ? 'Current exercise guide' : instruction ? 'Full instruction' : MEDIA_KIND_LABELS[media.kind];
   const posterUrl = links.urls.get(media.poster.asset_id);
   const endUrl = media.end_frame ? links.urls.get(media.end_frame.asset_id) : null;
@@ -87,10 +96,10 @@ export function ExerciseInstructionDialog({ media, context, exerciseName, open, 
         <div className="space-y-3">
           {instruction ? (
             <div className="overflow-hidden rounded-lg border border-border/60 bg-black" style={{ aspectRatio: `${instruction.width} / ${instruction.height}`, maxHeight: '60dvh' }}>
-              {videoFailed ? (
+              {videoFailed || videoMissing ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-sm text-muted-foreground" role="status">
                   <span>The full instruction video is unavailable right now.</span>
-                  <Button type="button" variant="outline" size="touch" onClick={() => { refreshed.current = false; setVideoFailed(false); links.retry(); }}>
+                  <Button type="button" variant="outline" size="touch" onClick={retryAll}>
                     <RotateCcw className="h-4 w-4" aria-hidden /> Retry
                   </Button>
                 </div>
@@ -122,10 +131,10 @@ export function ExerciseInstructionDialog({ media, context, exerciseName, open, 
               {endUrl && <figure><img src={endUrl} alt={media.end_frame.alt_text} width={640} height={360} crossOrigin="anonymous" className="aspect-video w-full rounded-lg border border-border/60 object-cover" /><figcaption className="mt-1 text-xs text-muted-foreground">End position</figcaption></figure>}
             </div>
           )}
-          {links.status === 'error' && !videoFailed && (
+          {((links.status === 'error' && !videoFailed) || stillsMissing) && (
             <div className="flex flex-wrap items-center gap-2 text-sm" role="status">
               <span className="text-muted-foreground">Media unavailable right now.</span>
-              <Button type="button" variant="outline" size="touch" onClick={links.retry}>Retry</Button>
+              <Button type="button" variant="outline" size="touch" onClick={retryAll}>Retry</Button>
             </div>
           )}
           <div className="flex flex-wrap gap-2">
