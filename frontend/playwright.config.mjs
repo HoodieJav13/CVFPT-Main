@@ -7,7 +7,7 @@ export default defineConfig({
     // Exercise media: normal-mode mocked and real-local lanes own their own servers.
     '**/exercise-media-mocked.spec.mjs', '**/exercise-media-local.spec.mjs', '**/exercise-media-frame-selection.spec.mjs',
     // Exercise guides: mocked normal-mode, real-local and the opt-in real-provider proof own theirs.
-    '**/exercise-guides-player.spec.mjs', '**/exercise-guides-still.spec.mjs', '**/exercise-guides-local.spec.mjs', '**/youtube-provider-proof.spec.mjs'],
+    '**/exercise-guides-player.spec.mjs', '**/exercise-guides-still.spec.mjs', '**/exercise-guides-editor.spec.mjs', '**/exercise-guides-local.spec.mjs', '**/youtube-provider-proof.spec.mjs'],
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

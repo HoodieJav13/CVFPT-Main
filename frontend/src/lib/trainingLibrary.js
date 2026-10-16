@@ -157,6 +157,25 @@ export function demoFieldsFromRow(row) {
   return { video_link_mode: row?.video_link_mode ?? null, video_url: row?.video_url || '' };
 }
 
+const isSafeLink = (value) => {
+  try {
+    const url = new URL(String(value).trim());
+    return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password;
+  } catch { return false; }
+};
+
+// Demo fields for a duplicated row. A copy is a NEW row, so it is never
+// unclassified legacy: it gets the explicit mode that keeps exactly the demo
+// its source resolved to (a legacy link becomes the same custom link; an empty
+// or never-rendered legacy value on a library exercise follows the library).
+export function demoFieldsForCopy(row) {
+  const mode = row?.video_link_mode ?? null;
+  const url = row?.video_url || '';
+  if (mode === 'inherit' || mode === 'override') return { video_link_mode: mode, video_url: url };
+  if (!isBlank(url) && isSafeLink(url)) return { video_link_mode: 'override', video_url: url };
+  return row?.exercise_library_id ? { video_link_mode: 'inherit', video_url: '' } : { video_link_mode: null, video_url: '' };
+}
+
 // The datalist picker: `match` is the library exercise named by `value`, or null.
 export function chooseLibraryExercise(row, match, value) {
   if (match) {
@@ -190,13 +209,11 @@ export function applyDemoUrl(row, value) {
 }
 
 export function demoProblem(row) {
+  // Only a stored row may keep an unclassified legacy link (re-saved as is).
+  if ((row.video_link_mode ?? null) === null && !row.id && !isBlank(row.video_url)) return 'Choose the library demo or a custom link.';
   if (row.video_link_mode !== 'override') return null;
   if (isBlank(row.video_url)) return 'Add a link, or choose the library demo.';
-  try {
-    const url = new URL(String(row.video_url).trim());
-    if ((url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password) return null;
-  } catch { /* fall through */ }
-  return 'Use an http(s) link.';
+  return isSafeLink(row.video_url) ? null : 'Use an http(s) link.';
 }
 
 // Quick create keeps its exact v1 wire schema: before the request body is built

@@ -67,3 +67,29 @@ test('Quick projection: inherit becomes the existing empty URL, override the exi
   assert.deepEqual(body.exercises.map((row) => row.video_url), [undefined, OVERRIDE, undefined]);
   for (const row of body.exercises) assert.equal('video_link_mode' in row, false);
 });
+
+test('a duplicated row keeps its effective demo with an explicit mode (a copy is never unclassified legacy)', async () => {
+  const lib = await import('../../src/lib/trainingLibrary.js');
+  const copy = (row) => (typeof lib.demoFieldsForCopy === 'function' ? lib.demoFieldsForCopy(row) : null);
+  const yt = 'https://youtu.be/AAAAAAAAAAA';
+  // Legacy link -> the same link, explicitly custom.
+  assert.deepEqual(copy({ exercise_library_id: 'lib-1', video_link_mode: null, video_url: yt }), { video_link_mode: 'override', video_url: yt });
+  assert.deepEqual(copy({ exercise_library_id: '', video_link_mode: null, video_url: yt }), { video_link_mode: 'override', video_url: yt });
+  // Empty legacy on a library exercise -> follows the library, as before.
+  assert.deepEqual(copy({ exercise_library_id: 'lib-1', video_link_mode: null, video_url: '' }), { video_link_mode: 'inherit', video_url: '' });
+  // An unsafe legacy value never rendered: the copy keeps the effective result.
+  assert.deepEqual(copy({ exercise_library_id: 'lib-1', video_link_mode: null, video_url: 'javascript:alert(1)' }), { video_link_mode: 'inherit', video_url: '' });
+  assert.deepEqual(copy({ exercise_library_id: '', video_link_mode: null, video_url: 'javascript:alert(1)' }), { video_link_mode: null, video_url: '' });
+  // Explicit modes and an empty custom row are copied as they are.
+  assert.deepEqual(copy({ exercise_library_id: 'lib-1', video_link_mode: 'inherit', video_url: '' }), { video_link_mode: 'inherit', video_url: '' });
+  assert.deepEqual(copy({ exercise_library_id: 'lib-1', video_link_mode: 'override', video_url: yt }), { video_link_mode: 'override', video_url: yt });
+  assert.deepEqual(copy({ exercise_library_id: '', video_link_mode: null, video_url: '' }), { video_link_mode: null, video_url: '' });
+});
+
+test('save flags a NEW row that still carries an unclassified link (the server would refuse it)', async () => {
+  const { demoProblem } = await import('../../src/lib/trainingLibrary.js');
+  assert.match(String(demoProblem({ id: '', exercise_library_id: 'lib-1', video_link_mode: null, video_url: 'https://youtu.be/AAAAAAAAAAA' })), /library demo or a custom link/);
+  // A stored legacy row re-saved as is stays allowed.
+  assert.equal(demoProblem({ id: 'we-1', exercise_library_id: 'lib-1', video_link_mode: null, video_url: 'https://youtu.be/AAAAAAAAAAA' }), null);
+  assert.equal(demoProblem({ id: '', exercise_library_id: 'lib-1', video_link_mode: null, video_url: '' }), null);
+});

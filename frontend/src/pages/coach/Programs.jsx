@@ -49,7 +49,7 @@ import {
   ExerciseMediaBadge, ExerciseMediaButton, ExerciseMediaDialog, LibraryMediaSummary, MediaReadinessFilter, matchesMediaFilter, useLibraryMediaStatus,
 } from '@/components/training/media/LibraryMediaControls';
 import {
-  authorOptions, chooseLibraryExercise, demoFieldsFromRow, demoProblem, exerciseFilterOptions, filterByAuthor, filterExercises,
+  authorOptions, chooseLibraryExercise, demoFieldsForCopy, demoFieldsFromRow, demoProblem, exerciseFilterOptions, filterByAuthor, filterExercises,
   groupVariations, isLegacyLockError,
 } from '@/lib/trainingLibrary';
 import { DemoLinkField } from '@/components/training/DemoLinkField';
@@ -1487,7 +1487,7 @@ function WorkoutFormFields({ form, setForm, library, saving, onSubmit, idPrefix 
         <AccordionContent className="space-y-2 pb-3">
           <div className="flex items-center gap-2">
             <LabeledField label="Exercise name"><Input className="min-w-0" list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" /></LabeledField>
-            <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
+            <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid, ...demoFieldsForCopy(exercise) }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
             <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(form.exercises.filter((_, i) => i !== index))} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
           </div>
           <ExerciseTrackingFields exercise={exercise} onChange={(fields) => setExercise(index, fields)} />
