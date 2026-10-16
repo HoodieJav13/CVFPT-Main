@@ -7,6 +7,84 @@ not run (not authorized). Raw logs live in the gitignored
 `.exercise-media-local/evidence/` folder; `exercise-media-return-manifest.json`
 records their SHA-256 hashes.
 
+## Residual R2 follow-up — crop selection changes (2026-10-16)
+
+An independent review of `c64d17cb9596a700515d17f9c514ca9f1dab5060` verified R1
+and the original R2 case. It reproduced one remaining defect: with a crop
+open, changing that target's saved time (or clearing the target or switching
+the poster mode) left the old frame editable, and its edits were written into
+the new selection. Fixed in `VideoSelectionEditor.jsx`. R1 and all backend
+code are untouched.
+
+| Regression | RED (component byte-identical to `c64d17c`) | GREEN |
+|---|---|---|
+| `frontend/e2e/exercise-media-frame-selection.spec.mjs`: 8 new cases covering poster, end-still and preview-start time changes with a ready crop; a pending browser capture; a pending server capture changed away and back; a late server failure; clear and poster-mode switch; a pending capture for a cleared target; plus a positive control for crop edits, alt/cue changes and scrubbing | 10 passed / 8 failed: every new defect case fails, the positive control and 9 earlier cases pass (`r2-followup/raw/red.log`) | 18/18, repeated 3× (`raw/green*.log`) |
+
+Real local path (`test:e2e:media:local`, now 6 tests): the poster crop is
+opened at a saved 0.5 s, the saved time is changed to 3.5 s with the crop
+open, and the crop reloads that frame and is edited by keyboard before
+processing. Mean RGB difference at 64×36 against the generated 640×360 JPEG:
+- coach crop view: 1.63;
+- new 3.5 s frame: 1.63;
+- old 0.5 s phase (negative control): 13.36.
+
+The data is in `r2-followup/author-matrix/real-selection-change.json`. The
+original saved-frame case still passes (poster 0.86 / 0.92 / 6.49, end still
+1.6 / 1.62 / 7.7).
+
+Paired captures (`docs/exercise-media/p2-correction/selection-change/index.html`,
+18 images, rendered and headless-checked at 390/1280 and in dark mode):
+- **Before** (`c64d17c`): after the change, the crop still shows the 0.5 s frame
+  labelled 0:00.5, and keyboard edits write into the 3.0 s recipe.
+- **After**: the crop shows the 3.0 s frame labelled 0:03.0.
+- No horizontal overflow at 320, 390 or 1280 px.
+
+### Follow-up author matrix (tested head `c4229d877180bb78554150186bef9696ff4910d9`, tree `894f7444afded5ae824a97e91b7718504d09bd6f`, clean)
+
+Logs: `.exercise-media-local/evidence/r2-followup/author-matrix/`.
+
+| Command | Result | `c64d17c` |
+|---|---|---|
+| frame-selection spec (focused) | 18/18 | 9/9 (+8 new cases fail) |
+| contract / boundaries | pass / pass / pass | same |
+| `npm --prefix backend test` | 584/584 | 584/584 |
+| `npm --prefix frontend run test:unit` | 103/103 | 103/103 |
+| `npm --prefix frontend run build` | pass | pass |
+| `npm --prefix frontend run test:e2e:media` | 25/25 | 16/16 |
+| `npm --prefix frontend run test:e2e:media:local` | 6/6 | 5/5 |
+| `npm --prefix frontend run test:e2e:preview` | 86 passed, 8 skipped (credential-gated) | 86 / 8 |
+| `npm --prefix backend run test:media:integration` | 22/22 on the first attempt (no rerun needed) | 22/22 |
+| workout-UX (`playwright.workout-ux.config.mjs`) | 25/25 | 25/25 |
+
+The integration qualification from the independent review still applies.
+Its first run once stopped at the unchanged batched-hydration query-count
+equality (7 exercises = 10 queries, 50 = 9), and a clean rerun passed. Worker
+interference with the shared request counter is inferred, not proven. Here the
+first attempt passed with 9 = 9; the assertion was not edited or relaxed.
+
+### Composition with pinned PR114
+
+A new disposable clone, `../compat-pr114-media-r2f-20261016`, starts at the
+saved composition `634f833` (left unchanged). Only this follow-up's runtime and
+test delta was applied (`VideoSelectionEditor.jsx`, the frame-selection spec,
+the harness and the real-local spec, each byte-identical to the author's).
+Result: `990a42b1bd0b51fd08d7408df53eedbb6dba88f6`, tree
+`7d6741c09873bcce0e94c02eaaf8af04d9486dd5`. Migrations are unchanged (Quick
+`8842d98e…`, media `54028175…`).
+
+| Lane | Result |
+|---|---|
+| unit | 140/140 |
+| build | pass |
+| frame selection | 18/18 |
+| `test:e2e:media` | 25/25 |
+| real-local | 6/6 |
+| Quick mocked | 30/30 |
+
+Quick SQL, backend and preview were not rerun, because the delta is frontend
+component and test code only (disclosed evidence boundary; the `634f833`
+results stand for those lanes). This is no Quick release approval.
+
 ## P2 corrections (2026-10-16)
 
 An independent review of candidate `335588ec0c00a8c6ec65a9b13526f3bfd80688bd`

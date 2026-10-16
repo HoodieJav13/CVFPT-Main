@@ -69,6 +69,7 @@ database for inspection on stop).
 | `npm --prefix frontend run test:e2e:media` | normal-mode mocked lane (network budgets, expiry, failures) plus the frame-selection regression on the real `VideoSelectionEditor` (test-only harness page `frontend/e2e/harness`) |
 | `npm --prefix frontend run test:e2e:media:local` | real frontend against the real local stack (starts/stops the launcher itself); includes the saved-frame crop → generated output comparison |
 | `CVF_P2_BEFORE_DIR=<pinned clone> npx playwright test --config playwright.exercise-media-p2-frame.config.mjs` (from `frontend/`) | regenerates the paired before/after crop-frame evidence in `docs/exercise-media/p2-correction/frame-selection` |
+| `CVF_R2_BEFORE_DIR=<c64d17c clone> npx playwright test --config playwright.exercise-media-r2-selection.config.mjs` (from `frontend/`) | regenerates the paired selection-change evidence in `docs/exercise-media/p2-correction/selection-change` |
 
 Run the stack-owning commands (`run.sh`, `test:media:integration`,
 `test:e2e:media:local`, `dev:media-local`) one at a time: they share the owned

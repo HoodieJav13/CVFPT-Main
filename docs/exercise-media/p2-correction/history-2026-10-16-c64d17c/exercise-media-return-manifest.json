@@ -1,0 +1,670 @@
+{
+  "schema_version": 1,
+  "kind": "exercise-media-return-manifest",
+  "assignment": "CVFPT-EXERCISE-MEDIA-P2-CORRECTION-STARTER-20261016.md (local corrections only)",
+  "completion_state": "COMPLETE-LOCAL",
+  "protocol_version": "v1.1",
+  "released_baseline": {
+    "commit": "8d68a7893f7a84a658ff6545bb0b2b70a0df91ce",
+    "tree": "004fbfe3f1faf1785f3af25f6c81fb7110f12d0d"
+  },
+  "correction_baseline": {
+    "commit": "335588ec0c00a8c6ec65a9b13526f3bfd80688bd",
+    "tree": "3a857e68a16461efd11427fad553e20af3123dff",
+    "candidate_return": {
+      "path": "docs/exercise-media/p2-correction/candidate-335588e/RETURN.md",
+      "sha256": "393a191ba45488ac3427452c903ef95d616ff607e5d1b46fcbc25d019aa968eb"
+    },
+    "candidate_manifest": {
+      "path": "docs/exercise-media/p2-correction/candidate-335588e/exercise-media-return-manifest.json",
+      "sha256": "0341280a78676474abb041092f6654aa48062d91bdf805b3f9b35f99a26f1153"
+    }
+  },
+  "head_at_generation": {
+    "commit": "89e5624807041afc43c4fe78751904a28a887b0b",
+    "tree": "2e8c1aee071d8e4bdaa48397c9b2d50ee49b00f4",
+    "branch": "claude/exercise-media-local-20261015",
+    "upstream": null,
+    "pushed": false,
+    "note": "The commit adding RETURN.md and this manifest follows this head; commits after tested_functional_head change documentation only."
+  },
+  "tested_functional_head": {
+    "commit": "15487cffae02fbfa463fdff6783280dbfbecd2fe",
+    "tree": "42882f3e62abccbaf48f4edb2c4cf682945a0747"
+  },
+  "correction_commits": [
+    [
+      "03f5af12169cb51ea031c09681405f4a2a8febd5",
+      "Keep committed source bytes recoverable and make same-request retries truthful"
+    ],
+    [
+      "7caf451b68f1c382e2865cfccf7effa66fc4643d",
+      "Crop each video target on its saved frame, in the browser and the fallback"
+    ],
+    [
+      "18985499a804f4be8ea4396bec1f0d1cf85f2c75",
+      "Prove both corrections through the real local services"
+    ],
+    [
+      "15487cffae02fbfa463fdff6783280dbfbecd2fe",
+      "Add paired before/after crop-frame evidence for the R2 correction"
+    ],
+    [
+      "89e5624807041afc43c4fe78751904a28a887b0b",
+      "Record the P2 corrections in docs, status and validation"
+    ]
+  ],
+  "feature_commits_before_correction": 19,
+  "migration": {
+    "path": "supabase/migrations/20261015213431_exercise_media_library.sql",
+    "sha256": "54028175f398c6367e8cbea18fb40abe56d965c4bc4843db7936d89ba18edc9c",
+    "changed_by_correction": false,
+    "applied_to": "disposable local databases only"
+  },
+  "dependencies": "none changed (no package.json or lockfile change in the correction)",
+  "findings": {
+    "R1": {
+      "files": [
+        "backend/src/lib/exerciseMedia/service.js",
+        "backend/src/services/exerciseMedia/localStore.js",
+        "backend/src/services/exerciseMedia/worker.js"
+      ],
+      "tests": [
+        "backend/test/exercise-media-upload-recovery.test.js",
+        "backend/test/exercise-media-routes.test.js (corrected replay case)",
+        "backend/integration/exercise-media-local.cjs (real post-commit install fault case)"
+      ],
+      "red": {
+        "log": ".exercise-media-local/evidence/p2-correction/raw/r1-red.log",
+        "log_sha256": "ccefc33abe3cfaca3e779dda385baff01cd6b78a2266c75adee1778731cbad41",
+        "source": "git archive 335588e backend + final test file",
+        "result": "3 pass / 4 fail"
+      },
+      "green": {
+        "log": ".exercise-media-local/evidence/p2-correction/raw/r1-green.log",
+        "log_sha256": "4570346bae0eef174f9f346f4e3393be5137da4a81f93fa4d119926a8085483b",
+        "result": "7/7"
+      },
+      "fault_injection": "test-only wrapper around LocalMediaStore.commitUpload (post-database install boundary); integration uses a real read-only object directory"
+    },
+    "R2": {
+      "files": [
+        "frontend/src/components/training/media/VideoSelectionEditor.jsx"
+      ],
+      "tests": [
+        "frontend/e2e/exercise-media-frame-selection.spec.mjs (in test:e2e:media)",
+        "frontend/e2e/exercise-media-local.spec.mjs (saved-frame crop vs generated output)"
+      ],
+      "real_output_comparison": {
+        "path": ".exercise-media-local/evidence/p2-correction/author-matrix/real-frame-selection.json",
+        "sha256": "fa3e5649cc7c39668222adb0ae302a1a7de744d27336078f2f0d8ea290bfe5c2",
+        "tolerance": "mean absolute RGB difference at 64x36 against the generated 640x360 JPEG; the coach crop view and the saved-time frame must be < 12 and at least 2x below the scrub-position control",
+        "poster": {
+          "saved_ms": 500,
+          "scrub_ms": 4000,
+          "crop_px": {
+            "x": 0,
+            "y": 124,
+            "width": 840,
+            "height": 472
+          },
+          "coachView": 0.86,
+          "selected": 0.92,
+          "scrubControl": 6.49,
+          "output": {
+            "width": 640,
+            "height": 360,
+            "bytes": 2976,
+            "sha256": "02288b1dbc1a92aaa7f433c2024afb1fd1e8626e3f08aabd83fa3c7e64e0102a"
+          }
+        },
+        "end_still": {
+          "saved_ms": 5000,
+          "scrub_ms": 1000,
+          "crop_px": {
+            "x": 0,
+            "y": 124,
+            "width": 840,
+            "height": 472
+          },
+          "coachView": 1.6,
+          "selected": 1.62,
+          "scrubControl": 7.7,
+          "output": {
+            "width": 640,
+            "height": 360,
+            "bytes": 5738,
+            "sha256": "4b94fcb8962ecfcf53e968c1810f9da39dafbcd68072a1bfcd89165dd6d33731"
+          }
+        }
+      },
+      "paired_capture": {
+        "readme": "docs/exercise-media/p2-correction/frame-selection/README.md",
+        "records": "docs/exercise-media/p2-correction/frame-selection/capture-records.json",
+        "records_sha256": "2c19499906bb15178bd07355c97e14edb960229986ef9b62d4af71e3eb16e51b",
+        "before_clone": "/Users/jav/Documents/Codex/2026-10-15/task-4/p2-before-335588e",
+        "images": [
+          {
+            "file": "images/end-still-crop-after-1280x900.png",
+            "sha256": "270ae790ca5f97b82dbfc703d2626acfc64d95ce9782ead35e91807b551ec396",
+            "variant": "after",
+            "crop_shows": "saved frame",
+            "source_commit": "18985499a804f4be8ea4396bec1f0d1cf85f2c75"
+          },
+          {
+            "file": "images/end-still-crop-after-390x844.png",
+            "sha256": "871d67bcff64c593a22615f3bd4c15f5e2f5f59dbcb432e2aee6af78e99dc9b8",
+            "variant": "after",
+            "crop_shows": "saved frame",
+            "source_commit": "18985499a804f4be8ea4396bec1f0d1cf85f2c75"
+          },
+          {
+            "file": "images/end-still-crop-before-1280x900.png",
+            "sha256": "c38518dfedec7003d141a20cd5bdef044fdb6d13a0115c108df634be91c70c7a",
+            "variant": "before",
+            "crop_shows": "scrub-position frame",
+            "source_commit": "335588ec0c00a8c6ec65a9b13526f3bfd80688bd"
+          },
+          {
+            "file": "images/end-still-crop-before-390x844.png",
+            "sha256": "1d1649698f69cf9e1213f1b5a288b5671fbb05b6efccc4a0904297ac8d15c6d9",
+            "variant": "before",
+            "crop_shows": "scrub-position frame",
+            "source_commit": "335588ec0c00a8c6ec65a9b13526f3bfd80688bd"
+          },
+          {
+            "file": "images/poster-crop-after-1280x900.png",
+            "sha256": "c845afafba7a9617611a76a79a5a7ed8b4d3f4e77d9506e7f5f27d1cde69ebbf",
+            "variant": "after",
+            "crop_shows": "saved frame",
+            "source_commit": "18985499a804f4be8ea4396bec1f0d1cf85f2c75"
+          },
+          {
+            "file": "images/poster-crop-after-390x844.png",
+            "sha256": "ccc13c5e741430898b5689f0d00f5065f08506a6109d690a5eed5226313d7805",
+            "variant": "after",
+            "crop_shows": "saved frame",
+            "source_commit": "18985499a804f4be8ea4396bec1f0d1cf85f2c75"
+          },
+          {
+            "file": "images/poster-crop-before-1280x900.png",
+            "sha256": "e503127aaca61b83a849b27aa299b6696e4bf4922bf2e167b8000d9298f1e0e1",
+            "variant": "before",
+            "crop_shows": "scrub-position frame",
+            "source_commit": "335588ec0c00a8c6ec65a9b13526f3bfd80688bd"
+          },
+          {
+            "file": "images/poster-crop-before-390x844.png",
+            "sha256": "aea70e848babd922c438d6a384b1de64b65a8ea59cd95334305d70cdf3fb7e34",
+            "variant": "before",
+            "crop_shows": "scrub-position frame",
+            "source_commit": "335588ec0c00a8c6ec65a9b13526f3bfd80688bd"
+          }
+        ]
+      },
+      "red": {
+        "log": ".exercise-media-local/evidence/p2-correction/raw/r2-red.log",
+        "log_sha256": "6238b59670e9bbe628ca1ae3fe3f3fadea40f1535d5610907f6e71465a198e30",
+        "source": "VideoSelectionEditor.jsx byte-identical to 335588e",
+        "result": "0 pass / 9 fail"
+      },
+      "green": {
+        "log": ".exercise-media-local/evidence/p2-correction/raw/r2-green.log",
+        "log_sha256": "0ba696c2dda89e779df75a7351913230374e62e60be85336311a9974146b80a3",
+        "result": "9/9"
+      }
+    }
+  },
+  "tests": {
+    "author": [
+      {
+        "name": "focused-r1",
+        "command": "node --test backend/test/exercise-media-upload-recovery.test.js",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/focused-r1.log",
+        "log_sha256": "f92b9b65d4881b1bc595fdf15562b8668e9a3a09d0690f96bcf9aeed034cd80f",
+        "counts": {
+          "tests": 7,
+          "pass": 7,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "focused-r2",
+        "command": "npx playwright test --config playwright.exercise-media.config.mjs e2e/exercise-media-frame-selection.spec.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/focused-r2.log",
+        "log_sha256": "82d8758fdc528f943974266ca3b1d27c144991c00575fd9a90383801ed77e4f7",
+        "counts": {
+          "passed": 9
+        }
+      },
+      {
+        "name": "contract-validator",
+        "command": "bash .agentic/validate-contract-version.sh .",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/validate-contract.log",
+        "log_sha256": "139eb22746d7c4b7ebd4c8d3a2ebf93c8b3060027442575d5ee96746b744c4bb"
+      },
+      {
+        "name": "boundaries-frontend",
+        "command": "bash scripts/check-boundaries.sh frontend",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/boundaries-frontend.log",
+        "log_sha256": "60381eb78711c6445ba2570159faff25b1feb5179532e98f5ff773e0f8905623"
+      },
+      {
+        "name": "boundaries-backend",
+        "command": "bash scripts/check-boundaries.sh backend",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/boundaries-backend.log",
+        "log_sha256": "59d4b2a113abb76b4f4e69405796437ff725acf9f29f8c6881c26fb9e6f077c1"
+      },
+      {
+        "name": "backend-test-media",
+        "command": "npm --prefix backend run test:media",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/backend-test-media.log",
+        "log_sha256": "11a417b5342abbb6620c7ad3bd6ccd47ff758806a792dcbc8efc81f9a8e8a9f1",
+        "counts": {
+          "tests": 41,
+          "pass": 41,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "backend-test",
+        "command": "npm --prefix backend test",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/backend-test.log",
+        "log_sha256": "14dab37661c1f9edfbee455cd14fd7def500aff0768f3d705fadfa8e86b64a65",
+        "counts": {
+          "tests": 584,
+          "pass": 584,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "frontend-unit",
+        "command": "npm --prefix frontend run test:unit",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/frontend-unit.log",
+        "log_sha256": "c1d73372c56473f0f5b3fd43abc83a16ca0cca19c9083f5785b96779bb02f359",
+        "counts": {
+          "tests": 103,
+          "pass": 103,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "frontend-build",
+        "command": "npm --prefix frontend run build",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/frontend-build.log",
+        "log_sha256": "262033e684981d3d8e051f2bf322964fac01c515ac0a79411a555d1102a6d528"
+      },
+      {
+        "name": "media-stack-guard",
+        "command": "bash supabase/tests/exercise_media/stack_guard_test.sh",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/media-guard.log",
+        "log_sha256": "c47b618ce485ece6350d2ec4bc288ac29951071933bbd5b412a80901bd49a3d1",
+        "counts": {
+          "cases": 18
+        }
+      },
+      {
+        "name": "media-sql",
+        "command": "bash supabase/tests/exercise_media/run.sh --down",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/media-sql.log",
+        "log_sha256": "b9e6c7451d49663f0d2e87f25eee7bf1e925210a3d824b8ebcea8891cce0fae7",
+        "counts": {
+          "sql_groups": 4,
+          "committed_races": 5
+        }
+      },
+      {
+        "name": "media-integration",
+        "command": "npm run test:media:integration",
+        "cwd": "backend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/media-integration.log",
+        "log_sha256": "63242f7917981af2b9e19549e0651618374a02338e359dfd3b79a1cf058265d6",
+        "counts": {
+          "cases_passed": 22
+        }
+      },
+      {
+        "name": "media-mocked-and-frame-selection",
+        "command": "npm run test:e2e:media",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/media-mocked-and-frame.log",
+        "log_sha256": "a18d7ac9480ff40df9ebd6ac539d9bbf202a597f7dd170fbfebfa5ede5a08156",
+        "counts": {
+          "passed": 16
+        }
+      },
+      {
+        "name": "media-real-local",
+        "command": "npm run test:e2e:media:local",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/media-real-local.log",
+        "log_sha256": "4ca4734ae93ff34e56ba3b1d25b122ab9832a39bacb26b7a7ff5569af849484c",
+        "counts": {
+          "passed": 5
+        }
+      },
+      {
+        "name": "preview",
+        "command": "npm run test:e2e:preview",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/preview.log",
+        "log_sha256": "81140ee0992a039dca93d5480f3c7a1976424067821f32618eb0942712abbc1d",
+        "counts": {
+          "skipped": 8,
+          "passed": 86
+        }
+      },
+      {
+        "name": "workout-ux",
+        "command": "node node_modules/@playwright/test/cli.js test --config playwright.workout-ux.config.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/author-matrix/workout-ux.log",
+        "log_sha256": "6494d46a4e4cf26d96406af388dfbc7856cb5dd5eadd711c309f10760b9e0378",
+        "counts": {
+          "passed": 25
+        }
+      }
+    ]
+  },
+  "pr114_compatibility": {
+    "clone": "/Users/jav/Documents/Codex/2026-10-15/task-4/compat-pr114-media-p2-20261016",
+    "pr114_commit": "a8a6a4958697c4d2d663ac9cc147a9b1ecc813b3",
+    "composition": {
+      "commit": "634f833afe0f3f43e5f216884e4ea125faeaa2f7",
+      "tree": "a6ec973cb4f45548fcdbaa0083e5d55f86efba34",
+      "parents": [
+        "a8a6a4958697c4d2d663ac9cc147a9b1ecc813b3",
+        "15487cffae02fbfa463fdff6783280dbfbecd2fe"
+      ]
+    },
+    "conflicts_resolved": {
+      "backend/src/routes/programs.js": "identical to earlier composition 2716f7e (media side unchanged since 9dc347d)",
+      "backend/src/routes/workoutLogs.js": "identical to earlier composition 2716f7e",
+      "frontend/src/lib/previewMode.js": "identical to earlier composition 2716f7e",
+      "frontend/playwright.config.mjs": "union of testIgnore (Quick mocked + three media lanes)",
+      "CLAUDE.md": "both status entries kept"
+    },
+    "migration_sha256": {
+      "20261009200000_quick_sessions.sql": "8842d98ed4dec4abe57000240c2952712f220018d8af785ba0001938376e2119",
+      "20261015213431_exercise_media_library.sql": "54028175f398c6367e8cbea18fb40abe56d965c4bc4843db7936d89ba18edc9c"
+    },
+    "tests": [
+      {
+        "name": "boundaries-frontend",
+        "command": "bash scripts/check-boundaries.sh frontend",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/boundaries-frontend.log",
+        "log_sha256": "60381eb78711c6445ba2570159faff25b1feb5179532e98f5ff773e0f8905623"
+      },
+      {
+        "name": "boundaries-backend",
+        "command": "bash scripts/check-boundaries.sh backend",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/boundaries-backend.log",
+        "log_sha256": "59d4b2a113abb76b4f4e69405796437ff725acf9f29f8c6881c26fb9e6f077c1"
+      },
+      {
+        "name": "backend-test",
+        "command": "npm --prefix backend test",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/backend-test.log",
+        "log_sha256": "21dbc286e40374a95a46b68b4ff69fc20ed50525d3672bb8b179aa33e62cbca9",
+        "counts": {
+          "tests": 609,
+          "pass": 609,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "frontend-unit",
+        "command": "npm --prefix frontend run test:unit",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/frontend-unit.log",
+        "log_sha256": "701f7d39f5aabf2145632df272cc57e6f865f372530a9d6f6c05401334478466",
+        "counts": {
+          "tests": 140,
+          "pass": 140,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "frontend-build",
+        "command": "npm --prefix frontend run build",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/frontend-build.log",
+        "log_sha256": "dede10db86bd4b6355f413616ac9f5a5c1a1ab8471e1e466e6575d8915e41217"
+      },
+      {
+        "name": "focused-r1",
+        "command": "node --test backend/test/exercise-media-upload-recovery.test.js",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/focused-r1.log",
+        "log_sha256": "a4e7d10e07d740df5ce60ded07fcbafbec427e021d2c57fe398381f2ef0a5bbf",
+        "counts": {
+          "tests": 7,
+          "pass": 7,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "focused-r2",
+        "command": "npx playwright test --config playwright.exercise-media.config.mjs e2e/exercise-media-frame-selection.spec.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/focused-r2.log",
+        "log_sha256": "ae8f31828ebebb7500e2a4142a8178b016068993bd36612dd6044ea413b3795e",
+        "counts": {
+          "passed": 9
+        }
+      },
+      {
+        "name": "media-sql",
+        "command": "bash supabase/tests/exercise_media/run.sh --down",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/media-sql.log",
+        "log_sha256": "1a256e84ea141e548e52b82de0be57cd36ae32789b7b1d4c01d63d2c32af2cdb",
+        "counts": {
+          "sql_groups": 4,
+          "committed_races": 5
+        }
+      },
+      {
+        "name": "quick-sql",
+        "command": "bash supabase/tests/quick_sessions/run.sh --all --down",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/quick-sql.log",
+        "log_sha256": "5b8a462df741307e6e88e080b061221b5ce94ff29df2a2e7d8c18950560007e9",
+        "counts": {
+          "parity_rows_identical": 26,
+          "behavior_grant_assertions": 71,
+          "race_and_parity_pass_lines": 22
+        }
+      },
+      {
+        "name": "quick-media-api",
+        "command": "node backend/integration/exercise-media-quick-compat.cjs",
+        "cwd": ".",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/quick-media-api.log",
+        "log_sha256": "8c7eb0d441531af27a9b43a06580d52aaf561127faef4901b23b7d40f0d4ae3d",
+        "counts": {
+          "cases_passed": 5
+        },
+        "cases": [
+          "media publishes in the combined tree (photo-only)",
+          "Quick create, replay and recovery are unchanged by media",
+          "client starts the Quick session: provenance and current media coexist",
+          "started Quick prescription stays frozen while media stays live",
+          "save-to-library and ordinary assignments keep working; media follows the canonical exercise"
+        ]
+      },
+      {
+        "name": "media-integration",
+        "command": "npm run test:media:integration",
+        "cwd": "backend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/media-integration.log",
+        "log_sha256": "f969d0ff4a942371fd122aa60bb8a7dcf60e30a882b3c84d48091ab0037c5fec",
+        "counts": {
+          "cases_passed": 22
+        }
+      },
+      {
+        "name": "media-mocked-and-frame-selection",
+        "command": "npm run test:e2e:media",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/media-mocked-and-frame.log",
+        "log_sha256": "6e91d0a40e740652fb41ec56a19c398f9aee13653d23abfc38e07c7d34951a2a",
+        "counts": {
+          "passed": 16
+        }
+      },
+      {
+        "name": "media-real-local",
+        "command": "npm run test:e2e:media:local",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/media-real-local.log",
+        "log_sha256": "bdcd239b97b78b8e94d8435008e844662bbdc1b80819542ced125e47fa3cd7a6",
+        "counts": {
+          "passed": 5
+        }
+      },
+      {
+        "name": "quick-mocked",
+        "command": "node node_modules/@playwright/test/cli.js test --config playwright.quick-sessions.config.mjs",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/quick-mocked.log",
+        "log_sha256": "5516fe0d36a7f78a313d12afbfbf050efca011dcb0c0d8ea45d0effbe7fa7229",
+        "counts": {
+          "passed": 30
+        }
+      },
+      {
+        "name": "preview",
+        "command": "npm run test:e2e:preview",
+        "cwd": "frontend",
+        "exit_code": 0,
+        "log": ".exercise-media-local/evidence/p2-correction/compat-matrix/preview.log",
+        "log_sha256": "a48dbe63bbf62575d629c40bb3e3e3267b242a202e592e937e6846b254797b8f",
+        "counts": {
+          "skipped": 8,
+          "passed": 106
+        }
+      }
+    ],
+    "note": "Compatibility evidence only; conveys no Quick release approval. PR114, its checkout and the earlier composition 2716f7e are unchanged."
+  },
+  "not_run": [
+    {
+      "check": "test:e2e:live and any hosted check",
+      "classification": "not-applicable",
+      "reason": "not authorized (local corrections only)"
+    },
+    {
+      "check": "Safari/WebKit",
+      "classification": "unavailable",
+      "reason": "WebKit not in the local Playwright cache; downloads not authorized"
+    },
+    {
+      "check": "PR114 invite-quick-local.cjs",
+      "classification": "not-applicable",
+      "reason": "launcher lives outside the repository; corrections touch no invite/claim code"
+    }
+  ],
+  "fixtures": {
+    "browser_clip": {
+      "path": "frontend/e2e/fixtures/exercise-media/synthetic-moving-geometry.mp4",
+      "sha256": "e78d5b71c17da8b2bfa3a9316600e2d09fd2537e0adb4eceb70e5f3fe3c30d48",
+      "origin": "copy of goblet-squat-replacement.mp4 from the project generator (seed 20261015); synthetic geometry, not instruction"
+    }
+  },
+  "measurements": {
+    "photo_upload_ms": 341,
+    "photo_processing_ms": 507,
+    "photo_poster_bytes": 20028,
+    "video_processing_ms": 2692,
+    "band_row_poster_bytes": 20939,
+    "band_row_preview_bytes": 13367,
+    "band_row_instruction_bytes": 44708,
+    "band_row_captions_bytes": 159,
+    "heavy_1080p_90s": {
+      "source_bytes": 56733996,
+      "instruction_bytes": 5765741,
+      "preview_bytes": 48200
+    },
+    "hydration_queries": {
+      "seven_exercises": 9,
+      "fifty_exercises": 9
+    },
+    "fifty_exercise_log_json_bytes": 75865,
+    "log_bytes_scanned": 3707
+  },
+  "local_services": {
+    "database": "cvfpt-media-test (583xx) and cvfpt-quick-sessions-test (573xx), disposable, torn down",
+    "coordination_lock": "~/.cvfpt/disposable-db.lock (released)",
+    "browser_ports": [
+      42731,
+      42761,
+      42771,
+      42743,
+      42793,
+      42794,
+      4178
+    ],
+    "left_running": "none"
+  },
+  "remaining_gates": [
+    "production storage/worker/cost/retention (Gate 2)",
+    "owner visual footprint and cold visibility",
+    "coach review of real instruction, variants, rights and captions",
+    "Safari/iOS",
+    "migration reconciliation after Quick and hosted release authority"
+  ],
+  "remaining_review_debt": "Other documented deferrals (poster-mode crop revalidation via API, free-text import video_url, synchronous Docker health check, finite editor polling, fast-start enforcement, preview pause on exercise change, link-cache eviction, small races) are unchanged and not fixed by this correction.",
+  "secrets": "none recorded (no credentials, capabilities, signed links or client records)"
+}

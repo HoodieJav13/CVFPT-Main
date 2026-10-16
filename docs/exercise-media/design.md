@@ -32,6 +32,15 @@ gates ([production-gates.md](production-gates.md)). Nothing here is deployed.
   source get a server still at the same time. A newer capture, a source change
   or closing the editor invalidates older ones, and the crop tools appear only
   for a ready frame of the current target (P2 correction R2, 2026-10-16).
+  A capture belongs to one selection — source, target and that target's
+  current saved time (poster only in video-frame mode). Only a capture of the
+  current selection is shown or may write crop coordinates, checked at render
+  and on every write. If the open target's saved time changes, its frame is
+  recaptured under a new generation, so old successes or failures never return,
+  even if the time later goes back to an earlier value. If the target is
+  cleared or the poster leaves video-frame mode, the crop closes. Scrubbing,
+  crop edits and unrelated text changes do not invalidate it (R2 follow-up,
+  2026-10-16).
 - **Deliberate review.** Upload success is never approval. Approval requires
   three explicit confirmations (exact exercise/variant, rights, content
   accuracy) on a revision whose outputs were actually generated.
