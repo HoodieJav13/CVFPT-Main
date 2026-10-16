@@ -79,7 +79,8 @@
     "test:e2e:guides": "playwright test --config playwright.exercise-guides.config.mjs",
     "test:e2e:guides:local": "playwright test --config playwright.exercise-guides-local.config.mjs",
     "test:e2e:youtube-proof": "playwright test --config playwright.youtube-proof.config.mjs",
-    "capture:media-visual": "playwright test --config playwright.exercise-media-visual.config.mjs"
+    "capture:media-visual": "playwright test --config playwright.exercise-media-visual.config.mjs",
+    "capture:guides-visual": "playwright test --config playwright.exercise-guides-visual.config.mjs"
   },
   "browserslist": {
     "production": [
