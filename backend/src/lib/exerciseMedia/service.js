@@ -4,11 +4,18 @@
 // inputs, handles real bytes and maps outcomes to HTTP.
 const path = require('node:path');
 const fsp = require('node:fs/promises');
+const { createHash } = require('node:crypto');
 const {
   LIMITS, MediaError, isUuid, sniffImage, assertImageFacts, sniffVideoContainer, normalizeRecipePatch, sanitizeDisplayName, parseRange,
 } = require('./validation');
 const { mediaMap, coachRevisionDto, libraryStatusDto } = require('./serialization');
 const { parseContext, resolveContext, allowedAssets } = require('./authorization');
+const { runPhotoJob, needsVideo } = require('../../services/exerciseMedia/photoJob');
+
+// Inline photo processing lease: comfortably above the processor's 15 s total
+// deadline plus source read and derivative write.
+const INLINE_LEASE_SECONDS = 30;
+const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex');
 
 class HttpError extends Error {
   constructor(status, code, extra = {}) { super(code); this.status = status; this.code = code; this.extra = extra; }
@@ -47,7 +54,11 @@ function sourceFacts(assets, revision) {
   };
 }
 
-function createExerciseMediaService({ repo, store, processor, signer, processorAvailable = () => ({ ok: true }), now = Date.now }) {
+// mode: 'photos' (default runtime: image-only processor, direct-upload grants,
+// inline leased processing, no video sources) or 'full' (the accepted owned
+// FFmpeg pipeline with a background worker, kept for future private needs).
+function createExerciseMediaService({ repo, store, processor, signer, processorAvailable = () => ({ ok: true }), mode = 'full', now = Date.now, inlineLabel = `inline-${process.pid}` }) {
+  const photosOnly = mode === 'photos';
   async function revisionView(actor, revision) {
     const [assets, current, job, names] = await Promise.all([
       repo.assetsFor([revision.id]), repo.current(revision.exercise_library_id), repo.latestJob(revision.id),
@@ -95,12 +106,41 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
     return revision;
   }
 
+  function rightsFields(fields) {
+    if (!['owned', 'permissioned'].includes(fields.rights_basis)) throw http(422, 'rights_basis_required');
+    if (fields.rights_confirmed !== 'true' && fields.rights_confirmed !== true) throw http(422, 'rights_confirmation_required');
+    const note = typeof fields.rights_note === 'string' ? fields.rights_note.trim() : '';
+    if (note.length > LIMITS.text.rightsNoteMax) throw http(422, 'rights_note_too_long');
+    return { basis: fields.rights_basis, note };
+  }
+
+  async function ownIntent(actor, revision, intentId) {
+    const intent = await repo.uploadIntent(requireUuid(intentId, 'invalid_upload'));
+    if (!intent || intent.revision_id !== revision.id || intent.actor_coach_id !== actor.coach.id) throw http(404, 'not_found');
+    return intent;
+  }
+
+  // Claims this revision's current job under a lease and renders it in-request.
+  // Returns the claim outcome ('claimed' | 'busy' | 'idle' | 'ready' | 'failed').
+  async function processInline(actor, revisionId) {
+    const claim = await repo.rpc('exercise_media_claim_revision_job', { p_actor: actor.coach.id, p_revision_id: revisionId, p_worker: inlineLabel, p_lease_seconds: INLINE_LEASE_SECONDS });
+    if (claim?.outcome !== 'claimed') return claim?.outcome;
+    await runPhotoJob({ repo, store, processor, claim });
+    return 'claimed';
+  }
+
   return {
     HttpError,
 
     capabilities() {
       const available = processorAvailable();
       return {
+        mode,
+        video_sources: !photosOnly,
+        upload_transport: photosOnly ? 'grant' : 'multipart',
+        processing: photosOnly ? 'inline' : 'worker',
+        // Optional browser-only still selection from a local clip (only the image is uploaded).
+        local_still_selection: true,
         processing_available: Boolean(available.ok),
         limits: {
           image: { max_bytes: LIMITS.image.maxBytes, min_edge: LIMITS.image.minEdge, max_edge: LIMITS.image.maxEdge, max_pixels: LIMITS.image.maxPixels, mime_types: LIMITS.image.mimes },
@@ -169,6 +209,7 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
     async prepareUpload(actor, id, role) {
       if (!['source_image', 'source_video'].includes(role)) throw http(400, 'invalid_role');
       const revision = await ownedRevision(actor, id);
+      if (photosOnly && role === 'source_video') throw http(409, 'video_sources_disabled');
       if (revision.published_at) throw http(409, 'published_immutable');
       if (revision.status === 'processing') throw http(409, 'revision_processing');
       return revision;
@@ -229,6 +270,79 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
       }
     },
 
+    // ----- Photo direct-upload transport (docs/exercise-guides/design.md) -----
+    // 1) issueUpload persists a durable intent (actor + request) BEFORE any
+    //    grant, then returns a short-lived grant for its app-issued staging key.
+    async issueUpload(actor, id, body = {}) {
+      const revision = await ownedRevision(actor, id);
+      if (body.role === 'source_video' && photosOnly) throw http(409, 'video_sources_disabled');
+      if (body.role !== 'source_image') throw http(400, 'invalid_role');
+      if (body.rights_confirmed !== true && body.rights_confirmed !== 'true') throw http(422, 'rights_confirmation_required');
+      const requestId = requireUuid(body.request_id, 'invalid_request_id');
+      const bytes = Number(body.bytes);
+      if (!Number.isInteger(bytes) || bytes < 1) throw http(400, 'invalid_upload');
+      if (bytes > LIMITS.image.maxBytes) throw new MediaError('file_too_large');
+      if (!LIMITS.image.mimes.includes(body.mime_type)) throw http(400, 'unsupported_image_type');
+      const expected = requireVersion(Number(body.expected_version));
+      const result = await repo.rpc('exercise_media_issue_upload_intent', {
+        p_actor: actor.coach.id, p_revision_id: revision.id, p_request_id: requestId, p_role: 'source_image',
+        p_bytes: bytes, p_mime: body.mime_type, p_expected_version: expected,
+      });
+      if (result?.outcome !== 'issued') refuse(result);
+      const intent = { id: result.intent_id, state: result.state, request_id: requestId };
+      if (result.state !== 'issued') return { intent, upload: null, replayed: Boolean(result.replayed) };
+      const upload = await store.createUploadGrant({ key: result.staging_key, contentType: body.mime_type });
+      return { intent, upload, replayed: Boolean(result.replayed) };
+    },
+
+    // 2) finalizeUpload re-authorizes the actor/draft, re-reads the staged bytes
+    //    and decides everything from them (length, sniffed format, full decode,
+    //    digest); nothing the browser claimed is trusted. The accepted attach
+    //    contract records the asset under the intent id (same-request replays
+    //    finish the same attachment). Staged bytes are never deleted, so an
+    //    unknown database outcome stays recoverable.
+    async finalizeUpload(actor, id, intentId, body = {}) {
+      const revision = await ownedRevision(actor, id);
+      const intent = await ownIntent(actor, revision, intentId);
+      if (intent.state === 'abandoned') throw http(409, 'upload_abandoned');
+      const expected = requireVersion(Number(body.expected_version));
+      const rights = rightsFields(body);
+      const staged = await store.readStaged(intent.staging_key, { maxBytes: LIMITS.image.maxBytes });
+      if (!staged) throw http(409, 'upload_incomplete');
+      if (staged.length !== Number(intent.declared_bytes)) throw http(400, 'upload_size_mismatch');
+      const facts = assertImageFacts(sniffImage(staged), staged.length);
+      if (!processorAvailable().ok) throw http(503, 'processor_unavailable');
+      await processor.verifyImage({ buffer: staged, facts });
+      const digest = sha256(staged);
+      const key = `sources/${intent.id}.${facts.ext}`;
+      let result;
+      try {
+        result = await repo.rpc('exercise_media_attach_source', {
+          p_actor: actor.coach.id, p_revision_id: revision.id, p_expected_version: expected,
+          p_asset: {
+            id: intent.id, role: 'source_image', storage_key: key, mime_type: facts.mime, bytes: staged.length, width: facts.width,
+            height: facts.height, duration_ms: null, has_audio: null, sha256: digest, rights_basis: rights.basis, rights_note: rights.note,
+            display_name: sanitizeDisplayName(body.original_name), upload_request_id: intent.request_id,
+          },
+        });
+      } catch (error) {
+        result = await reconcileAttach(intent.id, error);
+      }
+      if (result?.outcome !== 'attached') refuse(result);
+      await store.installStagedSource(intent.staging_key, key, { bytes: staged.length, sha256: digest });
+      await repo.rpc('exercise_media_mark_upload_intent', { p_actor: actor.coach.id, p_intent_id: intent.id, p_state: 'attached' });
+      return { status: result.replayed ? 200 : 201, body: { revision: await revisionView(actor, await repo.revision(revision.id)), replayed: Boolean(result.replayed) } };
+    },
+
+    // Explicit cancel of an unfinished upload: state only, bytes are kept.
+    async abandonUpload(actor, id, intentId) {
+      const revision = await ownedRevision(actor, id);
+      const intent = await ownIntent(actor, revision, intentId);
+      const result = await repo.rpc('exercise_media_mark_upload_intent', { p_actor: actor.coach.id, p_intent_id: intent.id, p_state: 'abandoned' });
+      if (!['abandoned', 'attached'].includes(result?.outcome)) refuse(result);
+      return { id: intent.id, state: result.outcome };
+    },
+
     async removeSource(actor, id, body = {}) {
       const revision = await ownedRevision(actor, id);
       const result = await repo.rpc('exercise_media_remove_source', { p_actor: actor.coach.id, p_revision_id: revision.id, p_expected_version: requireVersion(body.expected_version), p_role: body.role });
@@ -250,9 +364,20 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
 
     async requestProcessing(actor, id, body = {}) {
       const revision = await ownedRevision(actor, id);
+      if (photosOnly && needsVideo(revision, await repo.assetsFor([revision.id]))) throw http(503, 'video_processing_unavailable');
       if (!processorAvailable().ok) throw http(503, 'processor_unavailable');
       const result = await repo.rpc('exercise_media_request_processing', { p_actor: actor.coach.id, p_revision_id: revision.id, p_expected_version: requireVersion(body.expected_version) });
       if (result?.outcome !== 'queued') refuse(result);
+      if (photosOnly) await processInline(actor, revision.id);
+      return revisionView(actor, await repo.revision(revision.id));
+    },
+
+    // Explicit recovery (e.g. after a closed tab or a terminated request): an
+    // expired lease or a requeued job is processed again as the same version;
+    // a live lease is left alone.
+    async resumeProcessing(actor, id) {
+      const revision = await ownedRevision(actor, id);
+      if (photosOnly && revision.status === 'processing') await processInline(actor, revision.id);
       return revisionView(actor, await repo.revision(revision.id));
     },
 

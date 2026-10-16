@@ -13,6 +13,13 @@
 --      the mode; create_quick_session derives it for its freshly inserted rows only
 --      from the already-hashed v1 facts. The Quick wire schema, canonical payload,
 --      v1 hash and replay path are unchanged.
+--   3. Photo transport: a service-only durable upload intent per actor+request,
+--      persisted BEFORE any direct-upload grant; finalize reuses the accepted
+--      exercise_media_attach_source recovery contract with the intent id as the
+--      asset id. No deletion or purge is added.
+--   4. exercise_media_claim_revision_job: a revision-scoped leased claim so a
+--      bounded photo render can run synchronously in the request while a
+--      terminated request leaves a recoverable lease (resume after expiry).
 -- Every replaced function keeps its signature, return contract, security invoker
 -- mode, empty search_path and service-role-only execution.
 -- Rollback: revert application code first; leave the column (NULL-tolerant) and data
@@ -554,3 +561,169 @@ grant execute on function public.sync_workout_exercises(uuid, jsonb) to service_
 grant execute on function public.clone_workout(uuid, uuid, uuid, boolean, uuid) to service_role;
 grant execute on function public.commit_program_import(uuid, text, jsonb) to service_role;
 grant execute on function public.create_quick_session(uuid, uuid, uuid, text, date, text, text, jsonb) to service_role;
+
+-- ---------- Photo transport: durable upload intents (service-only) ----------
+create table public.exercise_media_upload_intents (
+  id uuid primary key default gen_random_uuid(),
+  revision_id uuid not null references public.exercise_media_revisions(id),
+  actor_coach_id uuid not null references public.coaches(id),
+  request_id uuid not null,
+  role text not null check (role = 'source_image'),
+  declared_bytes bigint not null check (declared_bytes between 1 and 10485760),
+  declared_mime text not null check (declared_mime in ('image/jpeg', 'image/png', 'image/webp')),
+  staging_key text not null,
+  state text not null default 'issued' check (state in ('issued', 'attached', 'abandoned')),
+  asset_id uuid references public.exercise_media_assets(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (actor_coach_id, request_id),
+  unique (staging_key),
+  check (staging_key = 'staging/' || id::text),
+  check ((state = 'attached') = (asset_id is not null)),
+  check (asset_id is null or asset_id = id)
+);
+create index exercise_media_upload_intents_revision on public.exercise_media_upload_intents(revision_id, state);
+
+create function public.exercise_media_upload_intent_guard() returns trigger
+language plpgsql security invoker set search_path = '' as $$
+begin
+  if new.id <> old.id or new.revision_id <> old.revision_id or new.actor_coach_id <> old.actor_coach_id
+    or new.request_id <> old.request_id or new.role <> old.role or new.declared_bytes <> old.declared_bytes
+    or new.declared_mime <> old.declared_mime or new.staging_key <> old.staging_key or new.created_at <> old.created_at then
+    raise exception 'Upload intent identity is immutable' using errcode = '23514';
+  end if;
+  if new.state is distinct from old.state and not (
+    (old.state = 'issued' and new.state in ('attached', 'abandoned')) or (old.state = 'abandoned' and new.state = 'attached')
+  ) then
+    raise exception 'Invalid upload intent transition' using errcode = '23514';
+  end if;
+  return new;
+end $$;
+create trigger exercise_media_upload_intent_guard before update on public.exercise_media_upload_intents
+  for each row execute function public.exercise_media_upload_intent_guard();
+
+alter table public.exercise_media_upload_intents enable row level security;
+revoke all on public.exercise_media_upload_intents from public, anon, authenticated;
+-- No DELETE: intents are history, never removed.
+grant select, insert, update on public.exercise_media_upload_intents to service_role;
+
+-- Issues (or replays) the intent for one actor+request. Same advisory key as
+-- exercise_media_attach_source, so issue and attach of one request serialize.
+create function public.exercise_media_issue_upload_intent(p_actor uuid, p_revision_id uuid, p_request_id uuid,
+  p_role text, p_bytes bigint, p_mime text, p_expected_version integer)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare i public.exercise_media_upload_intents%rowtype; gate jsonb;
+begin
+  if p_request_id is null then raise exception 'Request id required' using errcode = '22023'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('exercise-media-upload/' || p_actor::text || '/' || p_request_id::text, 0));
+  select * into i from public.exercise_media_upload_intents where actor_coach_id = p_actor and request_id = p_request_id;
+  if i.id is not null then
+    if i.revision_id = p_revision_id and i.role = p_role and i.declared_bytes = p_bytes and i.declared_mime = p_mime then
+      return jsonb_build_object('outcome', 'issued', 'intent_id', i.id, 'staging_key', i.staging_key, 'state', i.state, 'replayed', true);
+    end if;
+    return jsonb_build_object('outcome', 'request_mismatch');
+  end if;
+  -- A request id already spent on a multipart upload cannot become an intent.
+  if exists (select 1 from public.exercise_media_assets where uploaded_by_coach_id = p_actor and upload_request_id = p_request_id) then
+    return jsonb_build_object('outcome', 'request_mismatch');
+  end if;
+  gate := public.exercise_media_editable(p_actor, p_revision_id, p_expected_version);
+  if gate->>'outcome' <> 'ok' then return gate; end if;
+  if p_role is distinct from 'source_image' or p_bytes is null or p_bytes < 1 or p_bytes > 10485760
+    or p_mime is null or p_mime not in ('image/jpeg', 'image/png', 'image/webp') then
+    return jsonb_build_object('outcome', 'invalid_asset');
+  end if;
+  insert into public.exercise_media_upload_intents (id, revision_id, actor_coach_id, request_id, role, declared_bytes, declared_mime, staging_key)
+  select n.id, p_revision_id, p_actor, p_request_id, p_role, p_bytes, p_mime, 'staging/' || n.id::text
+  from (select gen_random_uuid() as id) n
+  returning * into i;
+  return jsonb_build_object('outcome', 'issued', 'intent_id', i.id, 'staging_key', i.staging_key, 'state', i.state, 'replayed', false);
+end $$;
+
+-- 'attached' only once the accepted attach contract recorded the asset under the
+-- intent id for this request; 'abandoned' only before that. Never deletes bytes.
+create function public.exercise_media_mark_upload_intent(p_actor uuid, p_intent_id uuid, p_state text)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare i public.exercise_media_upload_intents%rowtype; v_asset uuid;
+begin
+  select * into i from public.exercise_media_upload_intents where id = p_intent_id for update;
+  if i.id is null or i.actor_coach_id <> p_actor then return jsonb_build_object('outcome', 'not_found'); end if;
+  if p_state = 'attached' then
+    if i.state = 'attached' then return jsonb_build_object('outcome', 'attached', 'asset_id', i.asset_id); end if;
+    select a.id into v_asset from public.exercise_media_assets a
+    where a.id = i.id and a.upload_request_id = i.request_id and a.uploaded_by_coach_id = p_actor and a.revision_id = i.revision_id;
+    if v_asset is null then return jsonb_build_object('outcome', 'not_attached'); end if;
+    update public.exercise_media_upload_intents set state = 'attached', asset_id = v_asset, updated_at = now() where id = i.id;
+    return jsonb_build_object('outcome', 'attached', 'asset_id', v_asset);
+  elsif p_state = 'abandoned' then
+    if i.state = 'attached' then return jsonb_build_object('outcome', 'attached', 'asset_id', i.asset_id); end if;
+    if i.state = 'issued' then
+      update public.exercise_media_upload_intents set state = 'abandoned', updated_at = now() where id = i.id;
+    end if;
+    return jsonb_build_object('outcome', 'abandoned');
+  end if;
+  raise exception 'Invalid intent state' using errcode = '22023';
+end $$;
+
+-- ---------- Inline photo processing: revision-scoped leased claim ----------
+-- Same lock order and lease protocol as exercise_media_claim_job (job, then
+-- revision), restricted to the CURRENT recipe job of one revision the actor owns
+-- (or admin). A live lease is never stolen; an expired one resumes the same job
+-- as a new attempt. complete/fail use the existing lease-token functions.
+create function public.exercise_media_claim_revision_job(p_actor uuid, p_revision_id uuid, p_worker text, p_lease_seconds integer)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare v_role text := public.exercise_media_actor_role(p_actor); j public.exercise_media_jobs%rowtype; r public.exercise_media_revisions%rowtype;
+begin
+  if p_lease_seconds is null or p_lease_seconds < 5 or p_lease_seconds > 900 then raise exception 'Lease out of range' using errcode = '22023'; end if;
+  if v_role is null then return jsonb_build_object('outcome', 'forbidden'); end if;
+  select * into r from public.exercise_media_revisions where id = p_revision_id;
+  if r.id is null or r.archived or (v_role <> 'admin' and r.uploaded_by_coach_id <> p_actor) then
+    return jsonb_build_object('outcome', 'not_found');
+  end if;
+  select * into j from public.exercise_media_jobs
+  where revision_id = r.id and recipe_version = r.recipe_version for update skip locked;
+  if j.id is null then
+    if exists (select 1 from public.exercise_media_jobs where revision_id = r.id and recipe_version = r.recipe_version) then
+      return jsonb_build_object('outcome', 'busy');
+    end if;
+    return jsonb_build_object('outcome', 'idle');
+  end if;
+  if j.state = 'succeeded' then return jsonb_build_object('outcome', 'ready'); end if;
+  if j.state = 'failed' then return jsonb_build_object('outcome', 'failed', 'code', j.error_code); end if;
+  if j.state = 'running' and j.lease_expires_at >= clock_timestamp() then
+    return jsonb_build_object('outcome', 'busy', 'lease_expires_at', j.lease_expires_at);
+  end if;
+  select * into r from public.exercise_media_revisions where id = j.revision_id for update;
+  if r.archived or r.status <> 'processing' or r.recipe_version <> j.recipe_version then
+    update public.exercise_media_jobs set state = 'failed', error_code = 'superseded', lease_token = null,
+      lease_expires_at = null, finished_at = now(), updated_at = now() where id = j.id;
+    return jsonb_build_object('outcome', 'failed', 'code', 'superseded');
+  end if;
+  if j.attempts >= j.max_attempts then
+    update public.exercise_media_jobs set state = 'failed', error_code = 'attempts_exhausted', lease_token = null,
+      lease_expires_at = null, finished_at = now(), updated_at = now() where id = j.id;
+    update public.exercise_media_revisions set status = 'failed', failure_code = 'attempts_exhausted',
+      version = r.version + 1, updated_at = now() where id = r.id;
+    return jsonb_build_object('outcome', 'failed', 'code', 'attempts_exhausted');
+  end if;
+  update public.exercise_media_jobs set state = 'running', attempts = j.attempts + 1, lease_token = gen_random_uuid(),
+    lease_expires_at = clock_timestamp() + make_interval(secs => p_lease_seconds), worker_label = p_worker,
+    started_at = coalesce(j.started_at, now()), updated_at = now()
+  where id = j.id returning * into j;
+  return jsonb_build_object('outcome', 'claimed', 'job', to_jsonb(j), 'revision', to_jsonb(r),
+    'sources', coalesce((select jsonb_agg(to_jsonb(a)) from public.exercise_media_assets a
+      where a.revision_id = r.id and not a.archived and a.role in ('source_video', 'source_image')), '[]'::jsonb));
+end $$;
+
+revoke execute on function
+  public.exercise_media_upload_intent_guard(),
+  public.exercise_media_issue_upload_intent(uuid, uuid, uuid, text, bigint, text, integer),
+  public.exercise_media_mark_upload_intent(uuid, uuid, text),
+  public.exercise_media_claim_revision_job(uuid, uuid, text, integer)
+from public, anon, authenticated;
+grant execute on function
+  public.exercise_media_upload_intent_guard(),
+  public.exercise_media_issue_upload_intent(uuid, uuid, uuid, text, bigint, text, integer),
+  public.exercise_media_mark_upload_intent(uuid, uuid, text),
+  public.exercise_media_claim_revision_job(uuid, uuid, text, integer)
+to service_role;

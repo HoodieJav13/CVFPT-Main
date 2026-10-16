@@ -9,6 +9,12 @@ if (!config.enabled) {
   console.error('exercise media worker: EXERCISE_MEDIA_STORE=local and an absolute EXERCISE_MEDIA_ROOT are required (local only)');
   process.exit(2);
 }
+// The background FFmpeg worker belongs to the explicit full-local video mode.
+// Photos mode (the default) renders inline under a lease and needs no worker.
+if (config.mode !== 'full') {
+  console.error('exercise media worker: only used in EXERCISE_MEDIA_MODE=full (photos mode processes inline)');
+  process.exit(2);
+}
 const supabaseUrl = new URL(process.env.SUPABASE_URL || 'http://invalid');
 if (supabaseUrl.hostname !== '127.0.0.1') {
   console.error('exercise media worker: refusing a non-loopback SUPABASE_URL');

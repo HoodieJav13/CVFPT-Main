@@ -1,11 +1,14 @@
-// /api/exercise-media — owned exercise media (photo, stills, short preview,
-// separate full instruction). Fail-closed: disabled unless the LOCAL adapter
-// is explicitly configured (lib/exerciseMedia/config.js). Every mutation uses
+// /api/exercise-media — owned exercise media. Default photos mode: identifying
+// photo + cues through direct-upload grants and inline leased processing; the
+// explicit full-local mode keeps stills, short preview and separate full
+// instruction video. Fail-closed: disabled unless the LOCAL adapter is
+// explicitly configured (lib/exerciseMedia/config.js). Every mutation uses
 // the server actor; uploads are refused before any byte is accepted unless the
 // actor owns the draft (or is admin); bytes reach browsers only through the
 // capability content route, which re-authorizes on every request.
 const express = require('express');
 const multer = require('multer');
+const { pipeline } = require('node:stream');
 const { logError } = require('../utils/logger');
 const { MediaError, LIMITS } = require('../lib/exerciseMedia/validation');
 const { HttpError } = require('../lib/exerciseMedia/service');
@@ -28,7 +31,20 @@ const MESSAGES = {
   file_too_large: 'That file is too large.',
   link_expired: 'This media link expired. Retry to refresh it.',
   rate_limited: 'Too many requests. Please try again later.',
+  video_sources_disabled: 'Video uploads are off here. Upload a photo, or choose a still from a clip on your device.',
+  video_processing_unavailable: 'This draft needs video processing, which is off here. Use a photo instead.',
+  upload_incomplete: 'The photo has not finished uploading. Try the upload again.',
+  upload_size_mismatch: 'The uploaded file did not match what was selected. Choose the file again.',
+  upload_abandoned: 'That upload was cancelled. Start a new upload.',
+  staging_conflict: 'A different file was already sent for this upload. Start a new upload.',
+  grant_expired: 'The upload link expired. Start the upload again.',
+  invalid_grant: 'Not found.',
+  processor_busy: 'Photo processing is busy. Try again in a moment.',
+  processor_timeout: 'Photo processing took too long. Try again, or use a smaller photo.',
+  storage_unavailable: 'Media storage is unavailable right now. Your draft is kept; try again later.',
+  source_mismatch: 'The stored photo no longer matches what was uploaded. Upload it again.',
 };
+const STAGING_TYPES = new Set(LIMITS.image.mimes);
 const message = (code) => MESSAGES[code] || 'This media request could not be completed.';
 
 function sendError(res, error) {
@@ -86,9 +102,29 @@ function createExerciseMediaRouter({ getRuntime, requireAuth, requireCoach, limi
     if (result.range) res.set('Content-Range', `bytes ${result.range.start}-${result.range.end}/${result.size}`);
     res.status(result.status);
     if (req.method === 'HEAD') { result.stream.destroy(); return res.end(); }
-    result.stream.on('error', () => res.destroy());
-    req.on('close', () => result.stream.destroy());
-    return result.stream.pipe(res);
+    // pipeline releases the opened file if the client already left (for
+    // example while this request was being re-authorized) or leaves mid-body;
+    // a stalled, unreleased file handle is fatal on current Node runtimes.
+    if (res.destroyed || req.destroyed) { result.stream.destroy(); return undefined; }
+    return pipeline(result.stream, res, () => {});
+  }));
+
+  // Local direct-upload target (the hosted adapter uses the provider's signed
+  // upload URL instead). Authorized by its short-lived grant alone, like a
+  // signed upload URL: no bearer session, one app-issued staging key, bounded
+  // size, image content types only, never overwriting. Bytes stay unpublished
+  // until an authorized finalize re-verifies them.
+  router.put('/staging/:grant', wrap(async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    const store = req.media.store;
+    if (typeof store.verifyUploadGrant !== 'function') return res.status(404).json({ error: 'Not found', code: 'not_found' });
+    const grant = store.verifyUploadGrant(req.params.grant);
+    const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (!STAGING_TYPES.has(type)) throw new MediaError('unsupported_image_type');
+    const declared = Number(req.headers['content-length']);
+    if (Number.isFinite(declared) && declared > grant.maxBytes) throw new MediaError('file_too_large');
+    const result = await store.receiveStaged({ key: grant.key, stream: req, maxBytes: grant.maxBytes });
+    return res.status(result.status === 'stored' ? 201 : 200).json({ status: result.status, bytes: result.bytes });
   }));
 
   router.use(requireAuth);
@@ -143,6 +179,20 @@ function createExerciseMediaRouter({ getRuntime, requireAuth, requireCoach, limi
     const result = await req.media.service.attachSource(req.user, revision, role, req.mediaStaged, { ...req.body, original_name: req.file.originalname });
     return res.status(result.status).json(result.body);
   }));
+
+  // Photo direct-upload transport: durable intent + grant, then authorized finalize.
+  router.post('/revisions/:id/uploads', requireCoach, wrap(async (req, res) => {
+    await new Promise((resolve, reject) => limiters.upload(req, res, (error) => (error ? reject(error) : resolve())));
+    if (res.headersSent) return undefined;
+    const result = await req.media.service.issueUpload(req.user, req.params.id, req.body);
+    return res.status(result.replayed ? 200 : 201).json(result);
+  }));
+  router.post('/revisions/:id/uploads/:intentId/finalize', requireCoach, wrap(async (req, res) => {
+    const result = await req.media.service.finalizeUpload(req.user, req.params.id, req.params.intentId, req.body);
+    return res.status(result.status).json(result.body);
+  }));
+  router.post('/revisions/:id/uploads/:intentId/abandon', requireCoach, wrap(async (req, res) => res.json(await req.media.service.abandonUpload(req.user, req.params.id, req.params.intentId))));
+  router.post('/revisions/:id/process/resume', requireCoach, limiters.process, wrap(async (req, res) => res.json(await req.media.service.resumeProcessing(req.user, req.params.id))));
 
   router.post('/revisions/:id/sources/remove', requireCoach, wrap(async (req, res) => res.json(await req.media.service.removeSource(req.user, req.params.id, req.body))));
   router.patch('/revisions/:id/recipe', requireCoach, wrap(async (req, res) => res.json(await req.media.service.updateRecipe(req.user, req.params.id, req.body))));

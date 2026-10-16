@@ -30,6 +30,11 @@ const STATUS_BY_CODE = {
   unsupported_video_container: 415,
   remote_playlist_rejected: 415,
   unsupported_video_codec: 415,
+  // Retryable capacity/deadline outcomes of the in-process photo decoder, and
+  // video work requested while only the photo pipeline is configured.
+  processor_busy: 503,
+  processor_timeout: 503,
+  video_processing_unavailable: 503,
 };
 
 class MediaError extends Error {

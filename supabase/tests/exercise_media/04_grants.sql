@@ -3,7 +3,7 @@
 do $$
 declare t text; f record; r text;
 begin
-  foreach t in array array['exercise_media_revisions','exercise_media_assets','exercise_media_current','exercise_media_jobs'] loop
+  foreach t in array array['exercise_media_revisions','exercise_media_assets','exercise_media_current','exercise_media_jobs','exercise_media_upload_intents'] loop
     perform pg_temp.expect((select relrowsecurity from pg_class where oid = ('public.' || t)::regclass), t || ' RLS enabled');
     perform pg_temp.expect(not exists (select 1 from pg_policies where schemaname = 'public' and tablename = t), t || ' has no policies');
     foreach r in array array['anon','authenticated'] loop
@@ -21,7 +21,7 @@ begin
     perform pg_temp.expect(not has_function_privilege('anon', f.oid, 'EXECUTE') and not has_function_privilege('authenticated', f.oid, 'EXECUTE'), f.proname || ' not executable by browser roles');
     perform pg_temp.expect(has_function_privilege('service_role', f.oid, 'EXECUTE'), f.proname || ' executable by service_role');
   end loop;
-  perform pg_temp.expect((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'exercise_media_%') = 25, 'expected helper count');
+  perform pg_temp.expect((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'exercise_media_%') = 29, 'expected helper count (25 accepted media + 4 photo transport)');
 end $$;
 
 -- service_role itself cannot hard-delete or truncate business rows.

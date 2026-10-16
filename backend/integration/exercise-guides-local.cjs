@@ -6,6 +6,11 @@
 //   node integration/exercise-guides-local.cjs            # run, then tear the owned stack down
 //   node integration/exercise-guides-local.cjs --keep-db  # leave the database for inspection
 // Proves (docs/exercise-guides/design.md):
+//  - photos mode (the default) needs NO FFmpeg worker: durable intent before a
+//    grant, direct staging PUT, authoritative finalize (sniff + full decode +
+//    digest), forged bytes refused, inline leased processing, review/publish,
+//    live re-authorization of every GET/HEAD/Range, replacement keeping the old
+//    current guide until publication, withdrawal and resume after a dead request;
 //  - inheriting references follow a library link replacement through workout,
 //    client assignment and live log reads; overrides and NULL legacy rows stay;
 //    no prescription, snapshot or workout row is rewritten;
@@ -21,6 +26,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { MediaHarness, IDENTITIES, ROOT, LOCAL_DIR } = require('./exercise-media-harness.cjs');
+const { createHash } = require('node:crypto');
 const { normalizeQuickSessionCreate, quickSessionHash } = require('../src/lib/quickSessions');
 
 const KEEP = process.argv.includes('--keep-db');
@@ -41,34 +47,44 @@ async function check(name, fn) {
   results.cases.push({ name, status: 'PASS', ms: Date.now() - started });
   console.log(`PASS ${name}`);
 }
-async function api(method, url, { token, json } = {}) {
-  const response = await fetch(API + url, { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(json ? { 'content-type': 'application/json' } : {}) }, body: json ? JSON.stringify(json) : undefined });
-  const body = (response.headers.get('content-type') || '').includes('json') ? await response.json() : null;
-  return { status: response.status, body };
+async function api(method, url, { token, json, headers = {}, raw } = {}) {
+  const response = await fetch(API + url, { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(json ? { 'content-type': 'application/json' } : {}), ...headers }, body: raw || (json ? JSON.stringify(json) : undefined) });
+  const type = response.headers.get('content-type') || '';
+  const body = method === 'HEAD' ? null : (type.includes('json') ? await response.json() : Buffer.from(await response.arrayBuffer()));
+  return { status: response.status, body, headers: response.headers };
 }
+const sha = (buffer) => createHash('sha256').update(buffer).digest('hex');
+const M = '/api/exercise-media';
+const FULL = { x: 0, y: 0, width: 1, height: 1 };
+const PHOTOS = path.join(LOCAL_DIR, 'fixtures-photos');
 const sql = (text) => h.psql(text).trim();
 const json = (text) => JSON.parse(sql(text) || 'null');
 const modes = (workoutId) => BASELINE ? null : modesNow(workoutId);
 const modesNow = (workoutId) => json(`select coalesce(jsonb_agg(jsonb_build_array(video_link_mode, video_url) order by position), '[]') from public.workout_exercises where workout_id = '${workoutId}' and not archived`);
 const denverToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-const byLibrary = (rows, id) => rows.filter((row) => row.exercise_library_id === id);
+let plainLibraryId = null;
+const plainLibrary = () => plainLibraryId;
 
 async function main() {
   const head = spawnSync('git', ['rev-parse', 'HEAD', 'HEAD^{tree}'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim().split('\n');
   results.tested_source = { head: head[0], tree: head[1], worktree_dirty: spawnSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim() !== '' };
-  h = new MediaHarness({ mediaRoot: path.join(LOCAL_DIR, `media-guides-${Date.now()}`) });
+  if (!BASELINE && !fs.existsSync(path.join(PHOTOS, 'fixtures-manifest.json'))) {
+    assert.equal(spawnSync(process.execPath, [path.join(ROOT, 'backend/scripts/generate-exercise-media-fixtures.cjs'), PHOTOS, '--images-only'], { stdio: 'inherit' }).status, 0);
+  }
+  h = new MediaHarness({ mediaRoot: path.join(LOCAL_DIR, `media-guides-${Date.now()}`), mode: 'photos' });
   await h.startDatabase({ reset: true });
   await h.startPostgrest();
   await h.startGateway();
   h.seed();
-  API = (await h.startApi({ media: false })).url;
-  for (const key of ['coach-a', 'client-1']) T[key] = await h.login(key, API);
+  API = (await h.startApi({ media: !BASELINE })).url;
+  for (const key of (BASELINE ? ['coach-a', 'client-1'] : Object.keys(IDENTITIES))) T[key] = await h.login(key, API);
   const client = IDENTITIES['client-1'].profile;
 
   if (BASELINE) { await quickReplay({ lib: null, client }); return; }
   const lib = (await api('POST', '/api/programs/exercise-library', { token: T['coach-a'], json: { name: 'Synthetic Guide Goblet Squat', category: 'Synthetic', equipment: 'Kettlebell', video_url: LIB_A } })).body;
   const plain = (await api('POST', '/api/programs/exercise-library', { token: T['coach-a'], json: { name: 'Synthetic Guide Band Row', category: 'Synthetic', equipment: 'Band' } })).body;
   assert.ok(lib.id && plain.id, 'library exercises created');
+  plainLibraryId = plain.id;
 
   let template; let assignment; let log; let snapshotBefore;
   await check('new workouts store explicit modes; old request shapes stay unclassified legacy', async () => {
@@ -164,6 +180,162 @@ async function main() {
   });
 
   await quickReplay({ lib, client });
+  await photoPipeline({ lib, log });
+}
+
+// Direct-upload grant transport as a browser would use it.
+async function uploadPhoto(revision, file, { requestId = randomUUID(), bytes = fs.readFileSync(path.join(PHOTOS, file)), mime = 'image/jpeg' } = {}) {
+  const issued = await api('POST', `${M}/revisions/${revision.id}/uploads`, { token: T['coach-a'], json: { request_id: requestId, role: 'source_image', bytes: bytes.length, mime_type: mime, expected_version: revision.version, rights_confirmed: true } });
+  assert.ok([200, 201].includes(issued.status), JSON.stringify(issued.body));
+  assert.equal(sql(`select state from public.exercise_media_upload_intents where id = '${issued.body.intent.id}'`), 'issued', 'intent persisted before the grant was used');
+  const put = await api('PUT', issued.body.upload.url, { headers: issued.body.upload.headers, raw: bytes });
+  assert.ok([200, 201].includes(put.status), `staging PUT ${put.status}`);
+  const finalized = await api('POST', `${M}/revisions/${revision.id}/uploads/${issued.body.intent.id}/finalize`, { token: T['coach-a'], json: { expected_version: revision.version, rights_basis: 'owned', rights_confirmed: 'true', original_name: file } });
+  return { issued: issued.body, finalized, bytes };
+}
+
+async function readyPhoto(exerciseId, file, { base = null, mime, crop = FULL } = {}) {
+  let revision = (await api('POST', `${M}/exercises/${exerciseId}/drafts`, { token: T['coach-a'], json: { request_id: randomUUID(), confirm_exercise_id: exerciseId, ...(base ? { base_revision_id: base } : {}) } })).body.revision;
+  const { finalized } = await uploadPhoto(revision, file, { mime });
+  assert.equal(finalized.status, 201, JSON.stringify(finalized.body));
+  revision = finalized.body.revision;
+  revision = (await api('PATCH', `${M}/revisions/${revision.id}/recipe`, { token: T['coach-a'], json: { expected_version: revision.version, alt_text: 'Synthetic test photo (not instruction)', cues: ['Synthetic cue one', 'Synthetic cue two'], poster_crop: crop } })).body;
+  assert.ok(Number.isInteger(revision.version), JSON.stringify(revision));
+  return revision;
+}
+
+async function publishReady(exerciseId, revision) {
+  revision = (await api('POST', `${M}/revisions/${revision.id}/review`, { token: T['coach-a'], json: { expected_version: revision.version, variant_confirmed: true, rights_confirmed: true, content_confirmed: true } })).body;
+  const current = Number(sql(`select coalesce((select version from public.exercise_media_current where exercise_library_id = '${exerciseId}'), 0)`));
+  const published = await api('POST', `${M}/exercises/${exerciseId}/publish`, { token: T['coach-a'], json: { revision_id: revision.id, expected_current_version: current } });
+  assert.equal(published.status, 200, JSON.stringify(published.body));
+  return revision;
+}
+
+async function photoPipeline({ lib, log }) {
+  const measures = {};
+  await check('photos mode needs no worker: capabilities report image-only grant transport and inline processing', async () => {
+    assert.deepEqual([...h.children.keys()], ['api'], 'no worker process was started');
+    const caps = (await api('GET', `${M}/capabilities`, { token: T['coach-a'] })).body;
+    assert.deepEqual([caps.enabled, caps.mode, caps.video_sources, caps.upload_transport, caps.processing], [true, 'photos', false, 'grant', 'inline']);
+    assert.equal(caps.limits.image.max_bytes, 10 * 1024 * 1024);
+  });
+
+  await check('forged bytes and mismatched files never attach; video sources are refused', async () => {
+    const draft = (await api('POST', `${M}/exercises/${lib.id}/drafts`, { token: T['coach-a'], json: { request_id: randomUUID(), confirm_exercise_id: lib.id } })).body.revision;
+    const forged = await uploadPhoto(draft, 'forged.jpg', { bytes: Buffer.from('<!doctype html><script>alert(1)</script>') });
+    assert.equal(forged.finalized.status, 415, JSON.stringify(forged.finalized.body));
+    const truncated = fs.readFileSync(path.join(PHOTOS, 'goblet-squat-photo.jpg')).subarray(0, 5000);
+    const broken = await uploadPhoto(draft, 'broken.jpg', { bytes: truncated });
+    assert.equal(broken.finalized.status, 422, JSON.stringify(broken.finalized.body));
+    assert.equal(sql(`select count(*) from public.exercise_media_assets where revision_id = '${draft.id}'`), '0');
+    const video = await api('POST', `${M}/revisions/${draft.id}/uploads`, { token: T['coach-a'], json: { request_id: randomUUID(), role: 'source_video', bytes: 1000, mime_type: 'video/mp4', expected_version: draft.version, rights_confirmed: true } });
+    assert.equal(video.status, 409);
+    assert.equal(video.body.code, 'video_sources_disabled');
+    const other = await api('POST', `${M}/revisions/${draft.id}/uploads`, { token: T['coach-b'], json: { request_id: randomUUID(), role: 'source_image', bytes: 1000, mime_type: 'image/jpeg', expected_version: draft.version, rights_confirmed: true } });
+    assert.equal(other.status, 404, 'another coach cannot upload into this draft');
+    await api('POST', `${M}/revisions/${draft.id}/archive`, { token: T['coach-a'], json: {} });
+  });
+
+  let first; let posterId;
+  await check('grant -> direct PUT -> authoritative finalize; double finalize replays; inline processing without a worker', async () => {
+    let revision = (await api('POST', `${M}/exercises/${lib.id}/drafts`, { token: T['coach-a'], json: { request_id: randomUUID(), confirm_exercise_id: lib.id } })).body.revision;
+    const upload = await uploadPhoto(revision, 'goblet-squat-photo.jpg');
+    assert.equal(upload.finalized.status, 201, JSON.stringify(upload.finalized.body));
+    const intentId = upload.issued.intent.id;
+    const asset = json(`select to_jsonb(a) from public.exercise_media_assets a where id = '${intentId}'`);
+    assert.equal(asset.sha256, sha(upload.bytes));
+    assert.equal(asset.storage_key, `sources/${intentId}.jpg`);
+    assert.equal(sql(`select state from public.exercise_media_upload_intents where id = '${intentId}'`), 'attached');
+    const replay = await api('POST', `${M}/revisions/${revision.id}/uploads/${intentId}/finalize`, { token: T['coach-a'], json: { expected_version: upload.finalized.body.revision.version, rights_basis: 'owned', rights_confirmed: 'true' } });
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body.replayed, true);
+    assert.equal(sql(`select count(*) from public.exercise_media_assets where revision_id = '${revision.id}' and role = 'source_image' and not archived`), '1');
+    revision = (await api('PATCH', `${M}/revisions/${revision.id}/recipe`, { token: T['coach-a'], json: { expected_version: upload.finalized.body.revision.version, alt_text: 'Synthetic test photo (not instruction)', cues: ['Synthetic cue one'], poster_crop: FULL } })).body;
+    const started = Date.now();
+    const processed = await api('POST', `${M}/revisions/${revision.id}/process`, { token: T['coach-a'], json: { expected_version: revision.version } });
+    measures.inline_process_request_ms = Date.now() - started;
+    assert.equal(processed.status, 200, JSON.stringify(processed.body));
+    assert.equal(processed.body.status, 'ready', 'rendered inline in the same request');
+    const job = json(`select to_jsonb(j) from public.exercise_media_jobs j where revision_id = '${revision.id}'`);
+    assert.deepEqual([job.state, job.attempts], ['succeeded', 1]);
+    const poster = json(`select to_jsonb(a) from public.exercise_media_assets a where revision_id = '${revision.id}' and role = 'poster' and not archived`);
+    assert.ok(poster.bytes <= 160 * 1024);
+    assert.match(poster.processor_version, /^sharp 0\.35\.5 \/ libvips /);
+    measures.poster_bytes = Number(poster.bytes);
+    measures.source_bytes = upload.bytes.length;
+    first = await publishReady(lib.id, processed.body);
+    posterId = poster.id;
+  });
+
+  await check('clients get current derivatives only, re-authorized on every GET/HEAD/Range; originals stay uploader/admin-only', async () => {
+    const detail = (await api('GET', `/api/workout-logs/${log.id}`, { token: T['client-1'] })).body;
+    const row = detail.exercises.find((e) => e.exercise_library_id === lib.id);
+    assert.equal(row.media.kind, 'photo');
+    assert.equal(row.media.poster.asset_id, posterId);
+    assert.deepEqual(row.media.cues, ['Synthetic cue one']);
+    assert.equal(JSON.stringify(row.media).includes('sources/'), false, 'no source key in the client DTO');
+    const context = { type: 'workout_log', id: log.id };
+    const links = await api('POST', `${M}/links`, { token: T['client-1'], json: { context, assets: [{ asset_id: posterId }] } });
+    assert.equal(links.status, 200, JSON.stringify(links.body));
+    const url = links.body.links[0].url;
+    const got = await api('GET', url);
+    assert.equal(got.status, 200);
+    assert.equal(got.headers.get('content-type'), 'image/jpeg');
+    assert.equal(got.body.length, measures.poster_bytes);
+    const head = await api('HEAD', url);
+    assert.equal(head.status, 200);
+    assert.equal(head.headers.get('content-length'), String(measures.poster_bytes));
+    const range = await api('GET', url, { headers: { range: 'bytes=0-99' } });
+    assert.equal(range.status, 206);
+    assert.equal(range.body.length, 100);
+    assert.equal((await api('POST', `${M}/links`, { token: T['client-2'], json: { context, assets: [{ asset_id: posterId }] } })).status, 404, 'another client');
+    const source = sql(`select id from public.exercise_media_assets where revision_id = '${first.id}' and role = 'source_image' and not archived`);
+    const revisionContext = { type: 'revision', id: first.id };
+    assert.equal((await api('POST', `${M}/links`, { token: T['coach-b'], json: { context: revisionContext, assets: [{ asset_id: source }] } })).status, 404, 'other coach cannot read the original');
+    assert.equal((await api('POST', `${M}/links`, { token: T['admin'], json: { context: revisionContext, assets: [{ asset_id: source }] } })).status, 200, 'admin may');
+    assert.equal((await api('POST', `${M}/links`, { token: T['coach-a'], json: { context: revisionContext, assets: [{ asset_id: source }] } })).status, 200, 'uploader may');
+  });
+
+  await check('a replacement leaves the old photo current until its own review and publication', async () => {
+    const replacement = await readyPhoto(lib.id, 'goblet-squat-photo.webp', { base: first.id, mime: 'image/webp' });
+    const processed = (await api('POST', `${M}/revisions/${replacement.id}/process`, { token: T['coach-a'], json: { expected_version: replacement.version } })).body;
+    assert.equal(processed.status, 'ready');
+    const before = (await api('GET', `/api/workout-logs/${log.id}`, { token: T['client-1'] })).body.exercises.find((e) => e.exercise_library_id === lib.id);
+    assert.equal(before.media.revision_id, first.id, 'still the published guide');
+    await publishReady(lib.id, processed);
+    const after = (await api('GET', `/api/workout-logs/${log.id}`, { token: T['client-1'] })).body.exercises.find((e) => e.exercise_library_id === lib.id);
+    assert.equal(after.media.revision_id, replacement.id);
+    first = replacement;
+  });
+
+  await check('withdrawal between capability issue and GET is enforced', async () => {
+    const detail = (await api('GET', `/api/workout-logs/${log.id}`, { token: T['client-1'] })).body.exercises.find((e) => e.exercise_library_id === lib.id);
+    const link = (await api('POST', `${M}/links`, { token: T['client-1'], json: { context: { type: 'workout_log', id: log.id }, assets: [{ asset_id: detail.media.poster.asset_id }] } })).body.links[0].url;
+    assert.equal((await api('GET', link)).status, 200);
+    const current = Number(sql(`select version from public.exercise_media_current where exercise_library_id = '${lib.id}'`));
+    assert.equal((await api('POST', `${M}/revisions/${first.id}/archive`, { token: T['coach-a'], json: { expected_current_version: current } })).status, 200);
+    assert.equal((await api('GET', link)).status, 404, 'withdrawn bytes are no longer served');
+    assert.equal((await api('HEAD', link)).status, 404);
+  });
+
+  await check('a request that dies mid-render leaves a lease; resume processes the same version after expiry', async () => {
+    // Portrait source (EXIF orientation 6): a 16:9 band in ORIENTED coordinates.
+    const revision = await readyPhoto(plainLibrary(), 'split-squat-portrait.jpg', { crop: { x: 0, y: 0.1, width: 1, height: (1080 * 9 / 16) / 1350 } });
+    const coach = IDENTITIES['coach-a'].profile;
+    // The "dead" request: queued and claimed under a lease, then nothing more.
+    assert.equal(json(`select public.exercise_media_request_processing('${coach}', '${revision.id}', ${revision.version})`).outcome, 'queued');
+    assert.equal(json(`select public.exercise_media_claim_revision_job('${coach}', '${revision.id}', 'dead-request', 30)`).outcome, 'claimed');
+    const busy = await api('POST', `${M}/revisions/${revision.id}/process/resume`, { token: T['coach-a'] });
+    assert.equal(busy.body.status, 'processing', 'a live lease is not stolen');
+    sql(`update public.exercise_media_jobs set lease_expires_at = clock_timestamp() - interval '1 second' where revision_id = '${revision.id}'`);
+    const resumed = await api('POST', `${M}/revisions/${revision.id}/process/resume`, { token: T['coach-a'] });
+    assert.equal(resumed.status, 200, JSON.stringify(resumed.body));
+    assert.equal(resumed.body.status, 'ready');
+    assert.equal(json(`select to_jsonb(j) from public.exercise_media_jobs j where revision_id = '${revision.id}'`).attempts, 2);
+    assert.equal((await api('POST', `${M}/revisions/${revision.id}/process/resume`, { token: T['coach-b'] })).status, 404);
+  });
+  results.measures = measures;
 }
 
 async function quickReplay({ lib: existing, client }) {

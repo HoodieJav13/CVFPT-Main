@@ -13,7 +13,7 @@ export default defineConfig({
   timeout: 240_000, fullyParallel: false, workers: 1, retries: 0, reporter: 'line',
   use: { baseURL: 'http://127.0.0.1:42771', trace: 'retain-on-failure' },
   webServer: {
-    command: 'node ../backend/integration/exercise-media-dev.cjs --port 42771 --seed-media',
+    command: 'node ../backend/integration/exercise-media-dev.cjs --full --port 42771 --seed-media',
     url: 'http://127.0.0.1:42771/__media-demo',
     reuseExistingServer: false,
     timeout: 400_000,

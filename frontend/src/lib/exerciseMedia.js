@@ -204,3 +204,82 @@ export function prefersDataSaver() {
 }
 
 export const MEDIA_KIND_LABELS = { photo: 'Photo', frames: 'Start and end stills', video: 'Movement preview' };
+
+// ----- Photo direct-upload transport (docs/exercise-guides/design.md) -------------
+// The API issues a durable intent and a short-lived grant; the browser sends the
+// bytes straight to the grant target, then asks the API to finalize (the server
+// re-reads and re-verifies everything). Locally the target is the app's own
+// staging route; when hosted it is a provider signed upload URL, which must
+// never receive the app's bearer token or cookies.
+const STAGING_PATH = /^\/api(\/exercise-media\/staging\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/;
+const PROVIDER_HEADERS = ['content-type', 'x-upsert'];
+
+export function stagingUploadTarget(grant) {
+  const url = grant?.url;
+  if (typeof url !== 'string' || !url) return null;
+  const local = STAGING_PATH.exec(url);
+  if (local) return { kind: 'api', path: local[1] };
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'https:' && !parsed.username && !parsed.password) return { kind: 'provider', url: parsed.href };
+  } catch { /* not a URL */ }
+  return null;
+}
+
+export function providerUploadHeaders(grant) {
+  const headers = {};
+  for (const [name, value] of Object.entries(grant?.headers || {})) {
+    if (PROVIDER_HEADERS.includes(name.toLowerCase()) && typeof value === 'string') headers[name.toLowerCase()] = value;
+  }
+  return headers;
+}
+
+// Plain XHR (upload progress, abort) with no credentials for provider targets.
+export function putToProvider(url, body, headers, { signal, onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.withCredentials = false;
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+    xhr.upload.onprogress = (event) => { if (event.lengthComputable) onProgress?.(event.loaded / event.total); };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve({ status: xhr.status })
+      : reject(Object.assign(new Error('upload_failed'), { response: { status: xhr.status, data: {} } })));
+    xhr.onerror = () => reject(Object.assign(new Error('upload_interrupted'), { code: 'ERR_NETWORK' }));
+    xhr.onabort = () => reject(Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' }));
+    signal?.addEventListener('abort', () => xhr.abort(), { once: true });
+    xhr.send(body);
+  });
+}
+
+const alreadyStored = (error) => error?.response?.status === 409;
+const EXTENSION_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+const declaredType = (file) => file.type || EXTENSION_TYPES[String(file.name || '').split('.').pop().toLowerCase()] || '';
+
+// One photo source upload under a caller-held request id (reuse it to retry the
+// SAME upload). Returns { revision, replayed, intentId }.
+export async function uploadPhotoSource({ apiClient, revision, file, rights, note, requestId, signal, onProgress, sendToProvider = putToProvider }) {
+  const { data: issued } = await apiClient.post(`/exercise-media/revisions/${revision.id}/uploads`, {
+    request_id: requestId, role: 'source_image', bytes: file.size, mime_type: declaredType(file), expected_version: revision.version, rights_confirmed: true,
+  }, { signal });
+  if (issued.upload) {
+    const target = stagingUploadTarget(issued.upload);
+    if (!target) throw new Error('Unusable upload target');
+    try {
+      if (target.kind === 'api') {
+        await apiClient.put(target.path, file, {
+          signal, timeout: 15 * 60 * 1000, headers: { 'Content-Type': declaredType(file) },
+          onUploadProgress: (event) => event.total && onProgress?.(event.loaded / event.total),
+        });
+      } else {
+        await sendToProvider(target.url, file, providerUploadHeaders(issued.upload), { signal, onProgress });
+      }
+    } catch (error) {
+      if (!alreadyStored(error)) throw error;
+    }
+  }
+  const trimmed = String(note || '').trim();
+  const { data } = await apiClient.post(`/exercise-media/revisions/${revision.id}/uploads/${issued.intent.id}/finalize`, {
+    expected_version: revision.version, rights_basis: rights, rights_confirmed: 'true', ...(trimmed ? { rights_note: trimmed } : {}), original_name: file.name,
+  }, { signal });
+  return { revision: data.revision, replayed: Boolean(data.replayed), intentId: issued.intent.id };
+}

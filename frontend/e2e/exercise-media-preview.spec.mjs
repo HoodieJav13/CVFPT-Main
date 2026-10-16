@@ -207,3 +207,23 @@ test('coach uploads an image with no video, crops by keyboard, processes (simula
   await expect(page.getByText(/Published\. Every workout/)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
 });
+
+test('photos mode: no video upload; an interrupted processing draft offers an explicit Resume that completes it', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await mediaScenario(page);
+  await page.goto('/coach/programs');
+  const split = page.getByTestId('exercise-library-card').filter({ hasText: 'Synthetic Split Squat' });
+  await split.getByTestId('exercise-library-media-button').click();
+  const editor = page.getByTestId('exercise-media-editor');
+  const processing = editor.getByTestId('media-draft-chip').filter({ hasText: 'Processing' });
+  await processing.first().click();
+  await expect(editor.getByTestId('media-draft-editor')).toHaveAttribute('data-status', 'processing');
+  await expect(editor.getByTestId('media-upload-source_video')).toHaveCount(0);
+  const resume = editor.getByTestId('media-resume-processing');
+  await expect(resume).toBeVisible();
+  expect((await resume.boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await resume.click();
+  await expect(editor.getByTestId('media-draft-editor')).toHaveAttribute('data-status', 'ready');
+  await expect(editor.getByTestId('media-review')).toBeVisible();
+});

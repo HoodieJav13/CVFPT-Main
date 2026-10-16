@@ -44,6 +44,13 @@ function createRepository(db) {
 
     asset: (id) => maybe(db.from('exercise_media_assets').select(ASSET_COLUMNS).eq('id', id)),
 
+    // Photo direct-upload intents (backend-only rows: staging keys never leave the server).
+    uploadIntent: (id) => maybe(db.from('exercise_media_upload_intents').select('*').eq('id', id)),
+    async uploadIntentsFor(revisionId, actorId) {
+      return rows(db.from('exercise_media_upload_intents').select('id,request_id,state,declared_bytes,declared_mime,created_at')
+        .eq('revision_id', revisionId).eq('actor_coach_id', actorId).eq('state', 'issued').order('created_at', { ascending: false }).limit(5));
+    },
+
     async current(exerciseId) {
       const pointer = await maybe(db.from('exercise_media_current').select('exercise_library_id,revision_id,version').eq('exercise_library_id', exerciseId));
       if (!pointer?.revision_id) return { revision_id: null, version: pointer?.version || 0, owner_id: null };

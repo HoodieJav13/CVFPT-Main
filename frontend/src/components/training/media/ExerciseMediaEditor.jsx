@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { MEDIA_KIND_LABELS, MEDIA_LIMITS, checkFileBeforeUpload, createRefreshGate, defaultCrop, formatMs } from '@/lib/exerciseMedia';
+import { MEDIA_KIND_LABELS, MEDIA_LIMITS, checkFileBeforeUpload, createRefreshGate, defaultCrop, formatMs, uploadPhotoSource } from '@/lib/exerciseMedia';
 import { ImageCropEditor } from './ImageCropEditor';
 import { VideoSelectionEditor } from './VideoSelectionEditor';
 import { useMediaLinks } from './mediaLinks';
@@ -26,6 +26,11 @@ const FAILURE_COPY = {
   preview_too_large: 'The preview could not fit 2 MB. Choose a shorter or simpler section.',
   instruction_too_large: 'The full video could not fit 25 MB. Upload a shorter clip.',
   poster_too_large: 'The poster could not be compressed enough. Try another image.',
+  source_mismatch: 'The stored photo no longer matches the upload. Upload it again.',
+  processor_busy: 'Photo processing was busy. Retry processing.',
+  video_processing_unavailable: 'This draft needs video processing, which is off here. Use a photo instead.',
+  storage_unavailable: 'Media storage was unavailable. Retry processing.',
+  corrupt_image: 'The photo could not be decoded. Export it again as JPEG, PNG or WebP.',
 };
 const ERROR_COPY = {
   alt_text_required: 'Add alt text describing the exercise setup.',
@@ -41,6 +46,17 @@ const ERROR_COPY = {
   captions_required: 'Narrated instruction needs captions and a transcript before review.',
   replace_requires_admin: 'Another coach owns the current guide. An admin must approve replacing it.',
   stale: 'This changed elsewhere. Reload to continue from the latest version.',
+  upload_incomplete: 'The photo did not finish uploading. Retry the upload.',
+  upload_size_mismatch: 'The uploaded file did not match the selected file. Choose the file again.',
+  upload_abandoned: 'That upload was cancelled. Choose the file again to start a new upload.',
+  request_mismatch: 'This retry used a different file. Choose the file again to start a new upload.',
+  video_sources_disabled: 'Video uploads are off here. Upload a photo, or choose a still from a clip on your device.',
+  processor_busy: 'Photo processing is busy. Try again in a moment.',
+  processor_timeout: 'Photo processing took too long. Try again, or use a smaller photo.',
+  corrupt_image: 'The photo could not be decoded. Export it again as JPEG, PNG or WebP.',
+  unsupported_image_type: 'Use a JPEG, PNG or still WebP image.',
+  animated_image_not_supported: 'Animated images are not supported. Use a still photo.',
+  file_too_large: 'That file is larger than 10 MB.',
 };
 const explain = (error, fallback) => ERROR_COPY[error?.response?.data?.code] || errMsg(error, fallback);
 
@@ -86,6 +102,10 @@ function UploadControl({ role, disabled, onUpload }) {
   const [note, setNote] = useState('');
   const [progress, setProgress] = useState(null);
   const [problem, setProblem] = useState(null);
+  // One request id per chosen file: a retry after an interrupted or uncertain
+  // upload reuses it, so the server finishes the SAME upload instead of a copy.
+  const [requestId, setRequestId] = useState(null);
+  const [failed, setFailed] = useState(false);
   const controller = useRef(null);
   const inputRef = useRef(null);
   const id = `upload-${role}`;
@@ -93,14 +113,21 @@ function UploadControl({ role, disabled, onUpload }) {
   const start = async () => {
     const early = checkFileBeforeUpload(file, role);
     if (early) { setProblem(early.message); return; }
+    const attempt = requestId || uuid();
+    setRequestId(attempt);
     controller.current = new AbortController();
     setProblem(null); setProgress(0);
     try {
-      await onUpload({ file, rights, note, signal: controller.current.signal, onProgress: setProgress });
-      setFile(null); setConfirmed(false); setNote('');
+      await onUpload({ file, rights, note, requestId: attempt, signal: controller.current.signal, onProgress: setProgress });
+      setFile(null); setConfirmed(false); setNote(''); setRequestId(null); setFailed(false);
       if (inputRef.current) inputRef.current.value = '';
     } catch (error) {
-      if (error?.code !== 'ERR_CANCELED') setProblem(explain(error, 'Upload failed. Your draft is unchanged.'));
+      if (error?.code === 'ERR_CANCELED') { setProblem('Upload cancelled. Nothing was added to the draft. Retry or choose another file.'); setFailed(true); return; }
+      const code = error?.response?.data?.code;
+      // A different file under this request: start a fresh one next time.
+      if (code === 'request_mismatch' || code === 'upload_abandoned') setRequestId(null);
+      setFailed(true);
+      setProblem(explain(error, 'Upload failed. Your draft is unchanged.'));
     } finally { setProgress(null); controller.current = null; }
   };
   const label = role === 'source_image' ? 'Upload image' : 'Upload video';
@@ -109,7 +136,7 @@ function UploadControl({ role, disabled, onUpload }) {
       <div className="flex items-center gap-2 font-medium">{role === 'source_image' ? <ImageUp className="h-4 w-4" aria-hidden /> : <Video className="h-4 w-4" aria-hidden />}{label}</div>
       <Label htmlFor={id} className="text-xs text-muted-foreground">{role === 'source_image' ? 'JPEG, PNG or still WebP, up to 10 MB. Works without any video.' : 'MP4, MOV or WebM up to 2 minutes and 100 MB.'}</Label>
       <Input ref={inputRef} id={id} type="file" accept={role === 'source_image' ? MEDIA_LIMITS.image.mimes.join(',') : `${MEDIA_LIMITS.video.mimes.join(',')},.mov`} disabled={disabled || progress !== null}
-        onChange={(event) => { setFile(event.target.files?.[0] || null); setProblem(null); }} className="h-11" data-testid={`media-file-${role}`} />
+        onChange={(event) => { setFile(event.target.files?.[0] || null); setProblem(null); setRequestId(null); setFailed(false); }} className="h-11" data-testid={`media-file-${role}`} />
       <fieldset className="space-y-1">
         <legend className="text-xs font-medium">Rights</legend>
         <div className="flex flex-wrap gap-3 text-sm">
@@ -134,7 +161,9 @@ function UploadControl({ role, disabled, onUpload }) {
           <Button type="button" variant="ghost" size="touch" onClick={() => controller.current?.abort()}><X aria-hidden /> Cancel</Button>
         </div>
       ) : (
-        <Button type="button" size="touch" disabled={disabled || !file || !confirmed} onClick={start} data-testid={`media-upload-start-${role}`}><Upload aria-hidden /> {label}</Button>
+        <Button type="button" size="touch" disabled={disabled || !file || !confirmed} onClick={start} data-testid={`media-upload-start-${role}`}>
+          {failed ? <RefreshCw aria-hidden /> : <Upload aria-hidden />} {failed ? 'Retry upload' : label}
+        </Button>
       )}
     </div>
   );
@@ -221,6 +250,9 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   // Once a draft has a source, its upload panel folds behind "Replace …" so
   // review and recipe controls are not buried under upload forms.
   const [replacing, setReplacing] = useState({ source_image: false, source_video: false });
+  // Server capabilities decide the authoring mode: photos (default) or full video.
+  const [caps, setCaps] = useState(null);
+  const photosMode = caps?.mode === 'photos';
   const seq = useRef(0);
   const live = useRef(true);
   const frameUrlsRef = useRef([]);
@@ -245,6 +277,11 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
     }
   }, [exercise.id]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let alive = true;
+    api.get('/exercise-media/capabilities').then(({ data: next }) => { if (alive) setCaps(next); }).catch(() => { if (alive) setCaps({}); });
+    return () => { alive = false; };
+  }, []);
 
   const draft = data?.drafts.find((d) => d.id === selectedId) || null;
   const replaceDraft = (next) => {
@@ -303,9 +340,17 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
     await load(created.revision.id);
   });
 
-  const upload = (role) => async ({ file, rights, note, signal, onProgress }) => {
+  const upload = (role) => async ({ file, rights, note, requestId, signal, onProgress }) => {
+    if (photosMode && role === 'source_image') {
+      // Direct-upload grant transport; the server re-verifies everything on finalize.
+      const result = await uploadPhotoSource({ apiClient: api, revision: draft, file, rights, note, requestId, signal, onProgress });
+      replaceDraft(result.revision);
+      setReplacing((current) => ({ ...current, [role]: false }));
+      toast.success('Photo uploaded and checked. Crop it and add alt text.');
+      return;
+    }
     const body = new FormData();
-    body.append('request_id', uuid());
+    body.append('request_id', requestId || uuid());
     body.append('expected_version', String(draft.version));
     body.append('rights_basis', rights);
     body.append('rights_confirmed', 'true');
@@ -329,6 +374,15 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   const processDraft = () => act('process', async () => {
     const { data: next } = await api.post(`/exercise-media/revisions/${draft.id}/process`, { expected_version: draft.version });
     replaceDraft(next);
+    if (next.status === 'ready') onChanged?.();
+  });
+  // Explicit recovery for photo processing interrupted mid-request (for
+  // example a closed tab): the server resumes the same version once its lease
+  // has expired, and never steals a live one.
+  const resumeProcessing = () => act('resume', async () => {
+    const { data: next } = await api.post(`/exercise-media/revisions/${draft.id}/process/resume`, {});
+    replaceDraft(next);
+    if (next.status === 'processing') toast.message('Still processing. Try again in about half a minute.');
   });
   const review = () => act('review', async () => {
     const { data: next } = await api.post(`/exercise-media/revisions/${draft.id}/review`, { expected_version: draft.version, variant_confirmed: attest.variant, rights_confirmed: attest.rights, content_confirmed: attest.content });
@@ -423,18 +477,24 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
           </div>
           <p className="sr-only" aria-live="polite" data-testid="media-status-live">{STATUS_COPY[draft.status]}</p>
           {draft.status === 'failed' && <p className="text-sm text-destructive" role="alert" data-testid="media-failed">{FAILURE_COPY[draft.failure_code] || 'Processing failed. Check the source and retry.'}</p>}
+          {photosMode && draft.status === 'processing' && draft.permissions.can_archive && (
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground" data-testid="media-processing-recovery">
+              <span>Still processing? If you closed the tab or lost connection, resume it.</span>
+              <Button type="button" size="touch" variant="outline" disabled={Boolean(busy)} onClick={resumeProcessing} data-testid="media-resume-processing"><RefreshCw aria-hidden /> Resume processing</Button>
+            </div>
+          )}
 
           {editable && (
             <div className="space-y-2">
               {((image && !replacing.source_image) || (video && !replacing.source_video)) && (
                 <div className="flex flex-wrap gap-2">
                   {image && !replacing.source_image && <Button type="button" variant="outline" size="touch" disabled={Boolean(busy)} onClick={() => setReplacing((current) => ({ ...current, source_image: true }))} data-testid="media-replace-image"><ImageUp aria-hidden /> Replace image</Button>}
-                  {video && !replacing.source_video && <Button type="button" variant="outline" size="touch" disabled={Boolean(busy)} onClick={() => setReplacing((current) => ({ ...current, source_video: true }))} data-testid="media-replace-video"><Video aria-hidden /> Replace video</Button>}
+                  {!photosMode && video && !replacing.source_video && <Button type="button" variant="outline" size="touch" disabled={Boolean(busy)} onClick={() => setReplacing((current) => ({ ...current, source_video: true }))} data-testid="media-replace-video"><Video aria-hidden /> Replace video</Button>}
                 </div>
               )}
               <div className="grid gap-3 md:grid-cols-2">
                 {(!image || replacing.source_image) && <UploadControl role="source_image" disabled={Boolean(busy)} onUpload={upload('source_image')} />}
-                {(!video || replacing.source_video) && <UploadControl role="source_video" disabled={Boolean(busy)} onUpload={upload('source_video')} />}
+                {!photosMode && (!video || replacing.source_video) && <UploadControl role="source_video" disabled={Boolean(busy)} onUpload={upload('source_video')} />}
               </div>
             </div>
           )}

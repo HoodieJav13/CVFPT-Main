@@ -8,14 +8,19 @@
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
-const { randomUUID, createHash } = require('node:crypto');
+const { randomUUID, createHash, createHmac, timingSafeEqual } = require('node:crypto');
 const { pipeline } = require('node:stream/promises');
 const { Transform } = require('node:stream');
-const { MediaError } = require('../../lib/exerciseMedia/validation');
+const { MediaError, LIMITS } = require('../../lib/exerciseMedia/validation');
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const KEY_RE = new RegExp(`^(sources/${UUID}\\.(jpg|png|webp|mp4|mov|webm)|derivatives/${UUID}/[0-9]{1,6}-(poster|end_frame|preview|instruction|captions)\\.(jpg|mp4|vtt))$`);
 const STAGED_RE = new RegExp(`^${UUID}\\.part$`);
+// Direct-upload staging objects (photo transport): app-issued keys only.
+const STAGING_KEY_RE = new RegExp(`^staging/(${UUID})$`);
+const DERIVATIVE_RE = new RegExp(`^derivatives/${UUID}/[0-9]{1,6}-(poster|end_frame|preview|instruction|captions)\\.(jpg|mp4|vtt)$`);
+// Local stand-in for a provider signed upload. Not the 60 s read capability.
+const LOCAL_GRANT_TTL_SECONDS = 15 * 60;
 const CONTENT_TYPES = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', vtt: 'text/vtt; charset=utf-8' };
 
 function invalidKey() { return new MediaError('invalid_storage_key', 400); }
@@ -37,13 +42,16 @@ function byteLimiter(maxBytes, onExceeded) {
 }
 
 class LocalMediaStore {
-  constructor({ root }) {
+  constructor({ root, grantSecret = null, now = Date.now }) {
     if (!root || !path.isAbsolute(root)) throw new Error('LocalMediaStore needs an absolute root');
     this.root = path.resolve(root);
     this.objects = path.join(this.root, 'objects');
     this.quarantine = path.join(this.root, 'quarantine');
     this.work = path.join(this.root, 'work');
-    for (const dir of [this.root, this.objects, this.quarantine, this.work]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    this.staging = path.join(this.root, 'staging');
+    this.grantSecret = grantSecret;
+    this.now = now;
+    for (const dir of [this.root, this.objects, this.quarantine, this.work, this.staging]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 
   static isKey(key) { return typeof key === 'string' && KEY_RE.test(key); }
@@ -238,6 +246,119 @@ class LocalMediaStore {
   async exists(key) {
     try { await this.stat(key); return true; } catch { return false; }
   }
+
+  // ----- Photo transport (docs/exercise-guides/design.md) -----------------------
+  // The same contract as services/exerciseMedia/supabaseImageStore.js: the
+  // browser PUTs bytes straight to an app-issued staging key under a short-lived
+  // grant (here a signed loopback URL handled by the media router), then the
+  // server re-reads, re-verifies and installs them. Staged copies are never
+  // overwritten or automatically purged.
+  static isStagingKey(key) { return typeof key === 'string' && STAGING_KEY_RE.test(key); }
+
+  stagingPath(key) {
+    const match = typeof key === 'string' ? STAGING_KEY_RE.exec(key) : null;
+    if (!match) throw invalidKey();
+    return path.join(this.staging, `${match[1]}.bin`);
+  }
+
+  #mac(body) { return createHmac('sha256', this.grantSecret).update(`staging-grant.${body}`).digest('base64url'); }
+
+  createUploadGrant({ key, contentType }) {
+    this.stagingPath(key);
+    if (typeof this.grantSecret !== 'string' || this.grantSecret.length < 32) throw new Error('Upload grants need a configured secret');
+    const maxBytes = LIMITS.image.maxBytes;
+    const expires = Math.floor(this.now() / 1000) + LOCAL_GRANT_TTL_SECONDS;
+    const body = Buffer.from(JSON.stringify({ v: 1, k: key, ct: contentType, m: maxBytes, e: expires })).toString('base64url');
+    return {
+      method: 'PUT', url: `/api/exercise-media/staging/${body}.${this.#mac(body)}`,
+      headers: { 'content-type': contentType }, expires_at: new Date(expires * 1000).toISOString(), max_bytes: maxBytes,
+    };
+  }
+
+  verifyUploadGrant(token) {
+    const invalid = () => new MediaError('invalid_grant', 404);
+    if (typeof token !== 'string' || token.length > 1024 || !this.grantSecret) throw invalid();
+    const [body, mac, extra] = token.split('.');
+    if (!body || !mac || extra !== undefined || !/^[A-Za-z0-9_-]+$/.test(body) || !/^[A-Za-z0-9_-]+$/.test(mac)) throw invalid();
+    const expected = Buffer.from(this.#mac(body));
+    const given = Buffer.from(mac);
+    if (expected.length !== given.length || !timingSafeEqual(expected, given)) throw invalid();
+    let payload;
+    try { payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { throw invalid(); }
+    if (payload?.v !== 1 || !LocalMediaStore.isStagingKey(payload.k) || !Number.isInteger(payload.m) || !Number.isInteger(payload.e)) throw invalid();
+    if (payload.e * 1000 <= this.now()) throw new MediaError('grant_expired', 403);
+    return { key: payload.k, contentType: payload.ct, maxBytes: payload.m };
+  }
+
+  // -> {status: 'stored'|'exists', bytes, sha256}. An identical retry is
+  // idempotent; different bytes for an existing staged key are refused.
+  async receiveStaged({ key, stream, maxBytes }) {
+    const target = this.stagingPath(key);
+    const temp = path.join(this.staging, `tmp-${randomUUID()}.part`);
+    const result = await this.#writeStream(stream, temp, maxBytes);
+    try {
+      const present = await this.#check(target, result);
+      if (present === 'match') return { status: 'exists', ...result };
+      if (present === 'mismatch') throw new MediaError('staging_conflict', 409);
+      try {
+        await fsp.link(temp, target);
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        if ((await this.#check(target, result)) !== 'match') throw new MediaError('staging_conflict', 409);
+        return { status: 'exists', ...result };
+      }
+      return { status: 'stored', ...result };
+    } finally {
+      await fsp.rm(temp, { force: true });
+    }
+  }
+
+  async #readBounded(file, maxBytes) {
+    let stat;
+    try { stat = await fsp.lstat(file); } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    }
+    if (!stat.isFile()) throw new MediaError('staged_source_mismatch', 500);
+    if (stat.size > maxBytes) throw new MediaError('file_too_large');
+    const handle = await fsp.open(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    try { return await handle.readFile(); } finally { await handle.close(); }
+  }
+
+  async readStaged(key, { maxBytes }) { return this.#readBounded(this.stagingPath(key), maxBytes); }
+
+  // Copies (never links or moves) verified staged bytes to the immutable source
+  // key. A present source must already match; the staged copy is kept.
+  async installStagedSource(stagingKey, finalKey, expected) {
+    const staged = this.stagingPath(stagingKey);
+    if (!/^sources\//.test(finalKey)) throw invalidKey();
+    const target = this.pathFor(finalKey);
+    const present = await this.#check(target, expected);
+    if (present === 'mismatch') throw new MediaError('stored_source_mismatch', 500);
+    if (present === 'match') return { installed: false };
+    if ((await this.#check(staged, expected)) !== 'match') throw new MediaError('staged_source_mismatch', 500);
+    await fsp.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+    try {
+      await fsp.copyFile(staged, target, fs.constants.COPYFILE_EXCL);
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+    if ((await this.#check(target, expected)) !== 'match') throw new MediaError('stored_source_mismatch', 500);
+    return { installed: true };
+  }
+
+  // Generated derivative bytes (unreferenced until the database records them).
+  async putObject({ key, buffer, maxBytes }) {
+    if (typeof key !== 'string' || !DERIVATIVE_RE.test(key)) throw invalidKey();
+    this.pathFor(key);
+    if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > maxBytes) throw new MediaError('output_too_large', 422);
+    const temp = path.join(this.quarantine, `${randomUUID()}.part`);
+    await fsp.writeFile(temp, buffer, { flag: 'wx', mode: 0o600 });
+    await this.#install(temp, key);
+    return { bytes: buffer.length, sha256: createHash('sha256').update(buffer).digest('hex') };
+  }
+
+  async readObject(key, { maxBytes }) { return this.#readBounded(this.pathFor(key), maxBytes); }
 }
 
-module.exports = { LocalMediaStore, KEY_RE };
+module.exports = { LocalMediaStore, KEY_RE, STAGING_KEY_RE, DERIVATIVE_RE, LOCAL_GRANT_TTL_SECONDS };

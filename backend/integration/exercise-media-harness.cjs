@@ -82,8 +82,11 @@ async function waitFor(check, { timeoutMs = 30_000, intervalMs = 250, what = 'co
 }
 
 class MediaHarness {
-  constructor({ runId = randomUUID().slice(0, 8), mediaRoot = path.join(LOCAL_DIR, 'media'), log = () => {} } = {}) {
+  // mode: 'full' keeps the accepted owned-video lanes (FFmpeg worker) exactly as
+  // before; 'photos' is the default product mode (image-only, inline, no worker).
+  constructor({ runId = randomUUID().slice(0, 8), mediaRoot = path.join(LOCAL_DIR, 'media'), log = () => {}, mode = 'full' } = {}) {
     this.runId = runId;
+    this.mode = mode === 'photos' ? 'photos' : 'full';
     this.mediaRoot = mediaRoot;
     this.log = log;
     this.children = new Map();
@@ -186,6 +189,7 @@ class MediaHarness {
       SUPABASE_SERVICE_ROLE_KEY: this.serviceKey,
       SUPABASE_ANON_KEY: this.anonKey,
       EXERCISE_MEDIA_STORE: 'local',
+      EXERCISE_MEDIA_MODE: this.mode,
       EXERCISE_MEDIA_ROOT: this.mediaRoot,
       EXERCISE_MEDIA_LINK_SECRET: this.linkSecret,
       ...extra,

@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 // LOCAL exercise media demo launcher (owned, loopback-only). Starts the
-// disposable database + PostgREST, the fictional auth gateway, the real API and
-// worker, seeds SYNTHETIC demo data through the real coach APIs, and serves the
-// real frontend (non-preview build) with a "Synthetic local demo" account
-// selector at /__media-demo.
+// disposable database + PostgREST, the fictional auth gateway and the real API,
+// seeds SYNTHETIC demo data through the real coach APIs, and serves the real
+// frontend (non-preview build) with a "Synthetic local demo" account selector at
+// /__media-demo.
 //
-//   npm --prefix backend run dev:media-local                 start (Ctrl+C stops everything it started)
+// Two recipes (docs/exercise-guides/local-runbook.md):
+//   photos (default): image-only photo guides through the direct-upload grant
+//     transport with inline processing, plus pasted YouTube/external demo links.
+//     No Docker processor image or worker is needed beyond the database stack.
+//   --full: the preserved owned-video pipeline (FFmpeg worker, video seeds).
+//
+//   npm --prefix backend run dev:media-local                 photos demo (Ctrl+C stops everything it started)
+//   npm --prefix backend run dev:media-local:full            full owned-video demo
 //   npm --prefix backend run dev:media-local -- --port 42771 --keep-db
 //   npm --prefix backend run dev:media-local:down            stop a launcher left running (ownership-checked)
 //   node backend/integration/exercise-media-dev.cjs --status
@@ -20,7 +27,12 @@ const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const option = (name, fallback) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : fallback; };
 const RUNTIME = path.join(RUN_DIR, 'runtime.json');
-const FIXTURES = path.join(LOCAL_DIR, 'fixtures');
+const FULL = flag('--full');
+const FIXTURES = path.join(LOCAL_DIR, FULL ? 'fixtures' : 'fixtures-photos');
+// Synthetic placeholder YouTube ids (syntactically valid, not CVF content): the
+// player shows YouTube's own "unavailable" state for them. Paste a real CVF
+// channel link to see a playable demo.
+const SYNTHETIC_YOUTUBE = { goblet: 'https://youtu.be/SYNTHdemo01', plank: 'https://www.youtube.com/watch?v=SYNTHdemo02' };
 
 function readRuntime() { try { return JSON.parse(fs.readFileSync(RUNTIME, 'utf8')); } catch { return null; } }
 
@@ -57,6 +69,42 @@ async function api(base, method, url, { token, json, form } = {}) {
 
 // Synthetic library, one assigned workout and (optionally) published sample
 // guides produced by the REAL pipeline. Nothing here is coaching content.
+async function seedPhotos(apiUrl, token, { media }) {
+  const ids = {};
+  for (const [key, name, equipment, video] of [['goblet', 'Synthetic Goblet Squat', 'Kettlebell', SYNTHETIC_YOUTUBE.goblet], ['split', 'Synthetic Split Squat', 'Dumbbells', null],
+    ['row', 'Synthetic Band Row', 'Band', 'https://example.com/synthetic-library-band-row'], ['plank', 'Synthetic Plank', 'Bodyweight', SYNTHETIC_YOUTUBE.plank],
+    ['shuttle', 'Synthetic Shuttle Walk', 'None', null], ['wall', 'Synthetic Wall Sit (no media)', 'Bodyweight', null]]) {
+    ids[key] = (await api(apiUrl, 'POST', '/api/programs/exercise-library', { token, json: { name, category: 'Synthetic', equipment, video_url: video } })).id;
+  }
+  const row = (key, extra = {}) => ({ exercise_library_id: ids[key], custom_name: '', sets: 2, reps: '8', rest: '60s', video_link_mode: 'inherit', video_url: '', ...extra });
+  const workout = await api(apiUrl, 'POST', '/api/programs/workouts', { token, json: { name: 'Synthetic guides session', exercises: [
+    row('goblet'), row('split'), row('row', { video_link_mode: 'override', video_url: 'https://example.com/synthetic-coach-override' }), row('plank'),
+    // An unclassified legacy row (old request shape, no mode key) and no-media rows.
+    { exercise_library_id: ids.shuttle, custom_name: '', sets: 2, reps: '8', video_url: '' }, row('wall'),
+    { exercise_library_id: null, custom_name: 'Synthetic custom move (no library id)', sets: 1, reps: '5', video_link_mode: 'override', video_url: 'https://example.com/synthetic-custom-link' },
+  ] } });
+  await api(apiUrl, 'POST', '/api/programs/workout-assignments', { token, json: { client_id: IDENTITIES['client-1'].profile, workout_id: workout.id } });
+  if (media) {
+    const M = '/api/exercise-media';
+    const publish = async (exerciseId, file, mime, crop, cues) => {
+      let revision = (await api(apiUrl, 'POST', `${M}/exercises/${exerciseId}/drafts`, { token, json: { request_id: randomUUID(), confirm_exercise_id: exerciseId } })).revision;
+      const bytes = fs.readFileSync(path.join(FIXTURES, file));
+      const issued = await api(apiUrl, 'POST', `${M}/revisions/${revision.id}/uploads`, { token, json: { request_id: randomUUID(), role: 'source_image', bytes: bytes.length, mime_type: mime, expected_version: revision.version, rights_confirmed: true } });
+      const put = await fetch(apiUrl + issued.upload.url, { method: 'PUT', headers: issued.upload.headers, body: bytes });
+      if (!put.ok) throw new Error(`staging PUT -> ${put.status}`);
+      revision = (await api(apiUrl, 'POST', `${M}/revisions/${revision.id}/uploads/${issued.intent.id}/finalize`, { token, json: { expected_version: revision.version, rights_basis: 'owned', rights_confirmed: 'true', original_name: file } })).revision;
+      revision = await api(apiUrl, 'PATCH', `${M}/revisions/${revision.id}/recipe`, { token, json: { expected_version: revision.version, alt_text: `Synthetic test photo for the ${file.split('-').slice(0, 2).join(' ')} identity (not instruction)`, cues, poster_crop: crop } });
+      revision = await api(apiUrl, 'POST', `${M}/revisions/${revision.id}/process`, { token, json: { expected_version: revision.version } });
+      if (revision.status !== 'ready') throw new Error(`seed processing ended ${revision.status}`);
+      revision = await api(apiUrl, 'POST', `${M}/revisions/${revision.id}/review`, { token, json: { expected_version: revision.version, variant_confirmed: true, rights_confirmed: true, content_confirmed: true } });
+      await api(apiUrl, 'POST', `${M}/exercises/${exerciseId}/publish`, { token, json: { revision_id: revision.id, expected_current_version: 0 } });
+    };
+    await publish(ids.goblet, 'goblet-squat-photo.jpg', 'image/jpeg', { x: 0, y: 0, width: 1, height: 1 }, ['Synthetic cue: chest tall', 'Synthetic cue: heels down']);
+    await publish(ids.split, 'split-squat-portrait.jpg', 'image/jpeg', { x: 0, y: 0.1, width: 1, height: (1080 * 9 / 16) / 1350 }, ['Synthetic cue']);
+  }
+  return { ids, workout_id: workout.id, mode: 'photos' };
+}
+
 async function seed(apiUrl, token, { media }) {
   const ids = {};
   for (const [key, name, equipment, video] of [['goblet', 'Synthetic Goblet Squat', 'Kettlebell', null], ['split', 'Synthetic Split Squat', 'Dumbbells', null],
@@ -101,7 +149,7 @@ async function seed(apiUrl, token, { media }) {
 
 async function start() {
   const port = Number(option('--port', '42771'));
-  const harness = new MediaHarness({ mediaRoot: path.join(LOCAL_DIR, 'media-dev') });
+  const harness = new MediaHarness({ mediaRoot: path.join(LOCAL_DIR, FULL ? 'media-dev' : 'media-dev-photos'), mode: FULL ? 'full' : 'photos' });
   let vite;
   const shutdown = async (code = 0) => {
     try {
@@ -116,7 +164,7 @@ async function start() {
   try {
     if (spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN']).status === 0) throw new Error(`port ${port} already has a listener; choose another with --port`);
     if (!fs.existsSync(path.join(FIXTURES, 'fixtures-manifest.json'))) {
-      const generated = spawnSync(process.execPath, [path.join(ROOT, 'backend/scripts/generate-exercise-media-fixtures.cjs'), FIXTURES], { stdio: 'inherit' });
+      const generated = spawnSync(process.execPath, [path.join(ROOT, 'backend/scripts/generate-exercise-media-fixtures.cjs'), FIXTURES, ...(FULL ? [] : ['--images-only'])], { stdio: 'inherit' });
       if (generated.status !== 0) throw new Error('fixture generation failed');
     }
     await harness.startDatabase({ reset: true });
@@ -125,9 +173,9 @@ async function start() {
     harness.seed();
     const frontendOrigin = `http://127.0.0.1:${port}`;
     const apiChild = await harness.startApi({ env: { CORS_ORIGINS: frontendOrigin } });
-    await harness.startWorker({ leaseSeconds: 30 });
+    if (FULL) await harness.startWorker({ leaseSeconds: 30 });
     const token = await harness.login('coach-a', apiChild.url);
-    const seeded = await seed(apiChild.url, token, { media: flag('--seed-media') });
+    const seeded = await (FULL ? seed : seedPhotos)(apiChild.url, token, { media: flag('--seed-media') });
     const out = fs.openSync(path.join(RUN_DIR, `vite-${harness.runId}.log`), 'a', 0o600);
     vite = spawn(process.execPath, [path.join(ROOT, 'frontend/node_modules/vite/bin/vite.js'), '--config', 'vite.media-local.config.mjs', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
       cwd: path.join(ROOT, 'frontend'), stdio: ['ignore', out, out],
@@ -137,10 +185,10 @@ async function start() {
     harness.writeRuntime({
       launcher: { pid: process.pid, script: 'backend/integration/exercise-media-dev.cjs' },
       frontend: { url: frontendOrigin, pid: vite.pid, port, demo_selector: `${frontendOrigin}/__media-demo` },
-      api: { url: apiChild.url }, fixtures: path.relative(ROOT, FIXTURES), seeded,
+      api: { url: apiChild.url }, mode: FULL ? 'full' : 'photos', fixtures: path.relative(ROOT, FIXTURES), seeded,
       note: 'Synthetic local demo. Fictional loopback accounts; no real credentials or hosted services.',
     });
-    console.log(`\nSynthetic local demo ready\n  Open ${frontendOrigin}/__media-demo and choose a fictional account.\n  API ${apiChild.url} · runtime ${path.relative(ROOT, RUNTIME)}\n  Stop with Ctrl+C or: npm --prefix backend run dev:media-local:down\n`);
+    console.log(`\nSynthetic local demo ready (${FULL ? 'full owned-video' : 'photos + YouTube links'} mode)\n  Open ${frontendOrigin}/__media-demo and choose a fictional account.\n  API ${apiChild.url} · runtime ${path.relative(ROOT, RUNTIME)}\n  Stop with Ctrl+C or: npm --prefix backend run dev:media-local:down\n`);
   } catch (error) {
     console.error('exercise media local demo failed to start:', error.message, error.output || '');
     await shutdown(1);

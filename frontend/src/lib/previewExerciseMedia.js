@@ -188,6 +188,19 @@ export function createPreviewExerciseMedia({ state, iso, ok, fail, currentCoachI
     });
   }
 
+  const intents = new Map();
+  function finishProcessing(revision) {
+    const title = state.exerciseLibrary.find((e) => e.id === revision.exercise_library_id)?.name || 'Synthetic';
+    const hue = HUES[revision.exercise_library_id] || 30;
+    const posterSource = revision.recipe.poster_mode === 'uploaded_image' ? assets.get(revision.sources.image?.asset_id) : null;
+    addAsset(revision.id, 'poster', { width: 640, height: 360, bytes: 21000, make: posterSource?.file ? () => cropUrl(posterSource.file, revision.recipe.poster_crop) : () => stillUrl(`${title} (simulated)`, hue) });
+    if (revision.recipe.end_frame_ms != null) addAsset(revision.id, 'end_frame', { width: 640, height: 360, bytes: 20000, make: () => stillUrl(`${title} — end (simulated)`, hue + 40) });
+    if (revision.recipe.preview_start_ms != null) addAsset(revision.id, 'preview', { width: 640, height: 360, bytes: 14000, has_audio: false, duration_ms: revision.recipe.preview_end_ms - revision.recipe.preview_start_ms, make: () => clipUrl(`${title} (simulated)`, hue, 1600) });
+    if (revision.recipe.include_instruction) addAsset(revision.id, 'instruction', { width: 1280, height: 720, bytes: 45000, has_audio: false, duration_ms: 2400, make: () => clipUrl(`${title} — full (simulated)`, hue, 2400) });
+    revision.status = 'ready';
+    revision.version += 1; revision.updated_at = new Date().toISOString();
+  }
+
   async function handle(config, method, path, payload) {
     if (!path.startsWith('/exercise-media/')) return undefined;
     // Mirrors the server: discovery answers { enabled: false } while media is off.
@@ -195,7 +208,59 @@ export function createPreviewExerciseMedia({ state, iso, ok, fail, currentCoachI
     if (!enabled && method === 'get' && path === '/exercise-media/library-status') return ok({ enabled: false, items: [], summary: null }, config);
     if (!enabled) return Promise.reject({ response: { data: { error: 'Exercise media is not available in this environment.', code: 'media_unavailable' }, status: 503, statusText: 'Unavailable', headers: {}, config }, config });
     const refuse = (status, code) => Promise.reject({ response: { data: { error: code, code }, status, statusText: 'Error', headers: {}, config }, config });
-    if (path === '/exercise-media/capabilities' && method === 'get') return ok({ enabled: true, processing_available: true, simulation: true, limits: {} }, config);
+    // Mirrors the default photos mode: direct-upload grants, inline processing, no video sources.
+    if (path === '/exercise-media/capabilities' && method === 'get') {
+      return ok({ enabled: true, mode: 'photos', video_sources: false, upload_transport: 'grant', processing: 'inline', local_still_selection: true, processing_available: true, simulation: true, limits: {} }, config);
+    }
+    // Photo direct-upload transport (simulated): staging PUT, then finalize.
+    const staging = path.match(/^\/exercise-media\/staging\/sim-([A-Za-z0-9_]+)\.preview$/);
+    if (staging && method === 'put') {
+      const intent = intents.get(staging[1]);
+      if (!intent) return refuse(404, 'not_found');
+      if (intent.file) return ok({ status: 'exists', bytes: intent.file.size }, config, 200);
+      intent.file = config.data;
+      return ok({ status: 'stored', bytes: config.data?.size || 0 }, config, 201);
+    }
+    const uploads = path.match(/^\/exercise-media\/revisions\/([^/]+)\/uploads(?:\/([A-Za-z0-9_]+)\/(finalize|abandon))?$/);
+    if (uploads && method === 'post') {
+      const target = revisions.get(uploads[1]);
+      if (!target || target.archived) return refuse(404, 'not_found');
+      if (!uploads[2]) {
+        if (payload.role === 'source_video') return refuse(409, 'video_sources_disabled');
+        if (payload.role !== 'source_image') return refuse(400, 'invalid_role');
+        if (payload.rights_confirmed !== true) return refuse(422, 'rights_confirmation_required');
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(payload.mime_type)) return refuse(400, 'unsupported_image_type');
+        const existing = [...intents.values()].find((row) => row.request_id === payload.request_id);
+        if (existing) {
+          if (existing.revision_id !== target.id || existing.bytes !== payload.bytes || existing.mime !== payload.mime_type) return refuse(409, 'request_mismatch');
+          return ok({ intent: { id: existing.id, state: existing.state, request_id: existing.request_id }, upload: existing.state === 'issued' ? existing.upload : null, replayed: true }, config, 200);
+        }
+        const intentId = nextId('intent');
+        const upload = { method: 'PUT', url: `/api/exercise-media/staging/sim-${intentId}.preview`, headers: { 'content-type': payload.mime_type }, expires_at: new Date(Date.now() + 15 * 60_000).toISOString(), max_bytes: 10 * 1024 * 1024 };
+        intents.set(intentId, { id: intentId, revision_id: target.id, request_id: payload.request_id, bytes: payload.bytes, mime: payload.mime_type, state: 'issued', file: null, upload });
+        return ok({ intent: { id: intentId, state: 'issued', request_id: payload.request_id }, upload, replayed: false }, config, 201);
+      }
+      const intent = intents.get(uploads[2]);
+      if (!intent || intent.revision_id !== target.id) return refuse(404, 'not_found');
+      if (uploads[3] === 'abandon') {
+        if (intent.state === 'issued') intent.state = 'abandoned';
+        return ok({ id: intent.id, state: intent.state }, config);
+      }
+      if (intent.state === 'attached') return ok({ revision: coachDto(target), replayed: true }, config, 200);
+      if (intent.state === 'abandoned') return refuse(409, 'upload_abandoned');
+      if (!intent.file) return refuse(409, 'upload_incomplete');
+      if (intent.file.size !== intent.bytes) return refuse(400, 'upload_size_mismatch');
+      const facts = await imageDims(intent.file);
+      if (!facts) return refuse(415, 'unsupported_image_type');
+      const url = URL.createObjectURL(intent.file);
+      const assetId = addAsset(target.id, `source_image_${Date.now()}`, { ...facts, bytes: intent.file.size, file: intent.file, make: () => Promise.resolve(url) });
+      target.sources.image = { asset_id: assetId, ...facts, has_audio: false, bytes: intent.file.size, mime_type: intent.mime, display_name: payload.original_name || 'synthetic-photo', rights_basis: payload.rights_basis, rights_note: payload.rights_note || null, uploaded_by_you: true, copied: false };
+      if (!target.recipe.poster_mode) target.recipe.poster_mode = 'uploaded_image';
+      target.recipe.poster_crop = null;
+      target.status = 'draft'; target.review_status = 'needs_review'; target.recipe_version += 1; target.version += 1; target.updated_at = new Date().toISOString();
+      intent.state = 'attached';
+      return ok({ revision: coachDto(target), replayed: false }, config, 201);
+    }
     if (path === '/exercise-media/library-status' && method === 'get') {
       const items = state.exerciseLibrary.filter((e) => !e.archived).map((e) => {
         const dto = clientDto(e.id);
@@ -259,16 +324,7 @@ export function createPreviewExerciseMedia({ state, iso, ok, fail, currentCoachI
       // Simulated processing finishes after a few status polls.
       if (revision.status === 'processing') {
         revision.pollsLeft = (revision.pollsLeft ?? 2) - 1;
-        if (revision.pollsLeft <= 0) {
-          const title = state.exerciseLibrary.find((e) => e.id === revision.exercise_library_id)?.name || 'Synthetic';
-          const hue = HUES[revision.exercise_library_id] || 30;
-          const posterSource = revision.recipe.poster_mode === 'uploaded_image' ? assets.get(revision.sources.image?.asset_id) : null;
-          addAsset(revision.id, 'poster', { width: 640, height: 360, bytes: 21000, make: posterSource?.file ? () => cropUrl(posterSource.file, revision.recipe.poster_crop) : () => stillUrl(`${title} (simulated)`, hue) });
-          if (revision.recipe.end_frame_ms != null) addAsset(revision.id, 'end_frame', { width: 640, height: 360, bytes: 20000, make: () => stillUrl(`${title} — end (simulated)`, hue + 40) });
-          if (revision.recipe.preview_start_ms != null) addAsset(revision.id, 'preview', { width: 640, height: 360, bytes: 14000, has_audio: false, duration_ms: revision.recipe.preview_end_ms - revision.recipe.preview_start_ms, make: () => clipUrl(`${title} (simulated)`, hue, 1600) });
-          if (revision.recipe.include_instruction) addAsset(revision.id, 'instruction', { width: 1280, height: 720, bytes: 45000, has_audio: false, duration_ms: 2400, make: () => clipUrl(`${title} — full (simulated)`, hue, 2400) });
-          revision.status = 'ready'; bump();
-        }
+        if (revision.pollsLeft <= 0) finishProcessing(revision);
       }
       return ok(coachDto(revision), config);
     }
@@ -309,6 +365,12 @@ export function createPreviewExerciseMedia({ state, iso, ok, fail, currentCoachI
     if (match && action === '/process' && method === 'post') {
       if (!revision.text.alt_text) return refuse(422, 'alt_text_required');
       revision.status = 'processing'; revision.pollsLeft = 2; revision.failure_code = null; bump();
+      // Photos mode renders inline in the same request (simulated).
+      finishProcessing(revision);
+      return ok(coachDto(revision), config);
+    }
+    if (match && action === '/process/resume' && method === 'post') {
+      if (revision.status === 'processing') finishProcessing(revision);
       return ok(coachDto(revision), config);
     }
     if (match && action === '/frame-preview' && method === 'post') {
@@ -393,6 +455,12 @@ export const PREVIEW_MEDIA_SAVE_ROUTES = [
   ['post', /^\/exercise-media\/revisions\/([^/]+)\/review$/],
   ['post', /^\/exercise-media\/exercises\/([^/]+)\/publish$/],
   ['post', /^\/exercise-media\/revisions\/([^/]+)\/archive$/],
+  // Photo direct-upload transport and explicit processing recovery.
+  ['post', /^\/exercise-media\/revisions\/([^/]+)\/uploads$/],
+  ['put', /^\/exercise-media\/staging\/([^/]+)$/],
+  ['post', /^\/exercise-media\/revisions\/([^/]+)\/uploads\/([^/]+)\/finalize$/],
+  ['post', /^\/exercise-media\/revisions\/([^/]+)\/uploads\/([^/]+)\/abandon$/],
+  ['post', /^\/exercise-media\/revisions\/([^/]+)\/process\/resume$/],
 ];
 export const PREVIEW_MEDIA_READ_LIKE_POSTS = [
   /^\/exercise-media\/links$/, /^\/exercise-media\/resolve$/, /^\/exercise-media\/text$/, /^\/exercise-media\/revisions\/([^/]+)\/frame-preview$/,

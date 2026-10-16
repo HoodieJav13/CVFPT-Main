@@ -15,10 +15,12 @@
     "test:media": "node --test test/exercise-media-*.test.js",
     "test:media:integration": "node integration/exercise-media-local.cjs",
     "dev:media-local": "node integration/exercise-media-dev.cjs --seed-media",
+    "dev:media-local:full": "node integration/exercise-media-dev.cjs --full --seed-media",
+    "test:guides:integration": "node integration/exercise-guides-local.cjs",
     "dev:media-local:down": "node integration/exercise-media-dev.cjs --down"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9.0"
   },
   "dependencies": {
     "@napi-rs/canvas": "0.1.80",
@@ -34,6 +36,7 @@
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.19.1",
     "resend": "6.18.1",
+    "sharp": "0.35.5",
     "stripe": "^22.2.0",
     "web-push": "^3.6.7",
     "ws": "^8.21.0"

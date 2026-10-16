@@ -5,6 +5,8 @@
 // the exercise names are plumbing identities only. Deterministic for a given
 // seed, font set and pinned processor image; hashes go in the manifest.
 //   node backend/scripts/generate-exercise-media-fixtures.cjs <output-dir>
+//   node backend/scripts/generate-exercise-media-fixtures.cjs <output-dir> --images-only
+//     (photos mode: synthetic images only, no Docker/FFmpeg processor needed)
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
@@ -101,9 +103,10 @@ async function encode(runner, outDir, name, { width, height, seconds, identity, 
 
 async function main() {
   const outDir = path.resolve(process.argv[2] || '');
-  if (!process.argv[2]) { console.error('usage: generate-exercise-media-fixtures.cjs <output-dir>'); process.exit(2); }
+  if (!process.argv[2]) { console.error('usage: generate-exercise-media-fixtures.cjs <output-dir> [--images-only]'); process.exit(2); }
+  const imagesOnly = process.argv.includes('--images-only');
   fs.mkdirSync(outDir, { recursive: true });
-  const runner = new DockerToolRunner({ image: PROCESSOR_IMAGE });
+  const runner = imagesOnly ? null : new DockerToolRunner({ image: PROCESSOR_IMAGE });
   const files = [];
   const record = (file, meta) => {
     const bytes = fs.readFileSync(file);
@@ -129,28 +132,29 @@ async function main() {
   record(split, { identity: 'Synthetic Split Squat', scenario: 'photo-only, EXIF-rotated portrait', mime: 'image/jpeg', width: 1080, height: 1350, exif_orientation: 6 });
 
   // 3. Synthetic Band Row — MP4 video plus a separate custom thumbnail.
-  record(await encode(runner, outDir, 'band-row.mp4', { width: 1280, height: 720, seconds: 6, identity: 'Synthetic Band Row', seed: SEED + 3, tint: 140 }),
+  if (!imagesOnly) record(await encode(runner, outDir, 'band-row.mp4', { width: 1280, height: 720, seconds: 6, identity: 'Synthetic Band Row', seed: SEED + 3, tint: 140 }),
     { identity: 'Synthetic Band Row', scenario: 'video + custom poster', mime: 'video/mp4', width: 1280, height: 720, duration_ms: 6000 });
   const thumb = path.join(outDir, 'band-row-thumbnail.png');
   fs.writeFileSync(thumb, scene(1280, 720, 'Synthetic Band Row — custom thumbnail', { seed: SEED + 33, tint: 140 }).toBuffer('image/png'));
   record(thumb, { identity: 'Synthetic Band Row', scenario: 'custom poster image', mime: 'image/png', width: 1280, height: 720 });
 
   // 4. Synthetic Plank — WebM (VP9) used for paired start/end stills.
-  record(await encode(runner, outDir, 'plank.webm', { width: 960, height: 540, seconds: 5, identity: 'Synthetic Plank', codec: 'libvpx-vp9', seed: SEED + 4, tint: 260 }),
+  if (!imagesOnly) record(await encode(runner, outDir, 'plank.webm', { width: 960, height: 540, seconds: 5, identity: 'Synthetic Plank', codec: 'libvpx-vp9', seed: SEED + 4, tint: 260 }),
     { identity: 'Synthetic Plank', scenario: 'start/end stills from video', mime: 'video/webm', width: 960, height: 540, duration_ms: 5000 });
 
   // 5. Synthetic Shuttle Walk — portrait MOV with a tone track (not narration).
-  record(await encode(runner, outDir, 'shuttle-walk.mov', { width: 720, height: 1280, seconds: 6, identity: 'Synthetic Shuttle Walk', audio: true, seed: SEED + 5, tint: 330, extraOut: ['-f', 'mov'] }),
+  if (!imagesOnly) record(await encode(runner, outDir, 'shuttle-walk.mov', { width: 720, height: 1280, seconds: 6, identity: 'Synthetic Shuttle Walk', audio: true, seed: SEED + 5, tint: 330, extraOut: ['-f', 'mov'] }),
     { identity: 'Synthetic Shuttle Walk', scenario: 'video-frame poster + preview + full instruction with audio', mime: 'video/quicktime', width: 720, height: 1280, duration_ms: 6000 });
 
   // Replacement clip for the image-only → video path on the Goblet Squat identity.
-  record(await encode(runner, outDir, 'goblet-squat-replacement.mp4', { width: 1280, height: 720, seconds: 4, identity: 'Synthetic Goblet Squat — added video', seed: SEED + 6, tint: 28 }),
+  if (!imagesOnly) record(await encode(runner, outDir, 'goblet-squat-replacement.mp4', { width: 1280, height: 720, seconds: 4, identity: 'Synthetic Goblet Squat — added video', seed: SEED + 6, tint: 28 }),
     { identity: 'Synthetic Goblet Squat', scenario: 'image-only → add video later', mime: 'video/mp4', width: 1280, height: 720, duration_ms: 4000 });
 
   const manifest = {
     schema_version: 1, kind: 'exercise-media-synthetic-fixtures', seed: SEED, label: LABEL,
     generator: 'node backend/scripts/generate-exercise-media-fixtures.cjs <output-dir>',
-    processor: { image: PROCESSOR_IMAGE, version: PROCESSOR_VERSION },
+    processor: imagesOnly ? { image: null, version: 'not used (images only)' } : { image: PROCESSOR_IMAGE, version: PROCESSOR_VERSION },
+    images_only: imagesOnly,
     note: 'Plumbing fixtures only. Identity names are test labels, not validated coaching instruction; nothing here may be presented as an exercise demonstration.',
     files,
   };
