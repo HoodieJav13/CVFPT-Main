@@ -7,6 +7,36 @@ import { clampTime, defaultCrop, formatMs, validatePreview } from '@/lib/exercis
 import { ImageCropEditor } from './ImageCropEditor';
 
 const FRAME_MS = 33; // ≈1 frame at 30 fps; the server re-renders from exact timestamps.
+const TARGET_LABELS = { poster: 'Poster frame', end: 'End still', preview: 'Preview (representative frame: its start)' };
+
+// Each crop target is cropped on the frame at ITS saved time — the same time
+// the processor renders: poster_frame_ms, end_frame_ms, and for the preview
+// its selected start (one rectangle applies to the whole segment). Never the
+// current scrub position.
+export function cropTargetMs(target, recipe) {
+  if (target === 'poster') return recipe.poster_mode === 'video_frame' ? recipe.poster_frame_ms ?? null : null;
+  if (target === 'end') return recipe.end_frame_ms ?? null;
+  if (target === 'preview') return recipe.preview_start_ms ?? null;
+  return null;
+}
+
+// Pauses, seeks to `ms` and resolves once that frame is decoded (bounded).
+function seekForFrame(video, ms) {
+  return new Promise((resolve, reject) => {
+    video.pause();
+    let timer;
+    const cleanup = () => { clearTimeout(timer); video.removeEventListener('seeked', settle); video.removeEventListener('error', fail); };
+    const fail = () => { cleanup(); reject(new Error('seek_failed')); };
+    function settle() {
+      if (video.readyState >= 2) { cleanup(); resolve(); return; }
+      video.addEventListener('loadeddata', settle, { once: true });
+    }
+    timer = setTimeout(fail, 10_000);
+    video.addEventListener('seeked', settle, { once: true });
+    video.addEventListener('error', fail, { once: true });
+    video.currentTime = ms / 1000; // assigning always runs a seek, even to the same time
+  });
+}
 const PREVIEW_ERRORS = {
   invalid_time: 'Choose a start and an end.',
   invalid_preview_range: 'A movement preview must be 1 to 8 seconds long.',
@@ -42,8 +72,22 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
   const [playing, setPlaying] = useState(false);
   const [undecodable, setUndecodable] = useState(false);
   const [cropTarget, setCropTarget] = useState(null); // poster | preview | end
-  const [frame, setFrame] = useState(null); // { src, dims }
+  // { target, ms, status: 'loading' | 'ready' | 'error', src?, dims? }
+  const [frame, setFrame] = useState(null);
+  const [positionFrame, setPositionFrame] = useState(null); // server still of the scrub position (no cropping)
+  const captureSeq = useRef(0); // a newer capture, a source change or unmount invalidates older ones
+  const opener = useRef(null);
   const durationMs = facts.durationMs;
+
+  // A new source invalidates pending and shown captures (and may decode).
+  useEffect(() => {
+    captureSeq.current += 1;
+    setCropTarget(null);
+    setFrame(null);
+    setPositionFrame(null);
+    setUndecodable(false);
+  }, [src]);
+  useEffect(() => () => { captureSeq.current += 1; }, []);
 
   const seek = (ms) => {
     const target = clampTime(ms, durationMs);
@@ -67,26 +111,58 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
   };
 
   const captureFrame = async (target) => {
+    const ms = cropTargetMs(target, recipe);
+    if (ms == null) return;
+    const seq = ++captureSeq.current;
+    if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) opener.current = document.activeElement;
     setCropTarget(target);
-    if (undecodable) {
-      if (onServerFrame) setFrame({ src: await onServerFrame(now), dims: { width: facts.width, height: facts.height } });
-      return;
-    }
-    const video = videoRef.current;
-    if (!video?.videoWidth) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+    setFrame({ target, ms, status: 'loading' });
     try {
-      setFrame({ src: canvas.toDataURL('image/jpeg', 0.85), dims: { width: video.videoWidth, height: video.videoHeight } });
+      let shot;
+      if (undecodable) {
+        if (!onServerFrame) throw new Error('no_server_frame');
+        shot = { src: await onServerFrame(ms), dims: { width: facts.width, height: facts.height } };
+      } else {
+        const video = videoRef.current;
+        if (!video) throw new Error('no_video');
+        await seekForFrame(video, ms);
+        if (seq !== captureSeq.current) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        shot = { src: canvas.toDataURL('image/jpeg', 0.85), dims: { width: video.videoWidth, height: video.videoHeight } };
+      }
+      if (seq !== captureSeq.current) return; // superseded: never show a late frame
+      setFrame({ target, ms, status: 'ready', ...shot });
     } catch {
-      setFrame(null);
+      if (seq === captureSeq.current) setFrame({ target, ms, status: 'error' });
+    }
+  };
+
+  const closeCrop = () => {
+    captureSeq.current += 1;
+    setCropTarget(null);
+    setFrame(null);
+    opener.current?.focus?.();
+  };
+
+  // Undecodable sources: a server still of the current position, to choose
+  // times. Viewing only; cropping always uses the target's saved time.
+  const showPositionFrame = async () => {
+    const ms = now;
+    setPositionFrame({ ms, status: 'loading' });
+    try {
+      const url = await onServerFrame(ms);
+      setPositionFrame((current) => (current?.ms === ms ? { ms, status: 'ready', src: url } : current));
+    } catch {
+      setPositionFrame((current) => (current?.ms === ms ? { ms, status: 'error' } : current));
     }
   };
 
   const previewError = recipe.preview_start_ms == null && recipe.preview_end_ms == null ? null : validatePreview(recipe.preview_start_ms, recipe.preview_end_ms, durationMs);
   const cropKey = { poster: 'poster_crop', preview: 'preview_crop', end: 'end_frame_crop' }[cropTarget];
-  const dims = frame?.dims || { width: facts.width, height: facts.height };
+  const readyFrame = frame && frame.status === 'ready' && frame.target === cropTarget ? frame : null;
+  const dims = readyFrame?.dims || { width: facts.width, height: facts.height };
 
   return (
     <div className="space-y-3" data-testid="video-selection-editor">
@@ -129,8 +205,17 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
         <Button type="button" variant="outline" size="touchIcon" disabled={disabled} onClick={() => seek(now - FRAME_MS)} aria-label="Back about 1 frame"><StepBack aria-hidden /></Button>
         <Button type="button" variant="outline" size="touchIcon" disabled={disabled} onClick={() => seek(now + FRAME_MS)} aria-label="Forward about 1 frame"><StepForward aria-hidden /></Button>
         <Button type="button" variant="outline" size="touchIcon" disabled={disabled} onClick={() => seek(now + 1000)} aria-label="Forward 1 second"><ChevronsRight aria-hidden /></Button>
-        {undecodable && onServerFrame && <Button type="button" variant="outline" size="touch" disabled={disabled} onClick={() => captureFrame(cropTarget || 'poster')}>Show frame</Button>}
+        {undecodable && onServerFrame && <Button type="button" variant="outline" size="touch" disabled={disabled} onClick={showPositionFrame}>Show frame</Button>}
       </div>
+      {undecodable && positionFrame && (
+        <div className="space-y-1" data-testid="video-position-frame" role="status">
+          {positionFrame.status === 'ready' ? (
+            <img src={positionFrame.src} alt={`Server-rendered frame at ${formatMs(positionFrame.ms)}`} className="aspect-video w-full max-w-md rounded-lg border border-border/60 object-contain" />
+          ) : (
+            <p className="text-xs text-muted-foreground">{positionFrame.status === 'loading' ? `Rendering the frame at ${formatMs(positionFrame.ms)}…` : `Couldn't render the frame at ${formatMs(positionFrame.ms)}. Try again.`}</p>
+          )}
+        </div>
+      )}
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="space-y-1 rounded-lg border border-border/60 p-2">
           <p className="text-sm font-medium">Poster frame</p>
@@ -175,10 +260,22 @@ export function VideoSelectionEditor({ src, facts, recipe, onChange, onServerFra
       {cropTarget && frame && (
         <div className="space-y-2 rounded-lg border border-border/60 p-3" data-testid="video-frame-crop">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium">Crop {cropTarget === 'end' ? 'end still' : cropTarget}</p>
-            <Button type="button" size="touch" variant="ghost" onClick={() => { setCropTarget(null); setFrame(null); }}>Done</Button>
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Crop {cropTarget === 'end' ? 'end still' : cropTarget}</p>
+              <p className="text-xs text-muted-foreground" data-testid="video-frame-target">{TARGET_LABELS[cropTarget]} at {formatMs(frame.ms)}</p>
+            </div>
+            <Button type="button" size="touch" variant="ghost" onClick={closeCrop}>Done</Button>
           </div>
-          <ImageCropEditor src={frame.src} dims={dims} crop={recipe[cropKey]} onChange={(crop) => onChange({ [cropKey]: crop })} label={`Crop ${cropTarget}`} disabled={disabled} testId={`crop-${cropTarget}`} />
+          {readyFrame ? (
+            <ImageCropEditor src={readyFrame.src} dims={dims} crop={recipe[cropKey]} onChange={(crop) => onChange({ [cropKey]: crop })} label={`Crop ${cropTarget}`} disabled={disabled} testId={`crop-${cropTarget}`} />
+          ) : frame.status === 'error' ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm" role="alert" data-testid="video-frame-error">
+              <span className="text-muted-foreground">Couldn't load the frame at {formatMs(frame.ms)}.</span>
+              <Button type="button" size="touch" variant="outline" onClick={() => captureFrame(frame.target)}>Retry</Button>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground" role="status" data-testid="video-frame-loading">Loading the frame at {formatMs(frame.ms)}…</p>
+          )}
         </div>
       )}
     </div>

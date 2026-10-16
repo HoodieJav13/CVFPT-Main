@@ -5,7 +5,8 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   outputDir: './test-results-media',
   testDir: './e2e',
-  testMatch: 'exercise-media-mocked.spec.mjs',
+  // Mocked media lane plus the real VideoSelectionEditor frame-selection harness.
+  testMatch: ['exercise-media-mocked.spec.mjs', 'exercise-media-frame-selection.spec.mjs'],
   timeout: 60_000, fullyParallel: false, workers: 1, retries: 0, reporter: 'line',
   use: { baseURL: 'http://127.0.0.1:42761', trace: 'retain-on-failure' },
   webServer: {
