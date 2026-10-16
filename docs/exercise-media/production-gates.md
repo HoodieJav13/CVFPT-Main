@@ -70,6 +70,13 @@ consented sample clips before budgeting.
 - At most one unapplied migration PR may be published at a time.
 - The PR114 compatibility evidence in RETURN.md is a local composition check
   only; it conveys no Quick release approval.
+- Composition follow-up: Quick's `POST /quick-sessions` stores per-exercise
+  `video_url` as free text, so this branch's unsafe-link rejection does not
+  cover that path once both land. Whichever lands second runs
+  `unsafeExternalVideoUrls(req.body.exercises)` before
+  `normalizeQuickSessionCreate`, with a route test. The import commit path
+  (`POST /programs/import/commit`) has the same gap. Rendering stays safe
+  either way (`safeHttpUrl`).
 
 ## Gate 4 — Release authority
 
@@ -78,5 +85,7 @@ Publishing a migration PR, applying and verifying it on both hosted projects
 `prod-migration-applied`), exact-head CI, the owner's merge and verification of
 both Production deployments are separate authorities. Merging deploys both
 roots immediately, so hosted migration verification must precede merge. The
-media routes stay fail-closed (503) on any deployment until Gate 2 provides a
-hosted adapter and an explicit enablement.
+media routes stay fail-closed on any deployment until Gate 2 provides a hosted
+adapter and an explicit enablement: the two discovery reads
+(`/capabilities`, `/library-status`) answer 200 `{ enabled: false }` so coach
+library visits log no 5xx, and every other media route answers 503.

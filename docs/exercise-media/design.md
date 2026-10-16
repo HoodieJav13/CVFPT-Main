@@ -97,13 +97,18 @@ re-resolves the principal, the context and the current pointer, so
 reassignment, archive, withdrawal or replacement stops old links immediately
 in the local adapter. TTL 60 s (posters, stills, previews, captions), 300 s for
 full instruction and coach source scrubbing (a long video issues later range
-requests); the player refreshes once and resumes on expiry.
+requests); every player (client instruction, coach source scrubber, coach
+review previews) refreshes once per successful load and resumes on expiry, and
+only a repeated failure is reported.
 
 ## API (`/api/exercise-media`, fail-closed)
 
-Disabled (503 `media_unavailable`, and no media query during workout reads)
-unless `EXERCISE_MEDIA_STORE=local` with an absolute `EXERCISE_MEDIA_ROOT`,
-and never on Vercel/production.
+Disabled unless `EXERCISE_MEDIA_STORE=local` with an absolute
+`EXERCISE_MEDIA_ROOT`, and never on Vercel/production. While disabled, workout
+reads make no media query, the two discovery reads (`/capabilities`,
+`/library-status`, still auth- and coach-gated) answer 200 `{ enabled: false }`
+so coach library visits log no 5xx, and every other route answers 503
+`media_unavailable`.
 
 | Route | Who | Purpose |
 |---|---|---|
@@ -170,12 +175,19 @@ decodable; text: alt ≤240, ≤3 cues ≤160, transcript ≤12 000, ≤500 capt
   `/api` is excluded).
 - Failure never blocks logging: metadata failure shows "Exercise guide
   unavailable · Retry"; a failed poster shows "Preview unavailable · Retry";
-  both retries are explicit and single.
+  both retries are explicit and single. If the guide was replaced or withdrawn
+  after the workout loaded, the server no longer links its assets (`missing`):
+  the card and the instruction dialog show Retry instead of a spinner, and
+  Retry re-resolves that exercise's current guide.
+- Alt text can be rewritten but never removed; review and publish refuse a
+  revision without it (or without end-still alt text), because clients receive
+  no media without alt text.
 
 ## Preview mode
 
 A separate **Exercise media demo** scenario (preview toolbar switch, off by
 default; `cvf_preview_media_scenario`) adds synthetic identities, a media
 workout and coach drafts. Posters/clips are generated in the page; processing
-is labelled simulation. With the switch off the media routes answer 503 like a
-production build and all existing fixtures are unchanged.
+is labelled simulation. With the switch off the media routes behave like a
+build without media (discovery `{ enabled: false }`, everything else 503) and
+all existing fixtures are unchanged.
