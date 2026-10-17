@@ -126,3 +126,61 @@ reviewer round, as the executing-plans process prescribes.
 - **Fix.** The character rule now bars embedding only. External links use the
   released rule, so every link the save path accepts resolves.
 - **Test.** RED → GREEN, with both copies held to the same assertion.
+
+## Second independent review (2026-10-16): pre-Play mobile overflow — resolution
+
+A separate independent review of `6363a3d` (outside this repository at
+`/Users/jav/Documents/Codex/2026-10-15/task-4/exercise-guides-independent-review-20261016/REVIEW.md`)
+found one introduced P2.
+
+**The finding.** Before Play, the photo facade of the demo dialog overflowed
+sideways on phones:
+
+| Viewport | Dialog scroll width | Client width |
+|---|---|---|
+| 320px | 404 | 318 |
+| 390px | 404 | 388 |
+
+The facade had an intrinsic width of 355.55 px. The existing 320px test
+checked bounds only after Play. The review text above is unchanged.
+
+**Reproduction.** The review's focused reproduction was copied, with only its
+output paths changed. It failed 2/2 at `6363a3d`. The before capture also
+showed long unbroken names reaching a dialog scroll width of 678.
+
+**Fix.** The fix is at the dialog call site and does not touch the shared
+dialog primitive (`ee0759c`, visual):
+
+- the dialog uses one `minmax(0,1fr)` column;
+- the facade is a plain 16:9 frame at the available width, narrowed on short
+  windows to stay within 60% of the height, and no longer takes the player's
+  200 px minimum;
+- the title and the name fallback wrap long unbroken names.
+
+**Regression tests** (`fbf7d86`, `exercise-guides-player.spec.mjs`):
+
+- 8 new tests, all RED at `6363a3d` (dialog scroll width 404 or 678 against
+  318 or 388), then GREEN;
+- pairwise cases at 320 and 390 px for photo, no photo, failed photo and long
+  unbroken names, under ordinary and reduced motion;
+- containment checked inside the padded content box, plus no clipped text, an
+  undistorted 16:9 photo and zero provider requests;
+- keyboard order (Play, then Open on YouTube, then Close, all in view);
+  Enter plays, and Escape restores the opener;
+- a short landscape window where every action is reachable by vertical
+  scrolling only.
+
+**Verification at `fbf7d86`:**
+
+- the copied reproduction passes 2/2 (318/318, 388/388);
+- frontend units 162/162;
+- guides browser 30/30;
+- media browser 25/25;
+- preview 107 passed, with 8 live-auth skips;
+- build and boundaries pass;
+- real-local guides browser 3/3, with clean teardown.
+
+**Paired evidence.** Paired before/after screenshots and measurements are in
+the correction return
+`/Users/jav/Documents/Codex/2026-10-15/task-4/cvfpt-youtube-guides-build-20261016T1700/return-mobile-dialog-correction-20261016/`.
+

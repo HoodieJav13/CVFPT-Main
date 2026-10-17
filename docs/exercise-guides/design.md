@@ -54,9 +54,18 @@ capability, preserved here as the explicit `full` mode.
   accepted media "unavailable" states. Try again remounts the player.
 - **Size.** The player is at least 200×200 CSS px:
   - `playerFrameSize`: width clamps to 200–960, height is `max(200, 9/16·w)`;
-  - on short windows the facade and player cap at 60% of the viewport height,
-    but never below 200 px (200% zoom stays usable);
+  - on short windows the player caps at 60% of the viewport height, but never
+    below 200 px (200% zoom stays usable);
   - measured: 270×202 at 320px, 340×202 at 390px, 622×351 at desktop.
+- **The pre-Play facade is not the player.** It is a plain 16:9 frame at the
+  available width (270×152 at 320px, 340×191 at 390px). On short windows it
+  narrows, centred, so it stays within 60% of the height. It never takes the
+  player's 200 px minimum, which made it wider than a phone dialog (fixed
+  2026-10-16).
+- **Single bounded column.** The dialog lays out in one `minmax(0,1fr)`
+  column, so no child's intrinsic width can cause sideways scrolling. Long
+  unbroken names wrap in the title and in the name fallback, which grows to
+  fit its text.
 - **Lifecycle:**
   - `createActivePlayerGuard` keeps one active player; activating another
     destroys the previous one;

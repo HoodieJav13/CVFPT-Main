@@ -124,6 +124,33 @@ head; the backend `package.json` and lockfile are unchanged since M2.
 - **Rendered check.** The comparison page passed a headless check with 0
   errors at 390px and 1280px in dark mode.
 
+## Mobile dialog correction (2026-10-16)
+
+**What was tested.** The second independent review's P2 (pre-Play facade
+overflow at 320/390px) was fixed in `ee0759c` and tested in `fbf7d86`. The
+lanes below ran at `fbf7d86`
+(tree `d68b67d50565ada440340af6728ac3e76c5535ef`) with no tracked changes. All
+exited 0.
+
+| Check | Result |
+|---|---|
+| Copied independent reproduction | RED 2/2 at `6363a3d` (scroll 404/318 and 404/388), then GREEN 2/2 (318/318, 388/388) |
+| New pre-Play regression tests in `exercise-guides-player.spec.mjs` | 8 RED at `6363a3d`, then GREEN |
+| Frontend units | 162/162 |
+| Guides mocked browser | 30/30 |
+| Media mocked browser | 25/25 |
+| Full preview | 107 passed, 8 skipped (live-auth), 0 failed |
+| Production build / deploy boundaries | pass / pass |
+| Guides real local browser (photos stack, canonical lock) | 3/3; lock released, 0 owned containers/volumes/ports |
+
+**Reused, not rerun.** Backend, SQL and packaging evidence is reused from the
+final sweep above. The correction changes only frontend layout and tests, so
+backend, SQL, integration and provider-proof lanes were not rerun.
+
+**Evidence location.** Paired before/after captures (`6363a3d` and
+`fbf7d86`), measurements and raw logs are in
+`../return-mobile-dialog-correction-20261016/`.
+
 ## Not run, or not provable here
 
 | Item | Classification | Note |
