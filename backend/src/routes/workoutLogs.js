@@ -8,6 +8,8 @@ const { dispatchPush, sendToCoaches } = require('../services/push');
 
 const { actualMetrics, trackingType } = require('../lib/workoutMetrics');
 const { quickLogKinds } = require('../lib/quickSessionReads');
+const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
+const { resolveExerciseDemo, resolvedVideoUrl } = require('../lib/exerciseDemo');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -309,37 +311,30 @@ function computeLogAttribution(log) {
   return 'mixed';
 }
 
-// Demo video for each logged exercise: the coach's per-workout link wins,
-// then the library exercise's. Only http(s) links are ever returned. The
-// snapshot has no video column, so this is resolved live (no schema change).
-function safeVideoUrl(value) {
-  if (typeof value !== 'string' || !value.trim()) return null;
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
+// Demo for each logged exercise, resolved LIVE from the source workout row's
+// reference mode (docs/exercise-guides/design.md): 'inherit' follows the
+// current library link, 'override' keeps the coach's per-workout link, and
+// unclassified legacy rows keep the old precedence (nonempty safe workout
+// link, then the library). Only http(s) links are ever returned. The snapshot
+// has no video column and is never rewritten; `demo` is the current guide.
 function resolveExerciseVideos(exercises, workoutExercises = [], libraryExercises = []) {
   const bySource = new Map(workoutExercises.map((row) => [row.id, row]));
-  const libraryVideo = new Map(libraryExercises.map((row) => [row.id, row.video_url]));
+  const library = new Map(libraryExercises.map((row) => [row.id, row]));
   return exercises.map((exercise) => {
-    const source = bySource.get(exercise.source_workout_exercise_id);
+    const source = bySource.get(exercise.source_workout_exercise_id) || null;
     const libraryId = exercise.exercise_library_id || source?.exercise_library_id;
-    const video = safeVideoUrl(source?.video_url) || safeVideoUrl(libraryVideo.get(libraryId));
-    return { ...exercise, video_url: video };
+    const reference = { workoutExercise: source, libraryExercise: library.get(libraryId) || null };
+    return { ...exercise, video_url: resolvedVideoUrl(reference), demo: resolveExerciseDemo(reference) };
   });
 }
 
-async function withExerciseVideos(exercises) {
+async function withExerciseVideos(exercises, { media = true } = {}) {
   if (!exercises.length) return exercises;
   const sourceIds = [...new Set(exercises.map((row) => row.source_workout_exercise_id).filter(Boolean))];
   let sources = [];
   if (sourceIds.length) {
     const { data, error } = await supabaseAdmin.from('workout_exercises')
-      .select('id, video_url, exercise_library_id').in('id', sourceIds);
+      .select('id, video_url, video_link_mode, exercise_library_id').in('id', sourceIds);
     if (error) throw error;
     sources = data || [];
   }
@@ -354,10 +349,14 @@ async function withExerciseVideos(exercises) {
     if (error) throw error;
     library = data || [];
   }
-  return resolveExerciseVideos(exercises, sources, library);
+  const resolved = resolveExerciseVideos(exercises, sources, library);
+  if (!media) return resolved;
+  // Current exercise guide (live by design; never part of the log snapshot).
+  const sourceLibrary = new Map(sources.map((row) => [row.id, row.exercise_library_id]));
+  return attachExerciseMedia(resolved, (row) => row.exercise_library_id || sourceLibrary.get(row.source_workout_exercise_id));
 }
 
-async function workoutLogWithDetails(id) {
+async function workoutLogWithDetails(id, { media = true } = {}) {
   const { data: log, error } = await supabaseAdmin.from('workout_logs')
     .select('*, client:clients(id, name, coach_id, archived)')
     .eq('id', id).eq('archived', false).maybeSingle();
@@ -369,7 +368,7 @@ async function workoutLogWithDetails(id) {
   const { data: loggedExercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
     .select('*').eq('workout_log_id', id).eq('archived', false).order('position');
   if (exerciseError) throw exerciseError;
-  const exercises = await withExerciseVideos(loggedExercises || []);
+  const exercises = await withExerciseVideos(loggedExercises || [], { media });
   const exerciseIds = exercises.map((exercise) => exercise.id);
   let sets = [];
   if (exerciseIds.length) {
@@ -468,7 +467,7 @@ async function clientActiveLog(clientId) {
 }
 
 async function requireWritableActiveLog(req, res) {
-  const log = await workoutLogWithDetails(req.params.id);
+  const log = await workoutLogWithDetails(req.params.id, { media: false });
   if (!canWriteLog(req.user, log)) {
     res.status(404).json({ error: 'Workout log not found' });
     return null;
@@ -730,7 +729,7 @@ router.get('/coach-feedback/unread-count', requireClient, async (req, res) => {
 
 router.patch('/:id/coach-feedback/read', requireClient, async (req, res) => {
   try {
-    const log = await workoutLogWithDetails(req.params.id);
+    const log = await workoutLogWithDetails(req.params.id, { media: false });
     if (!log || log.client_id !== req.user.client.id) return res.status(404).json({ error: 'Workout log not found' });
     const unreadIds = (log.coach_responses || []).filter((response) => !response.read_at).map((response) => response.id);
     if (!unreadIds.length) return res.json({ updated: 0, read_at: null });
@@ -767,7 +766,7 @@ router.put('/:id/coach-response', requireCoach, async (req, res) => {
   const validation = validateCoachResponseContent(req.body);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   try {
-    const log = await workoutLogWithDetails(req.params.id);
+    const log = await workoutLogWithDetails(req.params.id, { media: false });
     if (!canAuthorCoachResponse(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
     if (log.status !== 'completed') return res.status(409).json({ error: 'Only completed workouts accept coach responses' });
     const { data, error } = await supabaseAdmin.rpc('save_workout_coach_response', {
@@ -987,7 +986,7 @@ router.post('/:id/abandon', async (req, res) => {
 
 router.post('/:id/complete', async (req, res) => {
   try {
-    const log = await workoutLogWithDetails(req.params.id);
+    const log = await workoutLogWithDetails(req.params.id, { media: false });
     if (!canWriteLog(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
     // Performance-time completion (docs/offline-workout-completion.md):
     // a queued offline finish carries the locally-confirmed timestamp. Only

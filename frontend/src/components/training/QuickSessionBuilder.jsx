@@ -16,6 +16,8 @@ import { QuickSessionBadge } from '@/components/training/QuickSessionBadge';
 import { trackingType } from '@/lib/workoutMetrics';
 import { parseRestSeconds } from '@/lib/rest';
 import { quickSessionEnvironment } from '@/lib/quickSessions';
+import { chooseLibraryExercise, demoProblem, projectQuickForm } from '@/lib/trainingLibrary';
+import { DemoLinkField } from '@/components/training/DemoLinkField';
 import {
   PENDING_PREFIX, QUICK_SESSION_COPY, createQuickSessionController, defaultQuickTitle, denverToday,
 } from '@/lib/quickSessionRequest';
@@ -27,6 +29,7 @@ export function newQuickRow(fields = {}) {
     _uid: `quick-row-${rowSeq}`, exercise_library_id: '', custom_name: '', sets: '', reps: '',
     default_load_value: '', default_load_unit: 'lb', rest: '', tempo: '', target_rpe: '', client_notes: '',
     tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null,
+    video_link_mode: null, video_url: '',
     ...fields,
   };
 }
@@ -60,8 +63,15 @@ export function useQuickSession({ clientId, onStarted }) {
   const [state, setState] = useState(null);
   const [form, setForm] = useState(() => newQuickForm());
   // Stable facade for callers; calls before the effect has run are no-ops.
+  // Quick create stays exactly v1: the demo selection is projected onto the
+  // existing video_url (inherit -> empty, override -> its link) BEFORE the
+  // controller builds and freezes the request; no mode key is ever sent.
   const controller = useMemo(() => Object.fromEntries(CONTROLLER_METHODS.map((name) => [
-    name, (...args) => (liveRef.current ? liveRef.current[name](...args) : undefined),
+    name, (...args) => {
+      if (!liveRef.current) return undefined;
+      if (name === 'save' && args[0]) return liveRef.current.save(projectQuickForm(args[0]), ...args.slice(1));
+      return liveRef.current[name](...args);
+    },
   ])), []);
 
   useEffect(() => {
@@ -124,6 +134,8 @@ function Field({ label, children, className = '' }) {
 function validationError(form) {
   if (!form.assigned_for) return 'Choose a date.';
   if (!form.exercises.some((row) => row.exercise_library_id || String(row.custom_name || '').trim())) return 'Add at least one exercise.';
+  const demoIssue = form.exercises.map(demoProblem).find(Boolean);
+  if (demoIssue) return `Demo video: ${demoIssue}`;
   return null;
 }
 
@@ -141,9 +153,10 @@ export function QuickSessionBuilder({ form, setForm, library: initialLibrary, st
   const setRow = (index, fields) => setForm((current) => ({
     ...current, exercises: current.exercises.map((row, i) => (i === index ? { ...row, ...fields } : row)),
   }));
+  // A library pick inherits its demo live; the link is never copied into the row.
   const chooseExercise = (index, value) => {
-    const match = matchCatalogExercise(library, value);
-    setRow(index, match ? { exercise_library_id: match.id, custom_name: match.name } : { exercise_library_id: '', custom_name: value });
+    const match = matchCatalogExercise(library, value) || null;
+    setRow(index, chooseLibraryExercise(form.exercises[index], match, value));
   };
   const submit = (start) => {
     setTouched(true);
@@ -227,6 +240,10 @@ export function QuickSessionBuilder({ form, setForm, library: initialLibrary, st
                     <Field label="Target RPE">{(id) => <Input id={id} className="min-h-11" value={row.target_rpe} disabled={locked} onChange={(e) => setRow(index, { target_rpe: e.target.value })} data-testid="quick-session-rpe-input" />}</Field>
                   </div>
                   <Field label="Notes for the client">{(id) => <Input id={id} className="min-h-11" value={row.client_notes} disabled={locked} onChange={(e) => setRow(index, { client_notes: e.target.value })} data-testid="quick-session-exercise-notes-input" />}</Field>
+                  <fieldset className="min-w-0" disabled={locked}>
+                    <DemoLinkField exercise={row} libraryExercise={library.find((exercise) => exercise.id === row.exercise_library_id)}
+                      onChange={(fields) => setRow(index, fields)} testIdPrefix="quick-session-exercise" />
+                  </fieldset>
                 </div>
               )}
             </div>

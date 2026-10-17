@@ -4,7 +4,7 @@ import { WorkoutViewport } from '@/components/training/WorkoutViewport';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Play, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -24,11 +24,15 @@ import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import {
   adjustRestEnd, formatRestSeconds, manualRestSeconds, REST_ADJUST_SECONDS,
 } from '@/lib/rest';
-import { safeHttpUrl } from '@/lib/safeUrl';
 import { lastTimeFills } from '@/lib/workoutSync';
 import { trackProductEvent } from '@/lib/telemetry';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 import { nextExercise, restAfterSet, supersetBlocks, supersetRestSeconds } from '@/lib/supersets';
+import { ExerciseMediaInline } from '@/components/training/media/ExerciseMediaInline';
+import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
+import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
+import { demoForRow } from '@/lib/exerciseDemo';
+import { nextPosterTargets } from '@/lib/exerciseMedia';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
 // database parses and backfills. The old runtime text parser is gone; text
@@ -216,6 +220,12 @@ export default function WorkoutTracker() {
   const [lastTimeLoading, setLastTimeLoading] = useState(null);
   const [validatedSets, setValidatedSets] = useState({});
   const [restAlerts, setRestAlerts] = useState(() => localStorage.getItem('cvf_rest_alerts') === 'on');
+  // Exercise guides: only the active + next posters load; others on request.
+  const [mediaRequested, setMediaRequested] = useState(() => new Set());
+  const [instruction, setInstruction] = useState(null);
+  // One click-to-load demo dialog at a time (no provider traffic until Play).
+  const [demoFor, setDemoFor] = useState(null);
+  const mediaContext = useMemo(() => ({ type: 'workout_log', id }), [id]);
   const lastTimeCache = useRef({});
   const intensity = useVisualIntensity();
   const outbox = useWorkoutOutbox(id, setLog);
@@ -264,6 +274,31 @@ export default function WorkoutTracker() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Re-resolve guide metadata after a failed lookup, or for one exercise whose
+  // guide changed since the workout loaded (libraryId). Never touches set data
+  // or the outbox; a failure here leaves the card as it was.
+  const retryMedia = useCallback(async (libraryId) => {
+    try {
+      const { data } = await api.post('/exercise-media/resolve', { context: mediaContext });
+      const byExercise = new Map((data.media || []).map((item) => [item.exercise_id, item]));
+      const target = (exercise) => Boolean(exercise.exercise_library_id)
+        && (libraryId ? exercise.exercise_library_id === libraryId : exercise.media_status === 'unavailable');
+      setLog((current) => current && ({
+        ...current,
+        exercises: current.exercises.map((exercise) => (target(exercise)
+          ? { ...exercise, media: byExercise.get(exercise.exercise_library_id) || null, media_status: undefined }
+          : exercise)),
+      }));
+      if (libraryId) {
+        const fresh = byExercise.get(libraryId) || null;
+        setInstruction((current) => (current?.media?.exercise_id === libraryId ? (fresh ? { ...current, media: fresh } : null) : current));
+        if (!fresh) toast.message('This exercise guide is no longer available. Your workout is unaffected.');
+      }
+    } catch {
+      toast.message('Exercise guides are still unavailable. Your workout is unaffected.');
+    }
+  }, [mediaContext]);
+
   const toggleRestAlerts = () => {
     const next = !restAlerts;
     localStorage.setItem('cvf_rest_alerts', next ? 'on' : 'off');
@@ -283,6 +318,7 @@ export default function WorkoutTracker() {
   // Manual rest defaults to the current exercise's rest (else 90s); inside
   // a superset it is the group's round rest, like the automatic timer.
   const activeExercise = log.exercises.find((ex) => ex.id === activeExerciseId) || log.exercises[0];
+  const posterTargets = nextPosterTargets(log.exercises, activeExerciseId);
   const activeBlock = supersetBlocks(log.exercises).find((block) => block.items.some(({ exercise }) => exercise.id === activeExercise?.id));
   const manualRest = manualRestSeconds(activeBlock && activeBlock.kind !== 'single'
     ? { prescribed_rest_seconds: supersetRestSeconds(activeBlock.items.map(({ exercise }) => exercise)) }
@@ -576,6 +612,18 @@ export default function WorkoutTracker() {
                   {exercise.sets.filter((set) => set.status === 'completed').length}/{exercise.sets.length}
                 </Badge>
               </div>
+              {(exercise.media || exercise.media_status === 'unavailable') && (
+                <ExerciseMediaInline
+                  media={exercise.media}
+                  mediaStatus={exercise.media_status}
+                  context={mediaContext}
+                  exerciseName={exercise.exercise_name}
+                  load={posterTargets.has(exercise.id) || mediaRequested.has(exercise.id)}
+                  onRequestLoad={() => setMediaRequested((current) => new Set(current).add(exercise.id))}
+                  onOpenInstruction={(media) => setInstruction({ media, exerciseName: exercise.exercise_name })}
+                  onRetryMetadata={retryMedia}
+                />
+              )}
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 {exercise.prescribed_load_value != null && <span>Load {exercise.prescribed_load_value} {exercise.prescribed_load_unit || 'lb'}</span>}
                 {trackingType(exercise) === 'reps_weight' && exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
@@ -588,18 +636,11 @@ export default function WorkoutTracker() {
                 {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
               </div>
               {exercise.prescribed_notes && <p className="text-xs text-muted-foreground">{exercise.prescribed_notes}</p>}
-              {safeHttpUrl(exercise.video_url) && (
-                <a
-                  href={safeHttpUrl(exercise.video_url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                  aria-label={`Watch demo: ${exercise.exercise_name} (opens in a new tab)`}
-                  data-testid="tracker-exercise-video"
-                >
-                  <Play className="h-4 w-4" aria-hidden /> Watch demo
-                </a>
-              )}
+              <ExerciseDemoAction
+                demo={demoForRow(exercise)}
+                exerciseName={exercise.exercise_name}
+                onView={() => setDemoFor({ exerciseId: exercise.id })}
+              />
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="hidden gap-1 px-1 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]">
@@ -716,6 +757,29 @@ export default function WorkoutTracker() {
           </Card>
         )}</SupersetGroups>
       </div>
+
+      <ExerciseInstructionDialog
+        media={instruction?.media}
+        exerciseName={instruction?.exerciseName}
+        context={mediaContext}
+        open={Boolean(instruction)}
+        onOpenChange={(open) => { if (!open) setInstruction(null); }}
+        onRetryMetadata={retryMedia}
+      />
+
+      {(() => {
+        const exercise = demoFor && log.exercises.find((row) => row.id === demoFor.exerciseId);
+        return (
+          <ExerciseDemoDialog
+            demo={exercise ? demoForRow(exercise) : null}
+            exerciseName={exercise?.exercise_name}
+            media={exercise?.media || null}
+            context={mediaContext}
+            open={Boolean(exercise)}
+            onOpenChange={(open) => { if (!open) setDemoFor(null); }}
+          />
+        );
+      })()}
 
       <Dialog open={abandonOpen} onOpenChange={setAbandonOpen}>
         <DialogContent className="max-w-sm [&>button]:h-11 [&>button]:w-11" data-testid="workout-abandon-dialog">

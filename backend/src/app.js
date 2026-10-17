@@ -81,6 +81,8 @@ app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/telemetry', require('./routes/telemetry').router);
 app.use('/api/announcements', require('./routes/announcements'));
 app.use('/api/push', require('./routes/push'));
+// Fail-closed: answers 503 unless the local media adapter is configured.
+app.use('/api/exercise-media', require('./routes/exerciseMedia'));
 
 // Unknown routes answer JSON, not Express's default HTML page.
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

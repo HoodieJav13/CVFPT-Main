@@ -1,7 +1,11 @@
 import {createPreviewInvites} from './previewInvites.js';
+import {
+  MEDIA_SCENARIO_KEY, PREVIEW_MEDIA_READ_LIKE_POSTS, PREVIEW_MEDIA_SAVE_ROUTES, createPreviewExerciseMedia,
+} from './previewExerciseMedia.js';
 import { actualMetrics, normalizeTracking, trackingType } from './workoutMetrics.js';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
+import { resolveExerciseDemo, resolvedVideoUrl } from '@/lib/exerciseDemo';
 import { normalizeSupersets } from '@/lib/supersets';
 import {
   checkSlots, expandSeriesRule, parseRule, pastError, slotHorizonError, todayInDenver,
@@ -113,6 +117,8 @@ const PREVIEW_SAVE_ROUTES = [
   ['post', /^\/waivers\/versions$/],
   ['post', /^\/waivers\/sign$/],
   ['post', /^\/waivers\/client\/([^/]+)\/sign-paper$/],
+  // Exercise media demo scenario (previewExerciseMedia.js), only while it is on.
+  ...PREVIEW_MEDIA_SAVE_ROUTES,
 ];
 
 // Reads that change fixture data as a side effect: loading a conversation
@@ -124,6 +130,8 @@ const PREVIEW_SAVE_ROUTES = [
 const READS_THAT_CHANGE_DATA = [
   ['get', /^\/messages\/mine$/],
   ['get', /^\/messages\/with\/([^/]+)$/],
+  // Status polls advance the simulated media processing.
+  ['get', /^\/exercise-media\/revisions\/([^/]+)$/],
 ];
 
 const PREVIEW_LATENCY_KEY = 'cvf_preview_latency';
@@ -137,7 +145,7 @@ const SPEED_MS = { slow: 1500, 'very-slow': 4000 };
 const FAIL_MODES = ['write-once', 'reads'];
 // Every key Reset removes. Anything not matched here is left alone, because a
 // local dev origin is shared with real-auth sessions.
-const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure'];
+const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure', MEDIA_SCENARIO_KEY];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // POSTs that change no fixture data. Without this, previewing dates — or the
 // background telemetry ping every page sends — would consume "fail next
@@ -147,6 +155,7 @@ const READ_LIKE_POSTS = [
   /^\/sessions\/series\/preview$/,
   /^\/sessions\/series\/check$/,
   /^\/programs\/import\/parse-(csv|paste|pdf)$/,
+  ...PREVIEW_MEDIA_READ_LIKE_POSTS,
 ];
 
 // The gate lives in previewFlag.js so consumers can check it without
@@ -659,8 +668,26 @@ function workoutDetails(workoutId) {
   const exercises = state.workoutExercises
     .filter((e) => e.workout_id === workout.id && !e.archived)
     .sort((a, b) => a.position - b.position)
-    .map((exercise) => ({ ...exercise, library_exercise: exercise.exercise_library_id ? libraryById(exercise.exercise_library_id) : null }));
+    .map((exercise) => {
+      const library = exercise.exercise_library_id ? libraryById(exercise.exercise_library_id) : null;
+      // Mirrors the API: the current demo resolves live from the row's reference mode.
+      return { ...exercise, library_exercise: library, demo: resolveExerciseDemo({ workoutExercise: exercise, libraryExercise: library }) };
+    });
   return { ...workout, exercises, exercise_count: exercises.length };
+}
+
+// Mirrors the shared SQL writer's demo reference handling: a present
+// video_link_mode is an explicit choice ('inherit' stores no URL); an old
+// request shape keeps a still-consistent stored mode, otherwise legacy NULL.
+function previewDemoReference(row, exercise) {
+  const url = exercise.video_url || null;
+  if (Object.prototype.hasOwnProperty.call(exercise, 'video_link_mode')) {
+    const mode = exercise.video_link_mode ?? null;
+    return { video_link_mode: mode, video_url: mode === 'inherit' ? null : url };
+  }
+  if (row?.video_link_mode === 'inherit' && !url) return { video_link_mode: 'inherit', video_url: null };
+  if (row?.video_link_mode === 'override' && url && url.trim()) return { video_link_mode: 'override', video_url: url };
+  return { video_link_mode: null, video_url: url };
 }
 
 function replaceWorkoutExercises(workoutId, exercises = []) {
@@ -689,7 +716,7 @@ function replaceWorkoutExercises(workoutId, exercises = []) {
         notes: exercise.client_notes || exercise.notes || null,
         client_notes: exercise.client_notes || exercise.notes || null,
         coach_notes: exercise.coach_notes || null,
-        video_url: exercise.video_url || null,
+        ...previewDemoReference(row, exercise),
         superset_group: exercise.superset_group || null,
         position: index,
         archived: false,
@@ -853,10 +880,12 @@ function prescribedSetCount(value) {
   return Math.max(1, match ? Number(match[0]) : 1);
 }
 
-function previewExerciseVideo(logExercise) {
-  const source = state.workoutExercises.find((row) => row.id === logExercise.source_workout_exercise_id);
+// Mirrors the API: the source row's reference mode decides live (inherit ->
+// library, override -> the row, legacy NULL -> nonempty row link, then library).
+function previewExerciseDemoReference(logExercise) {
+  const source = state.workoutExercises.find((row) => row.id === logExercise.source_workout_exercise_id) || null;
   const libraryId = logExercise.exercise_library_id || source?.exercise_library_id;
-  return source?.video_url || libraryById(libraryId)?.video_url || null;
+  return { workoutExercise: source, libraryExercise: libraryById(libraryId) };
 }
 
 // Mirrors GET /workout-logs/mine and /client/:id: an array by default, or
@@ -898,17 +927,17 @@ function previewLogAssignmentKind(log) {
 function workoutLogDetails(logId) {
   const log = state.workoutLogs.find((row) => row.id === logId && !row.archived);
   if (!log) return null;
-  const exercises = state.workoutLogExercises
+  const exercises = previewMedia().hydrate(state.workoutLogExercises
     .filter((row) => row.workout_log_id === log.id && !row.archived)
     .sort((a, b) => a.position - b.position)
     .map((exercise) => ({
       ...exercise,
-      // Mirrors the API: the workout's link wins, then the library's.
-      video_url: previewExerciseVideo(exercise),
+      video_url: resolvedVideoUrl(previewExerciseDemoReference(exercise)),
+      demo: resolveExerciseDemo(previewExerciseDemoReference(exercise)),
       sets: state.workoutLogSets
         .filter((set) => set.workout_log_exercise_id === exercise.id && !set.archived)
         .sort((a, b) => a.set_number - b.set_number),
-    }));
+    })), (exercise) => exercise.exercise_library_id || state.workoutExercises.find((row) => row.id === exercise.source_workout_exercise_id)?.exercise_library_id);
   const coachResponses = state.coachResponses
     .filter((row) => row.workout_log_id === log.id && !row.archived)
     .sort((a, b) => {
@@ -1421,9 +1450,16 @@ function previewLatencyFor(path) {
   }
 }
 
+let previewMediaScenario = null;
+function previewMedia() {
+  previewMediaScenario ||= createPreviewExerciseMedia({ state, iso, ok, fail, currentCoachId: () => currentCoach()?.id });
+  return previewMediaScenario;
+}
+
 export function installPreviewApi(api) {
   if (!isPreviewMode) return;
   clearPreviewPendingSeries();
+  previewMedia(); // seeds the separate media scenario rows when it is switched on
   const route = async (config) => {
     const method = String(config.method || 'get').toLowerCase();
     const { path, search } = pathFromConfig(config);
@@ -1435,6 +1471,11 @@ export function installPreviewApi(api) {
     if (unsupported) return rejectUnsupported(config, method, path, unsupported);
 
     if (path === '/auth/me' || path === '/auth/login' || path === '/auth/signup') return ok({ access_token: 'preview', refresh_token: 'preview', ...getPreviewUser() }, config);
+
+    if (path.startsWith('/exercise-media/')) {
+      const media = await previewMedia().handle(config, method, path, payload);
+      if (media !== undefined) return media;
+    }
 
     // Product telemetry is fire-and-forget from ordinary page loads. Preview
     // accepts and discards it (the real route answers 202 the same way).
@@ -2581,6 +2622,9 @@ export function installPreviewApi(api) {
     if (path === '/programs/quick-sessions' && method === 'post') {
       if (role === 'client') return fail(config, 403, 'Coach access required');
       if (typeof payload.request_id !== 'string' || !UUID_RE.test(payload.request_id)) return fail(config, 400, 'A quick session request id is required');
+      if ((payload.exercises || []).some((exercise) => exercise && Object.prototype.hasOwnProperty.call(exercise, 'video_link_mode'))) {
+        return fail(config, 400, 'Unsupported exercise field "video_link_mode"');
+      }
       const kept = (payload.exercises || []).filter((exercise) => exercise.exercise_library_id || String(exercise.custom_name || '').trim());
       if (!kept.length) return fail(config, 400, 'Add at least one exercise');
       try { kept.forEach((exercise) => normalizeTracking(exercise)); } catch (error) { return fail(config, 400, error.message); }
@@ -2604,6 +2648,11 @@ export function installPreviewApi(api) {
       const workout = { id: id('workout_quick'), coach_id: target.coach_id, name: payload.name, description: null, goal: null, is_template: false, client_id: target.id, hidden: false, archived: false, created_at: createdAt, updated_at: createdAt };
       state.workouts.push(workout);
       replaceWorkoutExercises(workout.id, kept);
+      // Fresh rows only, from the hashed v1 facts (as create_quick_session does).
+      state.workoutExercises.filter((exercise) => exercise.workout_id === workout.id).forEach((exercise) => {
+        const url = String(exercise.video_url || '').trim();
+        exercise.video_link_mode = url ? 'override' : (exercise.exercise_library_id && !exercise.video_url ? 'inherit' : null);
+      });
       const row = {
         id: id('quick_assign'), client_id: target.id, workout_id: workout.id, assignment_mode: 'dated', assigned_for: payload.assigned_for,
         notes: payload.notes || null, archived: false, created_at: createdAt, kind: 'quick', created_by_coach_id: actorId,
@@ -2729,15 +2778,23 @@ export function installPreviewApi(api) {
         })), config);
     }
     if (path === '/programs/client/assigned') {
+      // Client allowlist: the demo DTO is included, the internal reference mode is not.
+      const withMedia = (workout) => (workout ? {
+        ...workout,
+        exercises: previewMedia().hydrate((workout.exercises || []).map(({ video_link_mode: _mode, ...row }) => row), (row) => row.exercise_library_id),
+      } : workout);
       return ok({
-        programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => ({
-          ...a,
-          exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === a.id && !load.archived),
-          program: programDetails(a.program_id),
-        })),
+        programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => {
+          const program = programDetails(a.program_id);
+          return {
+            ...a,
+            exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === a.id && !load.archived),
+            program: program && { ...program, days: (program.days || []).map((day) => ({ ...day, workout: withMedia(day.workout) })) },
+          };
+        }),
         // Client allowlist: quick sessions add only kind and the completion flag.
         workouts: state.workoutAssignments.filter((a) => a.client_id === client.id && !a.archived).map(workoutAssignmentDetails)
-          .map(({ created_by_coach_id: _actor, library_template_id: _pointer, ...row }) => row),
+          .map(({ created_by_coach_id: _actor, library_template_id: _pointer, ...row }) => ({ ...row, workout: withMedia(row.workout) })),
       }, config);
     }
     const programExport = path.match(/^\/programs\/([^/]+)\/export\.pdf$/);

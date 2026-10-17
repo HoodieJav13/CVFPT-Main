@@ -26,6 +26,11 @@ const CLIENT_EXERCISE_FIELDS = [
   'id', 'workout_id', 'exercise_library_id', 'custom_name', 'sets', 'reps', 'rest', 'rest_seconds',
   'tempo', 'target_rpe', 'default_load_value', 'default_load_unit', 'notes', 'client_notes',
   'video_url', 'position', 'archived', 'created_at',
+  // Current exercise guide: an explicit DTO built by lib/exerciseMedia/serialization.js.
+  'media', 'media_status',
+  // Current demo: an explicit DemoDTO built by lib/exerciseDemo.js. The internal
+  // reference mode (video_link_mode) stays private.
+  'demo',
 ];
 const CLIENT_LIBRARY_EXERCISE_FIELDS = [
   'id', 'name', 'category', 'equipment', 'primary_muscle', 'secondary_muscles', 'video_url',

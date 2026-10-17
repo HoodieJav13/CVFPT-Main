@@ -151,3 +151,89 @@ export function matchCatalogExercise(library, name) {
   const key = normalizeName(name);
   return key ? library.find((exercise) => normalizeName(exercise.name) === key) : undefined;
 }
+
+// ----- Workout exercise demo references (docs/exercise-guides/design.md) -----
+// video_link_mode: 'inherit' follows the library exercise's demo live (no URL is
+// stored), 'override' keeps an explicit per-workout link, null is unclassified
+// legacy (or no demo on a custom exercise). Opening, selecting, duplicating and
+// saving never copy a library link into the row; only an explicit coach action
+// changes a row's mode.
+const isBlank = (value) => value === null || value === undefined || String(value).trim() === '';
+
+export function demoFieldsFromRow(row) {
+  return { video_link_mode: row?.video_link_mode ?? null, video_url: row?.video_url || '' };
+}
+
+const isSafeLink = (value) => {
+  try {
+    const url = new URL(String(value).trim());
+    return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password;
+  } catch { return false; }
+};
+
+// Demo fields for a duplicated row. A copy is a NEW row, so it is never
+// unclassified legacy: it gets the explicit mode that keeps exactly the demo
+// its source resolved to (a legacy link becomes the same custom link; an empty
+// or never-rendered legacy value on a library exercise follows the library).
+export function demoFieldsForCopy(row) {
+  const mode = row?.video_link_mode ?? null;
+  const url = row?.video_url || '';
+  if (mode === 'inherit' || mode === 'override') return { video_link_mode: mode, video_url: url };
+  if (!isBlank(url) && isSafeLink(url)) return { video_link_mode: 'override', video_url: url };
+  return row?.exercise_library_id ? { video_link_mode: 'inherit', video_url: '' } : { video_link_mode: null, video_url: '' };
+}
+
+// The datalist picker: `match` is the library exercise named by `value`, or null.
+export function chooseLibraryExercise(row, match, value) {
+  if (match) {
+    if (match.id === row.exercise_library_id) return { exercise_library_id: match.id, custom_name: match.name };
+    return { exercise_library_id: match.id, custom_name: match.name, video_link_mode: 'inherit', video_url: '' };
+  }
+  if (row.video_link_mode === 'inherit') return { exercise_library_id: '', custom_name: value, video_link_mode: null, video_url: '' };
+  return { exercise_library_id: '', custom_name: value };
+}
+
+// 'library' | 'custom' | 'legacy' | 'none'. An empty legacy row on a library
+// exercise already shows the library demo, so it reads as 'library' without
+// being reclassified.
+export function demoChoice(row) {
+  if (row.video_link_mode === 'override') return 'custom';
+  if (row.video_link_mode === 'inherit') return 'library';
+  if (!isBlank(row.video_url)) return 'legacy';
+  return row.exercise_library_id ? 'library' : 'none';
+}
+
+export function applyDemoChoice(row, choice) {
+  if (choice === 'library') return { video_link_mode: 'inherit', video_url: '' };
+  if (choice === 'custom') return { video_link_mode: 'override', video_url: row.video_url || '' };
+  return { video_link_mode: null, video_url: '' };
+}
+
+// Typing a link is an explicit per-workout choice.
+export function applyDemoUrl(row, value) {
+  if (isBlank(value) && !row.exercise_library_id) return { video_link_mode: null, video_url: '' };
+  return { video_link_mode: 'override', video_url: value };
+}
+
+export function demoProblem(row) {
+  // Only a stored row may keep an unclassified legacy link (re-saved as is).
+  if ((row.video_link_mode ?? null) === null && !row.id && !isBlank(row.video_url)) return 'Choose the library demo or a custom link.';
+  if (row.video_link_mode !== 'override') return null;
+  if (isBlank(row.video_url)) return 'Add a link, or choose the library demo.';
+  return isSafeLink(row.video_url) ? null : 'Use an http(s) link.';
+}
+
+// Quick create keeps its exact v1 wire schema: before the request body is built
+// and frozen, an inheriting row projects to the existing empty video_url and an
+// override to its existing URL. The internal mode key never crosses the boundary
+// (and is never inferred from a current library URL).
+export function projectQuickForm(form) {
+  return {
+    ...form,
+    exercises: (form.exercises || []).map((row) => {
+      const { video_link_mode: mode, ...rest } = row;
+      if (mode === 'inherit') return { ...rest, video_url: '' };
+      return rest;
+    }),
+  };
+}

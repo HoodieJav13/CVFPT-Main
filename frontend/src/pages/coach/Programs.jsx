@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/select';
 import {
   AlertTriangle, Archive, ArrowDown, ArrowUp, BookOpen, CalendarDays, CheckCircle2, CircleAlert, Copy, Download,
-  Dumbbell, Eye, EyeOff, FileText, FileUp, GripVertical, Link2, Loader2, Pencil, Plus, Trash2, Unlink, UserPlus, Video,
+  Dumbbell, Eye, EyeOff, FileText, FileUp, GripVertical, Link2, Loader2, Pencil, Plus, Trash2, Unlink, UserPlus,
 } from 'lucide-react';
 import {
   DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors,
@@ -51,8 +51,13 @@ import {
 } from '@/components/training/TemplateBits';
 import { SupersetGroups } from '@/components/training/SupersetGroups';
 import {
-  authorOptions, exerciseFilterOptions, filterByAuthor, filterExercises, groupVariations, isLegacyLockError,
+  ExerciseMediaBadge, ExerciseMediaButton, ExerciseMediaDialog, LibraryMediaSummary, MediaReadinessFilter, matchesMediaFilter, useLibraryMediaStatus,
+} from '@/components/training/media/LibraryMediaControls';
+import {
+  authorOptions, chooseLibraryExercise, demoFieldsForCopy, demoFieldsFromRow, demoProblem, exerciseFilterOptions, filterByAuthor, filterExercises,
+  groupVariations, isLegacyLockError,
 } from '@/lib/trainingLibrary';
+import { DemoLinkField } from '@/components/training/DemoLinkField';
 
 const {
   normalizeDraft,
@@ -62,7 +67,7 @@ const {
 } = draftTools;
 
 const EMPTY_LIBRARY = { name: '', category: '', equipment: '', primary_muscle: '', secondary_muscles: '', video_url: '', notes: '' };
-const EMPTY_EXERCISE = { tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null, id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '', superset_group: null };
+const EMPTY_EXERCISE = { tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null, id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '', video_link_mode: null, superset_group: null };
 // Builder rows carry a client-only _uid so accordion state follows an
 // exercise when it is reordered (the save RPC ignores unknown keys).
 let exerciseUid = 0;
@@ -191,17 +196,22 @@ function ExerciseLibraryTab({ library, reload }) {
   const [equipment, setEquipment] = useState('all');
   const [saving, setSaving] = useState(false);
 
+  const media = useLibraryMediaStatus();
+  const [mediaFilter, setMediaFilter] = useState('all');
+  const [mediaExercise, setMediaExercise] = useState(null);
   const options = useMemo(() => exerciseFilterOptions(library), [library]);
   const filtered = useMemo(
-    () => filterExercises(library, { search, category, muscle, equipment }),
-    [library, search, category, muscle, equipment],
+    () => filterExercises(library, { search, category, muscle, equipment })
+      .filter((exercise) => !media.enabled || matchesMediaFilter(media.byExercise.get(exercise.id), mediaFilter)),
+    [library, search, category, muscle, equipment, media.enabled, media.byExercise, mediaFilter],
   );
-  const filtersActive = category !== 'all' || muscle !== 'all' || equipment !== 'all' || search.trim() !== '';
+  const filtersActive = category !== 'all' || muscle !== 'all' || equipment !== 'all' || mediaFilter !== 'all' || search.trim() !== '';
   const clearFilters = () => {
     setSearch('');
     setCategory('all');
     setMuscle('all');
     setEquipment('all');
+    setMediaFilter('all');
   };
 
   const openCreate = () => {
@@ -313,11 +323,13 @@ function ExerciseLibraryTab({ library, reload }) {
           </Button>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="exercise-library-filters">
+      <div className={cn('grid grid-cols-1 gap-2', media.enabled ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3')} data-testid="exercise-library-filters">
         <LibraryFilter label="Category" allLabel="All categories" value={category} onChange={setCategory} options={options.categories} testId="exercise-library-filter-category" />
         <LibraryFilter label="Muscle" allLabel="All muscles" value={muscle} onChange={setMuscle} options={options.muscles} testId="exercise-library-filter-muscle" />
         <LibraryFilter label="Equipment" allLabel="All equipment" value={equipment} onChange={setEquipment} options={options.equipment} testId="exercise-library-filter-equipment" />
+        {media.enabled && <MediaReadinessFilter value={mediaFilter} onChange={setMediaFilter} />}
       </div>
+      {media.enabled && <LibraryMediaSummary summary={media.summary} />}
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <p aria-live="polite" data-testid="exercise-library-count">
           {filtersActive ? `Showing ${filtered.length} of ${library.length} exercises` : `${library.length} exercises`}
@@ -336,17 +348,18 @@ function ExerciseLibraryTab({ library, reload }) {
       )}
       <div className="grid gap-3 md:grid-cols-2">
         {filtered.map((exercise) => (
-          <Card key={exercise.id} data-testid="exercise-library-card">
+          <Card key={exercise.id} className="min-w-0" data-testid="exercise-library-card">
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2 font-medium">{exercise.name}{exercise.hidden && <HiddenBadge />}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-medium [overflow-wrap:anywhere]">{exercise.name}{exercise.hidden && <HiddenBadge />}{media.enabled && <ExerciseMediaBadge item={media.byExercise.get(exercise.id)} />}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {[exercise.category, exercise.equipment, exercise.primary_muscle].filter(Boolean).join(' - ') || 'No tags'}
                   </p>
-                  {safeHttpUrl(exercise.video_url) && <a href={safeHttpUrl(exercise.video_url)} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">Video</a>}
+                  {safeHttpUrl(exercise.video_url) && <a href={safeHttpUrl(exercise.video_url)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">External video</a>}
                 </div>
                 <div className="flex gap-1.5">
+                  {media.enabled && <ExerciseMediaButton exercise={exercise} onOpen={setMediaExercise} />}
                   <IconButton label={exercise.hidden ? `Unhide ${exercise.name}` : `Hide ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(exercise)} data-testid="exercise-library-hide-button">{exercise.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</IconButton>
                   <IconButton label={`Edit ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(exercise)} data-testid="exercise-library-edit-button"><Pencil className="h-3.5 w-3.5" /></IconButton>
                   <IconButton label={`Archive ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(exercise)} data-testid="exercise-library-archive-button"><Archive className="h-3.5 w-3.5" /></IconButton>
@@ -369,12 +382,13 @@ function ExerciseLibraryTab({ library, reload }) {
               <LabeledField label="Primary muscle"><Input value={form.primary_muscle} onChange={(e) => setForm({ ...form, primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="exercise-library-primary-muscle-input" /></LabeledField>
               <LabeledField label="Secondary muscles"><Input value={form.secondary_muscles} onChange={(e) => setForm({ ...form, secondary_muscles: e.target.value })} placeholder="Secondary muscles" data-testid="exercise-library-secondary-muscles-input" /></LabeledField>
             </div>
-            <LabeledField label="YouTube video URL"><Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="YouTube video URL" data-testid="exercise-library-video-input" /></LabeledField>
+            <LabeledField label="External video link (optional)"><Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="https://… (opens in a new tab)" data-testid="exercise-library-video-input" /></LabeledField>
             <LabeledField label="Notes"><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" data-testid="exercise-library-notes-input" /></LabeledField>
             <DialogFooter><Button size="touch" disabled={saving} className="rounded-xl" data-testid="exercise-library-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save exercise'}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+      <ExerciseMediaDialog exercise={mediaExercise} onClose={() => setMediaExercise(null)} onChanged={media.reload} />
     </div>
   );
 }
@@ -404,7 +418,8 @@ export function workoutToForm(workout) {
       default_load_unit: ex.default_load_unit || 'lb',
       client_notes: ex.client_notes || ex.notes || '',
       coach_notes: ex.coach_notes || '',
-      video_url: ex.video_url || ex.library_exercise?.video_url || '',
+      // Never the library link: an inheriting row follows the library live.
+      ...demoFieldsFromRow(ex),
       superset_group: ex.superset_group || null,
     })) : [newExerciseRow()],
   };
@@ -470,6 +485,11 @@ function WorkoutsTab({ workouts, library, reload, onSaved, onCatalogCreated }) {
     e.preventDefault();
     if (!form.exercises.some((ex) => ex.exercise_library_id || ex.custom_name.trim())) {
       toast.error('Add at least one exercise');
+      return;
+    }
+    const demoIssue = form.exercises.map(demoProblem).find(Boolean);
+    if (demoIssue) {
+      toast.error(`Demo video: ${demoIssue}`);
       return;
     }
     setSaving(true);
@@ -1269,7 +1289,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                               <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" data-testid="program-import-exercise-coach-notes-input" />
                             </div>
                             <div className="grid gap-2 sm:grid-cols-4">
-                              <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value })} placeholder="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
+                              <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value, video_link_mode: e.target.value.trim() ? 'override' : 'inherit' })} placeholder="Video URL (optional; blank uses the library demo)" aria-label="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
                               <Input value={exercise.equipment} onChange={(e) => setExercise(dayIndex, exerciseIndex, { equipment: e.target.value })} placeholder="Equipment" data-testid="program-import-exercise-equipment-input" />
                               <Input value={exercise.primary_muscle} onChange={(e) => setExercise(dayIndex, exerciseIndex, { primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="program-import-exercise-primary-muscle-input" />
                             </div>
@@ -1422,13 +1442,10 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
     setForm((current) => ({ ...current, exercises: current.exercises.map((ex, i) => i === index ? { ...ex, ...updates } : ex) }));
   };
 
+  // Picking a library exercise inherits its demo live; the link is never copied.
   const chooseExercise = (index, value) => {
-    const match = matchCatalogExercise(library, value);
-    if (match) {
-      setExercise(index, { exercise_library_id: match.id, custom_name: match.name, video_url: match.video_url || '' });
-    } else {
-      setExercise(index, { exercise_library_id: '', custom_name: value });
-    }
+    const match = matchCatalogExercise(library, value) || null;
+    setExercise(index, chooseLibraryExercise(form.exercises[index], match, value));
   };
 
   const setExercises = (exercises) => setForm({ ...form, exercises });
@@ -1498,7 +1515,7 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
         <AccordionContent className="space-y-2 pb-3">
           <div className="flex items-center gap-2">
             <LabeledField label="Exercise name"><Input className="min-w-0" list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" /></LabeledField>
-            <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
+            <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid, ...demoFieldsForCopy(exercise) }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
             <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => removal.remove(form.exercises, index)} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
           </div>
           <ExerciseCatalogAction exercise={exercise} library={library} onCreated={onCatalogCreated} onChange={(fields) => setExercise(index, fields)} disabled={saving} />
@@ -1538,10 +1555,11 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
             </Select>
             </div>
           </div>
-          <div className="relative">
-            <Video className="absolute bottom-3.5 left-3 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-            <LabeledField label="Video URL"><Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" /></LabeledField>
-          </div>
+          <DemoLinkField
+            exercise={exercise}
+            libraryExercise={library.find((ex) => ex.id === exercise.exercise_library_id)}
+            onChange={(fields) => setExercise(index, fields)}
+          />
           <LabeledField label="Client notes"><Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" /></LabeledField>
           <LabeledField label="Coach notes (internal)"><Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" /></LabeledField>
         </AccordionContent>

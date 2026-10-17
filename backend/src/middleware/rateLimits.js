@@ -100,6 +100,40 @@ const resourceUploadLimiter = createRateLimiter({
   limit: 10,
 });
 
+// Exercise media: 10 admitted uploads per coach per 15 minutes (counted only
+// after the draft ownership check), bounded processing/frame requests, and a
+// generous link budget that still stops a polling storm.
+// Default 10. A bounded override exists only for the owned local harness
+// (media is disabled outside the local adapter); it is read per request.
+function exerciseMediaUploadsPerWindow(env = process.env) {
+  const value = Number.parseInt(env.EXERCISE_MEDIA_UPLOADS_PER_WINDOW, 10);
+  return Number.isInteger(value) && value >= 1 && value <= 1000 ? value : 10;
+}
+
+const exerciseMediaUploadLimiter = createRateLimiter({
+  identifier: 'exercise-media-upload',
+  windowMs: 15 * 60 * 1000,
+  limit: () => exerciseMediaUploadsPerWindow(),
+});
+
+const exerciseMediaProcessLimiter = createRateLimiter({
+  identifier: 'exercise-media-process',
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+});
+
+const exerciseMediaFrameLimiter = createRateLimiter({
+  identifier: 'exercise-media-frame-preview',
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+});
+
+const exerciseMediaLinkLimiter = createRateLimiter({
+  identifier: 'exercise-media-links',
+  windowMs: 5 * 60 * 1000,
+  limit: 300,
+});
+
 const telemetryLimiter = createRateLimiter({
   identifier: 'product-telemetry',
   windowMs: 15 * 60 * 1000,
@@ -112,6 +146,11 @@ module.exports = {
   clientImportLimiter,
   createRateLimiter,
   csvImportLimiter,
+  exerciseMediaFrameLimiter,
+  exerciseMediaLinkLimiter,
+  exerciseMediaProcessLimiter,
+  exerciseMediaUploadLimiter,
+  exerciseMediaUploadsPerWindow,
   forgotPasswordLimiter,
   resetPasswordLimiter,
   libraryImportLimiter,

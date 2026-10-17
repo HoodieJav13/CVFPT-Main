@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-16T12:20:41.621Z",
+  "cases": [
+    {
+      "name": "client cannot mutate media; coach routes need coach role",
+      "status": "PASS",
+      "ms": 11
+    },
+    {
+      "name": "photo-only: upload JPEG, crop, alt/cues, real processing, explicit review, publish (no video)",
+      "status": "PASS",
+      "ms": 867
+    },
+    {
+      "name": "client workout shows the current photo inline; text/external fallbacks intact; bytes are the processed derivative",
+      "status": "PASS",
+      "ms": 136
+    },
+    {
+      "name": "image abuse refused before ready: SVG, GIF, animated, truncated, dimension/pixel bombs, fake MIME; nothing stored",
+      "status": "PASS",
+      "ms": 776
+    },
+    {
+      "name": "EXIF-rotated portrait photo: oriented facts, crop band, metadata stripped (split squat variant)",
+      "status": "PASS",
+      "ms": 2012
+    },
+    {
+      "name": "video + custom thumbnail: preview <=2 MiB silent fast-start, separate instruction, escaped captions, transcript",
+      "status": "PASS",
+      "ms": 3499
+    },
+    {
+      "name": "start/end stills from WebM (plank): frames kind with end-frame alt text",
+      "status": "PASS",
+      "ms": 2459
+    },
+    {
+      "name": "portrait MOV with audio: narrated instruction requires captions+transcript before review",
+      "status": "PASS",
+      "ms": 5214
+    },
+    {
+      "name": "video abuse refused: playlist, truncated, >120s, >60fps, extra streams, legacy codec, mismatch",
+      "status": "PASS",
+      "ms": 2440
+    },
+    {
+      "name": "ownership and IDOR matrix with real auth, PostgREST and SQL",
+      "status": "PASS",
+      "ms": 2594
+    },
+    {
+      "name": "capabilities re-authorize on every request: reassignment, archived client, replacement, expiry, tamper",
+      "status": "PASS",
+      "ms": 333
+    },
+    {
+      "name": "replacement updates the current guide everywhere without touching prescriptions or history (image-only -> video)",
+      "status": "PASS",
+      "ms": 2790
+    },
+    {
+      "name": "publish race through the API: same expected version -> one 200, one 409",
+      "status": "PASS",
+      "ms": 5285
+    },
+    {
+      "name": "oversize source refused; worker crash mid-job: lease expires, same job resumes (attempt 2), no duplicate revision; prior current kept",
+      "status": "PASS",
+      "ms": 32872
+    },
+    {
+      "name": "failed replacement leaves the previous guide current and visible to clients",
+      "status": "PASS",
+      "ms": 1420
+    },
+    {
+      "name": "interrupted upload and staged-upload crash recovery leave no partials and no orphaned rows",
+      "status": "PASS",
+      "ms": 1722
+    },
+    {
+      "name": "committed source whose file install fails: bytes kept, same-request retry finalizes the recorded key once, then processing and client reads succeed",
+      "status": "PASS",
+      "ms": 3016
+    },
+    {
+      "name": "media lookup failure never blocks reading, editing or completing a workout",
+      "status": "PASS",
+      "ms": 248
+    },
+    {
+      "name": "batched hydration: a 50-exercise log costs the same queries as a 7-exercise log, and no video bytes are fetched by reads",
+      "status": "PASS",
+      "ms": 267
+    },
+    {
+      "name": "default upload limit: the 11th admitted upload in 15 minutes is refused with 429",
+      "status": "PASS",
+      "ms": 415
+    },
+    {
+      "name": "disabled configuration: quiet discovery, 503 for every other media route and workout payloads without media fields",
+      "status": "PASS",
+      "ms": 303
+    },
+    {
+      "name": "server and worker logs carry no capabilities, storage keys, media text, rights notes or client identities",
+      "status": "PASS",
+      "ms": 1
+    }
+  ],
+  "measurements": {
+    "photo_upload_ms": 355,
+    "photo_processing_ms": 423,
+    "photo_poster_bytes": 20028,
+    "video_processing_ms": 2804,
+    "band_row_poster_bytes": 20939,
+    "band_row_preview_bytes": 13367,
+    "band_row_instruction_bytes": 44708,
+    "band_row_captions_bytes": 159,
+    "heavy_1080p_90s": {
+      "source_bytes": 56736783,
+      "instruction_bytes": 5771922,
+      "preview_bytes": 48200
+    },
+    "hydration_queries": {
+      "seven_exercises": 10,
+      "fifty_exercises": 10
+    },
+    "fifty_exercise_log_json_bytes": 75902,
+    "log_bytes_scanned": 3703
+  },
+  "tested_source": {
+    "head": "98a839b5d848838b1fb4d001d7c3d0fa40ed31ca",
+    "tracked_changes": []
+  },
+  "passed": 22,
+  "finished_at": "2026-10-16T12:22:25.918Z"
+}

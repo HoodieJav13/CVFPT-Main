@@ -2,7 +2,7 @@ import { tracks, trackingType } from '@/lib/workoutMetrics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { m, useReducedMotion } from 'framer-motion';
-import { ArrowLeft, Check, CircleSlash2, Clock3, MessageSquare, ShieldCheck, TrendingDown, TrendingUp, Users } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, CircleSlash2, Clock3, MessageSquare, ShieldCheck, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { fmtDateTime, initials } from '@/lib/format';
@@ -19,6 +19,9 @@ import { useVisualIntensity } from '@/lib/visualIntensity';
 import { useNotifications } from '@/context/NotificationsContext';
 import { hasQueuedCompleteFor, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
+import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
+import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
+import { demoForRow } from '@/lib/exerciseDemo';
 
 // Same identity rule as the exercise-history RPC: match by library exercise
 // when linked, otherwise by the source workout exercise.
@@ -77,6 +80,11 @@ export default function WorkoutLogDetail() {
   const [waitingToSync, setWaitingToSync] = useState(() => hasQueuedCompleteFor(id));
   const [syncError, setSyncError] = useState(null);
   const [previousByExercise, setPreviousByExercise] = useState({});
+  // Today's guide for an exercise, opened on demand (never preloaded here).
+  const [guide, setGuide] = useState(null);
+  // Today's demo for an exercise (live by design), never presented as the
+  // instruction that was shown when this workout happened.
+  const [demoFor, setDemoFor] = useState(null);
   const previousFetchedFor = useRef(null);
   // Drains a completion queued by the tracker before navigation
   // (docs/offline-workout-completion.md). The celebration fires only once
@@ -300,6 +308,17 @@ export default function WorkoutLogDetail() {
                   {hasGroups && <ExerciseMarker marker={marker} />}
                   <span className="min-w-0">{exercise.exercise_name}</span>
                 </CardTitle>
+                {exercise.media && (
+                  <Button
+                    type="button" variant="ghost" size="sm" className="min-h-11 w-fit px-2 text-primary"
+                    onClick={() => setGuide({ media: exercise.media, exerciseName: exercise.exercise_name })}
+                    data-testid="history-current-guide"
+                  >
+                    <BookOpen className="h-4 w-4" aria-hidden /> Current exercise guide
+                  </Button>
+                )}
+                <ExerciseDemoAction demo={demoForRow(exercise)} exerciseName={exercise.exercise_name} variant="history"
+                  onView={() => setDemoFor(exercise)} />
               </CardHeader>
               <CardContent>
                 {hasTarget && (
@@ -366,6 +385,23 @@ export default function WorkoutLogDetail() {
           {log.notes && <div><p className="text-xs font-medium uppercase text-muted-foreground">Workout notes</p><p className="mt-1 text-sm">{log.notes}</p></div>}
         </CardContent></Card>
       )}
+      <ExerciseInstructionDialog
+        media={guide?.media}
+        exerciseName={guide?.exerciseName}
+        context={{ type: 'workout_log', id }}
+        open={Boolean(guide)}
+        onOpenChange={(open) => { if (!open) setGuide(null); }}
+        historical
+      />
+      <ExerciseDemoDialog
+        demo={demoFor ? demoForRow(demoFor) : null}
+        exerciseName={demoFor?.exercise_name}
+        media={demoFor?.media || null}
+        context={{ type: 'workout_log', id }}
+        open={Boolean(demoFor)}
+        onOpenChange={(open) => { if (!open) setDemoFor(null); }}
+        historical
+      />
       <Card className="mt-4" data-testid="coach-responses-card">
         <CardHeader className="pb-2"><CardTitle className="font-display text-lg">Coach responses</CardTitle></CardHeader>
         <CardContent className="space-y-4">

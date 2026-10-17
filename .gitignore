@@ -96,3 +96,13 @@ android-sdk/
 # Separate local invite browser suites preserve each other's traces.
 frontend/test-results-invites/
 frontend/test-results-visual/
+
+# Exercise media local build: task-owned runtime data, fixtures, store and evidence
+/.exercise-media-local/
+frontend/test-results-media/
+frontend/test-results-media-local/
+frontend/test-results-media-visual/
+frontend/test-results-guides/
+frontend/test-results-guides-local/
+frontend/test-results-guides-visual/
+frontend/test-results-guides-proof/
