@@ -2,18 +2,30 @@
 
 # Independent PR115 × Exercise Guides reconciliation review
 
-Completion state: COMPLETE-LOCAL  
-Protocol version: v1.1  
-Accepted Guides/photo baseline: `b5b0227604cf222fe4b83aef618ae98870584024`  
-Released main reviewed: `b3129d2f51ed2abac47e14d2b659f8a9aa47f9c4` (PR115 merged)  
-Exact staged tree reviewed: `33b03ef483bd142c94e4fc337cf186d49cea6963`  
-Head during review: unchanged accepted baseline; merge intentionally uncommitted  
-Branch and upstream: `release/exercise-guides-development-20261017`, no upstream at review time  
-Authority used: delegated independent review, read-only source inspection and fictional local route tests; this report is outside the checkout  
-Commits/source edits: none  
-Integration footprint versus accepted baseline: 30 files, 1,451 insertions / 11 deletions, including PR115's documentation and paired images  
-Migrations/dependencies: unchanged by reconciliation  
-External actions: none  
+Completion state: COMPLETE-LOCAL
+
+Protocol version: v1.1
+
+Accepted Guides/photo baseline: `b5b0227604cf222fe4b83aef618ae98870584024`
+
+Released main reviewed: `b3129d2f51ed2abac47e14d2b659f8a9aa47f9c4` (PR115 merged)
+
+Exact staged tree reviewed: `33b03ef483bd142c94e4fc337cf186d49cea6963`
+
+Head during review: unchanged accepted baseline; merge intentionally uncommitted
+
+Branch and upstream: `release/exercise-guides-development-20261017`, no upstream at review time
+
+Authority used: delegated independent review, read-only source inspection and fictional local route tests; this report is outside the checkout
+
+Commits/source edits: none
+
+Integration footprint versus accepted baseline: 30 files, 1,451 insertions / 11 deletions, including PR115's documentation and paired images
+
+Migrations/dependencies: unchanged by reconciliation
+
+External actions: none
+
 Push/deploy state: no publication or hosted operation performed by this reviewer
 
 ## Assessment
