@@ -903,6 +903,8 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
     onStarted: (log) => { if (log?.id) navigate(`/coach/workouts/${log.id}/track`); },
   });
   const [quickLibrary, setQuickLibrary] = useState(null);
+  const [quickLibraryError, setQuickLibraryError] = useState(null);
+  const [quickLibraryAttempt, setQuickLibraryAttempt] = useState(0);
   const discardQuickDraft = () => {
     // Only a definitive rejection is safe to forget with the confirmed form discard.
     // Saving/uncertain requests keep their existing recovery controls and routing record.
@@ -941,9 +943,16 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   // A confirmed or recovered quick session appears as a card without a manual refresh.
   useEffect(() => { if (savedQuickId || recoveredCount) load(); }, [savedQuickId, recoveredCount, load]);
   useEffect(() => {
-    if (assignmentType !== 'quick' || quickLibrary) return;
-    api.get('/programs/exercise-library').then(({ data }) => setQuickLibrary(data || [])).catch((err) => toast.error(errMsg(err, 'Could not load the exercise library')));
-  }, [assignmentType, quickLibrary]);
+    if (!assignOpen || assignmentType !== 'quick' || quickLibrary) return;
+    let cancelled = false;
+    setQuickLibraryError(null);
+    api.get('/programs/exercise-library').then(({ data }) => {
+      if (!cancelled) setQuickLibrary(data || []);
+    }).catch((err) => {
+      if (!cancelled) setQuickLibraryError(errMsg(err, 'Could not load the exercise library'));
+    });
+    return () => { cancelled = true; };
+  }, [assignOpen, assignmentType, quickLibrary, quickLibraryAttempt, clientId, user?.profile?.id, sessionEpoch]);
 
   const awaitingInitialData = !programs || !workouts || !workoutAssignments || !workoutHistory || !programAssignments;
   if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="client-detail-programs" onRetry={() => { setLoadError(null); load(); }} />;
@@ -1184,7 +1193,12 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                 quick.state.phase === 'saved'
                   ? <QuickSessionSaved state={quick.state} controller={quick.controller} onDone={finishQuickSession} onOpenActive={(id) => navigate(`/coach/workouts/${id}/track`)} />
                   : quickLibrary === null
-                    ? <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                    ? quickLibraryError
+                      ? <div role="alert" className="space-y-3 py-4 text-sm" data-testid="quick-session-library-error">
+                          <p>{quickLibraryError}</p>
+                          <Button type="button" variant="secondary" className="min-h-11 rounded-xl" onClick={() => setQuickLibraryAttempt((attempt) => attempt + 1)}>Try again</Button>
+                        </div>
+                      : <div role="status" aria-label="Loading exercise library" className="flex justify-center py-6" data-testid="quick-session-library-loading"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden /></div>
                     : (
                       <>
                         <QuickSessionRecovery state={quick.state} controller={quick.controller} />

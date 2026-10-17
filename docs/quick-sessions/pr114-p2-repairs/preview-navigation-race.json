@@ -1,0 +1,82 @@
+[
+  {
+    "type": "call",
+    "id": "call@2048",
+    "time": 140544.039,
+    "method": "expect",
+    "params": {
+      "expression": "to.have.url",
+      "expectedText": [
+        {
+          "regexSource": "\\/client\\/workouts\\/[^/]+$",
+          "regexFlags": ""
+        }
+      ],
+      "expectedValue": {
+        "value": {
+          "v": "undefined"
+        },
+        "handles": []
+      },
+      "isNot": false,
+      "timeout": 5000
+    }
+  },
+  {
+    "type": "snapshot",
+    "time": 140548.13,
+    "name": "before@call@2048",
+    "url": "http://127.0.0.1:42731/client/workouts/workout_log_aco6eetx/track"
+  },
+  {
+    "type": "snapshot",
+    "time": 140783.657,
+    "name": "after@call@2048",
+    "url": "http://127.0.0.1:42731/client/workouts/workout_log_aco6eetx"
+  },
+  {
+    "type": "call",
+    "id": "call@2052",
+    "time": 140824.191,
+    "method": "evaluateExpression",
+    "params": {
+      "expression": "() => {\n      window.history.pushState({}, '', '/client/programs');\n      window.dispatchEvent(new PopStateEvent('popstate'));\n    }",
+      "isFunction": true,
+      "arg": {
+        "value": {
+          "v": "undefined"
+        },
+        "handles": []
+      }
+    }
+  },
+  {
+    "type": "snapshot",
+    "time": 140831.374,
+    "name": "before@call@2052",
+    "url": "http://127.0.0.1:42731/client/workouts/workout_log_aco6eetx"
+  },
+  {
+    "type": "snapshot",
+    "time": 140879.352,
+    "name": "after@call@2052",
+    "url": "http://127.0.0.1:42731/client/workouts/workout_log_aco6eetx"
+  },
+  {
+    "type": "call",
+    "id": "call@2054",
+    "time": 140885.794,
+    "method": "click",
+    "params": {
+      "selector": "internal:testid=[data-testid=\"client-program-card\"s] >> nth=0 >> internal:testid=[data-testid=\"start-program-workout\"s] >> nth=0",
+      "strict": true,
+      "timeout": 0
+    }
+  },
+  {
+    "type": "snapshot",
+    "time": 140896.652,
+    "name": "before@call@2054",
+    "url": "http://127.0.0.1:42731/client/workouts/workout_log_aco6eetx"
+  }
+]

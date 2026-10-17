@@ -66,11 +66,19 @@ require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
     return Promise.resolve(handler(args));
   },
   from(table) {
-    const filters = []; let select = '*';
+    const filters = []; let select = '*'; let update = null;
     const rows = () => (tables[table] || []).filter((row) => filters.every((f) => f(row))).map((row) => embed(table, select, row));
-    const result = (data) => (readFailures.has(table) ? { data: null, error: { message: `read failed: ${table}` } } : { data, error: null });
+    const result = (data) => {
+      if (readFailures.has(table)) return { data: null, error: { message: `read failed: ${table}` } };
+      if (update) {
+        for (const row of tables[table].filter((row) => filters.every((f) => f(row)))) Object.assign(row, update);
+        if (data) Object.assign(data, update);
+      }
+      return { data, error: null };
+    };
     const chain = {
       select(value = '*') { select = value; return chain; },
+      update(value) { update = value; return chain; },
       eq(key, value) { filters.push((row) => row[key] === value); return chain; },
       in(key, values) { filters.push((row) => values.includes(row[key])); return chain; },
       order() { return chain; },
@@ -84,7 +92,7 @@ require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
 } } };
 const authPath = require.resolve('../src/middleware/auth');
 require.cache[authPath] = { id: authPath, filename: authPath, loaded: true, exports: {
-  requireAuth(req, _res, next) { req.user = actor; next(); },
+  requireAuth(req, res, next) { if (!actor) return res.status(401).json({ error: 'Unauthorized' }); req.user = actor; next(); },
   requireCoach(req, res, next) { if (['coach', 'admin'].includes(req.user.role)) next(); else res.status(403).json({ error: 'Coach access required' }); },
   requireClient(req, res, next) { if (req.user.role === 'client') next(); else res.status(403).json({ error: 'Client access required' }); },
   requireAdmin(_req, _res, next) { next(); },
@@ -290,4 +298,67 @@ test('A7 client assignment allowlist adds only kind and quick_session_completed'
   assert.equal(row.kind, 'quick');
   assert.equal(row.quick_session_completed, false);
   for (const hidden of ['created_by_coach_id', 'create_request_id', 'create_request_hash', 'library_template_id']) assert.ok(!(hidden in row), hidden);
+});
+
+for (const role of ['coach', 'admin']) {
+  test(`archive sanitizes receipt metadata for authorized ${role} while preserving the coach contract`, async () => {
+    reset();
+    actor = { role, coach: { id: role === 'admin' ? ADMIN : COACH } };
+    tables.workout_assignments[0].library_template_id = TEMPLATE;
+    const response = await call('PATCH', `/workout-assignments/${ASSIGNMENT}/archive`);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.archived, true);
+    assert.equal(tables.workout_assignments[0].archived, true);
+    assert.equal(response.body.created_by_coach_id, COACH);
+    assert.equal(response.body.library_template_id, TEMPLATE);
+    for (const hidden of ['create_request_id', 'create_request_hash']) assert.ok(!(hidden in response.body), hidden);
+    assert.equal(tables.workout_assignments[0].create_request_id, REQUEST, 'receipt retained on the server');
+  });
+}
+
+test('archive preserves coach ownership masking, client denial and unauthenticated denial without mutation', async () => {
+  for (const [user, expected] of [
+    [{ role: 'coach', coach: { id: OTHER_COACH } }, 404],
+    [{ role: 'client', client: { id: CLIENT } }, 403],
+    [null, 401],
+  ]) {
+    reset(); actor = user;
+    const response = await call('PATCH', `/workout-assignments/${ASSIGNMENT}/archive`);
+    assert.equal(response.status, expected);
+    assert.equal(tables.workout_assignments[0].archived, false);
+    assert.ok(!JSON.stringify(response.body).includes('create_request'));
+  }
+});
+
+test('committed create and status return retryable errors for workout hydration failure, then recover the same receipt', async () => {
+  reset();
+  let commits = 0;
+  rpcHandlers.create_quick_session = () => ({ data: { state: commits++ === 0 ? 'created' : 'replayed', assignment_id: ASSIGNMENT, workout_id: WORKOUT }, error: null });
+  rpcHandlers.get_quick_session_request = () => ({ data: { state: 'committed', assignment_id: ASSIGNMENT }, error: null });
+  rpcHandlers.get_quick_session_completion = completion(false);
+  readFailures.add('workouts');
+  const failures = [];
+  for (const [method, path, body] of [
+    ['POST', '/quick-sessions', createBody()],
+    ['GET', `/quick-sessions/requests/${REQUEST}`, undefined],
+  ]) {
+    const response = await call(method, path, body);
+    failures.push({ status: response.status, hasState: 'state' in response.body });
+  }
+  assert.deepEqual(failures, [{ status: 500, hasState: false }, { status: 500, hasState: false }], 'create and status failures never claim not_found');
+  readFailures.clear();
+  for (let i = 0; i < 2; i++) {
+    const response = await call('GET', `/quick-sessions/requests/${REQUEST}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.assignment.id, ASSIGNMENT);
+  }
+  const replay = await call('POST', '/quick-sessions', createBody());
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.state, 'replayed');
+  assert.equal(replay.body.assignment.id, ASSIGNMENT);
+  assert.equal(tables.workout_assignments.length, 1);
+  const creates = rpcCalls.filter((entry) => entry.name === 'create_quick_session');
+  assert.deepEqual(creates[0].args, creates[1].args, 'retry preserves request UUID and fingerprint');
+  tables.workouts = [];
+  assert.equal((await call('GET', `/quick-sessions/requests/${REQUEST}`)).status, 404, 'real absence stays masked');
 });

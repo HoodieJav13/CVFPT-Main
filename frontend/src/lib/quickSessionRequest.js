@@ -490,7 +490,14 @@ export function createQuickSessionController({
     syncContext();
     const listed = refreshPendingList();
     emit();
-    const others = listed.records.filter((record) => record.request_id !== state.requestId);
+    // A different tab may have committed and removed a previously seen key. Its
+    // disappearance is only a refresh hint, never evidence of commit or access.
+    // Recheck the trusted in-memory routing record through the same fenced API.
+    const vanished = listed.available ? Object.values(state.recoveries).map((entry) => entry.record).filter((record) => {
+      const read = safeGet(storage, pendingKey({ ...scopeOf(getContext()), requestId: record.request_id }));
+      return read.ok && read.value === null;
+    }) : [];
+    const others = [...listed.records, ...vanished].filter((record) => record.request_id !== state.requestId);
     return Promise.all(others.map((record) => statusRead(record, { asCurrent: false })));
   }
 

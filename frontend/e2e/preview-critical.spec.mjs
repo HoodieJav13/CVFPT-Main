@@ -872,6 +872,10 @@ test('Same as last time keeps reps typed while history is still loading', async 
 
   // This time: tap "Same as last time", then type 17 reps while history is
   // still loading (slowed by the preview test harness).
+  // The completed page consumes its one-shot celebration state with a replace
+  // navigation. Let that finish before the test's synthetic history navigation,
+  // or the pending replace can put us back on the completed workout.
+  await expect.poll(() => page.evaluate(() => window.history.state?.usr?.completedWorkoutId)).toBeUndefined();
   await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '/exercises/[^/]+/history$', ms: 1500 }])));
   await startDayOne();
   const trackPath = new URL(page.url()).pathname;

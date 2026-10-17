@@ -509,3 +509,77 @@ for (const operation of ['start', 'library']) {
     });
   }
 }
+
+async function unrecoveredEntry(h) {
+  const record = pendingRecord({ requestId: uuid(), clientId: CLIENT, createdAt: '2026-10-09T18:00:00.000Z' });
+  persistPending(h.storage, record, { environment: ENV, actorId: COACH });
+  const read = h.controller.recoverAll();
+  await settle(h.api.calls.at(-1), httpError(404));
+  await read;
+  return record;
+}
+
+test('a vanished pending entry gets a guarded status read; repeated checks recover without resending', async () => {
+  const h = harness();
+  const record = await unrecoveredEntry(h);
+  h.storage.map.clear(); // another tab commits and removes this exact routing key
+  const check = h.controller.recoverAll();
+  assert.equal(h.api.calls.length, 2, 'storage removal must trigger a fresh status request');
+  assert.equal(h.api.calls.at(-1).url, `/programs/quick-sessions/requests/${record.request_id}`);
+  await settle(h.api.calls.at(-1), httpError(500));
+  await check;
+  assert.equal(h.controller.getState().recoveries[record.request_id].state, 'uncertain');
+  const retry = h.controller.recoverAll();
+  await settle(h.api.calls.at(-1), { state: 'committed', assignment: assignment('from-other-tab') });
+  await retry;
+  assert.deepEqual(h.controller.getState().recoveries, {});
+  assert.deepEqual(h.controller.getState().recovered.map((entry) => entry.assignment.id), ['from-other-tab']);
+  assert.equal(createCalls(h.api).length, 0);
+  assert.equal(h.storage.writes.length, 1, 'the removed entry is never recreated');
+  await h.controller.recoverAll();
+  assert.equal(h.api.calls.length, 3, 'completed recovery does not keep polling');
+});
+
+test('vanished entries never prove authorization or rollback and stale status replies stay fenced', async () => {
+  for (const change of ['actor', 'epoch', 'client', 'environment', 'dispose', 'discard']) {
+    const h = harness();
+    const record = await unrecoveredEntry(h);
+    h.storage.map.clear();
+    const read = h.controller.recoverAll();
+    assert.equal(h.api.calls.length, 2, change);
+    const call = h.api.calls.at(-1);
+    if (change === 'actor') h.ctx.actorId = 'coach_2';
+    if (change === 'epoch') h.ctx.authEpoch++;
+    if (change === 'client') h.ctx.clientId = OTHER_CLIENT;
+    if (change === 'environment') h.ctx.environment = 'production';
+    if (change === 'dispose') h.controller.dispose();
+    else if (change === 'discard') h.controller.discard(record);
+    else h.controller.syncContext();
+    await settle(call, { state: 'committed', assignment: assignment('must-not-display') });
+    await read;
+    assert.deepEqual(h.controller.getState().recovered, [], change);
+    assert.equal(h.started.length, 0);
+    assert.equal(createCalls(h.api).length, 0);
+  }
+  const h = harness();
+  const record = await unrecoveredEntry(h);
+  h.storage.map.clear();
+  const read = h.controller.recoverAll();
+  await settle(h.api.calls.at(-1), httpError(404));
+  await read;
+  assert.equal(h.controller.getState().recoveries[record.request_id].state, 'unrecovered');
+  assert.deepEqual(h.controller.getState().recovered, [], 'removal alone never authorizes details');
+});
+
+test('an unavailable or replaced storage entry is not treated as another tab removing it', async () => {
+  for (const mode of ['unavailable', 'corrupt', 'other-client']) {
+    const h = harness();
+    const record = await unrecoveredEntry(h);
+    const key = keysIn(h.storage)[0];
+    if (mode === 'unavailable') Object.defineProperty(h.storage, 'length', { get() { throw new Error('blocked'); } });
+    else h.storage.map.set(key, mode === 'corrupt' ? '{broken' : JSON.stringify({ ...record, client_id: OTHER_CLIENT }));
+    await h.controller.recoverAll();
+    assert.equal(h.api.calls.length, 1, mode);
+    assert.equal(h.controller.getState().recoveries[record.request_id].state, 'unrecovered');
+  }
+});
