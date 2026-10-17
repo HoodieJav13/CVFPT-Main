@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 // A4-A6 browser races for quick-session recovery, against an in-test fake backend that survives
 // page reloads (preview fixtures intentionally reset on reload, so they cannot prove this).
 // Real transactional idempotency and authorization are proven by the SQL suite instead.
@@ -27,6 +27,7 @@ class FakeBackend {
     this.clientAccess = new Set([CLIENT.id, CLIENT_TWO.id]);
     this.hold = null;             // { gate } holds the next create before it commits
     this.dropNextCreateResponse = false;
+    this.rejectNextCreate = false;
     this.dropNextStartResponse = false;
     this.dropNextLibraryResponse = false;
     this.failNextLibrary = false;
@@ -73,12 +74,14 @@ async function install(page, backend) {
     const body = request.postData() ? JSON.parse(request.postData()) : {};
 
     if (path === '/auth/me') return json(route, 200, { role: 'coach', email: COACH.email, profile: COACH });
+    if (path === '/clients' && method === 'GET') return json(route, 200, [CLIENT, CLIENT_TWO]);
     const client = path.match(/^\/clients\/([^/]+)$/);
     if (client && method === 'GET') {
       const row = [CLIENT, CLIENT_TWO].find((candidate) => candidate.id === client[1]);
       return row && backend.clientAccess.has(row.id) ? json(route, 200, row) : json(route, 404, { error: 'Client not found' });
     }
     if (/^\/waivers\/client\/[^/]+\/status$/.test(path)) return json(route, 200, { has_version: false, signed_latest: false, history: [] });
+    if (/^\/workout-logs\/clients\/[^/]+\/week-rhythm$/.test(path)) return json(route, 200, { week_total: 0, week_done: 0, days: [] });
     if (path === '/programs/exercise-library') return json(route, 200, LIBRARY);
     if (path === '/programs' || path === '/programs/workouts') return json(route, 200, []);
     const assignments = path.match(/^\/programs\/workout-assignments\/client\/([^/]+)$/);
@@ -92,6 +95,10 @@ async function install(page, backend) {
         const { gate } = backend.hold;
         backend.hold = null;
         await gate.promise;   // the request is in flight; the server has not committed yet
+      }
+      if (backend.rejectNextCreate) {
+        backend.rejectNextCreate = false;
+        return json(route, 400, { error: 'Fictional definitive validation rejection' });
       }
       const result = backend.commit(body);
       if (backend.dropNextCreateResponse) { backend.dropNextCreateResponse = false; return route.abort('failed').catch(() => {}); }
@@ -166,6 +173,135 @@ async function fillAndAssign(page, title, { start = false } = {}) {
 }
 
 const pendingEntries = (page) => page.evaluate((prefix) => Object.entries(localStorage).filter(([key]) => key.startsWith(prefix)), PENDING_PREFIX);
+
+for (const [transition, width] of [['close', 320], ['close', 390], ['close', 1280], ['type', 390]]) {
+  test(`confirmed ${transition} discards a definitively rejected Quick request at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    if (process.env.CVF_PR116_EVIDENCE_DIR) await page.clock.setFixedTime(new Date('2026-10-16T18:00:00Z'));
+    const backend = new FakeBackend();
+    backend.rejectNextCreate = true;
+    await install(page, backend);
+    await openBuilder(page);
+    await fillAndAssign(page, 'Abandoned rejected draft');
+    const rejected = page.getByTestId('quick-session-rejected');
+    await expect(rejected).toContainText('Fictional definitive validation rejection');
+    const original = await pendingEntries(page);
+    expect(original).toHaveLength(1);
+    const oldId = backend.createAttempts[0].request_id;
+    const otherKey = original[0][0].replace(':coach-1:', ':unrelated-coach:');
+    await page.evaluate(([key, value]) => localStorage.setItem(key, value), [otherKey, original[0][1]]);
+    const leave = async () => {
+      if (transition === 'close') await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+      else {
+        await page.getByTestId('client-assignment-type-select').click();
+        await page.getByRole('option', { name: 'Standalone workout', exact: true }).click();
+      }
+    };
+    page.once('dialog', (dialog) => dialog.dismiss());
+    await leave();
+    await expect(rejected).toBeVisible();
+    await expect(page.getByTestId('quick-session-title-input')).toHaveValue('Abandoned rejected draft');
+    expect(await pendingEntries(page)).toHaveLength(2);
+    page.once('dialog', (dialog) => dialog.accept());
+    await leave();
+    if (transition === 'close') await page.getByTestId('assign-program-button').click();
+    else {
+      await page.getByTestId('client-assignment-type-select').click();
+      await page.getByRole('option', { name: 'Quick session', exact: true }).click();
+    }
+    await expect(page.getByTestId('quick-session-exercise-name-input').first()).toHaveValue('');
+    if (process.env.CVF_PR116_EVIDENCE_DIR && transition === 'close') {
+      await mkdir(process.env.CVF_PR116_EVIDENCE_DIR, { recursive: true });
+      await page.getByTestId('quick-session-assign-button').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${process.env.CVF_PR116_EVIDENCE_DIR}/discard-${width}.png`, animations: 'disabled' });
+    }
+    expect(await pendingEntries(page)).toEqual([[otherKey, original[0][1]]]);
+    await expect(rejected).toHaveCount(0);
+    await fillAndAssign(page, 'New request after discard');
+    await expect(page.getByTestId('quick-session-saved')).toContainText('New request after discard');
+    expect(backend.createAttempts[1].request_id).not.toBe(oldId);
+    expect(backend.committedCreates).toBe(1);
+    await page.reload();
+    await expect(page.getByTestId('assigned-workout-card').filter({ hasText: 'New request after discard' })).toHaveCount(1);
+    expect(backend.statusCalls).not.toContain(oldId);
+    expect(await pendingEntries(page)).toEqual([[otherKey, original[0][1]]]);
+  });
+}
+
+test('confirmed route navigation discards a definitively rejected Quick request', async ({ page }) => {
+  const backend = new FakeBackend();
+  backend.rejectNextCreate = true;
+  await install(page, backend);
+  await page.goto('/coach/clients');
+  await page.getByTestId('client-row').filter({ hasText: CLIENT.name }).click();
+  await page.getByTestId('tab-programs').click();
+  await page.getByTestId('assign-program-button').click();
+  await page.getByTestId('client-assignment-type-select').click();
+  await page.getByRole('option', { name: 'Quick session', exact: true }).click();
+  await fillAndAssign(page, 'Rejected before navigation');
+  await expect(page.getByTestId('quick-session-rejected')).toBeVisible();
+  const original = await pendingEntries(page);
+  expect(original).toHaveLength(1);
+  const oldId = backend.createAttempts[0].request_id;
+  // Exercise the router guard while the modal is open, as browser navigation does.
+  const navigateAway = () => page.locator('a[href="/coach/clients"]').first().evaluate((link) => link.click());
+  let acceptDiscard = false;
+  let handledPrompts = 0;
+  page.on('dialog', async (dialog) => {
+    if (acceptDiscard) await dialog.accept(); else await dialog.dismiss();
+    handledPrompts++;
+  });
+  await navigateAway();
+  await expect.poll(() => handledPrompts).toBe(1);
+  await expect(page.getByTestId('quick-session-rejected')).toBeVisible();
+  expect(await pendingEntries(page)).toEqual(original);
+  acceptDiscard = true;
+  await navigateAway();
+  await expect.poll(() => handledPrompts).toBe(2);
+  await expect(page).toHaveURL(/\/coach\/clients$/);
+  expect(await pendingEntries(page)).toEqual([]);
+  await page.getByTestId('client-row').filter({ hasText: CLIENT.name }).click();
+  await page.getByTestId('tab-programs').click();
+  await expect(page.getByTestId('assign-program-button')).toBeVisible();
+  await expect(page.getByTestId('quick-session-recovery')).toHaveCount(0);
+  expect(backend.statusCalls).not.toContain(oldId);
+});
+
+for (const phase of ['in-flight', 'uncertain']) {
+  test(`closing and changing type retain ${phase} Quick recovery and its frozen prescription`, async ({ page }) => {
+    const backend = new FakeBackend();
+    const gate = deferred();
+    if (phase === 'in-flight') backend.hold = { gate };
+    else backend.dropNextCreateResponse = true;
+    await install(page, backend);
+    await openBuilder(page);
+    await fillAndAssign(page, 'Retained pending prescription');
+    await expect.poll(() => backend.createAttempts.length).toBe(1);
+    if (phase === 'uncertain') await expect(page.getByTestId('quick-session-recovery')).toContainText("We couldn't confirm");
+    const original = await pendingEntries(page);
+    expect(original).toHaveLength(1);
+    let prompts = 0;
+    page.on('dialog', async (dialog) => { prompts++; await dialog.dismiss(); });
+    await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+    expect(await pendingEntries(page)).toEqual(original);
+    await page.getByTestId('assign-program-button').click();
+    await page.getByTestId('client-assignment-type-select').click();
+    await page.getByRole('option', { name: 'Standalone workout', exact: true }).click();
+    await page.getByTestId('client-assignment-type-select').click();
+    await page.getByRole('option', { name: 'Quick session', exact: true }).click();
+    await expect(page.getByTestId('quick-session-title-input')).toHaveValue('Retained pending prescription');
+    await expect(page.getByTestId('quick-session-title-input')).toBeDisabled();
+    expect(await pendingEntries(page)).toEqual(original);
+    expect(backend.createAttempts).toHaveLength(1);
+    expect(prompts).toBe(0);
+    if (phase === 'in-flight') gate.resolve();
+    else await page.getByTestId('quick-session-retry-save').click();
+    await expect(page.getByTestId('quick-session-saved')).toContainText('Retained pending prescription');
+    expect(backend.committedCreates).toBe(1);
+    if (phase === 'uncertain') expect(backend.createAttempts[1]).toEqual(backend.createAttempts[0]);
+    expect(await pendingEntries(page)).toEqual([]);
+  });
+}
 
 test('A4 lost create response + reload recovers the committed session without resubmitting', async ({ page }) => {
   const backend = new FakeBackend();
