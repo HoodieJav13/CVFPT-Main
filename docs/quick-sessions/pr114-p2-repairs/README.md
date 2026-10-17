@@ -1,5 +1,8 @@
 # PR #114: four P2 repairs, local evidence
 
+> Historical original repair handoff. Current reconciliation onto released PR117 main and fresh verification: [integration-2026-10-17.md](integration-2026-10-17.md). Original source hashes, captures and counts below are preserved as historical evidence.
+
+
 Latest follow-through: [2026-10-16 verification and publication gates](followthrough-2026-10-16.md). The initial outcomes below are preserved as historical evidence.
 
 Baseline: released merge `433784a42287a8d7049b8df5de4fca6a9a00bbad` of

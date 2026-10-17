@@ -1,3 +1,4 @@
+import { useFormChanges } from '@/context/UnsavedChangesContext';
 import ClientInviteCard from '@/components/ClientInviteCard';
 import { setPrescription, trackingTargets } from '@/lib/workoutMetrics';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -904,6 +905,13 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   const [quickLibrary, setQuickLibrary] = useState(null);
   const [quickLibraryError, setQuickLibraryError] = useState(null);
   const [quickLibraryAttempt, setQuickLibraryAttempt] = useState(0);
+  const discardQuickDraft = () => {
+    // Only a definitive rejection is safe to forget with the confirmed form discard.
+    // Saving/uncertain requests keep their existing recovery controls and routing record.
+    if (quick.state.phase === 'rejected' && quick.state.record) quick.controller.discard(quick.state.record);
+    quick.setForm(newQuickForm());
+  };
+  const quickChanges = useFormChanges(quick.form, clientId, assignOpen && assignmentType === 'quick' && ['editing', 'rejected'].includes(quick.state.phase), discardQuickDraft);
   const savedQuickId = quick.state.assignment?.id || null;
   const recoveredCount = quick.state.recovered.length;
 
@@ -1162,7 +1170,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   return (
     <div className="space-y-3 mt-1">
       <div className="flex justify-end">
-        <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+        <Dialog open={assignOpen} onOpenChange={(next) => { if (next || quickChanges.confirmDiscard()) setAssignOpen(next); }}>
           <DialogTrigger asChild>
             <Button size="sm" className="rounded-xl" data-testid="assign-program-button">
               <Plus className="h-4 w-4 mr-1.5" /> Assign training
@@ -1173,7 +1181,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
               <DialogTitle>Assign training</DialogTitle>
             </DialogHeader>
             <form onSubmit={assign} className="space-y-4">
-              <Select value={assignmentType} onValueChange={(value) => { setAssignmentType(value); setExerciseLoads({}); }}>
+              <Select value={assignmentType} onValueChange={(value) => { if (value !== assignmentType && !quickChanges.confirmDiscard()) return; setAssignmentType(value); setExerciseLoads({}); }}>
                 <SelectTrigger className="rounded-xl" data-testid="client-assignment-type-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="program">Long-term program</SelectItem>
@@ -1195,6 +1203,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                       <>
                         <QuickSessionRecovery state={quick.state} controller={quick.controller} />
                         <QuickSessionBuilder
+                          onCatalogCreated={(item) => setQuickLibrary((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item])}
                           form={quick.form}
                           setForm={quick.setForm}
                           library={quickLibrary.filter((exercise) => !exercise.hidden)}
@@ -1340,6 +1349,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       />
       {copyEditor && (
         <WorkoutDialog
+          onCatalogCreated={(item) => setCopyLibrary((current) => (current || []).some((entry) => entry.id === item.id) ? current : [...(current || []), item])}
           open
           onOpenChange={(next) => { if (!next) setCopyEditor(null); }}
           form={copyEditor.form}

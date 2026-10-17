@@ -1448,11 +1448,19 @@ test('switching workouts while a save is pending never retargets the editor or o
   await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts/[^/]+$', ms: 2000 }])));
   await pressSave();
 
+  // Leaving an unsaved editor now explicitly asks the coach to discard.
+  let discardPrompted = false;
+  page.once('dialog', async (dialog) => {
+    discardPrompted = true;
+    expect(dialog.message()).toContain('unsaved');
+    await dialog.accept();
+  });
   // Open another workout while Lower's save is still in flight.
   await rail.filter({ hasText: 'Upper Strength A' }).click();
   await expect(titles).toHaveText([/Bench/, /Row/]);
   await expect(page.getByText('Workout updated').first()).toBeVisible({ timeout: 6000 });
 
+  expect(discardPrompted).toBe(true);
   // The response must not retarget the editor: still Upper, with Upper's rows.
   await expect(page.getByRole('heading', { name: 'Upper Strength A' })).toBeVisible();
   await expect(titles).toHaveText([/Bench/, /Row/]);
@@ -1490,12 +1498,20 @@ test('returning to a workout while its save is still in flight shows the edits b
   await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts/[^/]+$', ms: 2500 }])));
   await pressSave();
 
+  // Leaving an unsaved editor now explicitly asks the coach to discard.
+  let discardPrompted = false;
+  page.once('dialog', async (dialog) => {
+    discardPrompted = true;
+    expect(dialog.message()).toContain('unsaved');
+    await dialog.accept();
+  });
   // Away and straight back while the save is still pending.
   await rail.filter({ hasText: 'Upper Strength A' }).click();
   await rail.filter({ hasText: 'Lower Strength A' }).click();
   await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
   await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
 
+  expect(discardPrompted).toBe(true);
   // Once it lands, saving again from this form keeps the superset.
   await expect(page.getByTestId('workout-save-button')).toBeEnabled({ timeout: 6000 });
   await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
@@ -1520,7 +1536,7 @@ test('duplicating a builder exercise inserts a full copy below it that saves as 
 
   // The first row is open by default; duplicate it.
   await page.getByTestId('workout-exercise-duplicate-button').first().click();
-  await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 8-10/, /Romanian Deadlift/, /Pallof/]);
+  await expect(titles).toHaveText([/Goblet Squat.*3 × 8-10/, /Goblet Squat.*3 × 8-10/, /Romanian Deadlift/, /Pallof/]);
 
   await page.getByTestId('workout-save-button').focus();
   await page.keyboard.press('Enter');
@@ -1528,7 +1544,7 @@ test('duplicating a builder exercise inserts a full copy below it that saves as 
   await page.waitForTimeout(1000);
   await rail.filter({ hasText: 'Upper Strength A' }).click();
   await rail.filter({ hasText: 'Lower Strength A' }).click();
-  await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 8-10/, /Romanian Deadlift/, /Pallof/]);
+  await expect(titles).toHaveText([/Goblet Squat.*3 × 8-10/, /Goblet Squat.*3 × 8-10/, /Romanian Deadlift/, /Pallof/]);
   await expect(rail.filter({ hasText: 'Lower Strength A' })).toContainText('4 exercises');
 });
 
@@ -1579,7 +1595,7 @@ test('duplicate and remove stay full tap targets on phones, and editing a copy l
   await expect(page.getByText('Workout updated')).toBeVisible();
   await page.waitForTimeout(1000);
   await page.locator('[data-testid="workout-edit-button"][aria-label="Edit Lower Strength A"]').click();
-  await expect(titles).toHaveText([/Goblet Squat.*3 x 8-10/, /Goblet Squat.*3 x 15/, /Romanian Deadlift.*3 x 8/, /Romanian Deadlift.*3 x 6/, /Pallof/]);
+  await expect(titles).toHaveText([/Goblet Squat.*3 × 8-10/, /Goblet Squat.*3 × 15/, /Romanian Deadlift.*3 × 8/, /Romanian Deadlift.*3 × 6/, /Pallof/]);
   await expect(page.getByRole('dialog').getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
 });
 

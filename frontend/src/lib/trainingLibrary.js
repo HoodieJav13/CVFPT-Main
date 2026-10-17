@@ -1,3 +1,5 @@
+import { normalizeName } from './programDraft.js';
+
 // Coach-facing helpers for the shared training library (templates + variations).
 // The same author-filter rules live in backend/src/lib/trainingLibrary.js; the
 // two trees are deployed separately, so the small pure logic is duplicated.
@@ -143,4 +145,9 @@ export function filterExercises(rows, { search = '', category = 'all', muscle = 
     if (!query) return true;
     return [row.name, row.category, row.equipment, row.primary_muscle].join(' ').toLowerCase().includes(query);
   });
+}
+
+export function matchCatalogExercise(library, name) {
+  const key = normalizeName(name);
+  return key ? library.find((exercise) => normalizeName(exercise.name) === key) : undefined;
 }
