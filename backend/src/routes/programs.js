@@ -141,8 +141,9 @@ async function callOpenAiForDraft(pdfText, originalFilename) {
 const OWNED_ROW = '*, client_owner:clients!client_id(coach_id)';
 
 async function workoutWithDetails(workoutId) {
-  const { data: workout } = await supabaseAdmin.from('workouts').select(OWNED_ROW)
+  const { data: workout, error: workoutError } = await supabaseAdmin.from('workouts').select(OWNED_ROW)
     .eq('id', workoutId).eq('archived', false).maybeSingle();
+  if (workoutError) throw workoutError;
   if (!workout) return null;
   const { data: exercises, error } = await supabaseAdmin
     .from('workout_exercises')
@@ -1107,7 +1108,7 @@ router.patch('/workout-assignments/:assignmentId/archive', requireCoach, async (
       .select()
       .single();
     if (error) throw error;
-    return res.json(data);
+    return res.json(coachAssignment(data));
   } catch (e) {
     logError('archive workout assignment error', e);
     return res.status(500).json({ error: 'Failed to remove workout assignment' });

@@ -1,0 +1,65 @@
+[
+  {
+    "case": "preview-critical-touch-dev-ee4b1-p-inside-a-scrolling-dialog",
+    "error_count": 9,
+    "example_errors": [
+      {
+        "time": 283370.524,
+        "message": "Failed to load resource: net::ERR_NETWORK_CHANGED",
+        "url": "http://127.0.0.1:42731/src/components/ui/popover.jsx"
+      },
+      {
+        "time": 283370.684,
+        "message": "Failed to load resource: net::ERR_NETWORK_CHANGED",
+        "url": "http://127.0.0.1:42731/node_modules/.vite/deps/@radix-ui_react-accordion.js?v=32c8cb9a"
+      },
+      {
+        "time": 283371.078,
+        "message": "Failed to load resource: net::ERR_NETWORK_CHANGED",
+        "url": "http://127.0.0.1:42731/node_modules/.vite/deps/@radix-ui_react-checkbox.js?v=32c8cb9a"
+      }
+    ]
+  },
+  {
+    "case": "preview-critical-reduced-m-e543b-nformation-without-movement",
+    "error_count": 20,
+    "example_errors": [
+      {
+        "time": 114351.651,
+        "message": "Failed to load resource: net::ERR_NETWORK_CHANGED",
+        "url": "http://127.0.0.1:42731/node_modules/.vite/deps/@radix-ui_react-slot.js?v=32c8cb9a"
+      },
+      {
+        "time": 114351.733,
+        "message": "Failed to load resource: net::ERR_NETWORK_CHANGED",
+        "url": "http://127.0.0.1:42731/node_modules/.vite/deps/class-variance-authority.js?v=32c8cb9a"
+      },
+      {
+        "time": 114351.784,
+        "message": "Failed to load resource: net::ERR_NETWORK_CHANGED",
+        "url": "http://127.0.0.1:42731/src/lib/coachAnalyticsCore.js"
+      }
+    ]
+  },
+  {
+    "case": "preview-controls-Reset-res-b62ab-eaves-everything-else-alone",
+    "error_count": 34,
+    "example_errors": [
+      {
+        "time": 40792.505,
+        "message": "Failed to load resource: net::ERR_NETWORK_CHANGED",
+        "url": "http://127.0.0.1:42731/src/pages/client/Messages.jsx"
+      },
+      {
+        "time": 40792.587,
+        "message": "Failed to load resource: net::ERR_NETWORK_CHANGED",
+        "url": "http://127.0.0.1:42731/src/pages/client/Waiver.jsx"
+      },
+      {
+        "time": 40792.636,
+        "message": "Failed to load resource: net::ERR_NETWORK_CHANGED",
+        "url": "http://127.0.0.1:42731/src/pages/WorkoutLogDetail.jsx"
+      }
+    ]
+  }
+]
