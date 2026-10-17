@@ -903,7 +903,13 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
     onStarted: (log) => { if (log?.id) navigate(`/coach/workouts/${log.id}/track`); },
   });
   const [quickLibrary, setQuickLibrary] = useState(null);
-  const quickChanges = useFormChanges(quick.form, clientId, assignOpen && assignmentType === 'quick' && ['editing', 'rejected'].includes(quick.state.phase));
+  const discardQuickDraft = () => {
+    // Only a definitive rejection is safe to forget with the confirmed form discard.
+    // Saving/uncertain requests keep their existing recovery controls and routing record.
+    if (quick.state.phase === 'rejected' && quick.state.record) quick.controller.discard(quick.state.record);
+    quick.setForm(newQuickForm());
+  };
+  const quickChanges = useFormChanges(quick.form, clientId, assignOpen && assignmentType === 'quick' && ['editing', 'rejected'].includes(quick.state.phase), discardQuickDraft);
   const savedQuickId = quick.state.assignment?.id || null;
   const recoveredCount = quick.state.recovered.length;
 
@@ -1155,7 +1161,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   return (
     <div className="space-y-3 mt-1">
       <div className="flex justify-end">
-        <Dialog open={assignOpen} onOpenChange={(next) => { if (next || quickChanges.confirmDiscard()) { if (!next && quickChanges.dirty) quick.setForm(newQuickForm()); setAssignOpen(next); } }}>
+        <Dialog open={assignOpen} onOpenChange={(next) => { if (next || quickChanges.confirmDiscard()) setAssignOpen(next); }}>
           <DialogTrigger asChild>
             <Button size="sm" className="rounded-xl" data-testid="assign-program-button">
               <Plus className="h-4 w-4 mr-1.5" /> Assign training
@@ -1166,7 +1172,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
               <DialogTitle>Assign training</DialogTitle>
             </DialogHeader>
             <form onSubmit={assign} className="space-y-4">
-              <Select value={assignmentType} onValueChange={(value) => { if (value !== assignmentType && !quickChanges.confirmDiscard()) return; if (value !== assignmentType && quickChanges.dirty) quick.setForm(newQuickForm()); setAssignmentType(value); setExerciseLoads({}); }}>
+              <Select value={assignmentType} onValueChange={(value) => { if (value !== assignmentType && !quickChanges.confirmDiscard()) return; setAssignmentType(value); setExerciseLoads({}); }}>
                 <SelectTrigger className="rounded-xl" data-testid="client-assignment-type-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="program">Long-term program</SelectItem>

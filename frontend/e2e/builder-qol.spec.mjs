@@ -186,6 +186,33 @@ test('same-name inline creates across duplicate rows share a catalog identity', 
   expect(saved.exercises.map((item) => item.exercise_library_id)).toEqual([matches[0].id, matches[0].id, matches[0].id]);
 });
 
+test('whitespace-equivalent inline creates share one catalog identity and keep both prescriptions', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const editor = await newWorkout(page);
+  await editor.getByTestId('workout-name-input').fill('Canonical identity workout');
+  await editor.getByTestId('workout-exercise-name-input').fill('Canonical inline movement');
+  await editor.getByTestId('workout-exercise-sets-input').fill('3');
+  await editor.getByTestId('workout-exercise-duplicate-button').click();
+  const rows = editor.getByTestId('workout-exercise-row');
+  await rows.nth(1).locator('h3 button').click();
+  await rows.nth(1).getByTestId('workout-exercise-name-input').fill('canonical  INLINE movement');
+  await rows.nth(1).getByTestId('workout-exercise-sets-input').fill('5');
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/exercise-library$', ms: 700 }])));
+  await rows.nth(0).getByRole('button', { name: /Create .*in catalog/ }).click();
+  await rows.nth(1).getByRole('button', { name: /Create .*in catalog/ }).click();
+  await expect(editor.getByText('In exercise catalog', { exact: true })).toHaveCount(2);
+  const catalog = await callPreviewApi(page, 'get', '/programs/exercise-library');
+  const matches = catalog.data.filter((item) => /canonical/i.test(item.name));
+  expect(matches).toHaveLength(1);
+  await expect(rows.nth(0).getByTestId('workout-exercise-sets-input')).toHaveValue('3');
+  await expect(rows.nth(1).getByTestId('workout-exercise-sets-input')).toHaveValue('5');
+  await editor.getByTestId('workout-save-button').click();
+  await expect(editor).not.toBeVisible();
+  const workouts = await callPreviewApi(page, 'get', '/programs/workouts');
+  const saved = workouts.data.find((item) => item.name === 'Canonical identity workout');
+  expect(saved.exercises.map((item) => item.exercise_library_id)).toEqual([matches[0].id, matches[0].id]);
+});
+
 
 test('changing program import source can retain pasted edits', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
