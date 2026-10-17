@@ -1,3 +1,5 @@
+> Follow-up: the unfinished local adapter-wiring prerequisite described below is now implemented and locally reviewed in the [hosted-photo readiness increment](hosted-photo-readiness-20261017.md). That document and its exact final evidence supersede the earlier local gap/approval wording. The hosted and release gates remain unexecuted; this original integration receipt is preserved as history.
+
 # Local integration acceptance — 2026-10-17
 
 Functional integration commit: `e0bce8bb18d36d9aab5770d6ceca5ad3d3317f55`, tree `872b54909afb92234b9e5311da8e59f19120c0ce`. Fresh independent static review found no substantive blocker at that exact tree. Local checks: backend674/674, frontend166/166, builder13/13, guides30/30, Quick37/37, full preview120passed/14skipped (8 credential-based live-auth and6 opt-in visual captures), build/boundaries pass. No hosted mutation/publication occurred; uploaded photos remain local-only pending the activation increment and approval sequence below. The original accepted source remains clean at7f754444.

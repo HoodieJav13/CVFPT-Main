@@ -9,9 +9,11 @@ and [../exercise-media/production-gates.md](../exercise-media/production-gates.m
 
 ## What runs today, and what does not
 
-- **Media stays disabled** outside an explicit local adapter (`EXERCISE_MEDIA_STORE=local`
-  plus an absolute root). It is always off on Vercel and with
-  `NODE_ENV=production`. While off, workout reads make no media query.
+- **Media stays disabled by default.** Local mode still requires its explicit
+  absolute root. The Oct17 locally verified increment adds complete, explicit
+  hosted photos-only opt-in, including a stable owner-managed secret and a
+  dedicated private bucket. No hosted flags have been set and no hosted photo
+  proof has run. See [local readiness and the concrete Development request](hosted-photo-readiness-20261017.md).
 - **YouTube demos need no infrastructure.** They are ordinary `video_url`
   metadata plus a browser-side player. They still need the reference-mode
   migration before the mode-aware writers exist hosted.
@@ -24,11 +26,12 @@ and [../exercise-media/production-gates.md](../exercise-media/production-gates.m
     shared writer then records it as unclassified legacy: the demo it shows
     does not change, but it stops following later library replacements. Ship
     both roots together, and ask coaches to reload open editors.
-- **The Supabase private-image adapter** (`supabaseImageStore.js`) exists and
-  is contract-tested against a fake object client only:
-  - no bucket exists, and no key has been read or copied;
-  - `EXERCISE_MEDIA_STORE=supabase` reports
-    `hostedAdapter: 'requires_separate_activation'` and stays off.
+- **The Supabase private-image adapter** is now wired locally and tested through
+  synthetic provider responses and the installed SDK. Uploads keep10MiB; source
+  readback uses bounded1MiB API ranges. Without the complete exact opt-in,
+  `EXERCISE_MEDIA_STORE=supabase` still reports `requires_separate_activation`
+  and stays off. Actual Development storage/native runtime/auth/CORS proof
+  remains a gate; local acceptance is not hosted readiness.
 
 ## Gate 1 — exact SQL, Development then Production
 
