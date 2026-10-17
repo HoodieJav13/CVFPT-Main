@@ -1,7 +1,7 @@
 // /api/exercise-media — owned exercise media. Default photos mode: identifying
 // photo + cues through direct-upload grants and inline leased processing; the
 // explicit full-local mode keeps stills, short preview and separate full
-// instruction video. Fail-closed: disabled unless the LOCAL adapter is
+// instruction video. Fail-closed: disabled unless the local adapter or hosted-photo opt-in is
 // explicitly configured (lib/exerciseMedia/config.js). Every mutation uses
 // the server actor; uploads are refused before any byte is accepted unless the
 // actor owns the draft (or is admin); bytes reach browsers only through the
@@ -42,6 +42,8 @@ const MESSAGES = {
   processor_busy: 'Photo processing is busy. Try again in a moment.',
   processor_timeout: 'Photo processing took too long. Try again, or use a smaller photo.',
   storage_unavailable: 'Media storage is unavailable right now. Your draft is kept; try again later.',
+  upload_grant_required: 'Upload this photo using a direct upload grant.',
+  bounded_range_required: 'Read this source photo in bounded ranges.',
   source_mismatch: 'The stored photo no longer matches what was uploaded. Upload it again.',
 };
 const STAGING_TYPES = new Set(LIMITS.image.mimes);
@@ -87,8 +89,8 @@ function createExerciseMediaRouter({ getRuntime, requireAuth, requireCoach, limi
   // Capability content: no bearer header (img/video elements cannot send one);
   // the signed token names principal+context and is re-authorized here.
   router.get('/content/:capability', wrap(async (req, res) => {
-    const result = await req.media.service.openContent(req.params.capability, req.headers.range);
-    res.set({ 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes' });
+    const result = await req.media.service.openContent(req.params.capability, req.headers.range, { head: req.method === 'HEAD' });
+    res.set({ 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes', 'Access-Control-Expose-Headers': 'Content-Range' });
     if (result.status === 416) {
       res.set('Content-Range', `bytes */${result.size}`);
       return res.status(416).end();
@@ -101,7 +103,7 @@ function createExerciseMediaRouter({ getRuntime, requireAuth, requireCoach, limi
     });
     if (result.range) res.set('Content-Range', `bytes ${result.range.start}-${result.range.end}/${result.size}`);
     res.status(result.status);
-    if (req.method === 'HEAD') { result.stream.destroy(); return res.end(); }
+    if (req.method === 'HEAD') { result.stream?.destroy(); return res.end(); }
     // pipeline releases the opened file if the client already left (for
     // example while this request was being re-authorized) or leaves mid-body;
     // a stalled, unreleased file handle is fatal on current Node runtimes.

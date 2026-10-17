@@ -188,6 +188,8 @@ test('coach uploads an image with no video, crops by keyboard, processes (simula
   const area = editor.getByTestId('poster-crop-area');
   await expect(area).toBeVisible();
   const readout = editor.getByTestId('poster-crop-readout');
+  // Source bytes now load asynchronously before crop controls become usable.
+  await expect(editor.getByRole('button', { name: 'Move crop down', exact: true })).toBeEnabled();
   const before = await readout.textContent();
   await area.focus();
   await page.keyboard.press('+');

@@ -348,3 +348,60 @@ test('video work is refused in photos mode before anything is queued', async () 
   assert.equal(caps.processing, 'inline');
   assert.equal(caps.processing_available, true);
 });
+
+
+test('Supabase photo transport: exact 10 MiB finalize/retry and inline rendering keep immutable source and bounded poster', async () => {
+  const { SupabaseImageStore } = require('../src/services/exerciseMedia/supabaseImageStore');
+  const objects = new Map();
+  const store = new SupabaseImageStore({ client: {
+    createSignedUploadUrl: async (key) => ({ signedUrl: `https://synthetic-project.invalid/${key}` }),
+    info: async (key) => objects.has(key) ? { size: objects.get(key).length } : null,
+    download: async (key, { maxBytes, range }) => {
+      const bytes = objects.get(key); if (!bytes) return null;
+      const result = range ? bytes.subarray(range.start, range.end + 1) : bytes;
+      assert.ok(result.length <= maxBytes); return result;
+    },
+    copy: async (from, to) => { if (objects.has(to)) return 'exists'; if (!objects.has(from)) return 'missing'; objects.set(to, Buffer.from(objects.get(from))); return 'copied'; },
+    upload: async (key, bytes) => { objects.set(key, Buffer.from(bytes)); },
+  } });
+  const repo = sqlLikeRepo();
+  const service = createExerciseMediaService({ repo, store, processor: new ImageOnlyProcessor(), mode: 'photos', maxContentBytes: 1024 * 1024, signer: createCapabilitySigner({ secret: 'synthetic-capability-secret-0123456789abcdef' }) });
+  await assert.rejects(service.prepareUpload(actor, repo.rev.id, 'source_image'), { status: 409, code: 'upload_grant_required' });
+  await assert.rejects(service.framePreview(actor, repo.rev.id, { time_ms: 0 }), { status: 503, code: 'video_processing_unavailable' });
+  const jpeg = photo(); const bytes = Buffer.concat([jpeg, Buffer.alloc(10 * 1024 * 1024 - jpeg.length)]);
+  const issued = await issue(service, repo, bytes);
+  objects.set(`staging/${issued.intent.id}`, bytes); // synthetic direct provider upload
+  await assert.rejects(service.finalizeUpload(other, repo.rev.id, issued.intent.id, { expected_version: repo.rev.version, ...RIGHTS }), { status: 404 });
+  const first = await service.finalizeUpload(actor, repo.rev.id, issued.intent.id, { expected_version: repo.rev.version, ...RIGHTS });
+  assert.equal(first.status, 201);
+  const second = await service.finalizeUpload(actor, repo.rev.id, issued.intent.id, { expected_version: repo.rev.version, ...RIGHTS });
+  assert.equal(second.status, 200); assert.equal(second.body.replayed, true); assert.equal(repo.assets.size, 1);
+  const source = repo.assets.get(issued.intent.id);
+  assert.equal(source.bytes, bytes.length); assert.equal(source.sha256, sha(bytes));
+  await service.updateRecipe(actor, repo.rev.id, { expected_version: repo.rev.version, alt_text: 'Synthetic geometry test, not instruction', poster_crop: { x: 0, y: 0, width: 1, height: 1 } });
+  const view = await service.requestProcessing(actor, repo.rev.id, { expected_version: repo.rev.version });
+  assert.equal(view.status, 'ready');
+  const poster = [...repo.assets.values()].find((asset) => asset.role === 'poster');
+  assert.ok(poster.bytes <= 160 * 1024); assert.ok(objects.has(poster.storage_key));
+  assert.deepEqual(objects.get(source.storage_key), bytes);
+});
+
+test('a still-running hosted photo job cannot be stolen by resume after 80 seconds of bounded I/O', async () => {
+  const real = new ImageOnlyProcessor();
+  let release; const held = new Promise((resolve) => { release = resolve; });
+  const delayed = { version: real.version, verifyImage: (args) => real.verifyImage(args), renderImage: async (args) => { const result = await real.renderImage(args); await held; return result; } };
+  const a = setup({ processor: delayed }); const bytes = photo();
+  const issued = await issue(a.service, a.repo, bytes); await a.upload(bytes, issued);
+  await a.service.finalizeUpload(actor, a.repo.rev.id, issued.intent.id, { expected_version: a.repo.rev.version, ...RIGHTS });
+  await a.service.updateRecipe(actor, a.repo.rev.id, { expected_version: a.repo.rev.version, alt_text: 'Synthetic held photo render', poster_crop: { x: 0, y: 0, width: 1, height: 1 } });
+  const pending = a.service.requestProcessing(actor, a.repo.rev.id, { expected_version: a.repo.rev.version });
+  for (let n = 0; n < 200 && ![...a.repo.jobs.values()].some((job) => job.state === 'running'); n += 1) await new Promise((resolve) => setImmediate(resolve));
+  const realNow = Date.now; const future = realNow() + 80_000;
+  try {
+    Date.now = () => future;
+    const b = setup({ shared: a });
+    const view = await b.service.resumeProcessing(actor, a.repo.rev.id);
+    assert.equal(view.status, 'processing', 'bounded hosted I/O still owns its lease');
+    assert.equal([...a.repo.jobs.values()][0].attempts, 1, 'no overlapping second render claim');
+  } finally { Date.now = realNow; release(); await pending; }
+});

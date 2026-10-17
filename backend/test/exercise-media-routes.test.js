@@ -86,7 +86,7 @@ test.before(async () => {
   const realStage = store.stageUpload.bind(store);
   store.stageUpload = (...args) => { stageCalls += 1; return realStage(...args); };
   const signer = createCapabilitySigner({ secret: 's'.repeat(40), now: () => clock });
-  const service = createExerciseMediaService({ repo, store, processor, signer, now: () => clock });
+  const service = createExerciseMediaService({ repo, store, processor, signer, now: () => clock, maxContentBytes: 1024 * 1024 });
   const pass = (_req, _res, next) => next();
   const app = express();
   app.use(express.json());
@@ -279,4 +279,45 @@ test('resolve/text: current guide metadata for an authorized context only', asyn
   assert.equal(text.status, 200); assert.equal(text.body.transcript, 'Synthetic transcript');
   assert.equal((await call('POST', '/text', { token: 'token-client', body: { context: { type: 'workout_log', id: id(501) }, exercise_id: id(2) } })).status, 404);
   assert.equal((await call('POST', '/resolve', { token: 'token-client', body: { context: { type: 'revision', id: id(301) } } })).status, 400);
+});
+
+
+test('hosted budget: 10 MiB source uses HEAD + exact 1 MiB ranges, each reauthorizes; oversized responses never open', async () => {
+  reset();
+  const sourceId = id(450); const key = `sources/${sourceId}.png`;
+  const bytes = Buffer.alloc(10 * 1024 * 1024, 19);
+  state.assets[sourceId] = { id: sourceId, revision_id: id(301), role: 'source_image', storage_key: key, mime_type: 'image/png', bytes: bytes.length, archived: false };
+  fs.mkdirSync(path.dirname(store.pathFor(key)), { recursive: true }); fs.writeFileSync(store.pathFor(key), bytes);
+  const link = (await call('POST', '/links', { token: 'token-coach-a', body: { context: { type: 'revision', id: id(301) }, assets: [{ asset_id: sourceId }] } })).body.links[0];
+  const url = link.url.replace('/api/exercise-media', '');
+  const realOpen = store.open.bind(store); let opens = 0;
+  store.open = (...args) => { opens += 1; return realOpen(...args); };
+  try {
+    const head = await fetch(base + url, { method: 'HEAD' });
+    assert.equal(head.status, 200); assert.equal(head.headers.get('content-length'), String(bytes.length));
+    assert.equal(opens, 0, 'HEAD authorizes and stats without opening source bytes');
+    const large = await call('GET', url); assert.equal(large.status, 413); assert.equal(large.body.code, 'bounded_range_required');
+    assert.equal((await call('GET', url, { headers: { range: 'bytes=0-' } })).status, 413);
+    assert.equal(opens, 0, 'oversized full/open range never opens bytes');
+    assert.equal(Date.parse(link.expires_at) - clock, 300_000, 'source read TTL covers sequential bounded transfers');
+    const parts = [];
+    for (let start = 0; start < bytes.length; start += 1024 * 1024) {
+      const result = await call('GET', url, { headers: { range: `bytes=${start}-${start + 1024 * 1024 - 1}` } });
+      assert.equal(result.status, 206); assert.equal(result.body.length, 1024 * 1024);
+      assert.equal(result.headers.get('content-range'), `bytes ${start}-${start + 1024 * 1024 - 1}/${bytes.length}`);
+      parts.push(result.body);
+      clock += 10_000; // synthetic 10 seconds per range (~0.8 Mbps), no sleep
+    }
+    assert.deepEqual(Buffer.concat(parts), bytes);
+    state.revisions[id(301)].uploaded_by_coach_id = id(902);
+    for (const method of ['GET', 'HEAD']) {
+      assert.equal((await fetch(base + url, { method, headers: { range: 'bytes=0-99' } })).status, 404);
+    }
+    assert.equal(opens, 10, 'revocation denies before any next range opens');
+    // A client or different coach cannot obtain source capability at all.
+    for (const token of ['token-client', 'token-coach-a']) {
+      const response = await call('POST', '/links', { token, body: { context: { type: 'revision', id: id(301) }, assets: [{ asset_id: sourceId }] } });
+      assert.equal(response.status, 404);
+    }
+  } finally { store.open = realOpen; }
 });

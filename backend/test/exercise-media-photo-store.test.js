@@ -105,9 +105,17 @@ function fakeSupabase() {
       if (objects.has(objectPath)) return { data: null, error: Object.assign(new Error('The resource already exists'), { statusCode: '409' }) };
       objects.set(objectPath, Buffer.from(body)); return { data: { path: objectPath }, error: null };
     },
-    async download(objectPath) {
-      calls.push(['download', objectPath]);
-      return objects.has(objectPath) ? { data: new Blob([objects.get(objectPath)]), error: null } : notFound();
+    setHeader(_name, value) { return { ...this, range: value }; },
+    download(objectPath) {
+      calls.push(['download', objectPath, this.range]);
+      const range = this.range;
+      return { asStream: async () => {
+        if (!objects.has(objectPath)) return notFound();
+        const buffer = objects.get(objectPath);
+        const match = range && /^bytes=(\d+)-(\d+)$/.exec(range);
+        const slice = match ? buffer.subarray(Number(match[1]), Number(match[2]) + 1) : buffer;
+        return { data: new Blob([slice]).stream(), error: null };
+      } };
     },
     async info(objectPath) { return objects.has(objectPath) ? { data: { size: objects.get(objectPath).length }, error: null } : notFound(); },
     async copy(from, to) {
@@ -181,9 +189,17 @@ test('hosted adapter: derivatives are server-keyed uploads; reads are streamed t
 test('hosted adapter: provider failures map to safe retryable codes without leaking URLs or tokens', async () => {
   const failing = { storage: { from: () => ({
     async createSignedUploadUrl() { return { data: null, error: new Error('upstream 500 https://synthetic-project.invalid?token=SECRET') }; },
-    async download() { return { data: null, error: Object.assign(new Error('upstream 503 token=SECRET'), { statusCode: '503' }) }; },
+    async info() { return { data: null, error: Object.assign(new Error('upstream 503 token=SECRET'), { statusCode: '503' }) }; },
   }) } };
   const store = new SupabaseImageStore({ client: supabaseObjectClient(failing, 'exercise-media-private') });
   await assert.rejects(store.createUploadGrant({ key: `staging/${randomUUID()}`, contentType: 'image/jpeg' }), (error) => error.code === 'storage_unavailable' && error.status === 503 && !/SECRET|token/.test(error.message));
   await assert.rejects(store.readStaged(`staging/${randomUUID()}`, { maxBytes: 10 }), (error) => error.code === 'storage_unavailable' && !/SECRET/.test(error.message));
+});
+
+
+test('hosted: metadata rejects oversized objects before downloading any bytes', async () => {
+  let downloads = 0;
+  const store = new SupabaseImageStore({ client: { info: async () => ({ size: 10 * 1024 * 1024 + 1 }), download: async () => { downloads += 1; return Buffer.alloc(1); } } });
+  await rejectsCode(store.readStaged(`staging/${randomUUID()}`, { maxBytes: 10 * 1024 * 1024 }), 'file_too_large');
+  assert.equal(downloads, 0);
 });

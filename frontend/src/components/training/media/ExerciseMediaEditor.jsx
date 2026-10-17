@@ -12,7 +12,7 @@ import { MEDIA_KIND_LABELS, MEDIA_LIMITS, checkFileBeforeUpload, createRefreshGa
 import { ImageCropEditor } from './ImageCropEditor';
 import { VideoSelectionEditor } from './VideoSelectionEditor';
 import { LocalStillSelector } from './LocalStillSelector';
-import { useMediaLinks } from './mediaLinks';
+import { useMediaLinks, useSourceImage } from './mediaLinks';
 
 const uuid = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID()
   : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = (globalThis.crypto.getRandomValues(new Uint8Array(1))[0] % 16); return (c === 'x' ? r : (r % 4) + 8).toString(16); }));
@@ -342,6 +342,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   const sourceContext = useMemo(() => (draft ? { type: 'revision', id: draft.id } : null), [draft?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const sourceIds = draft?.sources ? [draft.sources.image?.asset_id, draft.sources.video?.asset_id] : [];
   const sources = useMediaLinks(sourceContext, sourceIds.filter(Boolean), Boolean(draft?.sources));
+  const sourcePhoto = useSourceImage(draft?.sources?.image ? sources.urls.get(draft.sources.image.asset_id) : null);
   // The source scrubber may remount while a fresh link loads, so the editor
   // owns its refresh budget: one fresh 300 s link per successful load.
   const sourceGate = useRef(createRefreshGate());
@@ -447,7 +448,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   const dirty = draft && form ? Object.keys(patchFor(draft, form)).length > 0 : false;
   const video = draft?.sources?.video;
   const image = draft?.sources?.image;
-  const imageUrl = image ? sources.urls.get(image.asset_id) : null;
+  const imageUrl = sourcePhoto.src;
   const videoUrl = video ? sources.urls.get(video.asset_id) : null;
 
   return (
@@ -556,7 +557,12 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
                 Use the uploaded image as the poster
               </label>
               {form.poster_mode === 'uploaded_image' && (
-                <ImageCropEditor src={imageUrl} dims={image} crop={form.poster_crop} onChange={(crop) => set({ poster_crop: crop })} label="Poster crop" disabled={!editable} testId="poster-crop" />
+                <>
+                  {sourcePhoto.status === 'error' || sources.status === 'error' || sources.missing.includes(image.asset_id) ? (
+                    <div role="alert" className="space-y-2 text-sm"><p>The source photo could not be loaded.</p><Button type="button" size="touch" variant="outline" onClick={sources.retry}>Retry source photo</Button></div>
+                  ) : !imageUrl ? <p role="status" className="text-sm text-muted-foreground">Loading source photo…</p> : null}
+                  <ImageCropEditor src={imageUrl} dims={image} crop={form.poster_crop} onChange={(crop) => set({ poster_crop: crop })} label="Poster crop" disabled={!editable || !imageUrl} testId="poster-crop" />
+                </>
               )}
             </div>
           )}

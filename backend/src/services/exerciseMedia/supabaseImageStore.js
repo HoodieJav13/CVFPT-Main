@@ -1,11 +1,5 @@
-// SupabaseImageStore: the FUTURE hosted private-photo adapter
-// (docs/exercise-guides/design.md, docs/exercise-guides/hosted-gates.md). It is
-// implemented and contract-tested locally against a fake storage-js-shaped
-// object client only. It is NOT wired to any configuration in this build:
-// lib/exerciseMedia/config.js refuses EXERCISE_MEDIA_STORE=supabase until a
-// separately authorized hosted activation (private bucket, limits, credentials
-// handled by the owner, exact SQL on Development then Production).
-//
+// Private photo adapter. Runtime opt-in is explicit and fail closed; activating
+// hosted storage/configuration remains a separately authorized action.
 // Contract (same as LocalMediaStore's photo transport):
 //  - The browser receives a provider signed-upload grant for ONE app-issued
 //    staging key (`staging/<uuid>`), never a service key or arbitrary path. The
@@ -35,6 +29,8 @@ const unavailable = () => new MediaError('storage_unavailable', 503);
 
 // Thin mapping from storage-js responses to the adapter's object-client shape.
 // Provider messages are used only to classify outcomes and never surfaced.
+// The configured admin fetch validates Range status/Content-Range before the
+// SDK drops response metadata (lib/supabaseFetch.js).
 function supabaseObjectClient(supabase, bucket) {
   const api = () => supabase.storage.from(bucket);
   const status = (error) => String(error?.statusCode ?? error?.status ?? '');
@@ -46,10 +42,35 @@ function supabaseObjectClient(supabase, bucket) {
       if (error || !data?.signedUrl) throw unavailable();
       return data;
     },
-    async download(key) {
-      const { data, error } = await api().download(key);
-      if (error) { if (isNotFound(error)) return null; throw unavailable(); }
-      return Buffer.from(await data.arrayBuffer());
+    async download(key, { maxBytes, range = null }) {
+      // Fresh file client per request; setHeader preserves provider auth headers.
+      // asStream avoids storage-js's eager, unbounded Blob allocation.
+      const file = range ? api().setHeader('Range', `bytes=${range.start}-${range.end}`) : api();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      let reader;
+      try {
+        const { data, error } = await file.download(key, {}, { signal: controller.signal, cache: 'no-store', redirect: 'error' }).asStream();
+        if (error) { if (isNotFound(error)) return null; throw unavailable(); }
+        if (!data) throw unavailable();
+        reader = data.getReader();
+        const parts = []; let bytes = 0;
+        for (;;) {
+          const part = await reader.read();
+          if (part.done) break;
+          bytes += part.value.byteLength;
+          if (bytes > maxBytes) throw new MediaError('file_too_large');
+          parts.push(Buffer.from(part.value));
+        }
+        return Buffer.concat(parts, bytes);
+      } catch (error) {
+        if (error instanceof MediaError) throw error;
+        throw unavailable();
+      } finally {
+        clearTimeout(timer);
+        await reader?.cancel().catch(() => {});
+        controller.abort();
+      }
     },
     async info(key) {
       const { data, error } = await api().info(key);
@@ -92,9 +113,12 @@ class SupabaseImageStore {
   }
 
   async #bounded(key, maxBytes) {
-    const buffer = await this.client.download(key);
-    if (!buffer) return null;
-    if (buffer.length > maxBytes) throw new MediaError('file_too_large');
+    const info = await this.client.info(key);
+    if (!info) return null;
+    if (!Number.isSafeInteger(info.size) || info.size <= 0) throw unavailable();
+    if (info.size > maxBytes) throw new MediaError('file_too_large');
+    const buffer = await this.client.download(key, { maxBytes });
+    if (!buffer || buffer.length !== info.size) throw unavailable();
     return buffer;
   }
 
@@ -132,6 +156,7 @@ class SupabaseImageStore {
     if (!KEY_RE.test(String(key))) throw invalidKey();
     const info = await this.client.info(key);
     if (!info) throw new MediaError('not_found', 404);
+    if (!Number.isSafeInteger(info.size) || info.size <= 0 || info.size > LIMITS.image.maxBytes) throw unavailable();
     return { size: info.size };
   }
 
@@ -142,10 +167,13 @@ class SupabaseImageStore {
   // Bytes for the capability route only; never a URL.
   async open({ key, range = null }) {
     if (!KEY_RE.test(String(key))) throw invalidKey();
-    const buffer = await this.client.download(key);
+    const { size } = await this.stat(key);
+    const maxBytes = range ? range.end - range.start + 1 : size;
+    const buffer = await this.client.download(key, { maxBytes, range });
     if (!buffer) throw new MediaError('not_found', 404);
-    const slice = range ? buffer.subarray(range.start, range.end + 1) : buffer;
-    return { stream: Readable.from([slice]), size: buffer.length, contentType: SupabaseImageStore.contentType(key) };
+    // A provider ignoring Range, short read or changed object fails closed.
+    if (buffer.length !== maxBytes) throw unavailable();
+    return { stream: Readable.from([buffer]), size, contentType: SupabaseImageStore.contentType(key) };
   }
 }
 

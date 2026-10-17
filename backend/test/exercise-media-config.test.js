@@ -1,7 +1,7 @@
 // Exercise media configuration modes (docs/exercise-guides/design.md):
 // photos is the default local mode (image-only, no FFmpeg/worker); the owned
-// full video pipeline is explicit opt-in; the hosted Supabase adapter is never
-// activated by configuration in this build; Production/Vercel stay disabled.
+// full video pipeline is local-only. Hosted photos require a complete explicit
+// opt-in; this test uses fixed synthetic configuration and performs no I/O.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -22,7 +22,7 @@ test('local media defaults to photos mode; full video is explicit opt-in', () =>
   assert.equal(mediaConfig({ ...local, EXERCISE_MEDIA_MODE: 'video-everything' }).mode, 'photos');
 });
 
-test('the hosted adapter is never activated by configuration in this build', () => {
+test('hosted adapter stays disabled without complete explicit photo opt-in', () => {
   const hosted = mediaConfig({ EXERCISE_MEDIA_STORE: 'supabase', EXERCISE_MEDIA_BUCKET: 'exercise-media-private' });
   assert.equal(hosted.enabled, false);
   assert.equal(hosted.hostedAdapter, 'requires_separate_activation');
@@ -42,4 +42,21 @@ test('runtime wiring: photos uses the in-process image processor, full keeps FFm
   assert.ok(full.processor instanceof FfmpegMediaProcessor);
   assert.deepEqual([full.service.capabilities().mode, full.service.capabilities().upload_transport], ['full', 'multipart']);
   assert.equal(buildRuntime(mediaConfig({}), { db }), null);
+});
+
+const hostedPhotoEnv = { EXERCISE_MEDIA_STORE: 'supabase', EXERCISE_MEDIA_HOSTED_PHOTOS: 'enabled', EXERCISE_MEDIA_BUCKET: 'exercise-media', EXERCISE_MEDIA_LINK_SECRET: 'synthetic-test-only-capability-0123456789', VERCEL: '1', NODE_ENV: 'production' };
+test('explicit hosted photos wire the private adapter with a stable supplied secret, never full video', () => {
+  const config = mediaConfig(hostedPhotoEnv);
+  assert.equal(config.enabled, true);
+  assert.equal(config.store, 'supabase');
+  assert.equal(config.root, null);
+  assert.equal(config.maxContentBytes, 1024 * 1024);
+  const db = { storage: { from() { throw new Error('wiring must not perform I/O'); } } };
+  const runtime = buildRuntime(config, { db });
+  assert.equal(runtime.store.constructor.name, 'SupabaseImageStore');
+  assert.equal(runtime.processor.constructor.name, 'ImageOnlyProcessor');
+  assert.equal(runtime.service.capabilities().video_sources, false);
+  for (const patch of [ { EXERCISE_MEDIA_HOSTED_PHOTOS: '' }, { EXERCISE_MEDIA_LINK_SECRET: '' }, { EXERCISE_MEDIA_BUCKET: '' }, { EXERCISE_MEDIA_BUCKET: 'resource-library' }, { EXERCISE_MEDIA_BUCKET: '../media' }, { EXERCISE_MEDIA_MODE: 'full' }, { EXERCISE_MEDIA_MODE: 'bogus' } ]) {
+    assert.equal(mediaConfig({ ...hostedPhotoEnv, ...patch }).enabled, false, JSON.stringify(Object.keys(patch)));
+  }
 });

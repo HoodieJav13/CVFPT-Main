@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { readSourceImage } from '@/lib/exerciseMediaSource';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { isPreviewMode } from '@/lib/previewFlag';
@@ -34,7 +35,7 @@ export function resolveMediaUrl(link) {
 // Fetches links for the given assets in one batch, only when enabled.
 export function useMediaLinks(context, assetIds, enabled = true) {
   const actor = useActor();
-  const key = `${context?.type}:${context?.id || context?.exercise_id}:${assetIds.filter(Boolean).join(',')}`;
+  const key = `${actor}:${context?.type}:${context?.id || context?.exercise_id}:${assetIds.filter(Boolean).join(',')}`;
   const [state, setState] = useState({ status: 'idle', urls: new Map(), missing: [], key: null });
   const [attempt, setAttempt] = useState(0);
   const ids = useRef(assetIds);
@@ -55,7 +56,9 @@ export function useMediaLinks(context, assetIds, enabled = true) {
       retried.current = false;
       setState({ status: 'loading', urls: new Map(), missing: [], key });
     } else {
-      setState((current) => ({ ...current, status: current.key === key && current.urls.size ? 'ready' : 'loading', key }));
+      setState((current) => (current.key === key
+        ? { ...current, status: current.urls.size ? 'ready' : 'loading', key }
+        : { status: 'loading', urls: new Map(), missing: [], key }));
     }
     cache.get({ actor, context: contextRef.current, assetIds: wanted })
       .then((links) => {
@@ -90,4 +93,30 @@ export function claimPlayback(element) {
 }
 export function releasePlayback(element) {
   if (activePlayer === element) activePlayer = null;
+}
+
+
+// Editor-only source bytes live for this mount/actor. Release blobs on revision,
+// actor or link change and abort any remaining ranges when the editor closes.
+export function useSourceImage(url) {
+  const actor = useActor();
+  const [state, setState] = useState({ url: null, actor: null, src: null, status: 'idle' });
+  useEffect(() => {
+    if (!url) { setState({ url, actor, src: null, status: 'idle' }); return undefined; }
+    // Preview fixtures are synthetic in-page blobs; they have no API transport.
+    if (isPreviewMode && url.startsWith('blob:')) {
+      setState({ url, actor, src: url, status: 'ready' }); return undefined;
+    }
+    const controller = new AbortController(); let objectUrl = null;
+    setState({ url, actor, src: null, status: 'loading' });
+    readSourceImage(url, { signal: controller.signal }).then((blob) => {
+      if (controller.signal.aborted) return;
+      objectUrl = URL.createObjectURL(blob);
+      setState({ url, actor, src: objectUrl, status: 'ready' });
+    }).catch(() => {
+      if (!controller.signal.aborted) setState({ url, actor, src: null, status: 'error' });
+    });
+    return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [url, actor]);
+  return state.url === url && state.actor === actor ? state : { src: null, status: 'loading' };
 }

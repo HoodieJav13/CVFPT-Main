@@ -12,7 +12,10 @@ function buildRuntime(config, { db, processorAvailable: available = null } = {})
   const { createExerciseMediaService } = require('./service');
   const { LocalMediaStore } = require('../../services/exerciseMedia/localStore');
   const { createCapabilitySigner } = require('../../services/exerciseMedia/capabilities');
-  const store = new LocalMediaStore({ root: config.root, grantSecret: config.linkSecret });
+  const { SupabaseImageStore, supabaseObjectClient } = require('../../services/exerciseMedia/supabaseImageStore');
+  const store = config.store === 'supabase'
+    ? new SupabaseImageStore({ client: supabaseObjectClient(db, config.bucket) })
+    : new LocalMediaStore({ root: config.root, grantSecret: config.linkSecret });
   let processor;
   let processorAvailable;
   if (config.mode === 'photos') {
@@ -26,7 +29,7 @@ function buildRuntime(config, { db, processorAvailable: available = null } = {})
   }
   const repo = createRepository(db);
   const service = createExerciseMediaService({
-    repo, store, processor, signer: createCapabilitySigner({ secret: config.linkSecret }), processorAvailable, mode: config.mode,
+    repo, store, processor, signer: createCapabilitySigner({ secret: config.linkSecret }), processorAvailable, mode: config.mode, maxContentBytes: config.maxContentBytes,
   });
   return { service, store, repo, processor, mode: config.mode };
 }

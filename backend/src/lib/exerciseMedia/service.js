@@ -12,9 +12,11 @@ const { mediaMap, coachRevisionDto, libraryStatusDto } = require('./serializatio
 const { parseContext, resolveContext, allowedAssets } = require('./authorization');
 const { runPhotoJob, needsVideo } = require('../../services/exerciseMedia/photoJob');
 
-// Inline photo processing lease: comfortably above the processor's 15 s total
-// deadline plus source read and derivative write.
-const INLINE_LEASE_SECONDS = 30;
+// Hosted photo work can spend15s each on source metadata, source bytes,
+// decoder scheduling, derivative upload and completion RPC. Keep the lease
+// above that75s budget (and failure recording), so Resume cannot steal a
+// still-running request. A terminated request recovers after this bounded lease.
+const INLINE_LEASE_SECONDS = 120;
 const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex');
 
 class HttpError extends Error {
@@ -57,7 +59,7 @@ function sourceFacts(assets, revision) {
 // mode: 'photos' (default runtime: image-only processor, direct-upload grants,
 // inline leased processing, no video sources) or 'full' (the accepted owned
 // FFmpeg pipeline with a background worker, kept for future private needs).
-function createExerciseMediaService({ repo, store, processor, signer, processorAvailable = () => ({ ok: true }), mode = 'full', now = Date.now, inlineLabel = `inline-${process.pid}` }) {
+function createExerciseMediaService({ repo, store, processor, signer, processorAvailable = () => ({ ok: true }), mode = 'full', maxContentBytes = null, now = Date.now, inlineLabel = `inline-${process.pid}` }) {
   const photosOnly = mode === 'photos';
   async function revisionView(actor, revision) {
     const [assets, current, job, names] = await Promise.all([
@@ -210,6 +212,7 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
       if (!['source_image', 'source_video'].includes(role)) throw http(400, 'invalid_role');
       const revision = await ownedRevision(actor, id);
       if (photosOnly && role === 'source_video') throw http(409, 'video_sources_disabled');
+      if (typeof store.stageUpload !== 'function') throw http(409, 'upload_grant_required');
       if (revision.published_at) throw http(409, 'published_immutable');
       if (revision.status === 'processing') throw http(409, 'revision_processing');
       return revision;
@@ -383,6 +386,7 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
 
     async framePreview(actor, id, body = {}) {
       const revision = await ownedRevision(actor, id);
+      if (photosOnly) throw http(503, 'video_processing_unavailable');
       const time = body.time_ms;
       if (!Number.isInteger(time) || time < 0) throw http(422, 'invalid_time');
       const video = (await repo.assetsFor([revision.id])).find((a) => a.role === 'source_video');
@@ -437,7 +441,7 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
       for (const assetId of [...new Set(ids)]) {
         const entry = allowed.get(assetId);
         if (!entry) { missing.push(assetId); continue; }
-        const ttlSeconds = entry.asset.role === 'instruction' || entry.asset.role === 'source_video' ? LIMITS.links.instructionTtlSeconds : LIMITS.links.ttlSeconds;
+        const ttlSeconds = ['instruction', 'source_video', 'source_image'].includes(entry.asset.role) ? LIMITS.links.instructionTtlSeconds : LIMITS.links.ttlSeconds;
         const issued = signer.issue({ assetId, revisionId: entry.revisionId, principal: principalOf(user), context, ttlSeconds });
         links.push({ asset_id: assetId, url: `/api/exercise-media/content/${issued.token}`, expires_at: issued.expiresAt });
       }
@@ -465,7 +469,7 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
     },
 
     // Re-authorizes EVERY byte request against current access and version.
-    async openContent(token, rangeHeader) {
+    async openContent(token, rangeHeader, { head = false } = {}) {
       const verified = signer.verify(token);
       if (!verified.ok) throw verified.reason === 'expired' ? http(403, 'link_expired') : http(404, 'not_found');
       const { payload } = verified;
@@ -488,10 +492,12 @@ function createExerciseMediaService({ repo, store, processor, signer, processorA
       const { size } = await store.stat(asset.storage_key);
       const range = parseRange(rangeHeader, size);
       if (range === 'unsatisfiable') return { status: 416, size };
-      const opened = await store.open({ key: asset.storage_key, range: range || null });
+      const responseBytes = range ? range.end - range.start + 1 : size;
+      if (!head && maxContentBytes && responseBytes > maxContentBytes) throw http(413, 'bounded_range_required');
+      const opened = head ? null : await store.open({ key: asset.storage_key, range: range || null });
       const remaining = Math.max(0, Math.min(LIMITS.links.ttlSeconds, payload.e - Math.floor(now() / 1000)));
       return {
-        status: range ? 206 : 200, stream: opened.stream, size, range,
+        status: range ? 206 : 200, stream: opened?.stream || null, size, range,
         contentType: asset.mime_type === 'text/vtt' ? 'text/vtt; charset=utf-8' : asset.mime_type,
         ext: path.extname(asset.storage_key).slice(1), maxAge: remaining,
       };

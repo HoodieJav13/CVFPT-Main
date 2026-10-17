@@ -26,9 +26,9 @@ function draftRevision(extra = {}) {
   };
 }
 
-async function setup(page) {
-  const calls = { uploads: [], puts: [], finalize: [], bodies: [] };
-  let revision = draftRevision();
+async function setup(page, { sourceBytes = PNG, initialSource = false, failReadOnce = false } = {}) {
+  const calls = { uploads: [], puts: [], finalize: [], bodies: [], sourceReads: [], linkIssues: 0, authActor: 'coach-a', blockLinks: false, releaseLinks: null };
+  let revision = draftRevision(initialSource ? { recipe: { ...draftRevision().recipe, poster_mode: 'uploaded_image', poster_crop: { x: 0, y: 0, width: 1, height: 1 } }, sources: { image: { asset_id: 'source-1', width: 1280, height: 720, bytes: sourceBytes.length, mime_type: 'image/png', display_name: 'synthetic-geometry.png' }, video: null } } : {});
   await page.addInitScript(() => {
     localStorage.setItem('cvf_access_token', 'synthetic-coach-token');
     window.__revoked = 0; window.__created = 0;
@@ -41,7 +41,7 @@ async function setup(page) {
     const request = route.request();
     const p = new URL(request.url()).pathname.replace(/^\/api/, '');
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
-    if (p === '/auth/me') return json({ role: 'coach', email: 'coach@example.invalid', profile: { id: 'coach-a', name: 'Synthetic Coach', is_admin: false } });
+    if (p === '/auth/me') return json({ role: 'coach', email: 'coach@example.invalid', profile: { id: calls.authActor, name: 'Synthetic Coach', is_admin: false } });
     if (p === '/telemetry/events') return route.fulfill({ status: 204 });
     if (p.endsWith('/unread-count')) return json({ unread: 0 });
     if (p === '/programs/exercise-library') return json([{ id: 'lib-goblet', name: 'Synthetic Goblet Squat', category: 'Synthetic', equipment: 'Kettlebell', primary_muscle: 'Synthetic', video_url: null, hidden: false, archived: false }]);
@@ -65,9 +65,18 @@ async function setup(page) {
     }
     if (p === '/exercise-media/links') {
       const body = request.postDataJSON();
-      return json({ links: body.assets.map(({ asset_id: id }) => ({ asset_id: id, url: `/api/exercise-media/content/${id}.sig`, expires_at: new Date(Date.now() + 300_000).toISOString() })), missing: [] });
+      calls.linkIssues += 1;
+      if (calls.blockLinks) await new Promise((resolve) => { calls.releaseLinks = resolve; });
+      return json({ links: body.assets.map(({ asset_id: id }) => ({ asset_id: id, url: `/api/exercise-media/content/${id}.${calls.authActor}sig${calls.linkIssues}`, expires_at: new Date(Date.now() + 300_000).toISOString() })), missing: [] });
     }
-    if (p.startsWith('/exercise-media/content/')) return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+    if (p.startsWith('/exercise-media/content/')) {
+      calls.sourceReads.push({ method: request.method(), range: request.headers().range });
+      if (request.method() === 'HEAD') return route.fulfill({ status: 200, headers: { 'content-type': 'image/png', 'content-length': String(sourceBytes.length) } });
+      if (failReadOnce) { failReadOnce = false; return route.fulfill({ status: 404 }); }
+      const range = /^bytes=(\d+)-(\d+)$/.exec(request.headers().range || '');
+      if (range) return route.fulfill({ status: 206, headers: { 'content-type': 'image/png', 'content-range': `bytes ${range[1]}-${range[2]}/${sourceBytes.length}` }, body: sourceBytes.subarray(Number(range[1]), Number(range[2]) + 1) });
+      return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+    }
     return json({ error: `unexpected ${request.method()} ${p}` }, 404);
   });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -207,4 +216,68 @@ test('a frame that finishes after the editor closed is dropped, and no blob URL 
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 150)));
   const [created, revoked] = await page.evaluate(() => [window.__created, window.__revoked]);
   expect(revoked, `blob URLs created ${created}, revoked ${revoked}`).toBe(created);
+});
+
+
+for (const width of [320, 390]) {
+  test(`crop editor loads an exact 10 MiB source through bounded ranges at ${width}px and releases it on close`, async ({ page }) => {
+    const sourceBytes = Buffer.concat([PNG, Buffer.alloc(10 * 1024 * 1024 - PNG.length)]);
+    const { editor, calls } = await setup(page, { sourceBytes, initialSource: true });
+    await page.setViewportSize({ width, height: 844 });
+    const image = editor.getByTestId('poster-crop').locator('img');
+    await expect(image).toBeVisible();
+    await expect.poll(() => image.evaluate((el) => el.complete && el.naturalWidth > 0)).toBe(true);
+    expect(await image.getAttribute('src')).toMatch(/^blob:/);
+    expect(calls.sourceReads.map((call) => call.method)).toEqual(['HEAD', ...Array(10).fill('GET')]);
+    const rangeLengths = calls.sourceReads.slice(1).map((call) => { const [, a, b] = /bytes=(\d+)-(\d+)/.exec(call.range); return Number(b) - Number(a) + 1; });
+    expect(rangeLengths.every((length) => length === 1024 * 1024)).toBe(true);
+    await expect(editor.getByRole('button', { name: 'Move crop right', exact: true })).toBeEnabled();
+    expect(await editor.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    const revokedBefore = await page.evaluate(() => window.__revoked);
+    await page.keyboard.press('Escape');
+    await expect(editor).not.toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__revoked)).toBeGreaterThan(revokedBefore);
+  });
+}
+
+test('source authorization failure has a bounded manual retry and never displays a partial crop image', async ({ page }) => {
+  const { editor, calls } = await setup(page, { initialSource: true, failReadOnce: true });
+  await expect(editor.getByRole('button', { name: 'Retry source photo' })).toBeVisible();
+  await expect(editor.getByTestId('poster-crop').locator('img')).toHaveCount(0);
+  await expect(editor.getByRole('button', { name: 'Move crop right', exact: true })).toBeDisabled();
+  expect(calls.sourceReads).toHaveLength(2);
+  await editor.getByRole('button', { name: 'Retry source photo' }).click();
+  const image = editor.getByTestId('poster-crop').locator('img');
+  await expect(image).toBeVisible();
+  await expect.poll(() => image.evaluate((el) => el.complete && el.naturalWidth > 0)).toBe(true);
+  expect(calls.sourceReads).toHaveLength(4);
+});
+
+
+test('actor switch hides previous capability before replacement links resolve', async ({ page }) => {
+  const { calls } = await setup(page);
+  await page.keyboard.press('Escape');
+  // REAL auth provider and link hook, with an in-place session reload so a full
+  // navigation cannot conceal a stale module-cache capability.
+  await page.evaluate(async () => {
+    const React = (await import('/node_modules/.vite/deps/react.js')).default;
+    const { createRoot } = (await import('/node_modules/.vite/deps/react-dom_client.js')).default;
+    const { AuthProvider, useAuth } = await import('/src/context/AuthContext.jsx');
+    const { useMediaLinks } = await import('/src/components/training/media/mediaLinks.js');
+    function Probe() {
+      const auth = useAuth(); const links = useMediaLinks({ type: 'revision', id: 'rev-draft' }, ['source-1']);
+      window.__reloadMediaActor = auth.reload;
+      return React.createElement('output', { 'data-testid': 'actor-link-probe', 'data-actor': auth.user?.profile?.id || '' }, [...links.urls.values()].join(','));
+    }
+    const node = document.createElement('section'); document.body.append(node);
+    createRoot(node).render(React.createElement(AuthProvider, null, React.createElement(Probe)));
+  });
+  const probe = page.getByTestId('actor-link-probe');
+  await expect(probe).toContainText('coach-asig');
+  calls.authActor = 'coach-b'; calls.blockLinks = true;
+  await page.evaluate(() => { window.__reloadMediaActor(); });
+  await expect(probe).toHaveAttribute('data-actor', 'coach-b');
+  try { await expect(probe).toHaveText(''); }
+  finally { calls.blockLinks = false; calls.releaseLinks?.(); }
+  await expect(probe).toContainText('coach-bsig');
 });
