@@ -217,6 +217,7 @@ export default function PreviewToolbar() {
             >
               <option value="off">Failures: off</option>
               <option value="write-once">Fail next save</option>
+              <option value="quick-400-once">Reject next Quick save (400)</option>
               <option value="reads">Fail loads</option>
             </select>
             <button
