@@ -91,6 +91,24 @@ function keepUnsavedText(before, current, next) {
   for (const key of TEXT_FIELDS) if (JSON.stringify(current[key]) !== JSON.stringify(saved[key])) kept[key] = current[key];
   return kept;
 }
+// Error recovery rebases the form being edited onto that draft's fresh server
+// copy. A field the coach has not touched takes the server's value, so a newer
+// version never carries stale untouched fields; a field edited here is kept.
+// A field edited here AND changed elsewhere is a conflict: the caller keeps the
+// original base (and expected version) until the coach deliberately reloads.
+function rebaseEdit({ base, form }, fresh) {
+  const before = editableForm(base);
+  const latest = editableForm(fresh);
+  const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const rebased = { ...latest };
+  const conflicts = [];
+  for (const key of EDITABLE) {
+    if (same(form[key], before[key])) continue;
+    if (!same(latest[key], before[key]) && !same(latest[key], form[key])) conflicts.push(key);
+    rebased[key] = form[key];
+  }
+  return { edit: { base: fresh, form: rebased }, conflicts };
+}
 function normalized(form) {
   return {
     ...form,
@@ -279,7 +297,16 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
-  const [form, setForm] = useState(null);
+  // The form and the exact draft snapshot it was built from (id, version and
+  // fields) always change together, so a save targets, versions and diffs
+  // against the draft actually being edited.
+  const [edit, setEdit] = useState(null);
+  const form = edit?.form ?? null;
+  const formBase = edit?.base ?? null;
+  const editRef = useRef(edit);
+  editRef.current = edit;
+  // A field edited here that also changed elsewhere: { id, latest }.
+  const [conflict, setConflict] = useState(null);
   const [busy, setBusy] = useState(null);
   const [problem, setProblem] = useState(null);
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
@@ -304,9 +331,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
     return () => { live.current = false; frameUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)); };
   }, []);
 
-  // keepForm: refresh the drafts but leave the form alone when the selection
-  // is unchanged (another draft's failure must not discard edits on this one).
-  const load = useCallback(async (selectId, { keepForm = false } = {}) => {
+  const load = useCallback(async (selectId) => {
     const mine = ++seq.current;
     try {
       const { data: next } = await api.get(`/exercise-media/exercises/${exercise.id}/revisions`);
@@ -314,11 +339,39 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
       setData(next); setLoadError(null);
       const pick = next.drafts.find((d) => d.id === selectId) || next.drafts[0] || null;
       setSelectedId(pick?.id || null);
-      if (!(keepForm && pick?.id === selectId)) setForm(pick ? editableForm(pick) : null);
+      setEdit(pick ? { base: pick, form: editableForm(pick) } : null);
+      setConflict(null);
     } catch (error) {
       if (live.current && mine === seq.current) setLoadError(errMsg(error, 'Could not load exercise media.'));
     }
   }, [exercise.id]);
+  // After a stale/404 failure: refresh the drafts without changing what the
+  // coach is editing. Whichever draft is being edited when the reply lands
+  // (even after further draft switches) is rebased onto its own fresh copy.
+  const recover = async () => {
+    const mine = ++seq.current;
+    try {
+      const { data: next } = await api.get(`/exercise-media/exercises/${exercise.id}/revisions`);
+      if (!live.current || mine !== seq.current) return;
+      setData(next); setLoadError(null);
+      const current = editRef.current;
+      const fresh = current && next.drafts.find((d) => d.id === current.base.id);
+      if (!fresh) {
+        // The draft being edited is gone: select and load another, together.
+        const pick = next.drafts[0] || null;
+        setSelectedId(pick?.id || null);
+        setEdit(pick ? { base: pick, form: editableForm(pick) } : null);
+        setConflict(null);
+        return;
+      }
+      const result = rebaseEdit(current, fresh);
+      if (result.conflicts.length) { setConflict({ id: fresh.id, latest: fresh }); return; }
+      setEdit(result.edit);
+      setConflict(null);
+    } catch (error) {
+      if (live.current && mine === seq.current) setLoadError(errMsg(error, 'Could not load exercise media.'));
+    }
+  };
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     let alive = true;
@@ -332,10 +385,12 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   // A reply for a draft the coach has since switched away from updates only
   // that draft, never the form now showing another one.
   const replaceDraft = (next, { keepText = false } = {}) => {
-    const before = data?.drafts.find((d) => d.id === next.id);
     setData((current) => current && { ...current, drafts: current.drafts.map((d) => (d.id === next.id ? next : d)) });
-    if (next.id !== selectedRef.current) return;
-    setForm((current) => (keepText && current && before ? keepUnsavedText(before, current, editableForm(next)) : editableForm(next)));
+    setEdit((current) => {
+      if (!current || current.base.id !== next.id) return current;
+      return { base: next, form: keepText ? keepUnsavedText(current.base, current.form, editableForm(next)) : editableForm(next) };
+    });
+    setConflict((current) => (current?.id === next.id ? null : current));
   };
 
   // Bounded status polling while processing (<= 5 minutes, stops on close).
@@ -378,12 +433,10 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
 
   const act = async (name, fn) => {
     setBusy(name); setProblem(null);
-    const startedOn = selectedRef.current;
     try { await fn(); } catch (error) {
       const code = error?.response?.data?.code;
       setProblem(explain(error, 'That did not work. Nothing was published.'));
-      // Reload around the draft selected now, not the one the action started on.
-      if (code === 'stale' || error?.response?.status === 404) await load(selectedRef.current, { keepForm: selectedRef.current !== startedOn });
+      if (code === 'stale' || error?.response?.status === 404) await recover();
     } finally { if (live.current) setBusy(null); }
   };
 
@@ -417,9 +470,12 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   };
 
   const save = () => act('save', async () => {
-    const patch = patchFor(draft, form);
+    // Target, version and diff all come from the snapshot this form was built from.
+    const base = formBase;
+    if (!base || base.id !== selectedId) return;
+    const patch = patchFor(base, form);
     if (!Object.keys(patch).length) return;
-    const { data: next } = await api.patch(`/exercise-media/revisions/${draft.id}/recipe`, { expected_version: draft.version, ...patch });
+    const { data: next } = await api.patch(`/exercise-media/revisions/${base.id}/recipe`, { expected_version: base.version, ...patch });
     replaceDraft(next);
     toast.success('Draft saved');
   });
@@ -463,8 +519,8 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   const identity = [exercise.name, exercise.equipment, exercise.category].filter(Boolean).join(' · ');
   const current = data.current;
   const editable = Boolean(draft?.permissions.can_edit);
-  const set = (patch) => setForm((value) => ({ ...value, ...patch }));
-  const dirty = draft && form ? Object.keys(patchFor(draft, form)).length > 0 : false;
+  const set = (patch) => setEdit((value) => value && { ...value, form: { ...value.form, ...patch } });
+  const dirty = formBase && form ? Object.keys(patchFor(formBase, form)).length > 0 : false;
   const video = draft?.sources?.video;
   const image = draft?.sources?.image;
   const imageUrl = sourcePhoto.src;
@@ -511,7 +567,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
         {data.drafts.length === 0 && <p className="text-sm text-muted-foreground">No drafts. Start one to upload an image or a video.</p>}
         <div className="flex flex-wrap gap-2" role="list">
           {data.drafts.map((d) => (
-            <button key={d.id} type="button" role="listitem" onClick={() => { setSelectedId(d.id); setForm(editableForm(d)); setProblem(null); setReplacing({ source_image: false, source_video: false }); }}
+            <button key={d.id} type="button" role="listitem" onClick={() => { setSelectedId(d.id); setEdit({ base: d, form: editableForm(d) }); setConflict(null); setProblem(null); setReplacing({ source_image: false, source_video: false }); }}
               className={`min-h-11 rounded-lg border px-3 py-1 text-left text-sm ${d.id === selectedId ? 'border-primary bg-primary/10' : 'border-border'}`} aria-pressed={d.id === selectedId} data-testid="media-draft-chip">
               <StatusBadge draft={d} /> <span className="ml-1 text-xs text-muted-foreground">{new Date(d.created_at).toLocaleString()}</span>
             </button>
@@ -520,6 +576,12 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
       </section>
 
       {problem && <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-sm" role="alert" data-testid="media-problem"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{problem}</p>}
+      {conflict && conflict.id === selectedId && (
+        <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-sm" role="alert" data-testid="media-conflict">
+          <p className="flex items-start gap-2"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />This draft was also changed elsewhere, in a field you edited here. Your edits are kept, but saving them will be refused until you load the latest version.</p>
+          <Button type="button" size="touch" variant="outline" disabled={Boolean(busy)} onClick={() => { setEdit({ base: conflict.latest, form: editableForm(conflict.latest) }); setConflict(null); setProblem(null); }} data-testid="media-conflict-load-latest">Load latest version</Button>
+        </div>
+      )}
 
       {draft && form && (
         <section className="space-y-4 rounded-lg border border-border/70 p-3" aria-label="Draft editor" data-testid="media-draft-editor" data-status={draft.status}>

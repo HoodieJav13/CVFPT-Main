@@ -31,8 +31,8 @@ function revision(id, extra = {}) {
 }
 const withAlt = (id, alt) => revision(id, { text: { ...revision(id).text, alt_text: alt } });
 
-async function setup(page, drafts) {
-  const calls = { patches: [], holdPatch: null, stalePatch: false, uploads: [], unexpected: [] };
+async function setup(page, drafts, { viewport = { width: 390, height: 844 } } = {}) {
+  const calls = { patches: [], holdPatch: null, stalePatch: false, revisionReads: 0, holdReload: null, uploads: [], unexpected: [] };
   const state = { drafts };
   await page.addInitScript(() => localStorage.setItem('cvf_access_token', 'synthetic-coach-token'));
   await page.route('**/api/**', async (route) => {
@@ -46,7 +46,11 @@ async function setup(page, drafts) {
     if (p === '/programs/workouts' || p === '/programs' || p === '/clients') return json([]);
     if (p === '/exercise-media/library-status') return json({ enabled: true, items: [], summary: null });
     if (p === '/exercise-media/capabilities') return json({ enabled: true, mode: 'photos', video_sources: false, upload_transport: 'grant', processing: 'inline', local_still_selection: false, processing_available: true, limits: {} });
-    if (p === '/exercise-media/exercises/lib-goblet/revisions') return json({ exercise: { id: 'lib-goblet', name: 'Synthetic Goblet Squat', equipment: 'Kettlebell', category: 'Synthetic', primary_muscle: 'Synthetic', hidden: false }, current: null, current_version: 0, drafts: state.drafts, next_before: null });
+    if (p === '/exercise-media/exercises/lib-goblet/revisions') {
+      calls.revisionReads += 1;
+      if (calls.revisionReads > 1 && calls.holdReload) await calls.holdReload;
+      return json({ exercise: { id: 'lib-goblet', name: 'Synthetic Goblet Squat', equipment: 'Kettlebell', category: 'Synthetic', primary_muscle: 'Synthetic', hidden: false }, current: null, current_version: 0, drafts: state.drafts, next_before: null });
+    }
     const patch = p.match(/^\/exercise-media\/revisions\/([^/]+)\/recipe$/);
     if (patch && request.method() === 'PATCH') {
       const body = request.postDataJSON();
@@ -54,6 +58,8 @@ async function setup(page, drafts) {
       if (calls.holdPatch) await calls.holdPatch;
       if (calls.stalePatch) return json({ error: 'This draft changed. Reload to continue.', code: 'stale' }, 409);
       const before = state.drafts.find((d) => d.id === patch[1]);
+      // Optimistic concurrency, as the server enforces it.
+      if (body.expected_version !== before.version) return json({ error: 'This draft changed. Reload to continue.', code: 'stale' }, 409);
       const next = { ...before, version: before.version + 1, text: { ...before.text, ...(body.alt_text !== undefined ? { alt_text: body.alt_text } : {}), ...(body.cues ? { cues: body.cues } : {}) } };
       state.drafts = state.drafts.map((d) => (d.id === next.id ? next : d));
       return json(next);
@@ -78,12 +84,12 @@ async function setup(page, drafts) {
     calls.unexpected.push(`${request.method()} ${p}`);
     return json({ error: `unexpected ${request.method()} ${p}` }, 404);
   });
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize(viewport);
   await page.goto('/coach/programs');
   await page.getByTestId('exercise-library-media-button').first().click();
   const editor = page.getByTestId('exercise-media-editor');
   await expect(editor.getByTestId('media-draft-editor')).toBeVisible();
-  return { calls, editor };
+  return { calls, editor, state };
 }
 
 test('a save reply for one draft never lands in the form of the draft selected meanwhile', async ({ page }) => {
@@ -143,3 +149,113 @@ test('a stale reply for one draft does not pull the coach back from the draft se
   await expect(editor.getByTestId('media-alt-text')).toHaveValue('Synthetic alt B edited');
   expect(calls.unexpected).toEqual([]);
 });
+
+// R1/R2 (independent review of 5600029): error recovery must never pair one
+// draft's identity with another draft's form, and must never advance the
+// expected version while carrying stale untouched fields. Exact PATCH target,
+// version and fields are asserted at phone and desktop widths.
+const holds = () => { let release; const promise = new Promise((resolve) => { release = resolve; }); return { promise, release }; };
+async function holdStaleSaveOnA(editor, calls, text) {
+  const patch = holds();
+  calls.holdPatch = patch.promise;
+  calls.stalePatch = true;
+  await editor.getByTestId('media-draft-chip').nth(0).click();
+  await editor.getByTestId('media-alt-text').fill(text);
+  await editor.getByTestId('media-save').click();
+  await expect.poll(() => calls.patches.length).toBe(1);
+  return patch;
+}
+const pressed = async (chips) => ((await chips.nth(0).getAttribute('aria-pressed')) === 'true' ? 'rev-a' : 'rev-b');
+
+for (const [label, viewport] of [['phone', { width: 390, height: 844 }], ['desktop', { width: 1280, height: 800 }]]) {
+  test(`R1 ${label}: a second draft switch during the recovery reload keeps the current draft, its edits and its save target`, async ({ page }) => {
+    const { calls, editor, state } = await setup(page, [withAlt('rev-a', 'Synthetic alt A'), withAlt('rev-b', 'Synthetic alt B')], { viewport });
+    const chips = editor.getByTestId('media-draft-chip');
+    const reload = holds();
+    calls.holdReload = reload.promise;
+    const patch = await holdStaleSaveOnA(editor, calls, 'Synthetic A first save');
+    await chips.nth(1).click();
+    await editor.getByTestId('media-alt-text').fill('Synthetic B unsaved');
+    patch.release();
+    await expect.poll(() => calls.revisionReads).toBe(2);
+    // The recovery reload is still in flight: switch back to A and edit again.
+    await chips.nth(0).click();
+    await editor.getByTestId('media-alt-text').fill('Synthetic A second edit');
+    reload.release();
+    // Recovery finished (busy cleared; the edited form keeps Save enabled).
+    await expect(editor.getByTestId('media-save')).toBeEnabled();
+    await page.waitForTimeout(300);
+    expect(await pressed(chips)).toBe('rev-a');
+    await expect(editor.getByTestId('media-alt-text')).toHaveValue('Synthetic A second edit');
+    calls.stalePatch = false;
+    calls.holdPatch = null;
+    await editor.getByTestId('media-save').click();
+    await expect.poll(() => calls.patches.length).toBe(2);
+    expect(calls.patches).toEqual([
+      { id: 'rev-a', body: { expected_version: 1, alt_text: 'Synthetic A first save' } },
+      { id: 'rev-a', body: { expected_version: 1, alt_text: 'Synthetic A second edit' } },
+    ]);
+    expect(state.drafts.map((d) => [d.id, d.version, d.text.alt_text])).toEqual([['rev-a', 2, 'Synthetic A second edit'], ['rev-b', 1, 'Synthetic alt B']]);
+    expect(calls.unexpected).toEqual([]);
+  });
+
+  test(`R2 ${label}: a recovery reload takes untouched fields from the newer version and saves only the cue edited here`, async ({ page }) => {
+    const { calls, editor, state } = await setup(page, [withAlt('rev-a', 'Synthetic alt A'), withAlt('rev-b', 'Synthetic B original alt')], { viewport });
+    const chips = editor.getByTestId('media-draft-chip');
+    const reload = holds();
+    calls.holdReload = reload.promise;
+    const patch = await holdStaleSaveOnA(editor, calls, 'Synthetic A first save');
+    await chips.nth(1).click();
+    await editor.getByTestId('media-cue-0').fill('Synthetic B new unsaved cue');
+    // Another tab saves B's alt text (never edited here) while A's request waits.
+    state.drafts = state.drafts.map((d) => (d.id === 'rev-b' ? { ...d, version: 2, text: { ...d.text, alt_text: 'Synthetic B newer server alt' } } : d));
+    patch.release();
+    await expect.poll(() => calls.revisionReads).toBe(2);
+    // Same identity throughout the reload.
+    expect(await pressed(chips)).toBe('rev-b');
+    reload.release();
+    await expect(editor.getByTestId('media-alt-text')).toHaveValue('Synthetic B newer server alt');
+    await expect(editor.getByTestId('media-cue-0')).toHaveValue('Synthetic B new unsaved cue');
+    await expect(editor.getByTestId('media-conflict')).toHaveCount(0);
+    expect(await pressed(chips)).toBe('rev-b');
+    calls.stalePatch = false;
+    calls.holdPatch = null;
+    await editor.getByTestId('media-save').click();
+    await expect.poll(() => calls.patches.length).toBe(2);
+    expect(calls.patches.at(-1)).toEqual({ id: 'rev-b', body: { expected_version: 2, cues: ['Synthetic B new unsaved cue'] } });
+    const saved = state.drafts.find((d) => d.id === 'rev-b');
+    expect([saved.version, saved.text.alt_text, saved.text.cues]).toEqual([3, 'Synthetic B newer server alt', ['Synthetic B new unsaved cue']]);
+    expect(calls.unexpected).toEqual([]);
+  });
+
+  test(`R2 ${label}: a field edited here and changed elsewhere keeps the old version until the coach loads the latest`, async ({ page }) => {
+    const { calls, editor, state } = await setup(page, [withAlt('rev-a', 'Synthetic alt A'), withAlt('rev-b', 'Synthetic B original alt')], { viewport });
+    const chips = editor.getByTestId('media-draft-chip');
+    const patch = await holdStaleSaveOnA(editor, calls, 'Synthetic A first save');
+    await chips.nth(1).click();
+    await editor.getByTestId('media-alt-text').fill('Synthetic B local alt');
+    state.drafts = state.drafts.map((d) => (d.id === 'rev-b' ? { ...d, version: 2, text: { ...d.text, alt_text: 'Synthetic B newer server alt' } } : d));
+    patch.release();
+    await expect(editor.getByTestId('media-conflict')).toBeVisible();
+    await expect(editor.getByTestId('media-alt-text')).toHaveValue('Synthetic B local alt');
+    expect(await pressed(chips)).toBe('rev-b');
+    // Saving still carries the original version, so the server refuses it.
+    calls.stalePatch = false;
+    calls.holdPatch = null;
+    await editor.getByTestId('media-save').click();
+    await expect.poll(() => calls.patches.length).toBe(2);
+    expect(calls.patches.at(-1)).toEqual({ id: 'rev-b', body: { expected_version: 1, alt_text: 'Synthetic B local alt' } });
+    await expect(editor.getByTestId('media-conflict')).toBeVisible();
+    expect(state.drafts.find((d) => d.id === 'rev-b').text.alt_text).toBe('Synthetic B newer server alt');
+    // Deliberate reconciliation: load the latest version.
+    await editor.getByTestId('media-conflict-load-latest').click();
+    await expect(editor.getByTestId('media-conflict')).toHaveCount(0);
+    await expect(editor.getByTestId('media-alt-text')).toHaveValue('Synthetic B newer server alt');
+    await expect(editor.getByTestId('media-save')).toBeDisabled();
+    await editor.getByTestId('media-alt-text').fill('Synthetic B reconciled alt');
+    await editor.getByTestId('media-save').click();
+    await expect.poll(() => calls.patches.length).toBe(3);
+    expect(calls.patches.at(-1)).toEqual({ id: 'rev-b', body: { expected_version: 2, alt_text: 'Synthetic B reconciled alt' } });
+    expect(calls.unexpected).toEqual([]);
+  });
+}
