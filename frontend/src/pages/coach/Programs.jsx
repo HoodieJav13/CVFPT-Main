@@ -968,6 +968,8 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
   const [errors, setErrors] = useState([]);
   const [openReviewDays, setOpenReviewDays] = useState([]);
   const [parsing, setParsing] = useState(false);
+  // Bumped on close: a parse reply for a discarded import must not repopulate it.
+  const parseSeq = useRef(0);
   const [saving, setSaving] = useState(false);
 
   const changes = useFormChanges({ pasteText, fileName: file?.name, draft }, open, open);
@@ -985,6 +987,8 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
     if (!value && !saved && !changes.confirmDiscard()) return;
     onOpenChange(value);
     if (!value) {
+      parseSeq.current += 1;
+      setParsing(false);
       setFile(null);
       setPasteText('');
       setPasteError('');
@@ -1019,6 +1023,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
 
   const parseFile = async () => {
     if (!file) return toast.error('Choose a file to import');
+    const seq = ++parseSeq.current;
     setParsing(true);
     setErrors([]);
     setOpenReviewDays([]);
@@ -1027,16 +1032,18 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
       form.append('file', file);
       const endpoint = sourceType === 'pdf' ? '/programs/import/parse-pdf' : '/programs/import/parse-csv';
       const { data } = await api.post(endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (seq !== parseSeq.current) return;
       setDraft(normalizeDraft(data.draft));
       setErrors(data.errors || []);
       toast.success(data.message || 'Import parsed. Review before saving.');
     } catch (e) {
+      if (seq !== parseSeq.current) return;
       const response = e.response?.data;
       if (response?.draft) setDraft(normalizeDraft(response.draft));
       setErrors(response?.errors || []);
       toast.error(errMsg(e, 'Could not parse import'));
     } finally {
-      setParsing(false);
+      if (seq === parseSeq.current) setParsing(false);
     }
   };
 
@@ -1057,6 +1064,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
       setPasteError(PASTE_NO_EXERCISES_MESSAGE);
       return;
     }
+    const seq = ++parseSeq.current;
     setParsing(true);
     setDraft(null);
     setErrors([]);
@@ -1064,8 +1072,10 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
     setPasteError('');
     try {
       const { data } = await api.post('/programs/import/parse-paste', { text: pasteText });
+      if (seq !== parseSeq.current) return;
       showPasteDraft(data);
     } catch (e) {
+      if (seq !== parseSeq.current) return;
       const response = e.response?.data;
       if (response?.draft) {
         showPasteDraft(response);
@@ -1074,7 +1084,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
         setPasteError(message);
       }
     } finally {
-      setParsing(false);
+      if (seq === parseSeq.current) setParsing(false);
     }
   };
 

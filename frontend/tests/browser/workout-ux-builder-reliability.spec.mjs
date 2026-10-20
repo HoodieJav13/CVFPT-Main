@@ -128,3 +128,20 @@ test('fractional loads and rests the server accepts are not silently blocked by 
   expect(Number(saved.body.exercises[0].default_load_value)).toBe(21.25);
 });
 
+test('a parse reply that lands after the import was discarded does not repopulate it', async ({ page }) => {
+  await setup(page, { delays: { '/programs/import/parse-paste': 1200 } });
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-programs').click();
+  await page.getByTestId('program-import-open-button').click();
+  await page.getByTestId('program-import-source-select').click();
+  await page.getByRole('option', { name: 'Paste program', exact: true }).click();
+  await page.getByTestId('program-import-paste-textarea').fill('Day 1\nSquat 3x5');
+  await page.getByTestId('program-import-paste-parse-button').click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('program-import-dialog')).toHaveCount(0);
+  await page.waitForTimeout(1600);
+  await page.getByTestId('program-import-open-button').click();
+  await expect(page.getByTestId('program-import-dialog')).toBeVisible();
+  await expect(page.getByTestId('program-import-review')).toHaveCount(0);
+  await expect(page.getByText('Text parsed. Review before saving.')).toHaveCount(0);
+});
