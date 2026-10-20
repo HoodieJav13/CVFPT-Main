@@ -32,7 +32,7 @@ function revision(id, extra = {}) {
 const withAlt = (id, alt) => revision(id, { text: { ...revision(id).text, alt_text: alt } });
 
 async function setup(page, drafts) {
-  const calls = { patches: [], holdPatch: null, uploads: [], unexpected: [] };
+  const calls = { patches: [], holdPatch: null, stalePatch: false, uploads: [], unexpected: [] };
   const state = { drafts };
   await page.addInitScript(() => localStorage.setItem('cvf_access_token', 'synthetic-coach-token'));
   await page.route('**/api/**', async (route) => {
@@ -52,6 +52,7 @@ async function setup(page, drafts) {
       const body = request.postDataJSON();
       calls.patches.push({ id: patch[1], body });
       if (calls.holdPatch) await calls.holdPatch;
+      if (calls.stalePatch) return json({ error: 'This draft changed. Reload to continue.', code: 'stale' }, 409);
       const before = state.drafts.find((d) => d.id === patch[1]);
       const next = { ...before, version: before.version + 1, text: { ...before.text, ...(body.alt_text !== undefined ? { alt_text: body.alt_text } : {}), ...(body.cues ? { cues: body.cues } : {}) } };
       state.drafts = state.drafts.map((d) => (d.id === next.id ? next : d));
@@ -120,5 +121,25 @@ test('alt text typed before a photo upload survives the upload finishing', async
   await editor.getByTestId('media-save').click();
   await expect.poll(() => calls.patches.at(-1)?.body.alt_text).toBe('Synthetic stance, kettlebell at chest');
   expect(calls.uploads).toHaveLength(1);
+  expect(calls.unexpected).toEqual([]);
+});
+
+test('a stale reply for one draft does not pull the coach back from the draft selected meanwhile', async ({ page }) => {
+  const { calls, editor } = await setup(page, [withAlt('rev-a', 'Synthetic alt A'), withAlt('rev-b', 'Synthetic alt B')]);
+  const chips = editor.getByTestId('media-draft-chip');
+  await chips.nth(0).click();
+  let release;
+  calls.holdPatch = new Promise((resolve) => { release = resolve; });
+  calls.stalePatch = true;
+  await editor.getByTestId('media-alt-text').fill('Synthetic alt A edited');
+  await editor.getByTestId('media-save').click();
+  await expect.poll(() => calls.patches.length).toBe(1);
+  await chips.nth(1).click();
+  await editor.getByTestId('media-alt-text').fill('Synthetic alt B edited');
+  release();
+  await expect(editor.getByTestId('media-problem')).toBeVisible();
+  await page.waitForTimeout(300);
+  await expect(chips.nth(1)).toHaveAttribute('aria-pressed', 'true');
+  await expect(editor.getByTestId('media-alt-text')).toHaveValue('Synthetic alt B edited');
   expect(calls.unexpected).toEqual([]);
 });

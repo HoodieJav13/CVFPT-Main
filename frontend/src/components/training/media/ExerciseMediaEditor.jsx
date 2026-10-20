@@ -304,7 +304,9 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
     return () => { live.current = false; frameUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)); };
   }, []);
 
-  const load = useCallback(async (selectId) => {
+  // keepForm: refresh the drafts but leave the form alone when the selection
+  // is unchanged (another draft's failure must not discard edits on this one).
+  const load = useCallback(async (selectId, { keepForm = false } = {}) => {
     const mine = ++seq.current;
     try {
       const { data: next } = await api.get(`/exercise-media/exercises/${exercise.id}/revisions`);
@@ -312,7 +314,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
       setData(next); setLoadError(null);
       const pick = next.drafts.find((d) => d.id === selectId) || next.drafts[0] || null;
       setSelectedId(pick?.id || null);
-      setForm(pick ? editableForm(pick) : null);
+      if (!(keepForm && pick?.id === selectId)) setForm(pick ? editableForm(pick) : null);
     } catch (error) {
       if (live.current && mine === seq.current) setLoadError(errMsg(error, 'Could not load exercise media.'));
     }
@@ -376,10 +378,12 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
 
   const act = async (name, fn) => {
     setBusy(name); setProblem(null);
+    const startedOn = selectedRef.current;
     try { await fn(); } catch (error) {
       const code = error?.response?.data?.code;
       setProblem(explain(error, 'That did not work. Nothing was published.'));
-      if (code === 'stale' || error?.response?.status === 404) await load(selectedId);
+      // Reload around the draft selected now, not the one the action started on.
+      if (code === 'stale' || error?.response?.status === 404) await load(selectedRef.current, { keepForm: selectedRef.current !== startedOn });
     } finally { if (live.current) setBusy(null); }
   };
 
