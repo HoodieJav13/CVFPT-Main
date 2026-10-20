@@ -151,6 +151,12 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
         } catch (error) {
           if (error.metricAcknowledgementMissing && !operation.attempts) toast.error(error.message);
           const status = error?.response?.status;
+          // An expired session (401, or the token refresh itself failing) says
+          // nothing about the write: keep the queue for replay after sign-in.
+          if (status === 401 || error?.config?.url?.includes('/auth/refresh')) {
+            setSaveState('not_saved');
+            return false;
+          }
           if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
             const remaining = queueRef.current.filter((queued) => queued.id !== operation.id);
             persist(remaining);
