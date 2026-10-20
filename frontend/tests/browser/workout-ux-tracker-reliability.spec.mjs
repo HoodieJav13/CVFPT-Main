@@ -64,3 +64,20 @@ test('an expired session keeps queued sets for replay after sign-in instead of d
   expect(state.received.filter((kind) => kind === 'set')).toHaveLength(1);
   expect(set).toMatchObject({ status: 'completed', actual_reps: 5 });
 });
+
+test('a Finish the server refuses keeps the client on the tracker with the reason, not a celebration', async ({ page }) => {
+  const { state, log } = await setupTracker(page, { rejectComplete: true });
+  await page.addInitScript(() => localStorage.setItem('cvf_access_token', 'synthetic-test-token'));
+  await page.goto('/client/workouts/log-r/track');
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await page.getByRole('button', { name: 'Complete set 1', exact: true }).click();
+  await page.getByRole('button', { name: 'Finish workout', exact: true }).click();
+  await page.getByRole('button', { name: /Confirm completion/i }).click();
+  await expect(page.getByText('Synthetic refusal: complete at least one set').first()).toBeVisible();
+  await expect(page).toHaveURL(/\/client\/workouts\/log-r\/track$/);
+  await expect(page.getByTestId('workout-tracker')).toBeVisible();
+  expect(state.received).toContain('complete-400');
+  expect(log.status).toBe('active');
+  expect(state.unexpected).toEqual([]);
+  expect(state.problems).toEqual([]);
+});

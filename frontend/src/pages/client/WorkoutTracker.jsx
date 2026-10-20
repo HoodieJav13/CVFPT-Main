@@ -228,7 +228,10 @@ export default function WorkoutTracker() {
   const mediaContext = useMemo(() => ({ type: 'workout_log', id }), [id]);
   const lastTimeCache = useRef({});
   const intensity = useVisualIntensity();
-  const outbox = useWorkoutOutbox(id, setLog);
+  // Set when the server refuses a queued Finish (the outbox has already reloaded
+  // the still-active log), so finish() keeps the client here with the reason.
+  const completeRejection = useRef(null);
+  const outbox = useWorkoutOutbox(id, setLog, { onCompleteRejected: (message) => { completeRejection.current = message; } });
   const hydratePending = outbox.hydrate;
   const restStorageKey = `cvf_rest_timer_${id}`;
 
@@ -459,6 +462,7 @@ export default function WorkoutTracker() {
 
   const finish = async () => {
     setFinishing(true);
+    completeRejection.current = null;
     try {
       // Queue the completion behind any pending set writes (FIFO). The
       // performance timestamp is captured at confirmation, not at sync
@@ -474,6 +478,11 @@ export default function WorkoutTracker() {
         },
       });
       const flushed = await outbox.flush();
+      if (completeRejection.current) {
+        setFinishOpen(false);
+        toast.error(completeRejection.current);
+        return;
+      }
       trackProductEvent('workout_completed', { source: isCoach ? 'coach_tracker' : 'client_tracker', offline: !flushed });
       localStorage.removeItem(restStorageKey);
       navigate(`${basePath}/workouts/${id}`, {
