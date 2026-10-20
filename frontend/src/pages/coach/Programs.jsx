@@ -1544,7 +1544,7 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
               <Input
                 className="h-11"
                 id={`${idPrefix}-${rowValue(exercise, index)}-rest`}
-                type="number" min="0" step="5" inputMode="numeric"
+                type="number" min="0" step="any" inputMode="numeric"
                 value={parseRestSeconds(exercise.rest) ?? ''}
                 onChange={(e) => setExercise(index, { rest: e.target.value === '' ? '' : `${Math.max(0, Number(e.target.value))}s` })}
                 placeholder="Rest (sec)"
@@ -1561,7 +1561,7 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
           </div>
           <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] items-end gap-2">
             <LabeledField label="Target RPE"><Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" /></LabeledField>
-            <LabeledField label="Default load"><Input type="number" min="0" step="0.5" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" /></LabeledField>
+            <LabeledField label="Default load"><Input type="number" min="0" step="any" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" /></LabeledField>
             <div className="space-y-1"><Label htmlFor={`${idPrefix}-${rowValue(exercise, index)}-load-unit`}>Unit</Label>
             <Select value={exercise.default_load_unit || 'lb'} onValueChange={(value) => setExercise(index, { default_load_unit: value })}>
               <SelectTrigger id={`${idPrefix}-${rowValue(exercise, index)}-load-unit`} className="h-11" aria-label="Default load unit"><SelectValue /></SelectTrigger>

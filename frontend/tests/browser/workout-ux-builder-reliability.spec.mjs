@@ -111,3 +111,20 @@ test('opening and closing an untouched workout whose custom name matches the cat
   expect(calls.prompts).toEqual([]);
 });
 
+test('fractional loads and rests the server accepts are not silently blocked by the browser', async ({ page }) => {
+  const calls = await setup(page);
+  const editor = await newWorkout(page);
+  await editor.getByTestId('workout-name-input').fill('Synthetic microplate day');
+  await editor.getByTestId('workout-exercise-name-input').fill('Synthetic press');
+  await editor.getByTestId('workout-exercise-sets-input').fill('3');
+  await editor.getByTestId('workout-exercise-default-load-input').fill('21.25');
+  await editor.getByTestId('workout-exercise-rest-input').fill('37');
+  // The browser must not hold the save back with its own step validation.
+  expect(await editor.locator('input:invalid').evaluateAll((inputs) => inputs.map((input) => input.dataset.testid))).toEqual([]);
+  await editor.getByTestId('workout-save-button').click();
+  await expect(editor).not.toBeVisible();
+  const saved = calls.writes.find((write) => write.method === 'POST' && write.path === '/programs/workouts');
+  expect(saved.body.exercises[0]).toMatchObject({ rest: '37s' });
+  expect(Number(saved.body.exercises[0].default_load_value)).toBe(21.25);
+});
+
