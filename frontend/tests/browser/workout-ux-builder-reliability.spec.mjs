@@ -33,11 +33,13 @@ async function setup(page, { workouts = [workout()], delays = {} } = {}) {
     if (path === '/programs/workouts' && method === 'GET') return json(workouts);
     if (path === '/programs' || path === '/clients') return json([]);
     if (method !== 'GET') {
-      calls.writes.push({ method, path, body: r.postDataJSON?.() ?? null });
+      let body = null;
+      try { body = r.postDataJSON(); } catch { body = 'non-JSON body'; }
+      calls.writes.push({ method, path, body });
       if (path === '/programs/workouts' && method === 'POST') return json({ ...workout({ id: 'w-new' }), ...r.postDataJSON() }, 201);
       if (/^\/programs\/workouts\/[^/]+\/save-as-template$/.test(path)) return json(workout({ id: `w-copy-${calls.writes.length}`, hidden: true }), 201);
       if (/^\/programs\/workouts\/[^/]+$/.test(path) && method === 'PUT') return json({ ...workout(), ...r.postDataJSON() });
-      if (path === '/programs/import/parse-paste') return json({ draft: { name: 'Late parsed program', frequency: 1, days: [{ day_number: 1, name: 'Day 1', exercises: [{ name: 'Squat', sets: '3', reps: '5' }] }] }, errors: [], message: 'Text parsed. Review before saving.' });
+      if (path === '/programs/import/parse-csv' || path === '/programs/import/parse-paste') return json({ draft: { name: 'Late parsed program', frequency: 1, days: [{ day_number: 1, name: 'Day 1', exercises: [{ name: 'Squat', sets: '3', reps: '5' }] }] }, errors: [], message: 'Text parsed. Review before saving.' });
     }
     calls.unexpected.push(`${method} ${path}`);
     return json({ error: 'Unexpected synthetic route' }, 404);
@@ -145,4 +147,20 @@ test('a parse reply that lands after the import was discarded does not repopulat
   await expect(page.getByTestId('program-import-dialog')).toBeVisible();
   await expect(page.getByTestId('program-import-review')).toHaveCount(0);
   await expect(page.getByText('Text parsed. Review before saving.')).toHaveCount(0);
+});
+
+test('a CSV parse reply that lands after switching to Paste does not fill the paste review', async ({ page }) => {
+  const calls = await setup(page, { delays: { '/programs/import/parse-csv': 1200 } });
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-programs').click();
+  await page.getByTestId('program-import-open-button').click();
+  await page.getByTestId('program-import-file-input').setInputFiles({ name: 'synthetic-program.csv', mimeType: 'text/csv', buffer: Buffer.from('day,exercise,sets,reps\n1,Squat,3,5\n') });
+  await page.getByTestId('program-import-parse-button').click();
+  await page.getByTestId('program-import-source-select').click();
+  await page.getByRole('option', { name: 'Paste program', exact: true }).click();
+  await expect(page.getByTestId('program-import-paste-textarea')).toBeVisible();
+  await page.waitForTimeout(1600);
+  expect(calls.writes.some((write) => write.path === '/programs/import/parse-csv')).toBe(true);
+  await expect(page.getByTestId('program-import-review')).toHaveCount(0);
+  await expect(page.getByTestId('program-import-paste-parse-button')).toBeEnabled();
 });

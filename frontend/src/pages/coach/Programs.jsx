@@ -1002,6 +1002,8 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
   const selectSource = (nextSource) => {
     if (nextSource !== sourceType && !changes.confirmDiscard()) return;
     if (sourceType === 'paste' || nextSource === 'paste') {
+      parseSeq.current += 1;
+      setParsing(false);
       setFile(null);
       setPasteText('');
       setPasteError('');
