@@ -1554,7 +1554,7 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
               <Input
                 className="h-11"
                 id={`${idPrefix}-${rowValue(exercise, index)}-rest`}
-                type="number" min="0" step="any" inputMode="numeric"
+                type="number" min="0" step="5" inputMode="numeric"
                 value={parseRestSeconds(exercise.rest) ?? ''}
                 onChange={(e) => setExercise(index, { rest: e.target.value === '' ? '' : `${Math.max(0, Number(e.target.value))}s` })}
                 placeholder="Rest (sec)"
