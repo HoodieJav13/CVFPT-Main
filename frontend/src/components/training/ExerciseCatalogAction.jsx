@@ -44,7 +44,11 @@ export function ExerciseCatalogAction({ exercise, library, onChange, onCreated, 
   const pending = useRef(false);
   const name = String(exercise.custom_name || '').trim();
   const match = matchCatalogExercise(library, name);
+  const openedName = useRef(normalizeName(name));
   useEffect(() => {
+    // A saved row the coach has not renamed stays exactly as saved: linking it on
+    // open would edit the workout unasked and flag it as having unsaved changes.
+    if (exercise.id && normalizeName(name) === openedName.current) return;
     if (linkMatches && match && !exercise.exercise_library_id && !disabled) handlers.current.onChange({ exercise_library_id: match.id, custom_name: match.name });
   }, [match?.id, exercise.exercise_library_id, disabled, linkMatches]);
   const create = async () => {

@@ -98,3 +98,16 @@ test('a double tap on Save a variation creates exactly one hidden copy', async (
   expect(calls.writes.filter((write) => write.path.endsWith('/save-as-template'))).toHaveLength(1);
 });
 
+test('opening and closing an untouched workout whose custom name matches the catalog does not warn', async ({ page }) => {
+  const calls = await setup(page, { workouts: [workout({ exercises: [{ id: 'we-1', custom_name: 'plank', exercise_library_id: null, sets: '3', reps: '30s', tracking_type: 'reps_weight', position: 0 }] })] });
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  await page.getByTestId('workout-edit-button').first().click();
+  const editor = page.getByRole('dialog');
+  await expect(editor.getByTestId('workout-exercise-name-input')).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Escape');
+  await expect(editor).not.toBeVisible();
+  expect(calls.prompts).toEqual([]);
+});
+
