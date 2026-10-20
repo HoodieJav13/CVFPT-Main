@@ -82,6 +82,15 @@ function editableForm(draft) {
   if (form.poster_mode === 'uploaded_image' && !form.poster_crop && image?.width && image?.height) form.poster_crop = defaultCrop(image);
   return form;
 }
+// Text the coach types about the media. A new source does not change it, so
+// unsaved text survives an upload finishing (the recipe follows the server).
+const TEXT_FIELDS = ['alt_text', 'end_frame_alt_text', 'cues', 'transcript', 'caption_language', 'caption_cues', 'instruction_audio'];
+function keepUnsavedText(before, current, next) {
+  const saved = formFromDraft(before);
+  const kept = { ...next };
+  for (const key of TEXT_FIELDS) if (JSON.stringify(current[key]) !== JSON.stringify(saved[key])) kept[key] = current[key];
+  return kept;
+}
 function normalized(form) {
   return {
     ...form,
@@ -316,9 +325,15 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   }, []);
 
   const draft = data?.drafts.find((d) => d.id === selectedId) || null;
-  const replaceDraft = (next) => {
+  const selectedRef = useRef(selectedId);
+  selectedRef.current = selectedId;
+  // A reply for a draft the coach has since switched away from updates only
+  // that draft, never the form now showing another one.
+  const replaceDraft = (next, { keepText = false } = {}) => {
+    const before = data?.drafts.find((d) => d.id === next.id);
     setData((current) => current && { ...current, drafts: current.drafts.map((d) => (d.id === next.id ? next : d)) });
-    setForm(editableForm(next));
+    if (next.id !== selectedRef.current) return;
+    setForm((current) => (keepText && current && before ? keepUnsavedText(before, current, editableForm(next)) : editableForm(next)));
   };
 
   // Bounded status polling while processing (<= 5 minutes, stops on close).
@@ -377,7 +392,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
     if (photosMode && role === 'source_image') {
       // Direct-upload grant transport; the server re-verifies everything on finalize.
       const result = await uploadPhotoSource({ apiClient: api, revision: draft, file, rights, note, requestId, signal, onProgress });
-      replaceDraft(result.revision);
+      replaceDraft(result.revision, { keepText: true });
       setReplacing((current) => ({ ...current, [role]: false }));
       toast.success('Photo uploaded and checked. Crop it and add alt text.');
       return;
@@ -392,7 +407,7 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
     const { data: result } = await api.post(`/exercise-media/revisions/${draft.id}/sources?role=${role}`, body, {
       signal, timeout: 15 * 60 * 1000, onUploadProgress: (event) => event.total && onProgress(event.loaded / event.total),
     });
-    replaceDraft(result.revision);
+    replaceDraft(result.revision, { keepText: true });
     setReplacing((current) => ({ ...current, [role]: false }));
     toast.success(role === 'source_image' ? 'Image uploaded. Crop it and add alt text.' : 'Video uploaded. Choose the poster and preview.');
   };
