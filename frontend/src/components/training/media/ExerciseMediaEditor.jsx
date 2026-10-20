@@ -380,8 +380,6 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   }, []);
 
   const draft = data?.drafts.find((d) => d.id === selectedId) || null;
-  const selectedRef = useRef(selectedId);
-  selectedRef.current = selectedId;
   // A reply for a draft the coach has since switched away from updates only
   // that draft, never the form now showing another one.
   const replaceDraft = (next, { keepText = false } = {}) => {
@@ -446,9 +444,12 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
   });
 
   const upload = (role) => async ({ file, rights, note, requestId, signal, onProgress }) => {
+    // Like Save, an upload is versioned against the snapshot the form was built
+    // from, so a pending conflict cannot be settled by a new source version.
+    const target = formBase || draft;
     if (photosMode && role === 'source_image') {
       // Direct-upload grant transport; the server re-verifies everything on finalize.
-      const result = await uploadPhotoSource({ apiClient: api, revision: draft, file, rights, note, requestId, signal, onProgress });
+      const result = await uploadPhotoSource({ apiClient: api, revision: target, file, rights, note, requestId, signal, onProgress });
       replaceDraft(result.revision, { keepText: true });
       setReplacing((current) => ({ ...current, [role]: false }));
       toast.success('Photo uploaded and checked. Crop it and add alt text.');
@@ -456,12 +457,12 @@ export function ExerciseMediaEditor({ exercise, onChanged }) {
     }
     const body = new FormData();
     body.append('request_id', requestId || uuid());
-    body.append('expected_version', String(draft.version));
+    body.append('expected_version', String(target.version));
     body.append('rights_basis', rights);
     body.append('rights_confirmed', 'true');
     if (note.trim()) body.append('rights_note', note.trim());
     body.append('file', file);
-    const { data: result } = await api.post(`/exercise-media/revisions/${draft.id}/sources?role=${role}`, body, {
+    const { data: result } = await api.post(`/exercise-media/revisions/${target.id}/sources?role=${role}`, body, {
       signal, timeout: 15 * 60 * 1000, onUploadProgress: (event) => event.total && onProgress(event.loaded / event.total),
     });
     replaceDraft(result.revision, { keepText: true });

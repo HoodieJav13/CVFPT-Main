@@ -65,7 +65,12 @@ async function setup(page, drafts, { viewport = { width: 390, height: 844 } } = 
       return json(next);
     }
     const upload = p.match(/^\/exercise-media\/revisions\/([^/]+)\/uploads$/);
-    if (upload) { const body = request.postDataJSON(); calls.uploads.push(body); return json({ intent: { id: 'intent-1', state: 'issued', request_id: body.request_id }, upload: { method: 'PUT', url: '/api/exercise-media/staging/grant-1.sig', headers: { 'content-type': body.mime_type } }, replayed: false }, 201); }
+    if (upload) {
+      const body = request.postDataJSON();
+      calls.uploads.push({ id: upload[1], body });
+      if (body.expected_version !== state.drafts.find((d) => d.id === upload[1]).version) return json({ error: 'This draft changed. Reload to continue.', code: 'stale' }, 409);
+      return json({ intent: { id: 'intent-1', state: 'issued', request_id: body.request_id }, upload: { method: 'PUT', url: '/api/exercise-media/staging/grant-1.sig', headers: { 'content-type': body.mime_type } }, replayed: false }, 201);
+    }
     if (p === '/exercise-media/staging/grant-1.sig' && request.method() === 'PUT') return json({ status: 'stored', bytes: request.postDataBuffer().length }, 201);
     const finalize = p.match(/^\/exercise-media\/revisions\/([^/]+)\/uploads\/intent-1\/finalize$/);
     if (finalize) {
@@ -225,6 +230,28 @@ for (const [label, viewport] of [['phone', { width: 390, height: 844 }], ['deskt
     expect(calls.patches.at(-1)).toEqual({ id: 'rev-b', body: { expected_version: 2, cues: ['Synthetic B new unsaved cue'] } });
     const saved = state.drafts.find((d) => d.id === 'rev-b');
     expect([saved.version, saved.text.alt_text, saved.text.cues]).toEqual([3, 'Synthetic B newer server alt', ['Synthetic B new unsaved cue']]);
+    expect(calls.unexpected).toEqual([]);
+  });
+
+  test(`R2 ${label}: a photo upload while a conflict is pending carries the original version and cannot settle the conflict`, async ({ page }) => {
+    const { calls, editor, state } = await setup(page, [withAlt('rev-a', 'Synthetic alt A'), withAlt('rev-b', 'Synthetic B original alt')], { viewport });
+    const chips = editor.getByTestId('media-draft-chip');
+    const patch = await holdStaleSaveOnA(editor, calls, 'Synthetic A first save');
+    await chips.nth(1).click();
+    await editor.getByTestId('media-alt-text').fill('Synthetic B local alt');
+    state.drafts = state.drafts.map((d) => (d.id === 'rev-b' ? { ...d, version: 2, text: { ...d.text, alt_text: 'Synthetic B newer server alt' } } : d));
+    patch.release();
+    await expect(editor.getByTestId('media-conflict')).toBeVisible();
+    await editor.getByTestId('media-file-source_image').setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: PNG });
+    await editor.getByTestId('media-rights-confirm-source_image').click();
+    await editor.getByTestId('media-upload-start-source_image').click();
+    await expect.poll(() => calls.uploads.length).toBe(1);
+    expect(calls.uploads[0]).toMatchObject({ id: 'rev-b', body: { expected_version: 1 } });
+    await page.waitForTimeout(300);
+    await expect(editor.getByTestId('media-conflict')).toBeVisible();
+    await expect(editor.getByTestId('media-alt-text')).toHaveValue('Synthetic B local alt');
+    const serverB = state.drafts.find((d) => d.id === 'rev-b');
+    expect([serverB.version, serverB.text.alt_text, serverB.sources.image]).toEqual([2, 'Synthetic B newer server alt', null]);
     expect(calls.unexpected).toEqual([]);
   });
 
