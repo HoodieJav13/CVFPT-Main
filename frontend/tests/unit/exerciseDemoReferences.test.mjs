@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  applyDemoChoice, applyDemoUrl, chooseLibraryExercise, demoChoice, demoFieldsFromRow, demoProblem, projectQuickForm,
+  applyDemoChoice, applyDemoUrl, chooseLibraryExercise, demoChoice, demoFieldsFromRow, demoProblem, projectQuickForm, settleCatalogName,
 } from '../../src/lib/trainingLibrary.js';
 import { buildQuickSessionBody } from '../../src/lib/quickSessionRequest.js';
 
@@ -92,4 +92,16 @@ test('save flags a NEW row that still carries an unclassified link (the server w
   // A stored legacy row re-saved as is stays allowed.
   assert.equal(demoProblem({ id: 'we-1', exercise_library_id: 'lib-1', video_link_mode: null, video_url: 'https://youtu.be/AAAAAAAAAAA' }), null);
   assert.equal(demoProblem({ id: '', exercise_library_id: 'lib-1', video_link_mode: null, video_url: '' }), null);
+});
+
+test('a trailing space keeps the typed name while linking; leaving the field settles the catalog spelling', () => {
+  const blankRow = { exercise_library_id: '', custom_name: '', video_link_mode: null, video_url: '' };
+  const typing = chooseLibraryExercise(blankRow, LIB, 'synthetic goblet squat ');
+  assert.deepEqual(typing, { exercise_library_id: 'lib-1', custom_name: 'synthetic goblet squat ', video_link_mode: 'inherit', video_url: '' });
+  // The next key no longer matches, so the row becomes the custom name exactly as typed.
+  assert.deepEqual(chooseLibraryExercise(typing, null, 'synthetic goblet squat j'), { exercise_library_id: '', custom_name: 'synthetic goblet squat j', video_link_mode: null, video_url: '' });
+  assert.deepEqual(settleCatalogName(typing, [OTHER, LIB]), { custom_name: LIB.name });
+  assert.equal(settleCatalogName({ ...typing, custom_name: LIB.name }, [LIB]), null);
+  assert.equal(settleCatalogName({ exercise_library_id: '', custom_name: 'Custom' }, [LIB]), null);
+  assert.equal(settleCatalogName(typing, null), null);
 });

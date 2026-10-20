@@ -16,7 +16,7 @@ import { QuickSessionBadge } from '@/components/training/QuickSessionBadge';
 import { trackingType } from '@/lib/workoutMetrics';
 import { parseRestSeconds } from '@/lib/rest';
 import { quickSessionEnvironment } from '@/lib/quickSessions';
-import { chooseLibraryExercise, demoProblem, projectQuickForm } from '@/lib/trainingLibrary';
+import { chooseLibraryExercise, demoProblem, projectQuickForm, settleCatalogName } from '@/lib/trainingLibrary';
 import { DemoLinkField } from '@/components/training/DemoLinkField';
 import {
   PENDING_PREFIX, QUICK_SESSION_COPY, createQuickSessionController, defaultQuickTitle, denverToday,
@@ -187,6 +187,7 @@ export function QuickSessionBuilder({ form, setForm, library: initialLibrary, st
                 <Field label={`Exercise ${index + 1}`} className="flex-1">{(id) => (
                   <Input id={id} className="min-h-11" list={listId} value={row.custom_name} disabled={locked}
                     placeholder="Library or custom exercise" onChange={(e) => chooseExercise(index, e.target.value)}
+                    onBlur={() => { const settled = settleCatalogName(row, library); if (settled) setRow(index, settled); }}
                     data-testid="quick-session-exercise-name-input" />
                 )}</Field>
                 <IconButton label={`Remove exercise ${index + 1}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground"

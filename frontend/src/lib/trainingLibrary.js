@@ -184,13 +184,25 @@ export function demoFieldsForCopy(row) {
 }
 
 // The datalist picker: `match` is the library exercise named by `value`, or null.
+// A trailing space means the coach is still typing (e.g. "Squat" on the way to
+// "Squat jump"), so the typed text is kept while the row links; the name settles
+// on the catalog spelling when the field is left (settleCatalogName).
 export function chooseLibraryExercise(row, match, value) {
   if (match) {
-    if (match.id === row.exercise_library_id) return { exercise_library_id: match.id, custom_name: match.name };
-    return { exercise_library_id: match.id, custom_name: match.name, video_link_mode: 'inherit', video_url: '' };
+    const name = /\s$/.test(value) ? value : match.name;
+    if (match.id === row.exercise_library_id) return { exercise_library_id: match.id, custom_name: name };
+    return { exercise_library_id: match.id, custom_name: name, video_link_mode: 'inherit', video_url: '' };
   }
   if (row.video_link_mode === 'inherit') return { exercise_library_id: '', custom_name: value, video_link_mode: null, video_url: '' };
   return { exercise_library_id: '', custom_name: value };
+}
+
+// On leaving the name field: a linked row takes its catalog spelling. Null when
+// nothing needs to change.
+export function settleCatalogName(row, library) {
+  if (!row.exercise_library_id) return null;
+  const linked = (library || []).find((exercise) => exercise.id === row.exercise_library_id);
+  return linked && row.custom_name !== linked.name && matchCatalogExercise([linked], row.custom_name) ? { custom_name: linked.name } : null;
 }
 
 // 'library' | 'custom' | 'legacy' | 'none'. An empty legacy row on a library

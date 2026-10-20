@@ -54,7 +54,7 @@ import {
   ExerciseMediaBadge, ExerciseMediaButton, ExerciseMediaDialog, LibraryMediaSummary, MediaReadinessFilter, matchesMediaFilter, useLibraryMediaStatus,
 } from '@/components/training/media/LibraryMediaControls';
 import {
-  authorOptions, chooseLibraryExercise, demoFieldsForCopy, demoFieldsFromRow, demoProblem, exerciseFilterOptions, filterByAuthor, filterExercises,
+  authorOptions, chooseLibraryExercise, settleCatalogName, demoFieldsForCopy, demoFieldsFromRow, demoProblem, exerciseFilterOptions, filterByAuthor, filterExercises,
   groupVariations, isLegacyLockError,
 } from '@/lib/trainingLibrary';
 import { DemoLinkField } from '@/components/training/DemoLinkField';
@@ -1514,7 +1514,7 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
         </div>
         <AccordionContent className="space-y-2 pb-3">
           <div className="flex items-center gap-2">
-            <LabeledField label="Exercise name"><Input className="min-w-0" list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" /></LabeledField>
+            <LabeledField label="Exercise name"><Input className="min-w-0" list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} onBlur={() => { const settled = settleCatalogName(exercise, library); if (settled) setExercise(index, settled); }} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" /></LabeledField>
             <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid, ...demoFieldsForCopy(exercise) }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
             <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => removal.remove(form.exercises, index)} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
           </div>
