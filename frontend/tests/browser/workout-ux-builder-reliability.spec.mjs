@@ -87,3 +87,14 @@ test('a typed catalog name still links to the catalog and settles on its canonic
   expect(saved.body.exercises[0]).toMatchObject({ custom_name: 'Squat', exercise_library_id: 'lib-squat' });
 });
 
+
+test('a double tap on Save a variation creates exactly one hidden copy', async ({ page }) => {
+  const calls = await setup(page, { delays: { '/programs/workouts/w-1/save-as-template': 400 } });
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  await page.getByTestId('workout-duplicate-button').first().dblclick();
+  await expect(page.getByText(/Saved a hidden variation/).first()).toBeVisible();
+  await page.waitForTimeout(600);
+  expect(calls.writes.filter((write) => write.path.endsWith('/save-as-template'))).toHaveLength(1);
+});
+

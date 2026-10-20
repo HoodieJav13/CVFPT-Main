@@ -560,13 +560,20 @@ function WorkoutsTab({ workouts, library, reload, onSaved, onCatalogCreated }) {
     }
   };
 
+  // One copy per tap: a double tap (or a second tap while the first is in
+  // flight) must not create a second hidden variation.
+  const duplicating = useRef(new Set());
   const duplicate = async (workout) => {
+    if (duplicating.current.has(workout.id)) return;
+    duplicating.current.add(workout.id);
     try {
       await api.post(`/programs/workouts/${workout.id}/save-as-template`, {});
       toast.success('Saved a hidden variation. Unhide it when it is ready to assign.');
       reload();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      duplicating.current.delete(workout.id);
     }
   };
 
@@ -808,13 +815,20 @@ function StructuredProgramsTab({ programs, workouts, library, reload, onCatalogC
     }
   };
 
+  // One copy per tap: a double tap (or a second tap while the first is in
+  // flight) must not create a second hidden variation.
+  const duplicating = useRef(new Set());
   const duplicate = async (program) => {
+    if (duplicating.current.has(program.id)) return;
+    duplicating.current.add(program.id);
     try {
       await api.post(`/programs/${program.id}/save-as-template`, {});
       toast.success('Saved a hidden variation. Unhide it when it is ready to assign.');
       reload();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      duplicating.current.delete(program.id);
     }
   };
 
