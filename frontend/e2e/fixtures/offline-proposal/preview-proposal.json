@@ -1,0 +1,239 @@
+{
+  "status": "PROPOSAL — not assigned, not a prescription",
+  "provider": "DISABLED / MOCK (in-process fixtures; no network)",
+  "contract_version": "pt-draft-proposal-v1",
+  "provenance": {
+    "request_id": "fict-req-c04-preview-0001",
+    "input_sha256": "163db8030841762bc15e1079b3ad06e8a215c3c91f7c289911298204ca21a982",
+    "catalog_revision": "pt-catalog:55020c1388cdf3e379dfb23c3cbf1ca2f1f8ea8cd7da7334dc83f8e18cf8a612",
+    "catalog_sha256": "593c65bf241155920b09b14d4240c042d9b9fbee7f810af6ad713afb193d6d24",
+    "proposal_sha256": "de4b06e9baaf65b45e4c0798d819d81e8309531011b17a126944f998ecb6390a",
+    "accepted_revision": 1,
+    "accepted_sha256": "6fa1a0a55a660d505c3f57647e04d877a60bce0294a75c45d12085e79e974bef",
+    "accepted_by": "fict-coach-c04",
+    "accepted_at": "2026-10-21T12:00:00.000Z"
+  },
+  "schedule_proposal": [
+    {
+      "day_number": 1,
+      "weekday": "monday"
+    },
+    {
+      "day_number": 2,
+      "weekday": "wednesday"
+    },
+    {
+      "day_number": 3,
+      "weekday": "friday"
+    }
+  ],
+  "exercise_bindings": {
+    "catalog_revision": "pt-catalog:55020c1388cdf3e379dfb23c3cbf1ca2f1f8ea8cd7da7334dc83f8e18cf8a612",
+    "catalog_sha256": "593c65bf241155920b09b14d4240c042d9b9fbee7f810af6ad713afb193d6d24",
+    "accepted_revision": 1,
+    "accepted_sha256": "6fa1a0a55a660d505c3f57647e04d877a60bce0294a75c45d12085e79e974bef",
+    "rows": [
+      {
+        "program_draft_path": "days.0.exercises.0",
+        "day_number": 1,
+        "weekday": "monday",
+        "exercise_id": "lib_goblet_squat",
+        "catalog_name_at_snapshot": "Goblet Squat"
+      },
+      {
+        "program_draft_path": "days.0.exercises.1",
+        "day_number": 1,
+        "weekday": "monday",
+        "exercise_id": "lib_rdl",
+        "catalog_name_at_snapshot": "Romanian Deadlift"
+      },
+      {
+        "program_draft_path": "days.1.exercises.0",
+        "day_number": 2,
+        "weekday": "wednesday",
+        "exercise_id": "lib_db_bench",
+        "catalog_name_at_snapshot": "DB Bench Press"
+      },
+      {
+        "program_draft_path": "days.1.exercises.1",
+        "day_number": 2,
+        "weekday": "wednesday",
+        "exercise_id": "lib_cable_row",
+        "catalog_name_at_snapshot": "Cable Row"
+      },
+      {
+        "program_draft_path": "days.2.exercises.0",
+        "day_number": 3,
+        "weekday": "friday",
+        "exercise_id": "lib_world_stretch",
+        "catalog_name_at_snapshot": "World Greatest Stretch"
+      },
+      {
+        "program_draft_path": "days.2.exercises.1",
+        "day_number": 3,
+        "weekday": "friday",
+        "exercise_id": "lib_goblet_squat",
+        "catalog_name_at_snapshot": "Goblet Squat"
+      }
+    ]
+  },
+  "program_draft": {
+    "program": {
+      "name": "Preview Foundations (offline draft)",
+      "description": "MOCK offline draft for coach review (fictional preview catalog).",
+      "frequency_days": 3,
+      "source": "pt-draft-companion (MOCK provider proposal, coach-accepted)"
+    },
+    "days": [
+      {
+        "day_number": 1,
+        "name": "Lower (offline draft)",
+        "goal": "",
+        "notes": "Proposed weekday: monday",
+        "exercises": [
+          {
+            "name": "Goblet Squat",
+            "sets": "3",
+            "reps": "8-10",
+            "tracking_type": "reps_weight",
+            "duration_value": null,
+            "duration_unit": null,
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "90s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Strength",
+            "equipment": "Dumbbell",
+            "primary_muscle": "Quads"
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": "3",
+            "reps": "10",
+            "tracking_type": "reps_weight",
+            "duration_value": null,
+            "duration_unit": null,
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "90s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Strength",
+            "equipment": "Dumbbells",
+            "primary_muscle": "Hamstrings"
+          }
+        ]
+      },
+      {
+        "day_number": 2,
+        "name": "Upper (offline draft)",
+        "goal": "",
+        "notes": "Proposed weekday: wednesday",
+        "exercises": [
+          {
+            "name": "DB Bench Press",
+            "sets": "3",
+            "reps": "8-12",
+            "tracking_type": "reps_weight",
+            "duration_value": null,
+            "duration_unit": null,
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "60s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Strength",
+            "equipment": "Dumbbells",
+            "primary_muscle": "Chest"
+          },
+          {
+            "name": "Cable Row",
+            "sets": "3",
+            "reps": "10",
+            "tracking_type": "reps_weight",
+            "duration_value": null,
+            "duration_unit": null,
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "60s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Strength",
+            "equipment": "Cable",
+            "primary_muscle": "Back"
+          }
+        ]
+      },
+      {
+        "day_number": 3,
+        "name": "Mobility + lower (offline draft)",
+        "goal": "",
+        "notes": "Proposed weekday: friday",
+        "exercises": [
+          {
+            "name": "World Greatest Stretch",
+            "sets": "3",
+            "reps": "",
+            "tracking_type": "duration",
+            "duration_value": 45,
+            "duration_unit": "s",
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "30s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Mobility",
+            "equipment": "Bodyweight",
+            "primary_muscle": "Hips"
+          },
+          {
+            "name": "Goblet Squat",
+            "sets": "2",
+            "reps": "12",
+            "tracking_type": "reps_weight",
+            "duration_value": null,
+            "duration_unit": null,
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "60s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Strength",
+            "equipment": "Dumbbell",
+            "primary_muscle": "Quads"
+          }
+        ]
+      }
+    ],
+    "import_meta": {
+      "source_type": "proposal",
+      "original_filename": "",
+      "parser_version": "program-draft-v1",
+      "confidence": null,
+      "warnings": [
+        "Mock provider proposal, accepted by a coach. Not a prescription; review again in the import screen before saving."
+      ],
+      "new_exercises_detected": [],
+      "possible_duplicates": []
+    }
+  }
+}
