@@ -131,31 +131,50 @@ test('typed partial values survive the fill; only blanks fill, the note stays af
   expect(state.unexpected).toEqual([]);
 });
 
-test('typing while history is delayed is kept; a tap after a failed preview retries once and keeps typed values', async ({ page }) => {
+test('a tap while the preview is still loading joins that one request; typed values during the wait are kept', async ({ page }) => {
   const hold = deferred();
-  const state = await setup(page, { historyHold: hold, historyFailures: { 'ex-goblet': 1 } });
+  const state = await setup(page, { historyHold: hold });
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page);
   const line = goblet(page).getByTestId('last-time-line');
+  const button = goblet(page).getByTestId('same-as-last-time');
   await expect(line).toHaveText('Loading last time…');
-  await expect(goblet(page).getByTestId('same-as-last-time')).toBeDisabled();
   // Reduced motion: the existing spinner does not animate.
   expect(await line.locator('svg').evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+  // The background preview never blocks the button.
+  await expect(button).toBeEnabled();
   await page.getByRole('spinbutton', { name: 'Goblet Squat set 1 weight', exact: true }).fill('40');
+  await button.click();
+  await expect(button).toBeDisabled();
   await page.getByRole('spinbutton', { name: 'Goblet Squat set 2 performed reps', exact: true }).fill('9');
   hold.release();
+  await expect(button).toBeEnabled();
+  await expect(line).toHaveText(LINE);
+  await expect(goblet(page).getByTestId('last-time-note')).toHaveText('Filled sets 1–3 from Sep 14, 2026. Typed values kept.');
+  await expect.poll(() => state.log.exercises[0].sets.map((set) => [set.actual_load_value, set.actual_reps, set.actual_rpe]))
+    .toEqual([[40, 10, 7], [35, 9, 7], [40, 8, 8]]);
+  expect(state.reads).toEqual({ 'ex-goblet': 1, 'ex-deadbug': 0 });
+});
+
+test('after a failed preview a tap retries once while delayed, and typing during that wait is kept', async ({ page }) => {
+  const state = await setup(page, { historyFailures: { 'ex-goblet': 1 } });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page);
+  const line = goblet(page).getByTestId('last-time-line');
   await expect(line).toHaveText('Last time unavailable.');
-  // The tap retries (the failed read was not cached) while its reply is held.
+  await page.waitForTimeout(300);
+  expect(state.reads['ex-goblet']).toBe(1);
   const tapHold = deferred();
   state.historyHold = tapHold;
   await goblet(page).getByTestId('same-as-last-time').click();
   await expect.poll(() => state.reads['ex-goblet']).toBe(2);
+  await expect(goblet(page).getByTestId('same-as-last-time')).toBeDisabled();
   await page.getByRole('spinbutton', { name: 'Goblet Squat set 3 performed RPE', exact: true }).fill('9');
   tapHold.release();
   await expect(goblet(page).getByTestId('last-time-note')).toHaveText('Filled sets 1–3 from Sep 14, 2026. Typed values kept.');
   await expect(line).toHaveText(LINE);
   await expect.poll(() => state.log.exercises[0].sets.map((set) => [set.actual_load_value, set.actual_reps, set.actual_rpe]))
-    .toEqual([[40, 10, 7], [35, 9, 7], [40, 8, 9]]);
+    .toEqual([[35, 10, 7], [35, 10, 7], [40, 8, 9]]);
   expect(state.reads).toEqual({ 'ex-goblet': 2, 'ex-deadbug': 0 });
 });
 

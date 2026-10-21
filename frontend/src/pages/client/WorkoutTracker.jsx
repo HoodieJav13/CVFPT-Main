@@ -234,6 +234,9 @@ export default function WorkoutTracker() {
   const [lastTimeState, setLastTimeState] = useState({});
   // Per exercise: the note left by the last fill; cleared only by leaving the page.
   const [fillNotes, setFillNotes] = useState({});
+  // The exercise whose tap is waiting for history. Only a tap disables its
+  // button; the background preview never blocks it (a tap joins that read).
+  const [lastTimeTapping, setLastTimeTapping] = useState(null);
   const [validatedSets, setValidatedSets] = useState({});
   const [restAlerts, setRestAlerts] = useState(() => localStorage.getItem('cvf_rest_alerts') === 'on');
   // Exercise guides: only the active + next posters load; others on request.
@@ -464,18 +467,21 @@ export default function WorkoutTracker() {
   // One tap fills blank fields from the most recent completed occurrence of
   // this exercise; typed values are never overwritten.
   const applyLastTime = async (exercise) => {
-    if (sealed || lastTimeState[exercise.id] === 'loading') return;
+    if (sealed || lastTimeTapping === exercise.id) return;
     let occurrence = lastTimeCache.current[exercise.id];
     if (occurrence === undefined) {
       if (!navigator.onLine) {
         toast.error('You are offline. Reconnect to copy last time.');
         return;
       }
+      setLastTimeTapping(exercise.id);
       try {
         occurrence = await loadLastTime(exercise);
       } catch (error) {
         toast.error(errMsg(error, 'Failed to load last time'));
         return;
+      } finally {
+        setLastTimeTapping((current) => (current === exercise.id ? null : current));
       }
     }
     if (!occurrence) {
@@ -802,12 +808,12 @@ export default function WorkoutTracker() {
                 </Button>
                 <Button
                   type="button" variant="outline" size="sm" className="min-h-11"
-                  disabled={sealed || lastTimeState[exercise.id] === 'loading'}
+                  disabled={sealed || lastTimeTapping === exercise.id}
                   onClick={() => applyLastTime(exercise)}
                   aria-describedby={lastTimeCache.current[exercise.id] ? `last-time-source-${exercise.id}` : undefined}
                   data-testid="same-as-last-time"
                 >
-                  {lastTimeState[exercise.id] === 'loading'
+                  {lastTimeTapping === exercise.id
                     ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
                     : <History className="mr-1.5 h-4 w-4" />}
                   Same as last time
