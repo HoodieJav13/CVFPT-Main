@@ -25,6 +25,7 @@ import {
   adjustRestEnd, formatRestSeconds, manualRestSeconds, REST_ADJUST_SECONDS,
 } from '@/lib/rest';
 import { lastTimeFills } from '@/lib/workoutSync';
+import { lastTimeDate, lastTimeFillNote, lastTimeLine, pickLastTimeOccurrence } from '@/lib/lastTime';
 import { trackProductEvent } from '@/lib/telemetry';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 import { nextExercise, restAfterSet, supersetBlocks, supersetRestSeconds } from '@/lib/supersets';
@@ -45,6 +46,18 @@ function formatTimer(seconds) {
 
 function displayPerformed(value, suffix = '') {
   return value === null || value === undefined ? 'Not recorded' : `${value}${suffix}`;
+}
+
+// The dated prior sets "Same as last time" would copy (what the fill reads).
+function LastTimeLine({ state, occurrence, online }) {
+  let text = null;
+  if (occurrence) text = lastTimeLine(occurrence);
+  else if (occurrence === null) text = 'No completed history yet.';
+  else if (state === 'loading') text = <><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />Loading last time…</>;
+  else if (state === 'offline' && !online) text = 'Last time unavailable offline.';
+  else if (state === 'error') text = 'Last time unavailable.';
+  if (!text) return null;
+  return <p className="break-words px-1 text-xs text-muted-foreground" data-testid="last-time-line">{text}</p>;
 }
 
 function ExerciseHistory({ logId, exercise }) {
@@ -217,7 +230,10 @@ export default function WorkoutTracker() {
   const [finishing, setFinishing] = useState(false);
   const [abandonOpen, setAbandonOpen] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
-  const [lastTimeLoading, setLastTimeLoading] = useState(null);
+  // Per exercise: 'loading' | 'loaded' | 'offline' | 'error' (local UI state only).
+  const [lastTimeState, setLastTimeState] = useState({});
+  // Per exercise: the note left by the last fill; cleared only by leaving the page.
+  const [fillNotes, setFillNotes] = useState({});
   const [validatedSets, setValidatedSets] = useState({});
   const [restAlerts, setRestAlerts] = useState(() => localStorage.getItem('cvf_rest_alerts') === 'on');
   // Exercise guides: only the active + next posters load; others on request.
@@ -227,6 +243,8 @@ export default function WorkoutTracker() {
   const [demoFor, setDemoFor] = useState(null);
   const mediaContext = useMemo(() => ({ type: 'workout_log', id }), [id]);
   const lastTimeCache = useRef({});
+  const lastTimeRequests = useRef({});
+  const lastTimePreloaded = useRef(new Set());
   const intensity = useVisualIntensity();
   // Set when the server refuses a queued Finish (the outbox has already reloaded
   // the still-active log), so finish() keeps the client here with the reason.
@@ -307,6 +325,44 @@ export default function WorkoutTracker() {
     localStorage.setItem('cvf_rest_alerts', next ? 'on' : 'off');
     setRestAlerts(next);
   };
+
+  // One history read per exercise per visit, shared by the "Last time" line and
+  // the fill button. The cached result is the occurrence the fill would use, or
+  // null when there is none; a failed read is not cached.
+  const loadLastTime = useCallback((exercise) => {
+    if (lastTimeCache.current[exercise.id] !== undefined) return Promise.resolve(lastTimeCache.current[exercise.id]);
+    if (lastTimeRequests.current[exercise.id]) return lastTimeRequests.current[exercise.id];
+    setLastTimeState((current) => ({ ...current, [exercise.id]: 'loading' }));
+    const request = api.get(`/workout-logs/${id}/exercises/${exercise.id}/history`)
+      .then(({ data }) => {
+        const occurrence = pickLastTimeOccurrence(data.occurrences, exercise);
+        lastTimeCache.current[exercise.id] = occurrence;
+        setLastTimeState((current) => ({ ...current, [exercise.id]: 'loaded' }));
+        return occurrence;
+      }, (error) => {
+        setLastTimeState((current) => ({ ...current, [exercise.id]: 'error' }));
+        throw error;
+      })
+      .finally(() => { delete lastTimeRequests.current[exercise.id]; });
+    lastTimeRequests.current[exercise.id] = request;
+    return request;
+  }, [id]);
+
+  // Preview the source for the ACTIVE exercise only, once per visit. Offline
+  // without a cached result it waits (no request) and loads on reconnect.
+  const lastTimeActiveId = log ? nextExercise(log.exercises)?.id : null;
+  useEffect(() => {
+    const exercise = lastTimeActiveId && logRef.current?.exercises.find((row) => row.id === lastTimeActiveId);
+    if (!exercise || outbox.queuedComplete) return;
+    if (lastTimeCache.current[exercise.id] !== undefined || lastTimeRequests.current[exercise.id]) return;
+    if (!outbox.online) {
+      setLastTimeState((current) => (current[exercise.id] ? current : { ...current, [exercise.id]: 'offline' }));
+      return;
+    }
+    if (lastTimePreloaded.current.has(exercise.id)) return;
+    lastTimePreloaded.current.add(exercise.id);
+    loadLastTime(exercise).catch(() => {});
+  }, [lastTimeActiveId, outbox.online, outbox.queuedComplete, loadLastTime]);
 
   if (!log && loadError) return <LoadErrorState message={loadError} scope="workout-tracker" onRetry={load} />;
   if (!log) return <LoadingScreen />;
@@ -408,23 +464,18 @@ export default function WorkoutTracker() {
   // One tap fills blank fields from the most recent completed occurrence of
   // this exercise; typed values are never overwritten.
   const applyLastTime = async (exercise) => {
-    if (sealed || lastTimeLoading) return;
+    if (sealed || lastTimeState[exercise.id] === 'loading') return;
     let occurrence = lastTimeCache.current[exercise.id];
     if (occurrence === undefined) {
       if (!navigator.onLine) {
         toast.error('You are offline. Reconnect to copy last time.');
         return;
       }
-      setLastTimeLoading(exercise.id);
       try {
-        const { data } = await api.get(`/workout-logs/${id}/exercises/${exercise.id}/history`);
-        occurrence = data.occurrences.find((row) => trackingType(row) === trackingType(exercise)) || null;
-        lastTimeCache.current[exercise.id] = occurrence;
+        occurrence = await loadLastTime(exercise);
       } catch (error) {
         toast.error(errMsg(error, 'Failed to load last time'));
         return;
-      } finally {
-        setLastTimeLoading(null);
       }
     }
     if (!occurrence) {
@@ -434,18 +485,24 @@ export default function WorkoutTracker() {
     // Re-read the exercise: anything typed while history loaded is kept.
     const current = logRef.current?.exercises.find((row) => row.id === exercise.id) || exercise;
     let filledCount = 0;
+    const filledSets = [];
     lastTimeFills(current.sets, occurrence, current).forEach(({ setId, data }) => {
       const queued = outbox.enqueue({
         kind: 'set', exerciseId: exercise.id, setId,
         method: 'patch', url: `/workout-logs/${id}/sets/${setId}`,
         data,
       });
-      if (queued) filledCount += 1;
+      if (queued) {
+        filledCount += 1;
+        filledSets.push(current.sets.find((set) => set.id === setId)?.set_number);
+      }
     });
     if (!filledCount) {
+      setFillNotes((notes) => ({ ...notes, [exercise.id]: 'Nothing copied: no matching blank fields.' }));
       toast.info('Nothing copied: no matching blank fields.');
       return;
     }
+    setFillNotes((notes) => ({ ...notes, [exercise.id]: lastTimeFillNote(filledSets.filter(Boolean), occurrence) }));
     toast.success(`Filled ${filledCount} set${filledCount === 1 ? '' : 's'} from ${new Date(occurrence.completed_at).toLocaleDateString()}`);
   };
 
@@ -652,6 +709,11 @@ export default function WorkoutTracker() {
               />
             </CardHeader>
             <CardContent className="space-y-3">
+              <LastTimeLine
+                state={lastTimeState[exercise.id]}
+                occurrence={lastTimeCache.current[exercise.id]}
+                online={outbox.online}
+              />
               <div className="hidden gap-1 px-1 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]">
                 <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span><span>RPE</span><span className="sr-only">Complete</span>
               </div>
@@ -740,15 +802,20 @@ export default function WorkoutTracker() {
                 </Button>
                 <Button
                   type="button" variant="outline" size="sm" className="min-h-11"
-                  disabled={sealed || lastTimeLoading === exercise.id}
+                  disabled={sealed || lastTimeState[exercise.id] === 'loading'}
                   onClick={() => applyLastTime(exercise)}
+                  aria-describedby={lastTimeCache.current[exercise.id] ? `last-time-source-${exercise.id}` : undefined}
                   data-testid="same-as-last-time"
                 >
-                  {lastTimeLoading === exercise.id
+                  {lastTimeState[exercise.id] === 'loading'
                     ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
                     : <History className="mr-1.5 h-4 w-4" />}
                   Same as last time
                 </Button>
+                {lastTimeCache.current[exercise.id] && (
+                  <span id={`last-time-source-${exercise.id}`} className="sr-only">Copies blank fields from {lastTimeDate(lastTimeCache.current[exercise.id])}.</span>
+                )}
+                <p role="status" className="w-full break-words text-xs text-muted-foreground empty:hidden" data-testid="last-time-note">{fillNotes[exercise.id] || ''}</p>
               </div>
               <ExerciseHistory logId={id} exercise={exercise} />
               <div className="space-y-1.5">
