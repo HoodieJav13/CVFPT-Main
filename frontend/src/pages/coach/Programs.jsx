@@ -45,6 +45,8 @@ import {
 } from '@/lib/supersets';
 import { downloadBlob } from '@/lib/download';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { recheckBeforeCommit, verifyOfflineProposal } from '@/lib/offlineDraftImport.js';
 import { useAuth } from '@/context/AuthContext';
 import {
   AuthorByline, AuthorFilter, HiddenBadge, LegacyLockDialog,
@@ -971,6 +973,20 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
   // Bumped on close: a parse reply for a discarded import must not repopulate it.
   const parseSeq = useRef(0);
   const [saving, setSaving] = useState(false);
+  // Offline draft proposal (MOCK companion export): verified identity, refusal,
+  // the coach's explicit review confirmation, and an honest save failure.
+  const [proposal, setProposal] = useState(null);
+  const [proposalRefusal, setProposalRefusal] = useState(null);
+  const [proposalConfirmed, setProposalConfirmed] = useState(false);
+  const [saveFailure, setSaveFailure] = useState('');
+  // One save per tap: a second tap during the re-check or write is ignored.
+  const committingProposal = useRef(false);
+  const resetProposal = () => {
+    setProposal(null);
+    setProposalRefusal(null);
+    setProposalConfirmed(false);
+    setSaveFailure('');
+  };
 
   const changes = useFormChanges({ pasteText, fileName: file?.name, draft }, open, open);
   const validation = draft ? validateDraft(draft) : { valid: false, errors: [] };
@@ -996,12 +1012,14 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
       setErrors([]);
       setOpenReviewDays([]);
       setSourceType('csv');
+      resetProposal();
     }
   };
 
   const selectSource = (nextSource) => {
     if (nextSource !== sourceType && !changes.confirmDiscard()) return;
-    if (sourceType === 'paste' || nextSource === 'paste') {
+    if (sourceType === 'paste' || nextSource === 'paste' || sourceType === 'proposal' || nextSource === 'proposal') {
+      resetProposal();
       parseSeq.current += 1;
       setParsing(false);
       setFile(null);
@@ -1044,6 +1062,41 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
       if (response?.draft) setDraft(normalizeDraft(response.draft));
       setErrors(response?.errors || []);
       toast.error(errMsg(e, 'Could not parse import'));
+    } finally {
+      if (seq === parseSeq.current) setParsing(false);
+    }
+  };
+
+  const loadLibraryRows = async () => (await api.get('/programs/exercise-library?include_hidden=true')).data;
+
+  const checkProposal = async () => {
+    if (!file) return toast.error('Choose a proposal file');
+    const seq = ++parseSeq.current;
+    setParsing(true);
+    setDraft(null);
+    setErrors([]);
+    setOpenReviewDays([]);
+    resetProposal();
+    try {
+      let envelope;
+      try {
+        envelope = JSON.parse(await file.text());
+      } catch {
+        envelope = undefined;
+      }
+      const result = envelope === undefined
+        ? { ok: false, refusal: { code: 'invalid_proposal_file', message: 'This file is not JSON.', errors: [] } }
+        : await verifyOfflineProposal(envelope, await loadLibraryRows());
+      if (seq !== parseSeq.current) return;
+      if (!result.ok) {
+        setProposalRefusal(result.refusal);
+        return;
+      }
+      setProposal(result);
+      setDraft(normalizeDraft(result.draft));
+    } catch (e) {
+      if (seq !== parseSeq.current) return;
+      setProposalRefusal({ code: 'catalog_unavailable', message: errMsg(e, 'Could not load the exercise catalog to check this proposal.'), errors: [] });
     } finally {
       if (seq === parseSeq.current) setParsing(false);
     }
@@ -1094,6 +1147,8 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
     const nextDraft = normalizeDraft(input);
     setDraft(nextDraft);
     if (sourceType === 'paste') setErrors(validateDraft(nextDraft).errors);
+    // The coach confirms the draft as it is now; any later edit needs a new confirmation.
+    if (sourceType === 'proposal') setProposalConfirmed(false);
   };
 
   const setProgram = (updates) => {
@@ -1137,6 +1192,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
       toast.error('Fix draft errors before saving');
       return;
     }
+    if (sourceType === 'proposal') return commitProposal();
     setSaving(true);
     try {
       const { data } = await api.post('/programs/import/commit', { draft: checked.draft });
@@ -1151,6 +1207,75 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
       setSaving(false);
     }
   };
+
+  // Saves a reviewed proposal as a program template only (never assigned).
+  // The catalog is re-read first: a changed catalog or an edited bound row is
+  // refused and nothing is sent.
+  const commitProposal = async () => {
+    if (!proposal || !proposalConfirmed || committingProposal.current) return;
+    committingProposal.current = true;
+    setSaving(true);
+    setSaveFailure('');
+    try {
+      let rechecked;
+      try {
+        rechecked = await recheckBeforeCommit(proposal, draft, await loadLibraryRows());
+      } catch (e) {
+        rechecked = { ok: false, refusal: { code: 'catalog_unavailable', message: `${errMsg(e, 'Could not re-check the exercise catalog')}. Nothing was saved.`, errors: [] } };
+      }
+      if (!rechecked.ok) {
+        setProposalRefusal(rechecked.refusal);
+        setProposalConfirmed(false);
+        toast.error(`Not saved: ${rechecked.refusal.message}`);
+        return;
+      }
+      setProposalRefusal(null);
+      try {
+        const { data } = await api.post('/programs/import/commit', { draft: rechecked.draft });
+        toast.success('Program saved to vault (not assigned)', {
+          description: `${data.created_exercises?.length || 0} new exercises, ${data.reused_exercises?.length || 0} reused. Assign it from Assignments when ready.`,
+        });
+        close(false, true);
+        reload();
+      } catch (e) {
+        const message = errMsg(e, 'The server did not confirm the save');
+        setSaveFailure(message);
+        toast.error(`Not saved: ${message}`);
+      }
+    } finally {
+      committingProposal.current = false;
+      setSaving(false);
+    }
+  };
+
+  // Refusals and save failures show where the coach is: above the inputs
+  // before a draft exists, next to Save once it does.
+  const proposalStatus = (
+    <>
+      {sourceType === 'proposal' && proposalRefusal && (
+        <Alert variant="destructive" aria-live="polite" data-testid="program-import-proposal-refusal" data-code={proposalRefusal.code}>
+          <CircleAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>Proposal refused ({proposalRefusal.code}). Nothing was saved.</AlertTitle>
+          <AlertDescription>
+            <p>{proposalRefusal.message}</p>
+            {proposalRefusal.errors?.length > 0 && (
+              <ul className="mt-2 list-disc pl-5">
+                {proposalRefusal.errors.map((error, i) => <li key={`${error.path}-${i}`}>{error.path ? `${error.path}: ` : ''}{error.message}</li>)}
+              </ul>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveFailure && (
+        <Alert variant="destructive" aria-live="assertive" data-testid="program-import-save-failed">
+          <CircleAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>Not saved</AlertTitle>
+          <AlertDescription>{saveFailure}. No program was created; your reviewed draft is still here. Try again when the connection is back.</AlertDescription>
+        </Alert>
+      )}
+    </>
+  );
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -1168,6 +1293,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                   <SelectItem value="csv">CSV template</SelectItem>
                   <SelectItem value="paste">Paste program</SelectItem>
                   <SelectItem value="pdf">PDF extraction</SelectItem>
+                  <SelectItem value="proposal">Offline draft proposal (MOCK)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1196,6 +1322,20 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                   </Button>
                 </div>
               </>
+            ) : sourceType === 'proposal' ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="program-import-proposal-file-input">Proposal file (.json)</Label>
+                  <Input id="program-import-proposal-file-input" size="touch" type="file" accept=".json,application/json" disabled={parsing || saving}
+                    onChange={(e) => { setFile(e.target.files?.[0] || null); setDraft(null); setErrors([]); resetProposal(); }}
+                    data-testid="program-import-proposal-file-input" />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="touch" className="rounded-xl" type="button" onClick={checkProposal} disabled={parsing || saving || !file} data-testid="program-import-proposal-check-button">
+                    {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check proposal'}
+                  </Button>
+                </div>
+              </>
             ) : (
               <>
                 <div className="space-y-1.5">
@@ -1218,6 +1358,18 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
             </Alert>
           )}
 
+          {sourceType === 'proposal' && (
+            <Alert className="border-gold/30 bg-gold/10" data-testid="program-import-proposal-mock-banner">
+              <AlertTriangle className="h-4 w-4 text-gold" aria-hidden />
+              <AlertTitle>MOCK offline draft. Not a prescription, not assigned.</AlertTitle>
+              <AlertDescription>
+                Optional. The file comes from the offline drafting companion (provider disabled, fictional fixtures). It is checked against the current exercise catalog, then you review and edit it here. Saving creates a program template only; assigning stays a separate step.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {!draft && proposalStatus}
+
           {draft?.import_meta?.warnings?.length > 0 && (
             <div className="rounded-xl border border-gold/30 bg-gold/10 p-3 text-sm text-gold">
               <div className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" /> Warnings</div>
@@ -1238,6 +1390,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
 
           {draft && (
             <div className="space-y-4" data-testid="program-import-review">
+              {sourceType === 'proposal' && proposal && <ProposalIdentityPanel proposal={proposal} draft={draft} />}
               <div className="rounded-xl border border-border bg-card/50 p-4 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
                   <Input value={draft.program.name} onChange={(e) => setProgram({ name: e.target.value })} placeholder="Program name" data-testid="program-import-name-input" />
@@ -1330,9 +1483,19 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                 })}
               </Accordion>
 
+              {proposalStatus}
+              {sourceType === 'proposal' && proposal && (
+                <div className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-3">
+                  <Checkbox id="program-import-proposal-confirm" checked={proposalConfirmed} disabled={saving}
+                    onCheckedChange={(value) => setProposalConfirmed(value === true)} className="mt-0.5" data-testid="program-import-proposal-confirm" />
+                  <Label htmlFor="program-import-proposal-confirm" className="text-sm font-normal leading-snug">
+                    I reviewed every day and exercise of this MOCK proposal and want to save it as a program template. It will not be assigned to anyone.
+                  </Label>
+                </div>
+              )}
               <DialogFooter>
                 <Button variant="outline" className="rounded-xl" onClick={() => close(false)}>Cancel</Button>
-                <Button className="rounded-xl" disabled={saving || !validation.valid} onClick={commit} data-testid="program-import-save-button">
+                <Button className="rounded-xl" disabled={saving || !validation.valid || (sourceType === 'proposal' && (!proposal || !proposalConfirmed))} onClick={commit} data-testid="program-import-save-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save to vault'}
                 </Button>
               </DialogFooter>
@@ -1341,6 +1504,46 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Identity of a verified offline proposal and its stable exercise bindings,
+// with each bound row's current name so a coach edit is visible before saving.
+function ProposalIdentityPanel({ proposal, draft }) {
+  const { identity, bindings } = proposal;
+  const rowAt = (path) => {
+    const [, day, exercise] = /^days\.(\d+)\.exercises\.(\d+)$/.exec(path) || [];
+    return draft.days[Number(day)]?.exercises?.[Number(exercise)];
+  };
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4 text-sm" data-testid="program-import-proposal-panel">
+      <div className="font-medium">Offline proposal identity</div>
+      <dl className="grid gap-x-3 gap-y-1 [overflow-wrap:anywhere] sm:grid-cols-[170px_1fr]">
+        <dt className="text-muted-foreground">Proposal SHA-256 (canonical)</dt><dd className="font-mono text-xs" data-testid="program-import-proposal-sha">{identity.proposal_sha256}</dd>
+        <dt className="text-muted-foreground">Catalog revision</dt><dd className="font-mono text-xs" data-testid="program-import-proposal-catalog">{identity.catalog_revision}</dd>
+        <dt className="text-muted-foreground">Accepted snapshot</dt><dd className="font-mono text-xs">r{identity.accepted_revision} · {identity.accepted_sha256}</dd>
+        <dt className="text-muted-foreground">Request</dt><dd>{identity.request_id} · accepted offline by {identity.accepted_by}</dd>
+      </dl>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[320px] text-left text-xs" data-testid="program-import-proposal-bindings">
+          <thead className="text-muted-foreground"><tr><th className="py-1 pr-2 font-medium">Row</th><th className="py-1 pr-2 font-medium">Bound exercise</th><th className="py-1 font-medium">Catalog id</th></tr></thead>
+          <tbody>
+            {bindings.map((binding) => {
+              const row = rowAt(binding.program_draft_path);
+              const changed = !row || row.name !== binding.catalog_name_at_snapshot;
+              return (
+                <tr key={binding.program_draft_path} className="border-t border-border" data-testid="program-import-proposal-binding-row">
+                  <td className="py-1 pr-2">Day {binding.day_number} · {binding.weekday}</td>
+                  <td className="py-1 pr-2">{binding.catalog_name_at_snapshot}{changed && <Badge variant="outline" className="ml-2 border-destructive/30 text-destructive">edited: {row?.name || 'removed'}</Badge>}</td>
+                  <td className="py-1 font-mono">{binding.exercise_id}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-muted-foreground">Bindings are checked again against the catalog when you save. Prescriptions can be edited; a bound exercise cannot be swapped.</p>
+    </div>
   );
 }
 
