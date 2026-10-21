@@ -1331,7 +1331,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
         const outcome = { kind: 'unknown', message, sent: rechecked.draft, baselineIds };
         unresolvedProposalSaves.set(proposal.identity.proposal_sha256, outcome);
         setSaveOutcome(outcome);
-        toast.error('Save outcome unknown: the program may have been created. Check the vault before saving again.');
+        toast.error('Save outcome unknown: the program may have been created. Saving this proposal again is blocked; check Programs.');
       }
     } finally {
       postInFlight.current = false;

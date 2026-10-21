@@ -319,6 +319,7 @@ for (const [label, viewport] of [['phone-390', { width: 390, height: 844 }], ['d
     await expect(failed).toHaveAttribute('data-outcome', 'unknown');
     await expect(failed).toContainText('Save outcome unknown');
     await expect(failed).toContainText('Synthetic outage. The program may have been created, or may still be created by the request already sent.');
+    await expect(page.getByText('Save outcome unknown: the program may have been created. Saving this proposal again is blocked; check Programs.').first()).toBeVisible();
     await expect(failed).not.toContainText('No program was created');
     await expect(failed).toBeInViewport();
     await expect(page.getByText('Program saved to vault')).toHaveCount(0);
