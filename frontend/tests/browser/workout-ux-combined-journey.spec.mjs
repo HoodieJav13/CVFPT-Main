@@ -29,6 +29,7 @@ class FakeBackend {
   constructor() {
     Object.assign(this, { workouts: [], programs: [], assignments: [], logs: [], writes: [], unexpected: [], forbidden: [], seq: 0 });
     this.failNextCommit = false;
+    this.refuseNextCommit = false;
     this.clientSessionDead = false;
   }
   id(prefix) { this.seq += 1; return `${prefix}-${this.seq}`; }
@@ -129,7 +130,8 @@ async function install(page, backend) {
       if (path === '/programs' && method === 'GET') return json(backend.programs.filter((p) => !p.archived).map((p) => backend.programDetail(p)));
       if (path === '/clients' && method === 'GET') return json([CLIENT]);
       if (path === '/programs/import/commit' && method === 'POST') {
-        if (backend.failNextCommit) { backend.failNextCommit = false; return json({ error: 'Synthetic outage: the program was not saved' }, 500); }
+        if (backend.refuseNextCommit) { backend.refuseNextCommit = false; return json({ error: 'Synthetic refusal: fix import draft errors before saving' }, 422); }
+        if (backend.failNextCommit) { backend.failNextCommit = false; return json({ error: 'Synthetic outage' }, 500); }
         return json(backend.commitImport(body.draft), 201);
       }
       const program = path.match(/^\/programs\/([^/]+)$/);
@@ -298,27 +300,50 @@ for (const [label, viewport] of [['phone-390', { width: 390, height: 844 }], ['d
     await rowName.fill('Cable Row');
     await expect(panel.getByTestId('program-import-proposal-binding-row').nth(3)).not.toContainText('edited');
 
-    // ---- 4. A failed server save is reported honestly; the reviewed draft stays ----
+    // ---- 4. Failed saves are reported honestly; the reviewed draft stays ----
+    // A 4xx is answered before the route writes: definitely not created.
+    backend.refuseNextCommit = true;
+    await confirm.check();
+    await save.click();
+    const refused = dialog.getByTestId('program-import-save-refused');
+    await expect(refused).toContainText('Synthetic refusal: fix import draft errors before saving. The server refused it before writing, so no program was created.');
+    await expect(refused).toBeInViewport();
+    await expect(confirm).not.toBeChecked();
+    expect(backend.programs).toHaveLength(0);
+    // A 5xx can follow a committed create: the outcome is unknown, and Save
+    // stays blocked (even when re-confirmed) until the vault is checked.
     backend.failNextCommit = true;
     await confirm.check();
     await save.click();
     const failed = dialog.getByTestId('program-import-save-failed');
-    await expect(failed).toContainText('Not saved');
+    await expect(failed).toHaveAttribute('data-outcome', 'unknown');
+    await expect(failed).toContainText('Save outcome unknown');
+    await expect(failed).toContainText('Synthetic outage. The program may have been created anyway.');
+    await expect(failed).not.toContainText('No program was created');
     await expect(failed).toBeInViewport();
-    await expect(failed).toContainText('Synthetic outage: the program was not saved. No program was created');
     await expect(page.getByText('Program saved to vault')).toHaveCount(0);
     await expect(dialog).toBeVisible();
-    expect(backend.programs).toHaveLength(0);
+    await expect(save).toBeDisabled();
+    await confirm.uncheck();
+    await confirm.check();
+    await expect(save).toBeDisabled();
     await expect(dialog.getByTestId('program-import-exercise-sets-input').first()).toHaveValue('2');
     await shot(page, `${label}-03-failed-save`);
+    // Checking the vault: this synthetic 5xx created nothing, so saving is allowed again after re-confirming.
+    await dialog.getByTestId('program-import-save-reconcile').click();
+    await expect(dialog.getByTestId('program-import-save-not-found')).toContainText('No new matching program is in the vault');
+    await expect(confirm).not.toBeChecked();
+    await expect(save).toBeDisabled();
+    await confirm.check();
+    expect(backend.programs).toHaveLength(0);
 
     // ---- 5. Saved as a program template only (re-checked against a fresh catalog read) ----
     // Two synchronous taps still write once.
     await save.evaluate((button) => { button.click(); button.click(); });
     await expect(page.getByText('Program saved to vault (not assigned)').first()).toBeVisible();
     await expect(dialog).toHaveCount(0);
-    expect(commits()).toHaveLength(2);
-    const committed = commits()[1].body.draft;
+    expect(commits()).toHaveLength(3);
+    const committed = commits()[2].body.draft;
     expect(committed.program.name).toBe('Sample C Foundations (offline draft)');
     expect(committed.days.map((day) => day.exercises.map((row) => row.name))).toEqual([['Goblet Squat', 'Dead Bug'], ['Push-up', 'Cable Row'], ['Plank', 'Goblet Squat']]);
     expect(committed.days[0].exercises[0].sets).toBe('2');
@@ -449,5 +474,178 @@ for (const [label, viewport] of [['phone-390', { width: 390, height: 844 }], ['d
     expect(problems).toEqual([]);
     expect(prompts).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  });
+}
+
+// ---- Proposal save interruptions (corrections R1–R4 of the review of 1c32ca1) ----
+// Synthetic API only. Each case holds a request at the exact window the
+// review identified, then checks what is sent, what is kept and what is shown.
+async function openProposal(page, width) {
+  const backend = new FakeBackend();
+  await page.setViewportSize({ width, height: 900 });
+  await install(page, backend);
+  const prompts = [];
+  page.on('dialog', (prompt) => { prompts.push(prompt.type()); prompt.accept(); });
+  await page.goto('/login');
+  await signIn(page, TOKENS.coach);
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-programs').click();
+  await page.getByTestId('program-import-open-button').click();
+  const dialog = page.getByTestId('program-import-dialog');
+  await dialog.getByTestId('program-import-source-select').click();
+  await page.getByRole('option', { name: 'Offline draft proposal (MOCK)' }).click();
+  await checkFile(dialog, { name: 'proposal.json', mimeType: 'application/json', buffer: fixture('proposal.json') });
+  await expect(dialog.getByTestId('program-import-proposal-panel')).toBeVisible();
+  const commits = () => backend.writes.filter((w) => w.path === '/programs/import/commit');
+  return { backend, dialog, prompts, commits, save: dialog.getByTestId('program-import-save-button'), confirm: dialog.getByTestId('program-import-proposal-confirm') };
+}
+
+// Holds the next matching request (only that one) until released.
+async function holdNext(page, pattern) {
+  let release;
+  let arrived;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const hit = new Promise((resolve) => { arrived = resolve; });
+  let used = false;
+  await page.route(pattern, async (route) => {
+    if (used) return route.fallback();
+    used = true;
+    arrived();
+    await gate;
+    await route.fallback();
+  });
+  return { hit, release };
+}
+
+for (const width of [390, 1440]) {
+  test(`R1 ${width}: an edit during the final check sends nothing and keeps the newer text; confirming again saves that text`, async ({ page }) => {
+    const { backend, dialog, commits, save, confirm } = await openProposal(page, width);
+    await confirm.check();
+    const hold = await holdNext(page, '**/api/programs/exercise-library?include_hidden=true');
+    await save.click();
+    await hold.hit;
+    const name = dialog.getByTestId('program-import-name-input');
+    await name.fill('Sample C Foundations (newer coach edit)');
+    await expect(confirm).not.toBeChecked();
+    hold.release();
+    await expect(dialog.getByTestId('program-import-save-stale')).toContainText('Not sent: the draft changed during the final check');
+    await expect(name).toHaveValue('Sample C Foundations (newer coach edit)');
+    await expect(save).toBeDisabled();
+    expect(commits()).toHaveLength(0);
+    await confirm.check();
+    await save.click();
+    await expect(page.getByText('Program saved to vault (not assigned)').first()).toBeVisible();
+    expect(commits().map((w) => w.body.draft.program.name)).toEqual(['Sample C Foundations (newer coach edit)']);
+    expect(backend.programs.map((p) => p.name)).toEqual(['Sample C Foundations (newer coach edit)']);
+  });
+
+  test(`R2 ${width}: a source change or a new check during the final check sends nothing, and the old reply leaves the new import alone`, async ({ page }) => {
+    const { backend, dialog, commits, save, confirm } = await openProposal(page, width);
+    // Source change.
+    await confirm.check();
+    let hold = await holdNext(page, '**/api/programs/exercise-library?include_hidden=true');
+    await save.click();
+    await hold.hit;
+    await dialog.getByTestId('program-import-source-select').click();
+    await page.getByRole('option', { name: 'Paste program' }).click();
+    hold.release();
+    await page.waitForTimeout(800);
+    expect(commits()).toHaveLength(0);
+    await expect(dialog.getByTestId('program-import-paste-textarea')).toBeVisible();
+    // New check of a proposal while the previous save's catalog read is held.
+    await dialog.getByTestId('program-import-source-select').click();
+    await page.getByRole('option', { name: 'Offline draft proposal (MOCK)' }).click();
+    await checkFile(dialog, { name: 'proposal.json', mimeType: 'application/json', buffer: fixture('proposal.json') });
+    await expect(dialog.getByTestId('program-import-proposal-panel')).toBeVisible();
+    await confirm.check();
+    hold = await holdNext(page, '**/api/programs/exercise-library?include_hidden=true');
+    await save.click();
+    await hold.hit;
+    await dialog.getByTestId('program-import-name-input').fill('Not the reviewed draft');
+    await dialog.getByTestId('program-import-proposal-check-button').click();
+    await expect(dialog.getByTestId('program-import-name-input')).toHaveValue('Sample C Foundations (offline draft)');
+    hold.release();
+    await page.waitForTimeout(800);
+    // The old reply neither saved nor touched the new import.
+    expect(commits()).toHaveLength(0);
+    await expect(dialog.getByTestId('program-import-save-stale')).toHaveCount(0);
+    await expect(dialog.getByTestId('program-import-proposal-panel')).toBeVisible();
+    await expect(confirm).not.toBeChecked();
+    await expect(confirm).toBeEnabled();
+    await confirm.check();
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(page.getByText('Program saved to vault (not assigned)').first()).toBeVisible();
+    expect(commits()).toHaveLength(1);
+    expect(backend.programs.map((p) => p.name)).toEqual(['Sample C Foundations (offline draft)']);
+  });
+
+  test(`R2 ${width}: once the POST is sent the form is frozen and cannot be cancelled; the pending state is shown until the reply`, async ({ page }) => {
+    const { backend, dialog, prompts, commits, save, confirm } = await openProposal(page, width);
+    await confirm.check();
+    const hold = await holdNext(page, '**/api/programs/import/commit');
+    await save.click();
+    await hold.hit;
+    await expect(dialog.getByTestId('program-import-save-pending')).toContainText('Saving: sent to the server');
+    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+    await expect(dialog.getByTestId('program-import-name-input')).toBeDisabled();
+    await expect(dialog.getByTestId('program-import-exercise-sets-input').first()).toBeDisabled();
+    await expect(confirm).toBeDisabled();
+    await expect(dialog.getByTestId('program-import-source-select')).toBeDisabled();
+    await expect(dialog.getByTestId('program-import-proposal-check-button')).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await dialog.getByRole('button', { name: 'Close' }).click({ force: true }).catch(() => {});
+    await expect(dialog).toBeVisible();
+    expect(prompts).toEqual([]);
+    hold.release();
+    await expect(page.getByText('Program saved to vault (not assigned)').first()).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+    expect(commits()).toHaveLength(1);
+    expect(backend.programs).toHaveLength(1);
+  });
+
+  test(`R3 ${width}: a 500 after a committed create is an unknown outcome; checking the vault finds exactly one program, also after closing and checking the proposal again`, async ({ page }) => {
+    const { backend, dialog, commits, save, confirm } = await openProposal(page, width);
+    // The synthetic route commits, then answers 500 (as the real route can after its detail read fails).
+    await page.route('**/api/programs/import/commit', async (route) => {
+      const body = route.request().postDataJSON();
+      backend.writes.push({ role: 'coach', method: 'POST', path: '/programs/import/commit', body, note: 'committed, then 500' });
+      backend.commitImport(body.draft);
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Failed to save imported program' }) });
+    });
+    await confirm.check();
+    await save.click();
+    const failed = dialog.getByTestId('program-import-save-failed');
+    await expect(failed).toContainText('Failed to save imported program. The program may have been created anyway.');
+    await expect(failed).not.toContainText('No program was created');
+    await expect(save).toBeDisabled();
+    expect(backend.programs).toHaveLength(1);
+    // Closing keeps the warning; the same proposal checked again stays blocked.
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText('Save outcome unknown: check Programs for "Sample C Foundations (offline draft)" before importing it again.').first()).toBeVisible();
+    await page.getByTestId('program-import-open-button').click();
+    await dialog.getByTestId('program-import-source-select').click();
+    await page.getByRole('option', { name: 'Offline draft proposal (MOCK)' }).click();
+    await checkFile(dialog, { name: 'proposal.json', mimeType: 'application/json', buffer: fixture('proposal.json') });
+    await expect(failed).toHaveAttribute('data-outcome', 'unknown');
+    await confirm.check();
+    await expect(save).toBeDisabled();
+    await dialog.getByTestId('program-import-save-reconcile').click();
+    await expect(page.getByText('Found in the vault: the program was saved (not assigned)').first()).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+    await page.waitForTimeout(300);
+    expect(commits()).toHaveLength(1);
+    expect(backend.programs).toHaveLength(1);
+    await expect(page.getByTestId('program-card').filter({ hasText: 'Sample C Foundations (offline draft)' })).toHaveCount(1);
+  });
+
+  test(`R4 ${width}: a proposal review cannot add, remove or renumber rows, so its bindings keep covering every row`, async ({ page }) => {
+    const { dialog } = await openProposal(page, width);
+    await expect(dialog.getByTestId('program-import-exercise-add-button').first()).toBeDisabled();
+    await expect(dialog.getByTestId('program-import-exercise-remove-button').first()).toBeDisabled();
+    await expect(dialog.getByTestId('program-import-day-number-input').first()).toBeDisabled();
+    await expect(dialog.getByTestId('program-import-frequency-select')).toBeDisabled();
+    await expect(dialog.getByTestId('program-import-exercise-sets-input').first()).toBeEnabled();
   });
 }

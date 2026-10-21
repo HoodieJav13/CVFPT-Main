@@ -959,6 +959,21 @@ function StructuredProgramsTab({ programs, workouts, library, reload, onCatalogC
   );
 }
 
+// Proposal saves whose outcome is unknown (lost reply or 5xx), by canonical
+// proposal hash, for this page session: checking the same proposal again keeps
+// Save blocked until the coach checks the vault.
+const unresolvedProposalSaves = new Map();
+
+// The program a save would have created: same name, frequency and day count,
+// and not in the vault before that save was sent.
+function findSavedProgram(programs, outcome) {
+  const name = String(outcome.sent.program.name || '').trim().toLowerCase();
+  return (Array.isArray(programs) ? programs : []).filter((program) => !outcome.baselineIds.includes(program.id)
+    && String(program.name || '').trim().toLowerCase() === name
+    && Number(program.frequency_days) === Number(outcome.sent.program.frequency_days)
+    && (!Array.isArray(program.days) || program.days.length === outcome.sent.days.length));
+}
+
 function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, reload, onCatalogCreated: notifyCreated }) {
   const [library, rememberCreated] = useBuilderCatalog(initialLibrary);
   const onCatalogCreated = (item) => { rememberCreated(item); notifyCreated?.(item); };
@@ -977,15 +992,39 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
   // the coach's explicit review confirmation, and an honest save failure.
   const [proposal, setProposal] = useState(null);
   const [proposalRefusal, setProposalRefusal] = useState(null);
-  const [proposalConfirmed, setProposalConfirmed] = useState(false);
-  const [saveFailure, setSaveFailure] = useState('');
+  const [proposalConfirmed, setProposalConfirmedState] = useState(false);
+  // How the last proposal save ended when it did not succeed:
+  // refused (definitely not written), stale (not sent: the draft changed during
+  // the final check), unknown (sent; the reply was lost or a 5xx) or not_found
+  // (an unknown outcome the coach checked: no new program in the vault).
+  const [saveOutcome, setSaveOutcome] = useState(null);
+  const [postPending, setPostPending] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
   // One save per tap: a second tap during the re-check or write is ignored.
   const committingProposal = useRef(false);
+  // While the POST is in flight the form is frozen and the dialog cannot close.
+  const postInFlight = useRef(false);
+  // Each edit makes a new draft revision; the coach's tick approves exactly one.
+  const draftRevision = useRef(0);
+  const approvedRevision = useRef(-1);
+  const setProposalConfirmed = (value) => {
+    approvedRevision.current = value ? draftRevision.current : -1;
+    setProposalConfirmedState(value);
+  };
+  // Ends an unsent proposal save (close, discard, source change, new file or
+  // check): bumping parseSeq makes its catalog reply a no-op.
+  const invalidateProposalSave = () => {
+    parseSeq.current += 1;
+    committingProposal.current = false;
+    setSaving(false);
+  };
   const resetProposal = () => {
+    invalidateProposalSave();
     setProposal(null);
     setProposalRefusal(null);
     setProposalConfirmed(false);
-    setSaveFailure('');
+    setSaveOutcome(null);
+    setReconciling(false);
   };
 
   const changes = useFormChanges({ pasteText, fileName: file?.name, draft }, open, open);
@@ -1000,7 +1039,13 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
   if (draft && reviewOpenValues.length === 0 && availableReviewDays.length > 0) reviewOpenValues.push(availableReviewDays[0]);
 
   const close = (value, saved = false) => {
+    // A sent save cannot be called off; the dialog stays until its reply.
+    if (!value && postInFlight.current) return;
     if (!value && !saved && !changes.confirmDiscard()) return;
+    if (!value && !saved && saveOutcome?.kind === 'unknown') {
+      toast.warning(`Save outcome unknown: check Programs for "${saveOutcome.sent.program.name}" before importing it again.`, { duration: 10_000 });
+      reload();
+    }
     onOpenChange(value);
     if (!value) {
       parseSeq.current += 1;
@@ -1071,12 +1116,13 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
 
   const checkProposal = async () => {
     if (!file) return toast.error('Choose a proposal file');
+    // A new check ends any unsent save of the previous one first.
+    resetProposal();
     const seq = ++parseSeq.current;
     setParsing(true);
     setDraft(null);
     setErrors([]);
     setOpenReviewDays([]);
-    resetProposal();
     try {
       let envelope;
       try {
@@ -1092,8 +1138,11 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
         setProposalRefusal(result.refusal);
         return;
       }
+      draftRevision.current += 1;
       setProposal(result);
       setDraft(normalizeDraft(result.draft));
+      const unresolved = unresolvedProposalSaves.get(result.identity.proposal_sha256);
+      if (unresolved) setSaveOutcome(unresolved);
     } catch (e) {
       if (seq !== parseSeq.current) return;
       setProposalRefusal({ code: 'catalog_unavailable', message: errMsg(e, 'Could not load the exercise catalog to check this proposal.'), errors: [] });
@@ -1148,7 +1197,10 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
     setDraft(nextDraft);
     if (sourceType === 'paste') setErrors(validateDraft(nextDraft).errors);
     // The coach confirms the draft as it is now; any later edit needs a new confirmation.
-    if (sourceType === 'proposal') setProposalConfirmed(false);
+    if (sourceType === 'proposal') {
+      draftRevision.current += 1;
+      setProposalConfirmed(false);
+    }
   };
 
   const setProgram = (updates) => {
@@ -1208,43 +1260,115 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
     }
   };
 
+  const loadProgramIds = async () => ((await api.get('/programs')).data || []).map((program) => program.id);
+
   // Saves a reviewed proposal as a program template only (never assigned).
-  // The catalog is re-read first: a changed catalog or an edited bound row is
-  // refused and nothing is sent.
+  // Before anything is sent: the catalog is re-read and the draft re-checked,
+  // and the save goes ahead only if this import is still open (no close,
+  // discard, source change or new check) and the coach's tick still approves
+  // the current draft revision. Edits stay possible during that check; an edit
+  // stops this save and keeps the newer text. Once the POST is sent the form is
+  // frozen until its reply.
   const commitProposal = async () => {
-    if (!proposal || !proposalConfirmed || committingProposal.current) return;
+    const seq = parseSeq.current;
+    const revision = draftRevision.current;
+    if (!proposal || !proposalConfirmed || approvedRevision.current !== revision || committingProposal.current) return;
+    if (saveOutcome?.kind === 'unknown') return;
     committingProposal.current = true;
     setSaving(true);
-    setSaveFailure('');
+    setSaveOutcome(null);
+    const approvedDraft = draft;
+    let rechecked;
+    let baselineIds;
     try {
-      let rechecked;
-      try {
-        rechecked = await recheckBeforeCommit(proposal, draft, await loadLibraryRows());
-      } catch (e) {
-        rechecked = { ok: false, refusal: { code: 'catalog_unavailable', message: `${errMsg(e, 'Could not re-check the exercise catalog')}. Nothing was saved.`, errors: [] } };
-      }
-      if (!rechecked.ok) {
-        setProposalRefusal(rechecked.refusal);
+      const [rows, ids] = await Promise.all([loadLibraryRows(), loadProgramIds()]);
+      baselineIds = ids;
+      rechecked = await recheckBeforeCommit(proposal, approvedDraft, rows);
+    } catch (e) {
+      rechecked = { ok: false, refusal: { code: 'catalog_unavailable', message: `${errMsg(e, 'Could not re-check the exercise catalog and vault')}. Nothing was saved.`, errors: [] } };
+    }
+    // Closed, discarded, source changed or a new check started: nothing is sent,
+    // and nothing here touches whatever the dialog shows now.
+    if (seq !== parseSeq.current) return;
+    if (draftRevision.current !== revision || approvedRevision.current !== revision) {
+      committingProposal.current = false;
+      setSaving(false);
+      setSaveOutcome({ kind: 'stale', message: 'Not sent: the draft changed during the final check. Your edits are kept; review them and confirm again to save.' });
+      return;
+    }
+    if (!rechecked.ok) {
+      committingProposal.current = false;
+      setSaving(false);
+      setProposalRefusal(rechecked.refusal);
+      setProposalConfirmed(false);
+      toast.error(`Not saved: ${rechecked.refusal.message}`);
+      return;
+    }
+    setProposalRefusal(null);
+    postInFlight.current = true;
+    setPostPending(true);
+    try {
+      const { data } = await api.post('/programs/import/commit', { draft: rechecked.draft });
+      postInFlight.current = false;
+      toast.success('Program saved to vault (not assigned)', {
+        description: `${data.created_exercises?.length || 0} new exercises, ${data.reused_exercises?.length || 0} reused. Assign it from Assignments when ready.`,
+      });
+      close(false, true);
+      reload();
+    } catch (e) {
+      postInFlight.current = false;
+      const status = e?.response?.status;
+      const message = errMsg(e, status ? `The server answered ${status}` : 'No reply from the server');
+      if (status >= 400 && status < 500) {
+        // The existing import route answers 4xx (validation, auth, rate limit)
+        // only before it writes, so this save definitely created nothing.
+        setSaveOutcome({ kind: 'refused', message });
         setProposalConfirmed(false);
-        toast.error(`Not saved: ${rechecked.refusal.message}`);
-        return;
+        toast.error(`Not saved: ${message}`);
+      } else {
+        // A lost reply or a 5xx can follow a committed create: the outcome is
+        // unknown, so Save stays blocked until the vault is checked.
+        const outcome = { kind: 'unknown', message, sent: rechecked.draft, baselineIds };
+        unresolvedProposalSaves.set(proposal.identity.proposal_sha256, outcome);
+        setSaveOutcome(outcome);
+        toast.error('Save outcome unknown: the program may have been created. Check the vault before saving again.');
       }
-      setProposalRefusal(null);
-      try {
-        const { data } = await api.post('/programs/import/commit', { draft: rechecked.draft });
-        toast.success('Program saved to vault (not assigned)', {
-          description: `${data.created_exercises?.length || 0} new exercises, ${data.reused_exercises?.length || 0} reused. Assign it from Assignments when ready.`,
+    } finally {
+      postInFlight.current = false;
+      setPostPending(false);
+      committingProposal.current = false;
+      setSaving(false);
+    }
+  };
+
+  // Resolves an unknown outcome with the existing program list: a program that
+  // matches the sent draft and was not in the vault before the save means it
+  // was created; none means it was not (as of this check).
+  const reconcileSave = async () => {
+    if (saveOutcome?.kind !== 'unknown' || reconciling) return;
+    const seq = parseSeq.current;
+    const outcome = saveOutcome;
+    setReconciling(true);
+    try {
+      const { data } = await api.get('/programs');
+      if (seq !== parseSeq.current) return;
+      const found = findSavedProgram(data, outcome);
+      unresolvedProposalSaves.delete(proposal.identity.proposal_sha256);
+      if (found.length) {
+        toast.success('Found in the vault: the program was saved (not assigned)', {
+          description: found.length > 1 ? `${found.length} matching new programs were found; archive any duplicate.` : 'Assign it from Assignments when ready.',
         });
         close(false, true);
         reload();
-      } catch (e) {
-        const message = errMsg(e, 'The server did not confirm the save');
-        setSaveFailure(message);
-        toast.error(`Not saved: ${message}`);
+        return;
       }
+      setProposalConfirmed(false);
+      setSaveOutcome({ kind: 'not_found', message: 'No new matching program is in the vault, so the last save was not created. Confirm again to save.' });
+    } catch (e) {
+      if (seq !== parseSeq.current) return;
+      setSaveOutcome({ ...outcome, checkError: errMsg(e, 'Could not read the vault') });
     } finally {
-      committingProposal.current = false;
-      setSaving(false);
+      if (seq === parseSeq.current) setReconciling(false);
     }
   };
 
@@ -1267,11 +1391,49 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
         </Alert>
       )}
 
-      {sourceType === 'proposal' && saveFailure && (
-        <Alert variant="destructive" aria-live="assertive" data-testid="program-import-save-failed">
+      {sourceType === 'proposal' && postPending && (
+        <Alert aria-live="polite" data-testid="program-import-save-pending">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <AlertTitle>Saving: sent to the server</AlertTitle>
+          <AlertDescription>Waiting for its reply. The save cannot be called off now, so the form stays locked until the server answers.</AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveOutcome?.kind === 'stale' && (
+        <Alert aria-live="polite" className="border-gold/30 bg-gold/10" data-testid="program-import-save-stale">
+          <AlertTriangle className="h-4 w-4 text-gold" aria-hidden />
+          <AlertTitle>Not sent</AlertTitle>
+          <AlertDescription>{saveOutcome.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveOutcome?.kind === 'refused' && (
+        <Alert variant="destructive" aria-live="assertive" data-testid="program-import-save-refused">
           <CircleAlert className="h-4 w-4" aria-hidden />
           <AlertTitle>Not saved</AlertTitle>
-          <AlertDescription>{saveFailure}. No program was created; your reviewed draft is still here. Try again when the connection is back.</AlertDescription>
+          <AlertDescription>{saveOutcome.message}. The server refused it before writing, so no program was created. Your reviewed draft is still here; confirm again to retry.</AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveOutcome?.kind === 'unknown' && (
+        <Alert variant="destructive" aria-live="assertive" data-testid="program-import-save-failed" data-outcome="unknown">
+          <CircleAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>Save outcome unknown</AlertTitle>
+          <AlertDescription>
+            <p>{saveOutcome.message}. The program may have been created anyway. Your reviewed draft is still here. Saving again is blocked until you check the vault, so it is not created twice.</p>
+            {saveOutcome.checkError && <p className="mt-1">Could not check yet: {saveOutcome.checkError}.</p>}
+            <Button type="button" size="sm" variant="outline" className="mt-2 rounded-xl" disabled={reconciling} onClick={reconcileSave} data-testid="program-import-save-reconcile">
+              {reconciling ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check whether it was saved'}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveOutcome?.kind === 'not_found' && (
+        <Alert aria-live="polite" data-testid="program-import-save-not-found">
+          <CheckCircle2 className="h-4 w-4" aria-hidden />
+          <AlertTitle>Not in the vault</AlertTitle>
+          <AlertDescription>{saveOutcome.message}</AlertDescription>
         </Alert>
       )}
     </>
@@ -1287,7 +1449,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
           <div className="grid gap-3 lg:grid-cols-[180px_1fr_auto] lg:items-end">
             <div className="space-y-1.5">
               <Label>Source</Label>
-              <Select value={sourceType} onValueChange={selectSource}>
+              <Select value={sourceType} onValueChange={selectSource} disabled={postPending}>
                 <SelectTrigger className="h-11 rounded-xl" data-testid="program-import-source-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="csv">CSV template</SelectItem>
@@ -1326,12 +1488,12 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
               <>
                 <div className="space-y-1.5">
                   <Label htmlFor="program-import-proposal-file-input">Proposal file (.json)</Label>
-                  <Input id="program-import-proposal-file-input" size="touch" type="file" accept=".json,application/json" disabled={parsing || saving}
-                    onChange={(e) => { setFile(e.target.files?.[0] || null); setDraft(null); setErrors([]); resetProposal(); }}
+                  <Input id="program-import-proposal-file-input" size="touch" type="file" accept=".json,application/json" disabled={parsing || postPending}
+                    onChange={(e) => { resetProposal(); setFile(e.target.files?.[0] || null); setDraft(null); setErrors([]); }}
                     data-testid="program-import-proposal-file-input" />
                 </div>
                 <div className="flex gap-2">
-                  <Button size="touch" className="rounded-xl" type="button" onClick={checkProposal} disabled={parsing || saving || !file} data-testid="program-import-proposal-check-button">
+                  <Button size="touch" className="rounded-xl" type="button" onClick={checkProposal} disabled={parsing || postPending || !file} data-testid="program-import-proposal-check-button">
                     {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check proposal'}
                   </Button>
                 </div>
@@ -1390,11 +1552,12 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
 
           {draft && (
             <div className="space-y-4" data-testid="program-import-review">
+              <fieldset disabled={postPending} aria-busy={postPending} className="m-0 min-w-0 space-y-4 border-0 p-0">
               {sourceType === 'proposal' && proposal && <ProposalIdentityPanel proposal={proposal} draft={draft} />}
               <div className="rounded-xl border border-border bg-card/50 p-4 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
                   <Input value={draft.program.name} onChange={(e) => setProgram({ name: e.target.value })} placeholder="Program name" data-testid="program-import-name-input" />
-                  <Select value={String(draft.program.frequency_days)} onValueChange={(value) => setProgram({ frequency_days: Number(value) })}>
+                  <Select value={String(draft.program.frequency_days)} onValueChange={(value) => setProgram({ frequency_days: Number(value) })} disabled={sourceType === 'proposal'}>
                     <SelectTrigger className="rounded-xl" data-testid="program-import-frequency-select"><SelectValue /></SelectTrigger>
                     <SelectContent>{(sourceType === 'paste' ? PROGRAM_FREQUENCIES : IMPORT_FREQUENCIES).map((d) => <SelectItem key={d} value={d}>{frequencyLabel(d)}</SelectItem>)}</SelectContent>
                   </Select>
@@ -1434,7 +1597,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                       </AccordionTrigger>
                       <AccordionContent className="space-y-3 pb-4">
                         <div className="grid gap-2 sm:grid-cols-[90px_1fr_1fr]">
-                          <Input type="number" min="1" max="5" value={day.day_number} onChange={(e) => setDay(dayIndex, { day_number: Number(e.target.value) })} data-testid="program-import-day-number-input" />
+                          <Input type="number" min="1" max="5" value={day.day_number} disabled={sourceType === 'proposal'} onChange={(e) => setDay(dayIndex, { day_number: Number(e.target.value) })} data-testid="program-import-day-number-input" />
                           <Input value={day.name} onChange={(e) => setDay(dayIndex, { name: e.target.value })} placeholder="Workout day name" data-testid="program-import-day-name-input" />
                           <Input value={day.goal} onChange={(e) => setDay(dayIndex, { goal: e.target.value })} placeholder="Goal/focus" data-testid="program-import-day-goal-input" />
                         </div>
@@ -1449,6 +1612,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                                 size="touchIcon"
                                 className="shrink-0 rounded-xl text-muted-foreground"
                                 onClick={() => removeExercise(dayIndex, exerciseIndex)}
+                                disabled={sourceType === 'proposal'}
                                 data-testid="program-import-exercise-remove-button"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -1474,7 +1638,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                             </div>
                           </div>
                         ))}
-                        <Button type="button" variant="outline" className="rounded-xl" onClick={() => addExercise(dayIndex)} data-testid="program-import-exercise-add-button">
+                        <Button type="button" variant="outline" className="rounded-xl" disabled={sourceType === 'proposal'} onClick={() => addExercise(dayIndex)} data-testid="program-import-exercise-add-button">
                           <Plus className="h-4 w-4 mr-1.5" /> Add exercise
                         </Button>
                       </AccordionContent>
@@ -1495,10 +1659,11 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
               )}
               <DialogFooter>
                 <Button variant="outline" className="rounded-xl" onClick={() => close(false)}>Cancel</Button>
-                <Button className="rounded-xl" disabled={saving || !validation.valid || (sourceType === 'proposal' && (!proposal || !proposalConfirmed))} onClick={commit} data-testid="program-import-save-button">
+                <Button className="rounded-xl" disabled={saving || !validation.valid || (sourceType === 'proposal' && (!proposal || !proposalConfirmed || saveOutcome?.kind === 'unknown'))} onClick={commit} data-testid="program-import-save-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save to vault'}
                 </Button>
               </DialogFooter>
+              </fieldset>
             </div>
           )}
         </div>
@@ -1542,7 +1707,7 @@ function ProposalIdentityPanel({ proposal, draft }) {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-muted-foreground">Bindings are checked again against the catalog when you save. Prescriptions can be edited; a bound exercise cannot be swapped.</p>
+      <p className="text-xs text-muted-foreground">Bindings are checked again against the catalog when you save. Prescriptions can be edited; a bound exercise cannot be swapped, and rows cannot be added, removed or renumbered.</p>
     </div>
   );
 }
