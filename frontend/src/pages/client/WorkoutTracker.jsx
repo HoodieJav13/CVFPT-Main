@@ -234,9 +234,14 @@ export default function WorkoutTracker() {
   const [lastTimeState, setLastTimeState] = useState({});
   // Per exercise: the note left by the last fill; cleared only by leaving the page.
   const [fillNotes, setFillNotes] = useState({});
-  // The exercise whose tap is waiting for history. Only a tap disables its
-  // button; the background preview never blocks it (a tap joins that read).
-  const [lastTimeTapping, setLastTimeTapping] = useState(null);
+  // Exercises whose "Same as last time" copy is still running. One copy per
+  // exercise at a time: the ref is the synchronous gate (checked and set before
+  // any await, so no second continuation can register). The state renders only
+  // copies that are waiting for history, so a cached copy never disables (and
+  // never takes focus from) its button. Taps on different exercises stay
+  // independent; the background preview never marks one pending (a tap joins it).
+  const lastTimeCopying = useRef(new Set());
+  const [lastTimePending, setLastTimePending] = useState(() => new Set());
   const [validatedSets, setValidatedSets] = useState({});
   const [restAlerts, setRestAlerts] = useState(() => localStorage.getItem('cvf_rest_alerts') === 'on');
   // Exercise guides: only the active + next posters load; others on request.
@@ -467,21 +472,34 @@ export default function WorkoutTracker() {
   // One tap fills blank fields from the most recent completed occurrence of
   // this exercise; typed values are never overwritten.
   const applyLastTime = async (exercise) => {
-    if (sealed || lastTimeTapping === exercise.id) return;
+    if (sealed || lastTimeCopying.current.has(exercise.id)) return;
+    lastTimeCopying.current.add(exercise.id);
+    try {
+      await copyLastTime(exercise);
+    } finally {
+      lastTimeCopying.current.delete(exercise.id);
+      setLastTimePending((pending) => {
+        if (!pending.has(exercise.id)) return pending;
+        const next = new Set(pending);
+        next.delete(exercise.id);
+        return next;
+      });
+    }
+  };
+
+  const copyLastTime = async (exercise) => {
     let occurrence = lastTimeCache.current[exercise.id];
     if (occurrence === undefined) {
       if (!navigator.onLine) {
         toast.error('You are offline. Reconnect to copy last time.');
         return;
       }
-      setLastTimeTapping(exercise.id);
+      setLastTimePending((pending) => new Set(pending).add(exercise.id));
       try {
         occurrence = await loadLastTime(exercise);
       } catch (error) {
         toast.error(errMsg(error, 'Failed to load last time'));
         return;
-      } finally {
-        setLastTimeTapping((current) => (current === exercise.id ? null : current));
       }
     }
     if (!occurrence) {
@@ -808,12 +826,12 @@ export default function WorkoutTracker() {
                 </Button>
                 <Button
                   type="button" variant="outline" size="sm" className="min-h-11"
-                  disabled={sealed || lastTimeTapping === exercise.id}
+                  disabled={sealed || lastTimePending.has(exercise.id)}
                   onClick={() => applyLastTime(exercise)}
                   aria-describedby={lastTimeCache.current[exercise.id] ? `last-time-source-${exercise.id}` : undefined}
                   data-testid="same-as-last-time"
                 >
-                  {lastTimeTapping === exercise.id
+                  {lastTimePending.has(exercise.id)
                     ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
                     : <History className="mr-1.5 h-4 w-4" />}
                   Same as last time

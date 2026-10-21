@@ -36,7 +36,7 @@ function fixture() {
 
 async function setup(page, { role = 'client', online = true, historyHold = null, historyFailures = {}, queuedComplete = false } = {}) {
   const { log, history } = fixture();
-  const state = { log, reads: { 'ex-goblet': 0, 'ex-deadbug': 0 }, patches: [], unexpected: [], errors: [], historyHold, historyFailures };
+  const state = { log, reads: { 'ex-goblet': 0, 'ex-deadbug': 0 }, patches: [], unexpected: [], errors: [], historyHold, historyFailures, holdFor: {} };
   page.on('pageerror', (error) => state.errors.push(error.message));
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.addInitScript(({ startOnline, seedComplete, token }) => {
@@ -67,6 +67,7 @@ async function setup(page, { role = 'client', online = true, historyHold = null,
       const exerciseId = historyMatch[1];
       state.reads[exerciseId] += 1;
       if (state.historyHold) { const hold = state.historyHold; state.historyHold = null; await hold.promise; }
+      if (state.holdFor[exerciseId]) { const hold = state.holdFor[exerciseId]; delete state.holdFor[exerciseId]; await hold.promise; }
       if (state.historyFailures[exerciseId] > 0) { state.historyFailures[exerciseId] -= 1; return json({ error: 'Exercise history is temporarily unavailable' }, 503); }
       return json({ occurrences: history[exerciseId], next_cursor: null });
     }
@@ -285,4 +286,127 @@ test('the coach tracker shows the same source line and description under the sam
   await expect(goblet(page).getByTestId('last-time-line')).toHaveText(LINE);
   await expect(goblet(page).getByTestId('same-as-last-time')).toHaveAccessibleDescription('Copies blank fields from Sep 14, 2026.');
   expect(state.reads).toEqual({ 'ex-goblet': 1, 'ex-deadbug': 0 });
+});
+
+// Copy actions are single-flight PER EXERCISE (independent review R1 of
+// 3e8fbf2): another exercise's pending tap must never re-enable this one or let
+// a second copy continuation register. One history read is not enough; every
+// set must be PATCHed exactly once per copy.
+const patchCounts = (state, exerciseId, from = 0) => Object.fromEntries([1, 2, 3].map((n) => [`${exerciseId}-s${n}`, state.patches.slice(from).filter((p) => p.setId === `${exerciseId}-s${n}`).length]));
+
+test('A then B pending: A stays disabled, repeated A taps add nothing, each A set is written once; typed zero kept', async ({ page }) => {
+  const holdA = deferred();
+  const state = await setup(page, { historyHold: holdA });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page);
+  const a = goblet(page).getByTestId('same-as-last-time');
+  const b = deadbug(page).getByTestId('same-as-last-time');
+  // A's background preview is held; its button stays enabled and a tap joins it.
+  await expect(goblet(page).getByTestId('last-time-line')).toHaveText('Loading last time…');
+  await expect(a).toBeEnabled();
+  const load1 = page.getByRole('spinbutton', { name: 'Goblet Squat set 1 weight', exact: true });
+  await load1.fill('0');
+  await load1.blur();
+  // The typed zero saves on its own (existing behaviour); count copy writes after it.
+  await expect.poll(() => state.patches.length).toBe(1);
+  expect(state.patches[0]).toMatchObject({ setId: 'ex-goblet-s1', body: { actual_load_value: 0, actual_reps: null } });
+  const copyFrom = state.patches.length;
+  // Two activations in one task, before React re-renders the disabled state:
+  // only the synchronous per-exercise gate can stop the second continuation.
+  await a.evaluate((el) => { el.click(); el.click(); });
+  await expect(a).toBeDisabled();
+  const holdB = deferred();
+  state.holdFor['ex-deadbug'] = holdB;
+  await b.click();
+  await expect.poll(() => state.reads['ex-deadbug']).toBe(1);
+  await expect(b).toBeDisabled();
+  await page.waitForTimeout(150);
+  await expect(a).toBeDisabled();
+  holdA.release();
+  await expect(goblet(page).getByTestId('last-time-note')).toHaveText('Filled sets 1–3 from Sep 14, 2026. Typed values kept.');
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await expect(a).toBeEnabled();
+  await expect(b).toBeDisabled();
+  await page.waitForTimeout(300);
+  expect(patchCounts(state, 'ex-goblet', copyFrom)).toEqual({ 'ex-goblet-s1': 1, 'ex-goblet-s2': 1, 'ex-goblet-s3': 1 });
+  expect(state.patches.filter((p) => p.setId === 'ex-goblet-s1').map((p) => [p.body.actual_load_value, p.body.actual_reps, p.body.actual_rpe])).toEqual([[0, null, null], [0, 10, 7]]);
+  expect(state.log.exercises[0].sets.map((set) => [set.actual_load_value, set.actual_reps, set.actual_rpe])).toEqual([[0, 10, 7], [35, 10, 7], [40, 8, 8]]);
+  holdB.release();
+  await expect(b).toBeEnabled();
+  await expect(page.getByText('No history yet.').first()).toBeVisible();
+  expect(patchCounts(state, 'ex-deadbug')).toEqual({ 'ex-deadbug-s1': 0, 'ex-deadbug-s2': 0, 'ex-deadbug-s3': 0 });
+  expect(state.reads).toEqual({ 'ex-goblet': 1, 'ex-deadbug': 1 });
+  expect(state.unexpected).toEqual([]);
+});
+
+test('B then A pending: releasing B first re-enables only B; A completes once', async ({ page }) => {
+  // A's preview fails so A's later tap must read again (held), after B's.
+  const state = await setup(page, { historyFailures: { 'ex-goblet': 1 } });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page);
+  const a = goblet(page).getByTestId('same-as-last-time');
+  const b = deadbug(page).getByTestId('same-as-last-time');
+  await expect(goblet(page).getByTestId('last-time-line')).toHaveText('Last time unavailable.');
+  const holdB = deferred();
+  state.holdFor['ex-deadbug'] = holdB;
+  await b.click();
+  await expect(b).toBeDisabled();
+  const holdA = deferred();
+  state.holdFor['ex-goblet'] = holdA;
+  await a.click();
+  await expect.poll(() => state.reads['ex-goblet']).toBe(2);
+  await expect(a).toBeDisabled();
+  await expect(b).toBeDisabled();
+  holdB.release();
+  await expect(b).toBeEnabled();
+  await page.waitForTimeout(150);
+  await expect(a).toBeDisabled();
+  holdA.release();
+  await expect(goblet(page).getByTestId('last-time-note')).toHaveText('Filled sets 1–3 from Sep 14, 2026. Typed values kept.');
+  await expect(a).toBeEnabled();
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await page.waitForTimeout(300);
+  expect(patchCounts(state, 'ex-goblet')).toEqual({ 'ex-goblet-s1': 1, 'ex-goblet-s2': 1, 'ex-goblet-s3': 1 });
+  expect(state.reads).toEqual({ 'ex-goblet': 2, 'ex-deadbug': 1 });
+});
+
+test('a failed copy clears only its own pending state; a retry then writes each set once', async ({ page }) => {
+  const state = await setup(page, { historyFailures: { 'ex-goblet': 2 } });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page);
+  const a = goblet(page).getByTestId('same-as-last-time');
+  const b = deadbug(page).getByTestId('same-as-last-time');
+  await expect(goblet(page).getByTestId('last-time-line')).toHaveText('Last time unavailable.');
+  const holdB = deferred();
+  state.holdFor['ex-deadbug'] = holdB;
+  await b.click();
+  await expect(b).toBeDisabled();
+  await a.click();
+  await expect(page.getByText('Exercise history is temporarily unavailable').first()).toBeVisible();
+  await expect(a).toBeEnabled();
+  await expect(b).toBeDisabled();
+  expect(state.patches).toEqual([]);
+  await a.click();
+  await expect(goblet(page).getByTestId('last-time-note')).toHaveText('Filled sets 1–3 from Sep 14, 2026. Typed values kept.');
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await page.waitForTimeout(300);
+  expect(patchCounts(state, 'ex-goblet')).toEqual({ 'ex-goblet-s1': 1, 'ex-goblet-s2': 1, 'ex-goblet-s3': 1 });
+  holdB.release();
+  await expect(b).toBeEnabled();
+  expect(state.reads).toEqual({ 'ex-goblet': 3, 'ex-deadbug': 1 });
+});
+
+test('cached copies stay immediate and independent: back-to-back taps on two exercises each write once', async ({ page }) => {
+  const state = await setup(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page);
+  await expect(goblet(page).getByTestId('last-time-line')).toHaveText(LINE);
+  await goblet(page).getByTestId('same-as-last-time').click();
+  await goblet(page).getByTestId('same-as-last-time').click();
+  await expect(goblet(page).getByTestId('last-time-note')).toHaveText('Nothing copied: no matching blank fields.');
+  await deadbug(page).getByTestId('same-as-last-time').click();
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await page.waitForTimeout(300);
+  expect(patchCounts(state, 'ex-goblet')).toEqual({ 'ex-goblet-s1': 1, 'ex-goblet-s2': 1, 'ex-goblet-s3': 1 });
+  expect(state.reads).toEqual({ 'ex-goblet': 1, 'ex-deadbug': 1 });
 });
