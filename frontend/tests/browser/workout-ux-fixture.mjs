@@ -25,6 +25,8 @@ export async function setupWorkoutUx(page, role = 'client') {
   if(path==='/workout-logs/active') return json(null);
   if(path==='/programs/client/assigned') return json({programs:[],workouts:[{id:'ux-assignment',assignment_mode:'active',workout:fixture.workout}]});
   if(path.startsWith('/workout-logs/ux-log/sets/')&&method==='PATCH') { const set=fixture.log.exercises.flatMap(e=>e.sets).find(s=>s.id===path.split('/').at(-1));results.writes.push(r.postDataJSON());Object.assign(set,r.postDataJSON());return json(set); }
+  // The tracker previews the active exercise's last time (one read per exercise per visit).
+  if(/^\/workout-logs\/ux-log\/exercises\/[^/]+\/history$/.test(path)&&method==='GET') return json({occurrences:[],next_cursor:null});
   if(path==='/programs/exercise-library') return json([]);
   if(path==='/exercise-media/library-status'&&method==='GET') return json({enabled:false,items:[],summary:null});
   if(path==='/programs/workouts') return json([fixture.workout]);
