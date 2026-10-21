@@ -960,18 +960,18 @@ function StructuredProgramsTab({ programs, workouts, library, reload, onCatalogC
 }
 
 // Proposal saves whose outcome is unknown (lost reply or 5xx), by canonical
-// proposal hash, for this page session: checking the same proposal again keeps
-// Save blocked until the coach checks the vault.
+// proposal hash, for the rest of this page session: checking the same proposal
+// again keeps Save blocked. Nothing in the page lifts it; a reload forgets it.
 const unresolvedProposalSaves = new Map();
 
-// The program a save would have created: same name, frequency and day count,
-// and not in the vault before that save was sent.
-function findSavedProgram(programs, outcome) {
+// New programs with the same name as an unknown-outcome save: candidates for
+// the coach to inspect. A list read is not a write receipt, so a match never
+// confirms that this save was created, and no match never shows it failed.
+function findPossibleMatches(programs, outcome) {
   const name = String(outcome.sent.program.name || '').trim().toLowerCase();
-  return (Array.isArray(programs) ? programs : []).filter((program) => !outcome.baselineIds.includes(program.id)
-    && String(program.name || '').trim().toLowerCase() === name
-    && Number(program.frequency_days) === Number(outcome.sent.program.frequency_days)
-    && (!Array.isArray(program.days) || program.days.length === outcome.sent.days.length));
+  return (Array.isArray(programs) ? programs : [])
+    .filter((program) => !outcome.baselineIds.includes(program.id) && String(program.name || '').trim().toLowerCase() === name)
+    .map((program) => ({ id: program.id, name: program.name, days: Array.isArray(program.days) ? program.days.length : null }));
 }
 
 function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, reload, onCatalogCreated: notifyCreated }) {
@@ -995,8 +995,8 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
   const [proposalConfirmed, setProposalConfirmedState] = useState(false);
   // How the last proposal save ended when it did not succeed:
   // refused (definitely not written), stale (not sent: the draft changed during
-  // the final check), unknown (sent; the reply was lost or a 5xx) or not_found
-  // (an unknown outcome the coach checked: no new program in the vault).
+  // the final check) or unknown (sent; the reply was lost or a 5xx). Unknown is
+  // never resolved by a list read; it lasts for this page session.
   const [saveOutcome, setSaveOutcome] = useState(null);
   const [postPending, setPostPending] = useState(false);
   const [reconciling, setReconciling] = useState(false);
@@ -1341,10 +1341,11 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
     }
   };
 
-  // Resolves an unknown outcome with the existing program list: a program that
-  // matches the sent draft and was not in the vault before the save means it
-  // was created; none means it was not (as of this check).
-  const reconcileSave = async () => {
+  // Looks for possible matches in the existing program list. The outcome stays
+  // unknown either way: the reviewed draft is kept and saving this proposal
+  // again stays blocked, because the first request may still complete and a
+  // same-named program may come from elsewhere.
+  const lookForMatches = async () => {
     if (saveOutcome?.kind !== 'unknown' || reconciling) return;
     const seq = parseSeq.current;
     const outcome = saveOutcome;
@@ -1352,18 +1353,9 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
     try {
       const { data } = await api.get('/programs');
       if (seq !== parseSeq.current) return;
-      const found = findSavedProgram(data, outcome);
-      unresolvedProposalSaves.delete(proposal.identity.proposal_sha256);
-      if (found.length) {
-        toast.success('Found in the vault: the program was saved (not assigned)', {
-          description: found.length > 1 ? `${found.length} matching new programs were found; archive any duplicate.` : 'Assign it from Assignments when ready.',
-        });
-        close(false, true);
-        reload();
-        return;
-      }
-      setProposalConfirmed(false);
-      setSaveOutcome({ kind: 'not_found', message: 'No new matching program is in the vault, so the last save was not created. Confirm again to save.' });
+      const next = { ...outcome, checkError: null, lookedAt: new Date().toISOString(), possibleMatches: findPossibleMatches(data, outcome) };
+      unresolvedProposalSaves.set(proposal.identity.proposal_sha256, next);
+      setSaveOutcome(next);
     } catch (e) {
       if (seq !== parseSeq.current) return;
       setSaveOutcome({ ...outcome, checkError: errMsg(e, 'Could not read the vault') });
@@ -1420,22 +1412,27 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
           <CircleAlert className="h-4 w-4" aria-hidden />
           <AlertTitle>Save outcome unknown</AlertTitle>
           <AlertDescription>
-            <p>{saveOutcome.message}. The program may have been created anyway. Your reviewed draft is still here. Saving again is blocked until you check the vault, so it is not created twice.</p>
+            <p>{saveOutcome.message}. The program may have been created, or may still be created by the request already sent. Your reviewed draft is still here.</p>
+            <p className="mt-1">Saving this proposal again is blocked for the rest of this page session, so it cannot be created twice. Check Programs for &ldquo;{saveOutcome.sent.program.name}&rdquo;. If you are sure it was not created, reloading the page clears this guard and lets you import it again.</p>
             {saveOutcome.checkError && <p className="mt-1">Could not check yet: {saveOutcome.checkError}.</p>}
-            <Button type="button" size="sm" variant="outline" className="mt-2 rounded-xl" disabled={reconciling} onClick={reconcileSave} data-testid="program-import-save-reconcile">
-              {reconciling ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check whether it was saved'}
+            {saveOutcome.lookedAt && !saveOutcome.checkError && (saveOutcome.possibleMatches.length > 0 ? (
+              <div className="mt-2" data-testid="program-import-save-possible-matches">
+                <p className="font-medium">Possible matches, not confirmed: new programs with this name.</p>
+                <ul className="mt-1 list-disc pl-5">
+                  {saveOutcome.possibleMatches.map((match) => <li key={match.id}>{match.name}{match.days != null ? ` · ${match.days} days` : ''} <span className="font-mono text-xs">({match.id})</span></li>)}
+                </ul>
+                <p className="mt-1">A program list cannot show which save created them. Open each in Programs and compare it with this draft; one may be this save or another one.</p>
+              </div>
+            ) : (
+              <p className="mt-2" data-testid="program-import-save-no-match-yet">No new program with this name was in the vault at {new Date(saveOutcome.lookedAt).toLocaleTimeString()}. That does not show the save failed: the request may still finish.</p>
+            ))}
+            <Button type="button" size="sm" variant="outline" className="mt-2 rounded-xl" disabled={reconciling} onClick={lookForMatches} data-testid="program-import-save-reconcile">
+              {reconciling ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Look for possible matches'}
             </Button>
           </AlertDescription>
         </Alert>
       )}
 
-      {sourceType === 'proposal' && saveOutcome?.kind === 'not_found' && (
-        <Alert aria-live="polite" data-testid="program-import-save-not-found">
-          <CheckCircle2 className="h-4 w-4" aria-hidden />
-          <AlertTitle>Not in the vault</AlertTitle>
-          <AlertDescription>{saveOutcome.message}</AlertDescription>
-        </Alert>
-      )}
     </>
   );
 

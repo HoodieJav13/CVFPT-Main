@@ -311,14 +311,14 @@ for (const [label, viewport] of [['phone-390', { width: 390, height: 844 }], ['d
     await expect(confirm).not.toBeChecked();
     expect(backend.programs).toHaveLength(0);
     // A 5xx can follow a committed create: the outcome is unknown, and Save
-    // stays blocked (even when re-confirmed) until the vault is checked.
+    // stays blocked (even when re-confirmed) for the rest of this page session.
     backend.failNextCommit = true;
     await confirm.check();
     await save.click();
     const failed = dialog.getByTestId('program-import-save-failed');
     await expect(failed).toHaveAttribute('data-outcome', 'unknown');
     await expect(failed).toContainText('Save outcome unknown');
-    await expect(failed).toContainText('Synthetic outage. The program may have been created anyway.');
+    await expect(failed).toContainText('Synthetic outage. The program may have been created, or may still be created by the request already sent.');
     await expect(failed).not.toContainText('No program was created');
     await expect(failed).toBeInViewport();
     await expect(page.getByText('Program saved to vault')).toHaveCount(0);
@@ -329,11 +329,28 @@ for (const [label, viewport] of [['phone-390', { width: 390, height: 844 }], ['d
     await expect(save).toBeDisabled();
     await expect(dialog.getByTestId('program-import-exercise-sets-input').first()).toHaveValue('2');
     await shot(page, `${label}-03-failed-save`);
-    // Checking the vault: this synthetic 5xx created nothing, so saving is allowed again after re-confirming.
+    // Looking at the list cannot settle it: no match yet is still unknown.
     await dialog.getByTestId('program-import-save-reconcile').click();
-    await expect(dialog.getByTestId('program-import-save-not-found')).toContainText('No new matching program is in the vault');
-    await expect(confirm).not.toBeChecked();
+    await expect(dialog.getByTestId('program-import-save-no-match-yet')).toContainText('That does not show the save failed: the request may still finish.');
+    await expect(failed).toHaveAttribute('data-outcome', 'unknown');
     await expect(save).toBeDisabled();
+    expect(backend.programs).toHaveLength(0);
+    // The coach has checked Programs (this synthetic 5xx created nothing) and
+    // discards the draft; a reload is the documented way to clear the per-page guard.
+    step = 'unknown-discard';
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText('Save outcome unknown: check Programs for "Sample C Foundations (offline draft)" before importing it again.').first()).toBeVisible();
+    await page.reload();
+    step = 'import';
+    await page.getByTestId('training-builder-tab-programs').click();
+    await expect(page.getByTestId('program-card')).toHaveCount(0);
+    await page.getByTestId('program-import-open-button').click();
+    await dialog.getByTestId('program-import-source-select').click();
+    await page.getByRole('option', { name: 'Offline draft proposal (MOCK)' }).click();
+    await checkFile(dialog, { name: 'proposal.json', mimeType: 'application/json', buffer: fixture('proposal.json') });
+    await expect(failed).toHaveCount(0);
+    await dialog.getByTestId('program-import-exercise-sets-input').first().fill('2');
     await confirm.check();
     expect(backend.programs).toHaveLength(0);
 
@@ -472,7 +489,8 @@ for (const [label, viewport] of [['phone-390', { width: 390, height: 844 }], ['d
     expect(backend.forbidden).toEqual([]);
     expect(backend.unexpected).toEqual([]);
     expect(problems).toEqual([]);
-    expect(prompts).toEqual([]);
+    // The only prompt is the deliberate discard of the unknown-outcome draft.
+    expect(prompts).toEqual(['unknown-discard:confirm']);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   });
 }
@@ -604,7 +622,7 @@ for (const width of [390, 1440]) {
     expect(backend.programs).toHaveLength(1);
   });
 
-  test(`R3 ${width}: a 500 after a committed create is an unknown outcome; checking the vault finds exactly one program, also after closing and checking the proposal again`, async ({ page }) => {
+  test(`R3 ${width}: a 500 after a committed create stays unknown; the list shows a possible match only, and the same proposal stays blocked after closing`, async ({ page }) => {
     const { backend, dialog, commits, save, confirm } = await openProposal(page, width);
     // The synthetic route commits, then answers 500 (as the real route can after its detail read fails).
     await page.route('**/api/programs/import/commit', async (route) => {
@@ -616,11 +634,22 @@ for (const width of [390, 1440]) {
     await confirm.check();
     await save.click();
     const failed = dialog.getByTestId('program-import-save-failed');
-    await expect(failed).toContainText('Failed to save imported program. The program may have been created anyway.');
+    await expect(failed).toContainText('Failed to save imported program. The program may have been created, or may still be created by the request already sent.');
     await expect(failed).not.toContainText('No program was created');
     await expect(save).toBeDisabled();
     expect(backend.programs).toHaveLength(1);
-    // Closing keeps the warning; the same proposal checked again stays blocked.
+    // The list shows the new same-named program as a possible match only.
+    await dialog.getByTestId('program-import-save-reconcile').click();
+    const matches = dialog.getByTestId('program-import-save-possible-matches');
+    await expect(matches).toContainText('Possible matches, not confirmed: new programs with this name.');
+    await expect(matches).toContainText(`Sample C Foundations (offline draft) · 3 days (${backend.programs[0].id})`);
+    await expect(failed).toHaveAttribute('data-outcome', 'unknown');
+    await expect(page.getByText('Found in the vault')).toHaveCount(0);
+    await expect(dialog.getByTestId('program-import-name-input')).toHaveValue('Sample C Foundations (offline draft)');
+    await confirm.uncheck();
+    await confirm.check();
+    await expect(save).toBeDisabled();
+    // Closing keeps the warning; the same proposal checked again stays blocked, with its last look kept.
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page.getByText('Save outcome unknown: check Programs for "Sample C Foundations (offline draft)" before importing it again.').first()).toBeVisible();
@@ -629,15 +658,85 @@ for (const width of [390, 1440]) {
     await page.getByRole('option', { name: 'Offline draft proposal (MOCK)' }).click();
     await checkFile(dialog, { name: 'proposal.json', mimeType: 'application/json', buffer: fixture('proposal.json') });
     await expect(failed).toHaveAttribute('data-outcome', 'unknown');
+    await expect(matches).toBeVisible();
     await confirm.check();
     await expect(save).toBeDisabled();
-    await dialog.getByTestId('program-import-save-reconcile').click();
-    await expect(page.getByText('Found in the vault: the program was saved (not assigned)').first()).toBeVisible();
-    await expect(dialog).toHaveCount(0);
     await page.waitForTimeout(300);
     expect(commits()).toHaveLength(1);
     expect(backend.programs).toHaveLength(1);
     await expect(page.getByTestId('program-card').filter({ hasText: 'Sample C Foundations (offline draft)' })).toHaveCount(1);
+  });
+
+  test(`R3 ${width}: a request that completes after an empty look stays blocked, and the later look shows it as a possible match; no duplicate`, async ({ page }) => {
+    const { backend, dialog, commits, save, confirm } = await openProposal(page, width);
+    let pending;
+    await page.route('**/api/programs/import/commit', async (route) => {
+      pending = route.request().postDataJSON().draft;
+      backend.writes.push({ role: 'coach', method: 'POST', path: '/programs/import/commit', body: { draft: pending }, note: 'accepted, reply lost, still running' });
+      await route.abort('connectionreset');
+    });
+    await confirm.check();
+    await save.click();
+    const failed = dialog.getByTestId('program-import-save-failed');
+    await expect(failed).toHaveAttribute('data-outcome', 'unknown');
+    await dialog.getByTestId('program-import-save-reconcile').click();
+    await expect(dialog.getByTestId('program-import-save-no-match-yet')).toContainText('No new program with this name was in the vault at');
+    await confirm.uncheck();
+    await confirm.check();
+    await expect(save).toBeDisabled();
+    // The first request completes late.
+    backend.commitImport(pending);
+    await dialog.getByTestId('program-import-save-reconcile').click();
+    await expect(dialog.getByTestId('program-import-save-possible-matches')).toContainText(backend.programs[0].id);
+    await expect(dialog.getByTestId('program-import-save-no-match-yet')).toHaveCount(0);
+    await expect(save).toBeDisabled();
+    await page.waitForTimeout(300);
+    expect(commits()).toHaveLength(1);
+    expect(backend.programs).toHaveLength(1);
+  });
+
+  test(`R3 ${width}: an unrelated same-named program is listed as a possible match, never confirmed; the draft and guard remain`, async ({ page }) => {
+    const { backend, dialog, commits, save, confirm } = await openProposal(page, width);
+    let submitted;
+    await page.route('**/api/programs/import/commit', async (route) => {
+      submitted = route.request().postDataJSON().draft;
+      backend.writes.push({ role: 'coach', method: 'POST', path: '/programs/import/commit', body: { draft: submitted }, note: 'not persisted, reply lost' });
+      await route.abort('connectionreset');
+    });
+    await confirm.check();
+    await save.click();
+    await expect(dialog.getByTestId('program-import-save-failed')).toHaveAttribute('data-outcome', 'unknown');
+    const other = structuredClone(submitted);
+    other.program.description = 'Unrelated fictional template from another tab';
+    other.days[0].exercises[0].sets = '9';
+    backend.commitImport(other);
+    await dialog.getByTestId('program-import-save-reconcile').click();
+    await expect(dialog.getByTestId('program-import-save-possible-matches')).toContainText('A program list cannot show which save created them.');
+    await expect(page.getByText('Found in the vault')).toHaveCount(0);
+    await expect(page.getByText('Program saved to vault')).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId('program-import-exercise-sets-input').first()).toHaveValue('3');
+    await expect(save).toBeDisabled();
+    expect(commits()).toHaveLength(1);
+    expect(backend.programs.map((program) => program.description)).toEqual(['Unrelated fictional template from another tab']);
+  });
+
+  test(`R3 ${width}: boundary: the guard is per page session, so a reload forgets it (as the notice says)`, async ({ page }) => {
+    const { dialog, save, confirm } = await openProposal(page, width);
+    await page.route('**/api/programs/import/commit', (route) => route.abort('connectionreset'));
+    await confirm.check();
+    await save.click();
+    const failed = dialog.getByTestId('program-import-save-failed');
+    await expect(failed).toContainText('reloading the page clears this guard and lets you import it again');
+    await page.reload();
+    await page.getByTestId('training-builder-tab-programs').click();
+    await page.getByTestId('program-import-open-button').click();
+    await dialog.getByTestId('program-import-source-select').click();
+    await page.getByRole('option', { name: 'Offline draft proposal (MOCK)' }).click();
+    await checkFile(dialog, { name: 'proposal.json', mimeType: 'application/json', buffer: fixture('proposal.json') });
+    await expect(failed).toHaveCount(0);
+    await confirm.check();
+    await expect(save).toBeEnabled();
   });
 
   test(`R4 ${width}: a proposal review cannot add, remove or renumber rows, so its bindings keep covering every row`, async ({ page }) => {
