@@ -55,9 +55,46 @@ export async function catalogIdentity(rows) {
 
 const refuse = (code, errors, message) => ({ ok: false, refusal: { code, message, errors } });
 
+// The exact row paths of a validated draft, in order: days.<d>.exercises.<e>
+// with plain decimal indices (no zero padding, signs or other aliases).
+export function canonicalRowPaths(draft) {
+  return draft.days.flatMap((day, dayIndex) => day.exercises.map((_, exerciseIndex) => `days.${dayIndex}.exercises.${exerciseIndex}`));
+}
+
 function rowAt(draft, path) {
-  const match = /^days\.(\d+)\.exercises\.(\d+)$/.exec(path);
+  const match = /^days\.(0|[1-9]\d*)\.exercises\.(0|[1-9]\d*)$/.exec(path);
   return match ? draft.days?.[Number(match[1])]?.exercises?.[Number(match[2])] : undefined;
+}
+
+// Bindings must map one-to-one onto the draft's canonical row paths: every
+// binding names an existing row exactly as canonicalRowPaths spells it, no row
+// is bound twice, and no row is left unbound. Its day_number matches the row's day.
+function pathBijectionProblems(rows, draft) {
+  const errors = [];
+  const expected = canonicalRowPaths(draft);
+  const known = new Set(expected);
+  const bound = new Set();
+  rows.forEach((binding, index) => {
+    const path = `exercise_bindings.rows.${index}`;
+    const rowPath = binding.program_draft_path;
+    if (!known.has(rowPath)) {
+      errors.push({ path, message: `${rowPath} is not a program row path (expected one of days.<day>.exercises.<row>, as listed in the draft)` });
+      return;
+    }
+    if (bound.has(rowPath)) {
+      errors.push({ path, message: `Duplicate binding for ${rowPath}` });
+      return;
+    }
+    bound.add(rowPath);
+    const dayIndex = Number(rowPath.split('.')[1]);
+    if (binding.day_number !== draft.days[dayIndex].day_number) {
+      errors.push({ path, message: `${rowPath} is in day ${draft.days[dayIndex].day_number}, but the binding says day ${binding.day_number}` });
+    }
+  });
+  expected.filter((rowPath) => !bound.has(rowPath)).forEach((rowPath) => {
+    errors.push({ path: 'exercise_bindings.rows', message: `No binding for program row ${rowPath}` });
+  });
+  return errors;
 }
 
 // Checks a bound row against the CURRENT catalog: exists, usable, same name,
@@ -101,18 +138,18 @@ export async function verifyOfflineProposal(envelope, libraryRows) {
     if (bindings[key] !== provenance[key]) bindingErrors.push({ path: `exercise_bindings.${key}`, message: 'Does not match the proposal provenance' });
   }
   for (const key of ['catalog_sha256', 'accepted_sha256']) if (!isHex64(provenance[key])) bindingErrors.push({ path: `provenance.${key}`, message: 'Not a SHA-256 hash' });
-  const rowCount = draft.days.reduce((sum, day) => sum + day.exercises.length, 0);
   const rows = Array.isArray(bindings.rows) ? bindings.rows : null;
   if (!rows) bindingErrors.push({ path: 'exercise_bindings.rows', message: 'Missing binding rows' });
   else {
-    if (rows.length !== rowCount) bindingErrors.push({ path: 'exercise_bindings.rows', message: `Expected one binding per program row (${rowCount}), found ${rows.length}` });
-    const paths = new Set();
-    rows.forEach((binding, index) => {
-      if (!isPlainObject(binding) || typeof binding.exercise_id !== 'string' || typeof binding.program_draft_path !== 'string' || typeof binding.catalog_name_at_snapshot !== 'string') {
-        bindingErrors.push({ path: `exercise_bindings.rows.${index}`, message: 'Malformed binding' });
-      } else if (paths.has(binding.program_draft_path)) bindingErrors.push({ path: `exercise_bindings.rows.${index}`, message: `Duplicate binding for ${binding.program_draft_path}` });
-      else paths.add(binding.program_draft_path);
+    const wellFormed = rows.every((binding, index) => {
+      const ok = isPlainObject(binding) && typeof binding.exercise_id === 'string' && typeof binding.program_draft_path === 'string'
+        && typeof binding.catalog_name_at_snapshot === 'string' && Number.isSafeInteger(binding.day_number);
+      if (!ok) bindingErrors.push({ path: `exercise_bindings.rows.${index}`, message: 'Malformed binding' });
+      return ok;
     });
+    const rowCount = canonicalRowPaths(draft).length;
+    if (rows.length !== rowCount) bindingErrors.push({ path: 'exercise_bindings.rows', message: `Expected one binding per program row (${rowCount}), found ${rows.length}` });
+    if (wellFormed) bindingErrors.push(...pathBijectionProblems(rows, draft));
   }
   if (bindingErrors.length) return refuse('binding_invalid', bindingErrors, 'The proposal\'s exercise bindings are inconsistent; it may have been edited after export.');
 
@@ -149,6 +186,8 @@ export async function recheckBeforeCommit(verified, currentDraft, freshLibraryRo
   }
   const checked = validateDraft(currentDraft);
   if (!checked.valid) return refuse('draft_invalid', checked.errors, 'Fix draft errors before saving.');
+  const structure = pathBijectionProblems(verified.bindings, checked.draft);
+  if (structure.length) return refuse('exercise_binding_mismatch', structure, 'The proposal\'s rows changed during review, so its bindings no longer cover them exactly. Nothing was saved.');
   const errors = bindingProblems({ rows: verified.bindings }, checked.draft, catalog);
   if (errors.length) return refuse('exercise_binding_mismatch', errors, 'A proposed exercise was changed during review. Re-check the proposal; nothing was saved.');
   return { ok: true, draft: checked.draft };

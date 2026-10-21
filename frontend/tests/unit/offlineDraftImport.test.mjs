@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  PROPOSAL_STATUS, canonicalJson, catalogIdentity, recheckBeforeCommit, sha256Hex, verifyOfflineProposal,
+  PROPOSAL_STATUS, canonicalJson, canonicalRowPaths, catalogIdentity, recheckBeforeCommit, sha256Hex, verifyOfflineProposal,
 } from '../../src/lib/offlineDraftImport.js';
 
 // Fixtures were produced by the accepted offline companion's own export
@@ -158,4 +158,61 @@ test('re-check before saving: coach edits to prescriptions pass; a stale catalog
 
   const stale = await recheckBeforeCommit(verified, verified.draft, [...library(), { id: 'lib-new', name: 'Step-up', category: 'Strength', equipment: 'Bodyweight', primary_muscle: 'Quads' }]);
   assert.equal(stale.refusal.code, 'catalog_revision_mismatch');
+});
+
+// R4 (independent review of 1c32ca1): bindings must be an exact bijection onto
+// the draft's canonical row paths, at the first check and before commit.
+test('R4: the companion export binds every canonical row path exactly once', async () => {
+  const result = await verifyOfflineProposal(proposal(), library());
+  assert.deepEqual(canonicalRowPaths(result.draft), ['days.0.exercises.0', 'days.0.exercises.1', 'days.1.exercises.0', 'days.1.exercises.1', 'days.2.exercises.0', 'days.2.exercises.1']);
+  assert.deepEqual(result.bindings.map((row) => row.program_draft_path), canonicalRowPaths(result.draft));
+});
+
+test('R4: zero-padded and other alias paths are refused, and the rows they leave unbound are named', async () => {
+  const aliases = { 'days.00.exercises.0': 0, 'days.0.exercises.01': 1, 'days.+1.exercises.0': 2, 'days.1.exercises.1 ': 3, 'days.1.exercises.1.0': 3, 'days.2.exercises.0x0': 4, 'days.2.exercises.9007199254740993': 5 };
+  for (const [alias, index] of Object.entries(aliases)) {
+    const envelope = proposal();
+    const original = envelope.exercise_bindings.rows[index].program_draft_path;
+    envelope.exercise_bindings.rows[index].program_draft_path = alias;
+    const refusal = await refusalOf(envelope);
+    assert.equal(refusal?.code, 'binding_invalid', alias);
+    assert.ok(refusal.errors.some((e) => e.path === `exercise_bindings.rows.${index}` && e.message.startsWith(`${alias} is not a program row path`)), alias);
+    assert.ok(refusal.errors.some((e) => e.message === `No binding for program row ${original}`), alias);
+  }
+});
+
+test('R4: the reviewer alias map (six paths for the first row) is refused with every unbound row listed', async () => {
+  const envelope = proposal();
+  const first = envelope.exercise_bindings.rows[0];
+  envelope.exercise_bindings.rows = Array.from({ length: 6 }, (_, i) => ({ ...first, program_draft_path: `days.${'0'.repeat(i + 1)}.exercises.0` }));
+  envelope.program_draft.days[1].exercises[1].name = 'UNBOUND fictional new movement';
+  const refusal = await refusalOf(envelope);
+  assert.equal(refusal.code, 'binding_invalid');
+  assert.deepEqual(refusal.errors.filter((e) => e.path === 'exercise_bindings.rows').map((e) => e.message),
+    ['days.0.exercises.1', 'days.1.exercises.0', 'days.1.exercises.1', 'days.2.exercises.0', 'days.2.exercises.1'].map((path) => `No binding for program row ${path}`));
+});
+
+test('R4: a path outside the draft, a wrong day number, or a row swapped for a duplicate is refused', async () => {
+  const outside = proposal(); outside.exercise_bindings.rows[5].program_draft_path = 'days.2.exercises.2';
+  assert.ok((await refusalOf(outside)).errors.some((e) => e.message === 'No binding for program row days.2.exercises.1'));
+  const day = proposal(); day.exercise_bindings.rows[2].day_number = 3;
+  assert.deepEqual((await refusalOf(day)).errors, [{ path: 'exercise_bindings.rows.2', message: 'days.1.exercises.0 is in day 2, but the binding says day 3' }]);
+  const swapped = proposal(); swapped.exercise_bindings.rows[4] = { ...swapped.exercise_bindings.rows[5] };
+  const refusal = await refusalOf(swapped);
+  assert.ok(refusal.errors.some((e) => e.message === 'Duplicate binding for days.2.exercises.1'));
+  assert.ok(refusal.errors.some((e) => e.message === 'No binding for program row days.2.exercises.0'));
+});
+
+test('R4: before commit, an added or removed row breaks the bijection and nothing is approved', async () => {
+  const verified = await verifyOfflineProposal(proposal(), library());
+  const added = structuredClone(verified.draft);
+  added.days[0].exercises.push({ ...added.days[0].exercises[1] });
+  const addedRefusal = (await recheckBeforeCommit(verified, added, library())).refusal;
+  assert.equal(addedRefusal.code, 'exercise_binding_mismatch');
+  assert.deepEqual(addedRefusal.errors, [{ path: 'exercise_bindings.rows', message: 'No binding for program row days.0.exercises.2' }]);
+  // Alias bindings that somehow reached the commit step are refused there too.
+  const aliased = { ...verified, bindings: verified.bindings.map((row, i) => (i === 1 ? { ...row, program_draft_path: 'days.0.exercises.00' } : row)) };
+  const aliasRefusal = (await recheckBeforeCommit(aliased, verified.draft, library())).refusal;
+  assert.equal(aliasRefusal.code, 'exercise_binding_mismatch');
+  assert.ok(aliasRefusal.errors.some((e) => e.message === 'No binding for program row days.0.exercises.1'));
 });
