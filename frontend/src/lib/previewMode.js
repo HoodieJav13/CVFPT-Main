@@ -65,6 +65,8 @@ const PREVIEW_SAVE_ROUTES = [
   ['patch', /^\/clients\/([^/]+)\/invite$/],
   ['post', /^\/clients\/([^/]+)\/invite\/resend$/],
   ['patch', /^\/clients\/([^/]+)\/archive$/],
+  ['post', /^\/clients\/([^/]+)\/coach-notes$/],
+  ['put', /^\/clients\/([^/]+)\/coach-notes\/([^/]+)$/],
   ['post', /^\/admin\/coaches$/],
   ['patch', /^\/admin\/clients\/([^/]+)\/reassign$/],
   ['post', /^\/sessions\/series$/],
@@ -231,6 +233,12 @@ const state = {
       rule: { start_date: dateOnly(-10), time: '12:00', weekdays: [new Date(iso(-10, 12)).getDay()], interval_weeks: 1, end: { count: 6 } },
       created_count: 6, receipt: { slots: [] }, created_at: iso(-12),
     },
+  ],
+  // Coach Notes: private to the client's coaches; fictional. Jordan's note
+  // predates a reassignment, so the current coach can read but not edit it.
+  clientCoachNotes: [
+    { id: 'coach_note_sarah_1', client_id: 'client_sarah', author_coach_id: 'coach_marcus', author_name_snapshot: 'Marcus Rivera', content: 'Prefers morning sessions. Keep lunges shallow until the knee settles.', archived: false, created_at: iso(-6, 9), updated_at: iso(-2, 17) },
+    { id: 'coach_note_sarah_2', client_id: 'client_sarah', author_coach_id: 'coach_jordan', author_name_snapshot: 'Jordan Banks', content: 'Covered two sessions in September; responds well to short rest timers.', archived: false, created_at: iso(-30, 14), updated_at: iso(-30, 14) },
   ],
   sessionNotes: [
     { id: 'note_1', session_id: 'session_done', coach_id: 'coach_marcus', content: 'Great pacing today. Keep squats controlled and pain-free.', shared_with_client: true, archived: false, created_at: iso(-3, 11), updated_at: iso(-3, 11) },
@@ -1951,6 +1959,38 @@ export function installPreviewApi(api) {
         state.resourceAssignments.push(assignment);
       }
       return ok(assignment, config);
+    }
+    // Coach Notes (mirrors /api/clients/:id/coach-notes): coaches and admins
+    // only, by the client-record access rule; only a note's author may edit.
+    const coachNotesMatch = path.match(/^\/clients\/([^/]+)\/coach-notes(?:\/([^/]+))?$/);
+    if (coachNotesMatch) {
+      if (!['coach', 'admin'].includes(role)) return fail(config, 403, 'Coach access required');
+      const target = state.clients.find((c) => c.id === coachNotesMatch[1]);
+      const readArchived = method === 'get' && search.get('include_archived') === 'true';
+      if (!previewCanAccessClient(role, target) || (target.archived && !readArchived)) return fail(config, 404, 'Client not found');
+      const shape = ({ archived: _archived, ...note }) => note;
+      if (!coachNotesMatch[2] && method === 'get') {
+        return ok({ notes: state.clientCoachNotes.filter((n) => n.client_id === target.id && !n.archived)
+          .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id)).map(shape) }, config);
+      }
+      const content = typeof payload.content === 'string' ? payload.content.trim() : '';
+      if (!content || content.length > 4000) return fail(config, 400, 'A note needs 1 to 4,000 characters');
+      if (!coachNotesMatch[2] && method === 'post') {
+        const at = new Date().toISOString();
+        const row = { id: id('coach_note'), client_id: target.id, author_coach_id: currentCoach().id, author_name_snapshot: currentCoach().name, content, archived: false, created_at: at, updated_at: at };
+        state.clientCoachNotes.push(row);
+        return ok(shape(row), config, 201);
+      }
+      if (coachNotesMatch[2] && method === 'put') {
+        const row = state.clientCoachNotes.find((n) => n.id === coachNotesMatch[2] && n.client_id === target.id && !n.archived);
+        if (!row) return fail(config, 404, 'Note not found');
+        if (row.author_coach_id !== currentCoach().id) return fail(config, 403, "Only the note's author can edit it");
+        if (row.updated_at !== payload.expected_updated_at) {
+          return Promise.reject({ response: { data: { error: 'This note changed since you opened it. Your text is kept; review the latest version before saving again.', note: shape(row) }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
+        }
+        Object.assign(row, { content, updated_at: new Date().toISOString() });
+        return ok(shape(row), config);
+      }
     }
     const clientMatch = path.match(/^\/clients\/([^/]+)$/);
     if (clientMatch) {
