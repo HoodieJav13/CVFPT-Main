@@ -22,6 +22,8 @@ import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGr
 import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
 import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
 import { demoForRow } from '@/lib/exerciseDemo';
+import { SetConflictNotice, SwapStatus } from '@/components/training/SessionCorrections';
+import { CoachConflictActions, CoachSwapActions } from '@/components/group/CoachSessionActions';
 
 // Same identity rule as the exercise-history RPC: match by library exercise
 // when linked, otherwise by the source workout exercise.
@@ -308,6 +310,7 @@ export default function WorkoutLogDetail() {
                   {hasGroups && <ExerciseMarker marker={marker} />}
                   <span className="min-w-0">{exercise.exercise_name}</span>
                 </CardTitle>
+                {log.server_time && <SwapStatus exercise={exercise} log={log} />}
                 {exercise.media && (
                   <Button
                     type="button" variant="ghost" size="sm" className="min-h-11 w-fit px-2 text-primary"
@@ -345,6 +348,15 @@ export default function WorkoutLogDetail() {
                       <span className="tabular-nums">{set.actual_rpe ?? <span aria-label="No RPE logged">—</span>}</span>
                       {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => <span key={metric} className="col-span-full tabular-nums">{metric === 'duration' ? 'Duration' : 'Distance'}: {set[`actual_${metric}_value`] == null ? <span aria-label={`No ${metric} logged`}>—</span> : `${set[`actual_${metric}_value`]} ${set[`actual_${metric}_unit`]}`}</span>)}
                       <Badge className="col-start-5 row-start-1" variant={set.status === 'completed' ? 'default' : 'outline'}>{set.status}</Badge>
+                      {set.status === 'completed' && Number.isInteger(set.completed_plan_revision) && set.completed_plan_revision < (exercise.plan_revision || 0) && (
+                        <span className="col-span-full text-xs text-muted-foreground" data-testid="earlier-plan-note">Done to the earlier plan (the plan was changed while this was being logged).</span>
+                      )}
+                      {(log.conflicts || []).filter((conflict) => conflict.workout_log_set_id === set.id).map((conflict) => (
+                        <div key={conflict.id} className="col-span-full space-y-2">
+                          <SetConflictNotice conflict={conflict} logId={log.id} viewer={isCoach ? 'coach' : 'client'} onChanged={load} />
+                          {isCoach && <CoachConflictActions conflict={conflict} logId={log.id} onDone={() => load()} />}
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -424,6 +436,7 @@ export default function WorkoutLogDetail() {
               <p className="mt-2 whitespace-pre-wrap text-sm">{response.content}</p>
             </article>
           ))}
+          {isCoach && log.server_time && <CoachSwapActions log={log} onDone={() => load()} />}
           {isCoach && log.status === 'completed' && (
             <form className="space-y-2 border-t border-border pt-4" onSubmit={saveResponse} data-testid="coach-response-form">
               <Label htmlFor="coach-response-content">{ownResponse ? 'Edit your response' : 'Add your response'}</Label>

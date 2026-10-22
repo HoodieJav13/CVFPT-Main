@@ -22,6 +22,7 @@ import {
 import { clearGroupSession, loadGroupSession, saveGroupSession } from '@/lib/groupSessionStore';
 import { createGroupSessionSync } from '@/lib/groupSessionSync';
 import GroupSummary from '@/components/group/GroupSummary';
+import ParticipantConductor from '@/components/group/ParticipantConductor';
 import { cn } from '@/lib/utils';
 
 const SELECT = 'h-11 w-full rounded-md border border-input bg-background px-3 text-sm';
@@ -71,7 +72,7 @@ function GroupSetup({ clients, library, onStart, error }) {
         Plan the stations and who is training. During the session each trainee&apos;s sets are saved to their own workout;
         other trainees never appear in it.
       </p>
-      <label className="block space-y-1 text-sm">Session name
+      <label className="block space-y-1 text-sm">Session name <span className="text-xs text-muted-foreground">(only you see this)</span>
         <Input className="min-h-11" value={title} maxLength={80} placeholder={`Small group · ${denverToday()}`}
           onChange={(e) => setTitle(e.target.value)} data-testid="group-title" />
       </label>
@@ -288,14 +289,58 @@ export default function GroupSession() {
   const [amending, setAmending] = useState(null);
   const [substituting, setSubstituting] = useState(null);
 
+  const [mode, setMode] = useState('choose');
+  const [serverOpen, setServerOpen] = useState([]);
+  const [mirrorState, setMirrorState] = useState('pending');
+  const mirror = useRef({ revision: null, timer: null });
+
+  // The station plan also goes to the coach's account (pt-session-events/v1 §4),
+  // so another coach device can resume it. Coach-only; never sent to trainees.
+  const pushMirror = useCallback(() => {
+    window.clearTimeout(mirror.current.timer);
+    mirror.current.timer = window.setTimeout(async () => {
+      const current = sessionRef.current;
+      if (!current) return;
+      const ids = [...new Set(current.slots.flatMap((slot) => slot.occupants.map((row) => row.traineeId)))].slice(0, 6);
+      try {
+        if (mirror.current.revision === null) {
+          const { data } = await api.post('/group-sessions', { id: current.id, title: current.title, mode: 'stations', participant_ids: ids, station_state: current });
+          mirror.current.revision = data.session.revision;
+          if (data.outcome === 'created') { setMirrorState('saved'); return; }
+        }
+        const { data } = await api.patch(`/group-sessions/${current.id}`, {
+          base_revision: mirror.current.revision, station_state: sessionRef.current, participant_ids: ids,
+          ...(current.status === 'finished' ? { status: 'finished' } : {}),
+        });
+        mirror.current.revision = data.session.revision;
+        setMirrorState('saved');
+      } catch (error) {
+        if (error.response?.status === 409 && error.response.data?.session) {
+          // Another coach device changed the plan: adopt it rather than overwrite.
+          mirror.current.revision = error.response.data.session.revision;
+          const remote = error.response.data.session.station_state;
+          if (remote) {
+            sessionRef.current = remote;
+            saveGroupSession(localStorage, scope, remote);
+            setSession(remote);
+          }
+          setMirrorState('replaced');
+        } else {
+          setMirrorState('local');
+        }
+      }
+    }, 600);
+  }, [scope]);
+
   // Write-ahead: every change is stored on this device before any request.
   const commit = useCallback((updater) => {
     const next = updater(sessionRef.current);
     sessionRef.current = next;
     setStored(next ? saveGroupSession(localStorage, scope, next) : true);
     setSession(next);
+    if (next) pushMirror();
     return next;
-  }, [scope]);
+  }, [scope, pushMirror]);
 
   const sync = useMemo(() => createGroupSessionSync({ api, getSession: () => sessionRef.current, commit }), [commit]);
 
@@ -312,6 +357,15 @@ export default function GroupSession() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (sessionRef.current?.status === 'running') sync.resume(); }, [sync]);
+  useEffect(() => {
+    if (sessionRef.current) { pushMirror(); return; }
+    api.get('/group-sessions/open').then(({ data }) => setServerOpen((data.sessions || []).filter((row) => row.mode === 'stations' && row.station_state))).catch(() => {});
+  }, [pushMirror]);
+  const resumeHere = (row) => {
+    mirror.current.revision = row.revision;
+    commit(() => ({ ...row.station_state, environment: scope.environment, coachId: scope.coachId }));
+    sync.resume();
+  };
 
   const start = (setup) => {
     setActionError('');
@@ -375,8 +429,23 @@ export default function GroupSession() {
   if (!session) {
     return (
       <div>
-        <PageHeader title="Small group" subtitle="Run stations for several trainees and keep each person's sets separate." testId="group-header" />
-        <GroupSetup clients={clients || []} library={library} onStart={start} error={actionError} />
+        <PageHeader title="Small group" subtitle="Log for several trainees and keep each person's sets separate." testId="group-header" />
+        {mode === 'choose' && (
+          <div className="space-y-3" data-testid="group-mode-choice">
+            <Button className="min-h-11 w-full justify-start sm:w-auto" onClick={() => setMode('participants')} data-testid="group-mode-participants">Each trainee&apos;s own workout (group logging)</Button>
+            <Button variant="outline" className="min-h-11 w-full justify-start sm:w-auto sm:ml-2" onClick={() => setMode('stations')} data-testid="group-mode-stations">Stations that rotate</Button>
+            {serverOpen.length > 0 && (
+              <div className="space-y-2 rounded-lg border border-border p-3 text-sm" data-testid="group-resume-list">
+                <p className="font-medium">Open station sessions on your account</p>
+                {serverOpen.map((row) => (
+                  <Button key={row.id} variant="outline" className="min-h-11" onClick={() => resumeHere(row)} data-testid="group-resume-here">Resume “{row.title}” on this device</Button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {mode === 'participants' && <ParticipantConductor clients={clients || []} library={library} onBack={() => setMode('choose')} />}
+        {mode === 'stations' && <GroupSetup clients={clients || []} library={library} onStart={start} error={actionError} />}
       </div>
     );
   }
@@ -409,6 +478,9 @@ export default function GroupSession() {
             <Button size="sm" variant="outline" onClick={() => sync.flush()} data-testid="group-retry-all"><RefreshCw /> Retry now</Button>
           </>
         ) : <><Check className="h-4 w-4 text-primary" /> All entered sets are saved</>}
+        <span className="text-xs text-muted-foreground" data-testid="group-mirror-state" data-state={mirrorState}>
+          {mirrorState === 'saved' ? '· Plan saved to your account' : mirrorState === 'replaced' ? '· Plan was changed on another device; showing that version' : mirrorState === 'local' ? '· Plan only on this device for now' : ''}
+        </span>
         {!stored ? <span className="text-destructive">This browser refused to store the session; do not reload until everything is saved.</span> : null}
       </div>
       <div className="grid gap-4 xl:grid-cols-2">

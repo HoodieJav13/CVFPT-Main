@@ -4,7 +4,7 @@ import { WorkoutViewport } from '@/components/training/WorkoutViewport';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
+import { ArrowLeftRight, Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Plus, RefreshCw, Save, Timer, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -24,7 +24,9 @@ import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import {
   adjustRestEnd, formatRestSeconds, manualRestSeconds, REST_ADJUST_SECONDS,
 } from '@/lib/rest';
-import { lastTimeFills } from '@/lib/workoutSync';
+import { freshnessLabel, lastTimeFills, mergeRefresh } from '@/lib/workoutSync';
+import { SetConflictNotice, SwapStatus, canSwap } from '@/components/training/SessionCorrections';
+import SwapExerciseDialog, { readCachedSwapOptions, swapOptionsCacheKey } from '@/components/training/SwapExerciseDialog';
 import { lastTimeDate, lastTimeFillNote, lastTimeLine, pickLastTimeOccurrence } from '@/lib/lastTime';
 import { trackProductEvent } from '@/lib/telemetry';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
@@ -38,6 +40,10 @@ import { nextPosterTargets } from '@/lib/exerciseMedia';
 // The rest timer reads prescribed_rest_seconds — the structured column the
 // database parses and backfills. The old runtime text parser is gone; text
 // only survives as a display fallback for legacy completed snapshots.
+
+// Bounded refresh (L12): no live push; the tracker re-reads the log on this
+// cadence while online and says how fresh its copy is.
+const REFRESH_SECONDS = 10;
 
 function formatTimer(seconds) {
   const safe = Math.max(0, seconds);
@@ -257,7 +263,20 @@ export default function WorkoutTracker() {
   // Set when the server refuses a queued Finish (the outbox has already reloaded
   // the still-active log), so finish() keeps the client here with the reason.
   const completeRejection = useRef(null);
-  const outbox = useWorkoutOutbox(id, setLog, { onCompleteRejected: (message) => { completeRejection.current = message; } });
+  // Sets being typed into (not yet saved): refresh keeps their values and base revision.
+  const draftIds = useRef(new Set());
+  const refreshRef = useRef(null);
+  const [lastChecked, setLastChecked] = useState(null);
+  const [, setClock] = useState(0);
+  const [swapFor, setSwapFor] = useState(null);
+  const outbox = useWorkoutOutbox(id, setLog, {
+    onCompleteRejected: (message) => { completeRejection.current = message; },
+    getLog: () => logRef.current,
+    onConflict: () => {
+      toast.message('Someone else changed this set first. Both values are kept and your coach will choose.');
+      refreshRef.current?.();
+    },
+  });
   const hydratePending = outbox.hydrate;
   const restStorageKey = `cvf_rest_timer_${id}`;
 
@@ -295,6 +314,7 @@ export default function WorkoutTracker() {
         return;
       }
       setLog(hydratePending(data));
+      setLastChecked(Date.now());
       setLoadError(null);
     } catch (error) {
       setLoadError(errMsg(error, 'Failed to load workout'));
@@ -302,6 +322,42 @@ export default function WorkoutTracker() {
   }, [basePath, hydratePending, id, navigate]);
 
   useEffect(() => { load(); }, [load]);
+
+  const refresh = useCallback(async () => {
+    if (!navigator.onLine) return;
+    try {
+      const { data } = await api.get(`/workout-logs/${id}`);
+      if (data.status !== 'active') {
+        navigate(`${basePath}/workouts/${id}`, { replace: true });
+        return;
+      }
+      setLog((current) => hydratePending(mergeRefresh(current, data, draftIds.current)));
+      setLastChecked(Date.now());
+    } catch {
+      // Keep this device's copy; the freshness label shows its age.
+    }
+  }, [basePath, hydratePending, id, navigate]);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    const timer = window.setInterval(() => { refreshRef.current?.(); setClock((tick) => tick + 1); }, REFRESH_SECONDS * 1000);
+    const onOnline = () => refreshRef.current?.();
+    window.addEventListener('online', onOnline);
+    return () => { window.clearInterval(timer); window.removeEventListener('online', onOnline); };
+  }, []);
+
+  // Save swap choices on this phone while online, so a swap still works offline.
+  const contractLog = Boolean(log?.server_time);
+  useEffect(() => {
+    if (!contractLog || !navigator.onLine || !logRef.current) return;
+    const current = logRef.current;
+    const eligible = current.exercises.filter((exercise) => exercise.exercise_library_id && canSwap(exercise, current, false));
+    const found = {};
+    Promise.all(eligible.map((exercise) => api.get(`/workout-logs/${id}/exercises/${exercise.id}/substitution-options`)
+      .then(({ data }) => { found[exercise.id] = data; }).catch(() => {})))
+      .then(() => {
+        try { localStorage.setItem(swapOptionsCacheKey(id), JSON.stringify({ ...readCachedSwapOptions(id), ...found })); } catch { /* cache is optional */ }
+      });
+  }, [contractLog, id]);
 
   // Re-resolve guide metadata after a failed lookup, or for one exercise whose
   // guide changed since the workout loaded (libraryId). Never touches set data
@@ -406,6 +462,7 @@ export default function WorkoutTracker() {
       ...exercise,
       sets: exercise.sets.map((set) => set.id === setId ? { ...set, [key]: value } : set),
     })));
+    draftIds.current.add(setId);
     outbox.markDirty();
   };
 
@@ -424,6 +481,7 @@ export default function WorkoutTracker() {
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
       data: payload,
     });
+    draftIds.current.delete(set.id);
   };
 
   const toggleSet = (exercise, set) => {
@@ -437,6 +495,7 @@ export default function WorkoutTracker() {
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
       data: payload,
     });
+    draftIds.current.delete(set.id);
     if (status === 'completed') {
       // Inside a superset/giant set, rest waits for the end of the round.
       const rest = restAfterSet(log.exercises, exercise.id, set.id);
@@ -452,6 +511,48 @@ export default function WorkoutTracker() {
       method: 'post', url: `/workout-logs/${id}/exercises/${exercise.id}/sets`,
       data: { client_operation_id: operationId },
     });
+  };
+
+  // PT-Sub: record the swap for this workout only. A coach backup (or any
+  // choice made offline) is usable at once; an online suggestion waits for the
+  // coach. The client adds the substitute's sets itself, so they can be logged
+  // offline; nothing is copied from the original exercise.
+  const confirmSwap = (choice) => {
+    const exercise = swapFor;
+    setSwapFor(null);
+    const offline = !navigator.onLine;
+    const activate = choice.kind === 'backup' || offline || isCoach;
+    const swapId = makeId();
+    const replacementId = makeId();
+    const targets = {};
+    if (String(choice.targets.sets ?? '').trim()) targets.sets = Number(choice.targets.sets);
+    if (String(choice.targets.reps ?? '').trim()) targets.reps = String(choice.targets.reps).trim();
+    if (String(choice.targets.load_value ?? '').trim()) { targets.load_value = Number(choice.targets.load_value); targets.load_unit = 'lb'; }
+    const source = choice.kind === 'backup' ? 'coach_backup' : 'catalog_suggestion';
+    const libraryId = choice.kind === 'backup' ? choice.item.exercise_library_id : choice.item.id;
+    outbox.enqueue({
+      kind: 'substitute', exerciseId: exercise.id,
+      method: 'post', url: `/workout-logs/${id}/exercises/${exercise.id}/substitutions`,
+      data: {
+        id: swapId, replacement_log_exercise_id: replacementId, source, ...(choice.kind === 'backup' ? { backup_id: choice.item.id } : {}),
+        exercise_library_id: libraryId, trigger: choice.trigger, ...(choice.reason?.trim() ? { reason: choice.reason.trim() } : {}),
+        targets, offline, chosen_at: new Date().toISOString(), create_target_sets: false,
+      },
+      swap: { id: swapId, replacementId, name: choice.item.name, libraryId, targets, activate, source },
+    });
+    if (activate) {
+      for (let index = 0; index < (targets.sets || 1); index += 1) {
+        const operationId = makeId();
+        outbox.enqueue({
+          kind: 'add', exerciseId: replacementId, clientOperationId: operationId,
+          method: 'post', url: `/workout-logs/${id}/exercises/${replacementId}/sets`,
+          data: { client_operation_id: operationId },
+        });
+      }
+      toast.success(offline ? `Using ${choice.item.name}. Your coach will be told when you are back online.` : `Using ${choice.item.name} for this workout.`);
+    } else {
+      toast.message(`Asked your coach about ${choice.item.name}.`);
+    }
   };
 
   const removeSet = (exercise, set) => {
@@ -653,6 +754,11 @@ export default function WorkoutTracker() {
           {outbox.saveState === 'not_saved' && <><CircleAlert className="h-3.5 w-3.5 text-gold" /> Not saved yet</>}
           {!outbox.online && <Badge variant="outline"><WifiOff className="mr-1 h-3.5 w-3.5" /> Offline</Badge>}
         </span>
+        {contractLog && (
+          <span className="flex items-center gap-1 text-muted-foreground" data-testid="tracker-freshness">
+            <RefreshCw className="h-3 w-3" aria-hidden />{freshnessLabel(lastChecked, Date.now(), { online: outbox.online, everySeconds: REFRESH_SECONDS })}
+          </span>
+        )}
         {!restEndsAt && !sealed && (
           <Button
             type="button" variant="ghost" size="sm"
@@ -726,6 +832,12 @@ export default function WorkoutTracker() {
                 {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
               </div>
               {exercise.prescribed_notes && <p className="text-xs text-muted-foreground">{exercise.prescribed_notes}</p>}
+              {contractLog && <SwapStatus exercise={exercise} log={log} />}
+              {contractLog && canSwap(exercise, log, sealed) && (
+                <Button type="button" variant="ghost" size="sm" className="min-h-11 justify-start px-0 text-xs text-muted-foreground" onClick={() => setSwapFor(exercise)} data-testid="swap-open">
+                  <ArrowLeftRight className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Can&apos;t do this?
+                </Button>
+              )}
               <ExerciseDemoAction
                 demo={demoForRow(exercise)}
                 exerciseName={exercise.exercise_name}
@@ -818,6 +930,9 @@ export default function WorkoutTracker() {
                       <Trash2 aria-hidden />
                     </Button>
                   )}
+                  {(log.conflicts || []).filter((conflict) => conflict.workout_log_set_id === set.id).map((conflict) => (
+                    <SetConflictNotice key={conflict.id} conflict={conflict} logId={id} viewer={isCoach ? 'coach' : 'client'} online={outbox.online} onChanged={() => refreshRef.current?.()} />
+                  ))}
                 </div>
               ))}
               <div className="flex flex-wrap gap-2">
@@ -881,6 +996,7 @@ export default function WorkoutTracker() {
         );
       })()}
 
+      {swapFor && <SwapExerciseDialog exercise={swapFor} logId={id} online={outbox.online} onClose={() => setSwapFor(null)} onConfirm={confirmSwap} />}
       <Dialog open={abandonOpen} onOpenChange={setAbandonOpen}>
         <DialogContent className="max-w-sm [&>button]:h-11 [&>button]:w-11" data-testid="workout-abandon-dialog">
           <DialogHeader>

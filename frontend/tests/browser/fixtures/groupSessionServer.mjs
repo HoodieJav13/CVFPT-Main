@@ -30,7 +30,7 @@ export class HttpError extends Error {
 export const networkError = () => Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' });
 
 export function createGroupServer() {
-  const db = { assignments: [], logs: [], requests: [], faults: [], seq: 0, activeOther: new Set() };
+  const db = { assignments: [], logs: [], requests: [], faults: [], seq: 0, activeOther: new Set(), groups: [] };
   const nextId = (prefix) => `${prefix}-${++db.seq}`;
   const fingerprint = (body) => JSON.stringify({ ...body, request_id: undefined });
 
@@ -49,6 +49,23 @@ export function createGroupServer() {
     if (method === 'GET' && path === '/auth/me') return { role: 'coach', email: COACH.email, profile: COACH };
     if (method === 'GET' && path === '/clients') return TRAINEES;
     if (method === 'GET' && path === '/programs/exercise-library') return LIBRARY;
+    // Coach-only conductor record (pt-session-events/v1 §4), minimal mirror.
+    if (method === 'GET' && path === '/group-sessions/open') return { sessions: db.groups.filter((row) => row.status === 'open') };
+    if (method === 'POST' && path === '/group-sessions') {
+      const existing = db.groups.find((row) => row.id === body.id);
+      if (existing) return { outcome: 'replayed', session: existing };
+      const row = { id: body.id, title: body.title, mode: body.mode, participants: body.participant_ids, station_state: body.station_state || null, status: 'open', revision: 0 };
+      db.groups.push(row);
+      return { outcome: 'created', session: row };
+    }
+    let group = path.match(/^\/group-sessions\/([^/]+)$/);
+    if (method === 'PATCH' && group) {
+      const row = db.groups.find((item) => item.id === group[1]);
+      if (!row) throw new HttpError(404, { error: 'Session not found' });
+      if (row.revision !== body.base_revision) throw new HttpError(409, { error: 'changed', session: row });
+      Object.assign(row, { station_state: body.station_state ?? row.station_state, status: body.status || row.status, revision: row.revision + 1 });
+      return { session: row };
+    }
     if (method === 'POST' && path === '/programs/quick-sessions') {
       const receipt = db.assignments.find((row) => row.request_id === body.request_id);
       if (receipt) {
@@ -94,8 +111,8 @@ export function createGroupServer() {
       if (log.status !== 'active') throw new HttpError(409, { error: 'Workout is not active' });
       const set = log.exercises.flatMap((row) => row.sets).find((row) => row.id === match[2]);
       if (!set) throw new HttpError(404, { error: 'Workout set not found' });
-      Object.assign(set, { status: body.status, actual_reps: body.actual_reps, actual_load_value: body.actual_load_value, actual_load_unit: body.actual_load_unit });
-      return { ...set };
+      Object.assign(set, { status: body.status, actual_reps: body.actual_reps, actual_load_value: body.actual_load_value, actual_load_unit: body.actual_load_unit, revision: (set.revision || 0) + 1 });
+      return { ...set, event: body.event_id ? { id: body.event_id, outcome: 'applied' } : undefined };
     }
     match = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/sets$/);
     if (method === 'POST' && match) {

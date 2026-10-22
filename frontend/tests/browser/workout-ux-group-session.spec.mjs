@@ -42,6 +42,8 @@ async function setup(page, width) {
   await page.goto('/login');
   await page.evaluate((token) => localStorage.setItem('cvf_access_token', token), TOKEN);
   await page.goto('/coach/group-session');
+  // L12 added a mode choice ahead of station setup (oracle adaptation).
+  await page.getByTestId('group-mode-stations').click();
   await expect(page.getByTestId('group-setup')).toBeVisible();
   return { server, unexpected };
 }

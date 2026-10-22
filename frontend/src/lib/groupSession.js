@@ -160,7 +160,9 @@ export function openVisit(session, { round, slotIndex, traineeId, requestId, now
       request_id: requestId,
       client_id: traineeId,
       assigned_for: session.date,
-      name: `${session.title} · ${station.label} · ${exercise.name}`.slice(0, 120),
+      // Neutral, trainee-visible name: the coach's own session title stays
+      // coach-only (C4 review P3-2; L12/CONTRACT.md §4).
+      name: `Small group · ${station.label} · ${exercise.name}`.slice(0, 120),
       // The trainee can read their own workout, so this names only their own
       // work: never other trainees, and never the coach's free-text reason.
       notes: exercise.amended
@@ -223,7 +225,8 @@ export function recordEntry(session, key, setKey, entry) {
   if (['completed', 'abandoned', 'missing'].includes(visit.status)) throw new Error(`${visit.traineeName}'s ${visit.stationLabel} work is already closed.`);
   const unit = visit.exercise.default_load_unit || 'lb';
   const normalized = normalizeEntry(entry, unit);
-  return updateVisitSet(session, key, setKey, (set) => ({ ...set, entry: normalized, state: 'pending', error: null }));
+  // A new value is a new event: drop the previous event id (write-ahead in sync).
+  return updateVisitSet(session, key, setKey, (set) => ({ ...set, entry: normalized, state: 'pending', error: null, eventId: null }));
 }
 
 export function addExtraSet(session, key, operationId) {
@@ -282,7 +285,7 @@ export function visitsForRound(session, round) {
 
 export function unsyncedSets(session) {
   return Object.values(session.visits).flatMap((visit) => visit.sets
-    .filter((set) => set.entry && set.state !== 'saved')
+    .filter((set) => set.entry && !['saved', 'conflict'].includes(set.state))
     .map((set) => ({ visit, set })));
 }
 
@@ -291,7 +294,7 @@ export function unsyncedSets(session) {
 export function roundBlockers(session, round = session.round) {
   const blockers = [];
   for (const visit of visitsForRound(session, round)) {
-    if (visit.sets.some((set) => set.entry && set.state !== 'saved')) blockers.push(`${visit.traineeName}: sets still saving at ${visit.stationLabel}.`);
+    if (visit.sets.some((set) => set.entry && !['saved', 'conflict'].includes(set.state))) blockers.push(`${visit.traineeName}: sets still saving at ${visit.stationLabel}.`);
     else if (!['completed', 'abandoned', 'missing'].includes(visit.status)) blockers.push(`${visit.traineeName}: ${visit.stationLabel} not closed yet.`);
   }
   return blockers;
@@ -329,7 +332,7 @@ export function summarize(session) {
     const planned = visit.sets.filter((set) => set.origin === 'prescribed').length;
     person.setsDone += saved.length;
     person.setsPlanned += planned;
-    person.unsynced += visit.sets.filter((set) => set.entry && set.state !== 'saved').length;
+    person.unsynced += visit.sets.filter((set) => set.entry && !['saved', 'conflict'].includes(set.state)).length;
     const unit = saved.find((set) => set.entry.unit)?.entry.unit || visit.exercise.default_load_unit || 'lb';
     person.volume[unit] = (person.volume[unit] || 0) + saved.reduce((sum, set) => sum + setVolume(set), 0);
     person.stations.push({

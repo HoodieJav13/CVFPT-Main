@@ -42,7 +42,7 @@ export function reconcileVisitWithLog(visit, log) {
       ? serverSets.find((row) => row.client_operation_id === set.operationId)
       : serverSets.find((row) => row.set_origin !== 'extra' && row.set_number === set.setNumber);
     if (!server) return set;
-    const next = { ...set, setId: server.id };
+    const next = { ...set, setId: server.id, serverRevision: server.revision ?? set.serverRevision ?? 0 };
     if (server.status === 'completed') {
       const serverEntry = {
         reps: server.actual_reps ?? null,
@@ -132,14 +132,32 @@ export function createGroupSessionSync({ api, getSession, commit }) {
       set = visitOf(key).sets.find((row) => row.key === setKey);
     }
     if (!set.setId) throw Object.assign(new Error(`Set ${set.setNumber} is not on ${visit.traineeName}'s workout.`), { fatal: true });
+    // pt-session-events/v1: the event id is stored before sending (write-ahead)
+    // and the write is based on the server revision this device last saw.
+    if (!set.eventId) {
+      const eventId = globalThis.crypto.randomUUID();
+      commit((session) => updateVisitSet(session, key, setKey, (row) => ({ ...row, eventId })));
+      set = visitOf(key).sets.find((row) => row.key === setKey);
+    }
     const sent = set.entry;
-    await api.patch(`/workout-logs/${visit.logId}/sets/${set.setId}`, {
+    const { data } = await api.patch(`/workout-logs/${visit.logId}/sets/${set.setId}`, {
       status: 'completed',
       actual_reps: sent.reps,
       actual_load_value: sent.load,
       actual_load_unit: sent.load == null ? null : sent.unit,
+      event_id: set.eventId,
+      base_revision: set.serverRevision ?? 0,
     });
-    commit((session) => updateVisitSet(session, key, setKey, (row) => (sameEntry(row.entry, sent) ? { ...row, state: 'saved', error: null } : row)));
+    const outcome = data?.event?.outcome === 'replayed' ? data.event.original_outcome : data?.event?.outcome;
+    if (outcome === 'conflict') {
+      commit((session) => updateVisitSet(session, key, setKey, (row) => (sameEntry(row.entry, sent)
+        ? { ...row, state: 'conflict', error: `${visit.traineeName} changed this set on their own phone first. Both values are kept; choose the final one in their workout.` }
+        : row)));
+      return;
+    }
+    commit((session) => updateVisitSet(session, key, setKey, (row) => (sameEntry(row.entry, sent)
+      ? { ...row, state: 'saved', error: null, serverRevision: data?.revision ?? row.serverRevision }
+      : row)));
     // The coach changed the value while it was sending: send the newer one.
     const latest = visitOf(key)?.sets.find((row) => row.key === setKey);
     if (latest?.entry && latest.state !== 'saved') await sendSet(key, setKey);
@@ -221,7 +239,7 @@ export function createGroupSessionSync({ api, getSession, commit }) {
     const jobs = [];
     for (const visit of Object.values(session.visits)) {
       if (CLOSED.has(visit.status) || visit.status === 'blocked') continue;
-      for (const set of visit.sets) if (set.entry && set.state !== 'saved') jobs.push(saveSet(visit.key, set.key));
+      for (const set of visit.sets) if (set.entry && !['saved', 'conflict'].includes(set.state)) jobs.push(saveSet(visit.key, set.key));
     }
     await Promise.all(jobs);
   }
@@ -237,7 +255,7 @@ export function createGroupSessionSync({ api, getSession, commit }) {
   async function retryVisit(key) {
     commit((session) => updateVisit(session, key, (row) => (row.status === 'blocked' ? { ...row, status: 'open', error: null } : row)));
     const visit = visitOf(key);
-    await Promise.all(visit.sets.filter((set) => set.entry && set.state !== 'saved').map((set) => saveSet(key, set.key)));
+    await Promise.all(visit.sets.filter((set) => set.entry && !['saved', 'conflict'].includes(set.state)).map((set) => saveSet(key, set.key)));
   }
 
   return { saveSet, closeVisit, closeRound, resume, flush, retryVisit };
