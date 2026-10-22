@@ -91,6 +91,29 @@ export function applyOptimistic(log, operation) {
   return log;
 }
 
+// Entries the server can no longer accept because the workout was finished
+// (e.g. by the coach) before this device reconnected. They are kept on the
+// device and shown, never silently deleted (review P2-1). Set values on
+// existing sets do reach the server as a disagreement for the coach.
+export function undeliveredStorageKey(logId) {
+  return `cvf_workout_undelivered_${logId}`;
+}
+
+export function readUndelivered(logId) {
+  try { return JSON.parse(localStorage.getItem(undeliveredStorageKey(logId)) || '[]'); } catch { return []; }
+}
+
+function keepUndelivered(logId, operation) {
+  try {
+    const rows = readUndelivered(logId).filter((row) => row.id !== operation.id);
+    rows.push({ ...operation, kept_at: new Date().toISOString() });
+    localStorage.setItem(undeliveredStorageKey(logId), JSON.stringify(rows));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function outboxStorageKey(logId) {
   return `cvf_workout_outbox_${logId}`;
 }
@@ -141,6 +164,7 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
   const syncedRef = useRef(onCompleteSynced);
   const rejectedRef = useRef(onCompleteRejected);
   const getLogRef = useRef(getLog);
+  const keptNoticeRef = useRef(false);
   const conflictRef = useRef(onConflict);
   syncedRef.current = onCompleteSynced;
   rejectedRef.current = onCompleteRejected;
@@ -231,6 +255,15 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
               setLog(remaining.reduce((current, queued) => applyOptimistic(current, queued), data));
             } catch {
               // The failed write is still removed; a later page reload reconciles server state.
+            }
+            if (operation.kind !== 'complete' && ((fresh && fresh.status !== 'active') || (!fresh && status === 409))) {
+              // Finished elsewhere first: keep the performance on this device.
+              keepUndelivered(logId, operation);
+              if (!keptNoticeRef.current) {
+                keptNoticeRef.current = true;
+                toast.message('This workout was finished before your entries synced. They are kept on this phone; set values went to your coach to review.');
+              }
+              continue;
             }
             if (operation.kind === 'complete') {
               // Duplicate send after an ambiguous failure: already completed

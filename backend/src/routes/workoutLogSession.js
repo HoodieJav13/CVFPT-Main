@@ -341,7 +341,7 @@ function registerSessionRoutes(router, deps) {
     }
   });
 
-  return { applySetEvent, detailedLogResponse };
+  return { applySetEvent, detailedLogResponse, writableLogAnyStatus };
 }
 
 module.exports = { registerSessionRoutes, sessionExtras, raiseCoachNotice, setEventEnvelope };

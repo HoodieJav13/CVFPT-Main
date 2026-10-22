@@ -234,6 +234,7 @@ declare
   v_outcome text;
   v_conflict_id uuid;
   v_same_actor boolean;
+  v_log_status text;
 begin
   if p_actor_role not in ('client', 'coach') then raise exception 'invalid actor'; end if;
   select * into v_event from public.workout_set_events where id = p_event_id;
@@ -245,7 +246,7 @@ begin
 
   select s.* into v_set from public.workout_log_sets s where s.id = p_set_id and not s.archived for update;
   if not found then raise exception 'Workout set not found'; end if;
-  select e.workout_log_id, l.client_id, c.coach_id into v_log_id, v_client_id, v_coach_id
+  select e.workout_log_id, l.client_id, c.coach_id, l.status into v_log_id, v_client_id, v_coach_id, v_log_status
   from public.workout_log_exercises e
   join public.workout_logs l on l.id = e.workout_log_id
   join public.clients c on c.id = l.client_id
@@ -256,7 +257,13 @@ begin
   v_same_actor := v_set.last_actor_role = p_actor_role
     and (p_actor_role = 'client' or v_set.entered_by_coach_id is not distinct from p_actor_coach_id);
 
-  if p_base_revision is null or p_base_revision = v_set.revision or v_same_actor or v_set.last_actor_role is null and v_set.revision = 0 then
+  if v_log_status <> 'active' then
+    -- The workout was finished (or abandoned) before this write arrived, e.g. a
+    -- coach finished it while the client was offline. Completed history stays
+    -- immutable; a different value is kept as a disagreement for the coach,
+    -- resolvable only through resolve_workout_set_conflict (review P2-1).
+    v_outcome := case when v_incoming = v_current then 'unchanged' else 'conflict' end;
+  elsif p_base_revision is null or p_base_revision = v_set.revision or v_same_actor or v_set.last_actor_role is null and v_set.revision = 0 then
     v_outcome := 'applied';
   elsif v_incoming = v_current then
     v_outcome := 'unchanged';

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MessageSquareText, Scale } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
+import { readUndelivered } from '@/lib/workoutOutbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -103,4 +104,29 @@ export function SwapStatus({ exercise, log, viewer = 'client' }) {
 export function canSwap(exercise, log, sealed) {
   if (sealed || exercise.substitutes_log_exercise_id || exercise.pending_swap) return false;
   return !(log.substitutions || []).some((row) => row.original_log_exercise_id === exercise.id && ['active', 'pending_confirmation'].includes(row.status));
+}
+
+function describeKept(operation, log) {
+  const exercise = log?.exercises?.find((row) => row.id === operation.exerciseId);
+  const name = exercise?.exercise_name || operation.swap?.name || 'An exercise';
+  if (operation.kind === 'add') return `${name}: an extra set`;
+  if (operation.kind === 'set') return `${name}: ${setValueText(operation.data || {})}`;
+  if (operation.kind === 'note') return `${name}: note “${operation.data?.client_notes || ''}”`;
+  if (operation.kind === 'substitute') return `Swap to ${operation.swap?.name || 'another exercise'}`;
+  return `${name}: a change`;
+}
+
+/** Entries kept on this device because the workout was finished before they synced. */
+export function UndeliveredEntries({ logId, log }) {
+  const rows = readUndelivered(logId);
+  if (!rows.length) return null;
+  return (
+    <section className="space-y-2 rounded-xl border border-gold/40 bg-gold/10 p-3 text-sm" data-testid="undelivered-entries">
+      <p className="font-medium">Kept on this phone: {rows.length} entr{rows.length === 1 ? 'y' : 'ies'} could not be added</p>
+      <p className="text-xs text-muted-foreground">This workout was finished before these reached the server, so they are not in your history. Tell your coach; nothing here was deleted.</p>
+      <ul className="space-y-0.5 text-xs" data-testid="undelivered-list">
+        {rows.map((row) => <li key={row.id}>{describeKept(row, log)}</li>)}
+      </ul>
+    </section>
+  );
 }

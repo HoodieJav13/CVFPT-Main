@@ -799,14 +799,17 @@ router.get('/:id', async (req, res) => {
 
 router.patch('/:id/sets/:setId', async (req, res) => {
   try {
-    const log = await requireWritableActiveLog(req, res);
+    // pt-session-events/v1: a contract write (event_id) also reaches a log that
+    // was finished meanwhile, where the database keeps it as a disagreement for
+    // the coach instead of losing it (review P2-1); legacy writes stay 409.
+    const envelope = setEventEnvelope(req.body || {});
+    const log = envelope ? await sessionRoutes.writableLogAnyStatus(req, res) : await requireWritableActiveLog(req, res);
     if (!log) return undefined;
     const exerciseIds = new Set(log.exercises.map((exercise) => exercise.id));
     const set = log.exercises.flatMap((exercise) => exercise.sets).find((row) => row.id === req.params.setId);
     if (!set || !exerciseIds.has(set.workout_log_exercise_id)) return res.status(404).json({ error: 'Workout set not found' });
-    // pt-session-events/v1: an event_id makes the write idempotent and
-    // revision-checked (L12/CONTRACT.md); without one the legacy path below runs.
-    const envelope = setEventEnvelope(req.body || {});
+    // An event_id makes the write idempotent and revision-checked
+    // (L12/CONTRACT.md); without one the legacy path below runs.
     if (envelope) return sessionRoutes.applySetEvent(req, res, set, log.exercises.find((row) => row.id === set.workout_log_exercise_id), envelope);
     const { data, error } = await updateSetAtHandlerBoundary({
       body: req.body || {}, set, exercise: log.exercises.find((row) => row.id === set.workout_log_exercise_id),

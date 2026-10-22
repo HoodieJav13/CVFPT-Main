@@ -22,7 +22,7 @@ import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGr
 import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
 import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
 import { demoForRow } from '@/lib/exerciseDemo';
-import { SetConflictNotice, SwapStatus } from '@/components/training/SessionCorrections';
+import { SetConflictNotice, SwapStatus, UndeliveredEntries } from '@/components/training/SessionCorrections';
 import { CoachConflictActions, CoachSwapActions } from '@/components/group/CoachSessionActions';
 
 // Same identity rule as the exercise-history RPC: match by library exercise
@@ -436,6 +436,7 @@ export default function WorkoutLogDetail() {
               <p className="mt-2 whitespace-pre-wrap text-sm">{response.content}</p>
             </article>
           ))}
+          <UndeliveredEntries logId={log.id} log={log} />
           {isCoach && log.server_time && <CoachSwapActions log={log} onDone={() => load()} />}
           {isCoach && log.status === 'completed' && (
             <form className="space-y-2 border-t border-border pt-4" onSubmit={saveResponse} data-testid="coach-response-form">
