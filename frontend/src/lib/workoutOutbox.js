@@ -103,6 +103,14 @@ export function readUndelivered(logId) {
   try { return JSON.parse(localStorage.getItem(undeliveredStorageKey(logId)) || '[]'); } catch { return []; }
 }
 
+function dropUndelivered(logId, operationId) {
+  try {
+    const rows = readUndelivered(logId).filter((row) => row.id !== operationId);
+    if (rows.length) localStorage.setItem(undeliveredStorageKey(logId), JSON.stringify(rows));
+    else localStorage.removeItem(undeliveredStorageKey(logId));
+  } catch { /* nothing kept */ }
+}
+
 function keepUndelivered(logId, operation) {
   try {
     const rows = readUndelivered(logId).filter((row) => row.id !== operation.id);
@@ -246,6 +254,9 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
             return false;
           }
           if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+            // Keep the entry on the device BEFORE it leaves the queue, so there
+            // is no moment (an app close, a reload) where it exists nowhere.
+            const keptFirst = operation.kind !== 'complete' && keepUndelivered(logId, operation);
             const remaining = queueRef.current.filter((queued) => queued.id !== operation.id);
             persist(remaining);
             let fresh = null;
@@ -256,15 +267,16 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
             } catch {
               // The failed write is still removed; a later page reload reconciles server state.
             }
-            if (operation.kind !== 'complete' && ((fresh && fresh.status !== 'active') || (!fresh && status === 409))) {
-              // Finished elsewhere first: keep the performance on this device.
-              keepUndelivered(logId, operation);
+            if (operation.kind !== 'complete' && ((fresh && fresh.status !== 'active') || (!fresh && (status === 409 || String(operation.setId || '').startsWith('pending-'))))) {
+              // Finished elsewhere first: the performance stays on this device.
               if (!keptNoticeRef.current) {
                 keptNoticeRef.current = true;
                 toast.message('This workout was finished before your entries synced. They are kept on this phone; set values went to your coach to review.');
               }
               continue;
             }
+            // Still active: an ordinary rejection (bad value), as before.
+            if (keptFirst) dropUndelivered(logId, operation.id);
             if (operation.kind === 'complete') {
               // Duplicate send after an ambiguous failure: already completed
               // on the server means success, not error.
