@@ -207,6 +207,7 @@ test('reload resume reads the server back and sends only what is missing', async
   assert.equal(session.visits[key].sets[1].state, 'saved', 'reconciled from the server copy');
   const after = h.server.db.requests.slice(before);
   assert.equal(after.filter((row) => row.method === 'POST').length, 0, 'nothing created again');
+  assert.equal(after.filter((row) => row.method === 'PATCH').length, 0, 'a value the server already has is not sent again');
   assert.equal(h.server.db.logs[0].exercises[0].sets.filter((row) => row.status === 'completed').length, 2);
   assert.equal(loadGroupSession(store, { ...scope, coachId: 'someone-else' }), null, 'another coach never resumes it');
 });
@@ -246,4 +247,15 @@ test('summary comes from each trainee\'s own saved sets only', async () => {
   assert.equal(ben.unsynced, 1);
   assert.equal(summary.unsynced, 1);
   assert.equal(summary.totalSets, 2);
+});
+
+test('a double tap on a new station sends one create and one start', async () => {
+  const h = harness();
+  const key = enter(h, 0, 'p1', { reps: 10, load: 35 });
+  h.commit((s) => recordEntry(s, key, 'p2', { reps: 10, load: 35 }));
+  await Promise.all([h.sync.saveSet(key, 'p1'), h.sync.saveSet(key, 'p2'), h.sync.saveSet(key, 'p1')]);
+  const sent = (path) => h.server.db.requests.filter((row) => row.path === path).length;
+  assert.equal(sent('/programs/quick-sessions'), 1);
+  assert.equal(sent('/workout-logs/start'), 1);
+  assert.deepEqual(h.get().visits[key].sets.slice(0, 2).map((set) => set.state), ['saved', 'saved']);
 });
