@@ -28,11 +28,16 @@ for (const [label, viewport] of [['390', { width: 390, height: 844 }], ['1440', 
     await expect(notes.nth(1).getByTestId('coach-note-edit-button')).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath(`coach-notes-${label}.png`) });
 
-    // A failed save keeps the text and says it was not saved.
+    // A 5xx (preview's simulated 503) is not a definite refusal: the note may be
+    // stored, so the list is reloaded before saving again; the text is kept.
     await section.getByTestId('coach-note-input').fill('  Ask about sleep before Thursday.  ');
     await page.evaluate(() => localStorage.setItem('cvf_preview_fail', 'write-once'));
     await section.getByTestId('coach-note-save-button').click();
-    await expect(section.getByTestId('coach-note-add-error')).toContainText('Not saved:');
+    const unconfirmed = section.getByTestId('coach-note-add-unconfirmed');
+    await expect(unconfirmed).toHaveAttribute('data-phase', 'reloaded');
+    await expect(unconfirmed).toContainText('Not confirmed: the server\'s reply was lost, so this note may already be saved.');
+    await expect(unconfirmed).toContainText('The list below was reloaded. Check it before saving again. Your text is still here.');
+    await expect(section.getByTestId('coach-note-add-error')).toHaveCount(0);
     await expect(section.getByTestId('coach-note-input')).toHaveValue('  Ask about sleep before Thursday.  ');
     await expect(notes).toHaveCount(2);
     await section.getByTestId('coach-note-save-button').click();
