@@ -297,4 +297,92 @@ router.patch('/:id/archive', async (req, res) => {
   }
 });
 
+// ----- Coach Notes -----
+// Private to the coaches authorized for the client (its coach and admins), by
+// the same loadClientOr404/canAccessClient check as the client record; this
+// router is coach-only, so client sessions never reach these routes. Any
+// authorized coach may read and add; only a note's author may edit it.
+const COACH_NOTE_FIELDS = 'id, client_id, author_coach_id, author_name_snapshot, content, created_at, updated_at';
+const COACH_NOTE_MAX = 4000;
+
+function coachNoteContent(body) {
+  if (typeof body?.content !== 'string') return null;
+  const content = body.content.trim();
+  return content.length >= 1 && content.length <= COACH_NOTE_MAX ? content : null;
+}
+
+const sameInstant = (a, b) => typeof a === 'string' && typeof b === 'string'
+  && !Number.isNaN(Date.parse(a)) && Date.parse(a) === Date.parse(b);
+
+// GET /api/clients/:id/coach-notes?include_archived=true
+router.get('/:id/coach-notes', async (req, res) => {
+  if (!UUID.test(req.params.id)) return res.status(404).json({ error: 'Client not found' });
+  try {
+    const clientRow = await loadClientOr404(req, res, { includeArchived: req.query.include_archived === 'true' });
+    if (!clientRow) return;
+    const { data, error } = await supabaseAdmin.from('client_coach_notes').select(COACH_NOTE_FIELDS)
+      .eq('client_id', clientRow.id).eq('archived', false)
+      .order('created_at', { ascending: false }).order('id', { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    return res.json({ notes: data || [] });
+  } catch (e) {
+    logError('list coach notes error', e);
+    return res.status(500).json({ error: 'Failed to load coach notes' });
+  }
+});
+
+// POST /api/clients/:id/coach-notes { content }
+router.post('/:id/coach-notes', async (req, res) => {
+  if (!UUID.test(req.params.id)) return res.status(404).json({ error: 'Client not found' });
+  const content = coachNoteContent(req.body);
+  if (!content) return res.status(400).json({ error: `A note needs 1 to ${COACH_NOTE_MAX.toLocaleString('en-US')} characters` });
+  try {
+    const clientRow = await loadClientOr404(req, res);
+    if (!clientRow) return;
+    const { data, error } = await supabaseAdmin.from('client_coach_notes').insert({
+      client_id: clientRow.id,
+      author_coach_id: req.user.coach.id,
+      author_name_snapshot: String(req.user.coach.name || '').trim() || 'Coach',
+      content,
+    }).select(COACH_NOTE_FIELDS).single();
+    if (error) throw error;
+    return res.status(201).json(data);
+  } catch (e) {
+    logError('create coach note error', e);
+    return res.status(500).json({ error: 'Failed to save coach note' });
+  }
+});
+
+// PUT /api/clients/:id/coach-notes/:noteId { content, expected_updated_at }
+// The edit applies only to the version the author last saw.
+router.put('/:id/coach-notes/:noteId', async (req, res) => {
+  if (!UUID.test(req.params.id) || !UUID.test(req.params.noteId)) return res.status(404).json({ error: 'Note not found' });
+  const content = coachNoteContent(req.body);
+  if (!content) return res.status(400).json({ error: `A note needs 1 to ${COACH_NOTE_MAX.toLocaleString('en-US')} characters` });
+  if (typeof req.body.expected_updated_at !== 'string') return res.status(400).json({ error: 'The note version you edited is required' });
+  try {
+    const clientRow = await loadClientOr404(req, res);
+    if (!clientRow) return;
+    const { data: note, error: lookupError } = await supabaseAdmin.from('client_coach_notes').select(COACH_NOTE_FIELDS)
+      .eq('id', req.params.noteId).eq('client_id', clientRow.id).eq('archived', false)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!note) return res.status(404).json({ error: 'Note not found' });
+    if (note.author_coach_id !== req.user.coach.id) return res.status(403).json({ error: "Only the note's author can edit it" });
+    const stale = { error: 'This note changed since you opened it. Your text is kept; review the latest version before saving again.' };
+    if (!sameInstant(note.updated_at, req.body.expected_updated_at)) return res.status(409).json({ ...stale, note });
+    const { data, error } = await supabaseAdmin.from('client_coach_notes')
+      .update({ content, updated_at: new Date().toISOString() })
+      .eq('id', note.id).eq('updated_at', note.updated_at)
+      .select(COACH_NOTE_FIELDS).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(409).json(stale);
+    return res.json(data);
+  } catch (e) {
+    logError('update coach note error', e);
+    return res.status(500).json({ error: 'Failed to save coach note' });
+  }
+});
+
 module.exports = router;
