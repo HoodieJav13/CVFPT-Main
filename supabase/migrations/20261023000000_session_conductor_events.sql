@@ -286,6 +286,17 @@ begin
     where id = p_set_id
     returning * into v_set;
   elsif v_outcome = 'conflict' then
+    -- One open disagreement per set per side: a later edit from the same side
+    -- (e.g. an offline client's weight, then reps, then "done") updates that
+    -- side's value in the existing disagreement; every event stays in history.
+    select id into v_conflict_id from public.workout_set_conflicts
+    where workout_log_set_id = p_set_id and status = 'open' and incoming_actor_role = p_actor_role
+    for update;
+    if v_conflict_id is not null then
+      update public.workout_set_conflicts
+      set incoming_value = v_incoming, incoming_offline = incoming_offline or coalesce(p_offline, false), incoming_at = now()
+      where id = v_conflict_id;
+    else
     insert into public.workout_set_conflicts (
       workout_log_id, workout_log_set_id, client_id, kept_value, kept_actor_role, kept_event_id, kept_at,
       incoming_value, incoming_actor_role, incoming_event_id, incoming_offline
@@ -299,6 +310,7 @@ begin
     from public.clients c, public.workout_log_exercises e
     where c.id = v_client_id and e.id = v_set.workout_log_exercise_id
     on conflict (dedupe_key) do nothing;
+    end if;
   end if;
 
   insert into public.workout_set_events (
