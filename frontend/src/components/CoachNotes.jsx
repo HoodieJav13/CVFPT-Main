@@ -111,7 +111,7 @@ export default function CoachNotes({ client, coachId }) {
             {addError && <p role="alert" className="text-sm text-destructive" data-testid="coach-note-add-error">{addError}</p>}
             {unconfirmed && (
               <div role="status" className="rounded-xl border border-gold/30 bg-gold/10 p-3 text-sm" data-testid="coach-note-add-unconfirmed" data-phase={unconfirmed.phase}>
-                <p className="font-medium">Not confirmed: the server&apos;s reply was lost, so this note may already be saved.</p>
+                <p className="font-medium">Not confirmed: the server did not give a definite answer (no reply or a server error), so this note may already be saved.</p>
                 {unconfirmed.phase === 'reloading' && <p className="mt-1 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Reloading the notes before you can save again…</p>}
                 {unconfirmed.phase === 'reloaded' && (
                   <p className="mt-1">

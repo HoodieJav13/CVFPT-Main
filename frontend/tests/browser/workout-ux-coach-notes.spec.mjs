@@ -76,7 +76,7 @@ for (const width of [390, 1440]) {
     await input.fill('Lost-reply fictional note.');
     await save.click();
     await expect(notice).toHaveAttribute('data-phase', 'reloaded');
-    await expect(notice).toContainText("Not confirmed: the server's reply was lost, so this note may already be saved.");
+    await expect(notice).toContainText("Not confirmed: the server did not give a definite answer (no reply or a server error), so this note may already be saved.");
     await expect(notice).toContainText('The reloaded list now shows a note of yours with this exact text, so it was probably saved. Check it before saving again. Your text is still here.');
     await expect(card.getByTestId('coach-note-add-error')).toHaveCount(0);
     await expect(card.getByTestId('coach-note-content').filter({ hasText: 'Lost-reply fictional note.' })).toHaveCount(1);

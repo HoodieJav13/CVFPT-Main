@@ -35,7 +35,7 @@ for (const [label, viewport] of [['390', { width: 390, height: 844 }], ['1440', 
     await section.getByTestId('coach-note-save-button').click();
     const unconfirmed = section.getByTestId('coach-note-add-unconfirmed');
     await expect(unconfirmed).toHaveAttribute('data-phase', 'reloaded');
-    await expect(unconfirmed).toContainText('Not confirmed: the server\'s reply was lost, so this note may already be saved.');
+    await expect(unconfirmed).toContainText('Not confirmed: the server did not give a definite answer (no reply or a server error), so this note may already be saved.');
     await expect(unconfirmed).toContainText('The list below was reloaded. Check it before saving again. Your text is still here.');
     await expect(section.getByTestId('coach-note-add-error')).toHaveCount(0);
     await expect(section.getByTestId('coach-note-input')).toHaveValue('  Ask about sleep before Thursday.  ');
