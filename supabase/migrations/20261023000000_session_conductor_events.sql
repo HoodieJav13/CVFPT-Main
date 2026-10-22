@@ -366,7 +366,7 @@ end;
 $$;
 
 -- ---------- PT-Sub: substitution create / activate ----------
-create or replace function public.activate_workout_substitution(p_sub_id uuid)
+create or replace function public.activate_workout_substitution(p_sub_id uuid, p_create_sets boolean default true)
 returns void language plpgsql security invoker set search_path = '' as $$
 declare
   v_sub public.workout_log_substitutions;
@@ -391,7 +391,9 @@ begin
     v_sets::text, nullif(v_sub.targets ->> 'reps', ''), v_load, v_unit, v_original.position,
     null, 'reps_weight', v_original.id, v_sub.id
   );
-  if v_sets is not null then
+  -- A client that logs offline adds its own sets (client_operation_id), so it asks
+  -- for none here; coach approvals create the confirmed target sets.
+  if v_sets is not null and p_create_sets then
     for i in 1..v_sets loop
       insert into public.workout_log_sets (workout_log_exercise_id, set_number, set_origin, status, actual_load_value, actual_load_unit)
       values (v_sub.replacement_log_exercise_id, i, 'prescribed', 'pending', v_load, v_unit);
@@ -425,7 +427,7 @@ begin
     nullif(p_row ->> 'chosen_at', '')::timestamptz, p_row ->> 'actor_role', nullif(p_row ->> 'actor_coach_id', '')::uuid,
     coalesce(p_row ->> 'coach_review_status', 'none')
   ) returning * into v_sub;
-  if p_activate then perform public.activate_workout_substitution(v_sub.id); end if;
+  if p_activate then perform public.activate_workout_substitution(v_sub.id, coalesce((p_row ->> 'create_target_sets')::boolean, true)); end if;
   return jsonb_build_object('outcome', 'created', 'substitution', to_jsonb(v_sub));
 exception when unique_violation then
   select * into v_existing from public.workout_log_substitutions where id = (p_row ->> 'id')::uuid;
@@ -502,14 +504,14 @@ $$;
 revoke all on function public.apply_workout_set_event(uuid, uuid, text, uuid, integer, integer, boolean, integer, jsonb) from public, anon, authenticated;
 revoke all on function public.resolve_workout_set_conflict(uuid, uuid, text, jsonb, uuid) from public, anon, authenticated;
 revoke all on function public.create_workout_substitution(jsonb, boolean) from public, anon, authenticated;
-revoke all on function public.activate_workout_substitution(uuid) from public, anon, authenticated;
+revoke all on function public.activate_workout_substitution(uuid, boolean) from public, anon, authenticated;
 revoke all on function public.apply_program_substitution(uuid, uuid, uuid, uuid, uuid[], jsonb) from public, anon, authenticated;
 revoke all on function public.program_substitution_targets(uuid, uuid, text) from public, anon, authenticated;
 revoke all on function public.set_value_json(public.workout_log_sets) from public, anon, authenticated;
 grant execute on function public.apply_workout_set_event(uuid, uuid, text, uuid, integer, integer, boolean, integer, jsonb) to service_role;
 grant execute on function public.resolve_workout_set_conflict(uuid, uuid, text, jsonb, uuid) to service_role;
 grant execute on function public.create_workout_substitution(jsonb, boolean) to service_role;
-grant execute on function public.activate_workout_substitution(uuid) to service_role;
+grant execute on function public.activate_workout_substitution(uuid, boolean) to service_role;
 grant execute on function public.apply_program_substitution(uuid, uuid, uuid, uuid, uuid[], jsonb) to service_role;
 grant execute on function public.program_substitution_targets(uuid, uuid, text) to service_role;
 grant execute on function public.set_value_json(public.workout_log_sets) to service_role;

@@ -92,6 +92,7 @@ function substitutionRequest(body = {}) {
     reason: cleanText(body.reason, 200, 'Reason'),
     targets: normalizeTargets(body.targets || {}),
     offline: body.offline === true,
+    createTargetSets: body.create_target_sets !== false,
     chosenAt,
   };
 }

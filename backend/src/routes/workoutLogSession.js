@@ -266,6 +266,7 @@ function registerSessionRoutes(router, deps) {
           source: request.source, backup_id: request.backupId, trigger: request.trigger, reason: request.reason, targets: request.targets,
           offline: request.offline, chosen_at: request.chosenAt, actor_role: actorRole,
           actor_coach_id: actorRole === 'coach' ? req.user.coach.id : null, coach_review_status: policy.reviewStatus,
+          create_target_sets: request.createTargetSets,
         },
         p_activate: policy.activate,
       });
