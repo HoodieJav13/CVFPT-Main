@@ -670,7 +670,7 @@ async function weekRhythmForClient(clientId) {
   const today = todayDateInTz();
   const since = addDays(today, -186);
   const { data: assignments, error } = await supabaseAdmin.from('workout_assignments')
-    .select('id, assigned_for, workout:workouts(name)')
+    .select('id, assigned_for, workout:workouts!workout_assignments_workout_id_fkey(name)')
     .eq('client_id', clientId).eq('assignment_mode', 'dated').eq('archived', false)
     .gte('assigned_for', since);
   if (error) throw error;
