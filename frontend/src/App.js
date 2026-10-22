@@ -39,6 +39,7 @@ const CoachResources = lazy(() => import('@/pages/coach/Resources'));
 const CoachMessages = lazy(() => import('@/pages/coach/Messages'));
 const CoachNotifications = lazy(() => import('@/pages/coach/Notifications'));
 const CoachAnalytics = lazy(() => import('@/pages/coach/Analytics'));
+const GroupSession = lazy(() => import('@/pages/coach/GroupSession'));
 const AdminPage = lazy(() => import('@/pages/admin/Admin'));
 // Dev/preview only: never even fetched in production builds.
 const PreviewToolbar = isPreviewMode ? lazy(() => import('@/components/PreviewToolbar')) : () => null;
@@ -109,6 +110,7 @@ function AppRoutes() {
             <Route path="sessions/:id" element={<CoachSessionDetail />} />
             <Route path="calendar" element={<CoachCalendar />} />
             <Route path="analytics" element={<CoachAnalytics />} />
+            <Route path="group-session" element={<GroupSession />} />
             <Route path="programs" element={<Programs />} />
             <Route path="resources" element={<CoachResources />} />
             <Route path="messages" element={<CoachMessages />} />
