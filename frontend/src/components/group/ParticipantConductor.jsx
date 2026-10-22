@@ -95,6 +95,18 @@ function CoachSetRow({ log, exercise, set, onSaved }) {
   };
   const tid = `coach-set-${exercise.exercise_name.replace(/\W+/g, '-')}-${set.set_number}`;
   const sealed = log.status !== 'active';
+  if (sealed) {
+    // A finished workout is shown as it was logged; there is nothing to save here.
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-sm" data-testid={tid} data-state={set.status === 'completed' ? 'saved' : 'not-done'} data-actor={set.last_actor_role || ''}>
+        <span className="w-12 text-xs text-muted-foreground">Set {set.set_number}</span>
+        {set.status === 'completed'
+          ? <span className="tabular-nums">{set.actual_reps ?? '—'} × {set.actual_load_value ?? '—'}{set.actual_load_value != null ? ` ${set.actual_load_unit || 'lb'}` : ''}</span>
+          : <span className="text-xs text-muted-foreground">not done</span>}
+        {set.last_actor_role === 'client' && <Badge variant="outline" className="text-xs">by client</Badge>}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid={tid} data-state={state} data-actor={set.last_actor_role || ''}>
       <span className="w-12 text-xs text-muted-foreground">Set {set.set_number}</span>

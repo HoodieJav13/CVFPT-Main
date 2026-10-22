@@ -43,7 +43,9 @@ export function SetConflictNotice({ conflict, logId, viewer = 'client', online =
     <div className="col-span-full space-y-2 rounded-md border border-gold/40 bg-gold/10 p-2 text-xs" data-testid="set-conflict" data-status={conflict.status}>
       <p className="flex items-start gap-1.5 font-medium">
         <Scale className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-        {open ? 'Two different values were entered for this set. Both are kept until your coach chooses.' : 'Your coach chose the final value for this set.'}
+        {viewer === 'coach'
+          ? (open ? 'Two different values were entered for this set. Both are kept until you choose.' : 'You chose the final value for this set.')
+          : (open ? 'Two different values were entered for this set. Both are kept until your coach chooses.' : 'Your coach chose the final value for this set.')}
       </p>
       <ul className="space-y-0.5 text-muted-foreground">
         <li data-testid="set-conflict-kept">{whoLabel(conflict.kept_actor_role, viewer)}: {setValueText(conflict.kept_value)}</li>
