@@ -8,8 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useUnsavedChanges } from '@/context/UnsavedChangesContext';
 
 const MAX = 4000;
+const UNSAVED_NOTE = 'You have an unsaved coach note. Discard it and continue?';
 
 // Private notes on a client for the coaches authorized for that client (its
 // coach and admins). The server enforces who may read or write them; this
@@ -20,8 +22,13 @@ export default function CoachNotes({ client, coachId }) {
   const [draft, setDraft] = useState('');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
+  // A save whose reply was lost (or a 5xx) may already be stored: the list is
+  // reloaded before another save is allowed. phase: reloading | reloaded | reload-failed.
+  const [unconfirmed, setUnconfirmed] = useState(null);
   const loadSeq = useRef(0);
   const readOnly = Boolean(client.archived);
+  // Typed but unsaved text is guarded like other unsaved forms (tab switch, navigation, unload).
+  useUnsavedChanges(!readOnly && draft.trim() !== '', () => setDraft(''), UNSAVED_NOTE);
 
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
@@ -36,23 +43,46 @@ export default function CoachNotes({ client, coachId }) {
 
   useEffect(() => { setNotes(null); load(); }, [load]);
 
+  const reloadAfterUnconfirmed = async (content, knownIds) => {
+    setUnconfirmed({ phase: 'reloading' });
+    try {
+      const { data } = await api.get(`/clients/${client.id}/coach-notes${client.archived ? '?include_archived=true' : ''}`);
+      const list = data.notes || [];
+      setNotes(list);
+      // A new note of this coach's with the same text is a likely match, not a receipt.
+      const match = list.some((note) => !knownIds.has(note.id) && note.author_coach_id === coachId && note.content === content);
+      setUnconfirmed({ phase: 'reloaded', match, content, knownIds });
+    } catch (e) {
+      setUnconfirmed({ phase: 'reload-failed', message: errMsg(e, 'Could not reload the notes'), content, knownIds });
+    }
+  };
+
   const add = async (event) => {
     event.preventDefault();
     const content = draft.trim();
-    if (!content || adding) return;
+    if (!content || adding || unconfirmed?.phase === 'reloading' || unconfirmed?.phase === 'reload-failed') return;
+    const knownIds = new Set((notes || []).map((note) => note.id));
     setAdding(true);
     setAddError('');
+    setUnconfirmed(null);
     try {
       const { data } = await api.post(`/clients/${client.id}/coach-notes`, { content });
       setNotes((current) => [data, ...(current || [])]);
       setDraft('');
       toast.success('Coach note saved');
     } catch (e) {
-      setAddError(`Not saved: ${errMsg(e, 'the server did not confirm the note')}. Your text is still here.`);
+      const status = e?.response?.status;
+      if (status >= 400 && status < 500) {
+        // The notes route refuses (validation, access) before it writes.
+        setAddError(`Not saved: ${errMsg(e, 'the server refused the note')}. Your text is still here.`);
+      } else {
+        await reloadAfterUnconfirmed(content, knownIds);
+      }
     } finally {
       setAdding(false);
     }
   };
+  const savePaused = unconfirmed?.phase === 'reloading' || unconfirmed?.phase === 'reload-failed';
 
   const replace = (note) => setNotes((current) => (current || []).map((row) => (row.id === note.id ? note : row)));
 
@@ -79,9 +109,27 @@ export default function CoachNotes({ client, coachId }) {
               onChange={(e) => { setDraft(e.target.value); setAddError(''); }}
               placeholder="Add a private note for coaches…" data-testid="coach-note-input" />
             {addError && <p role="alert" className="text-sm text-destructive" data-testid="coach-note-add-error">{addError}</p>}
+            {unconfirmed && (
+              <div role="status" className="rounded-xl border border-gold/30 bg-gold/10 p-3 text-sm" data-testid="coach-note-add-unconfirmed" data-phase={unconfirmed.phase}>
+                <p className="font-medium">Not confirmed: the server&apos;s reply was lost, so this note may already be saved.</p>
+                {unconfirmed.phase === 'reloading' && <p className="mt-1 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Reloading the notes before you can save again…</p>}
+                {unconfirmed.phase === 'reloaded' && (
+                  <p className="mt-1">
+                    {unconfirmed.match ? 'The reloaded list now shows a note of yours with this exact text, so it was probably saved. ' : 'The list below was reloaded. '}
+                    Check it before saving again. Your text is still here.
+                  </p>
+                )}
+                {unconfirmed.phase === 'reload-failed' && (
+                  <div className="mt-1 space-y-2">
+                    <p>The notes could not be reloaded ({unconfirmed.message}). Saving again is paused until they reload, so the note is not added twice. Your text is still here.</p>
+                    <Button type="button" size="sm" variant="outline" className="rounded-lg" onClick={() => reloadAfterUnconfirmed(unconfirmed.content, unconfirmed.knownIds)} data-testid="coach-note-reload-notes">Reload notes</Button>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-muted-foreground">{draft.trim().length.toLocaleString('en-US')} / {MAX.toLocaleString('en-US')}</span>
-              <Button type="submit" size="sm" className="min-h-11 rounded-xl" disabled={adding || !draft.trim()} data-testid="coach-note-save-button">
+              <Button type="submit" size="sm" className="min-h-11 rounded-xl" disabled={adding || savePaused || !draft.trim()} data-testid="coach-note-save-button">
                 {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save note'}
               </Button>
             </div>
@@ -116,6 +164,7 @@ function CoachNoteItem({ note, clientId, canEdit, onSaved }) {
   const [error, setError] = useState('');
   const [latest, setLatest] = useState(null);
   const edited = note.updated_at && note.updated_at !== note.created_at;
+  useUnsavedChanges(editing && text.trim() !== note.content, () => setEditing(false), UNSAVED_NOTE);
 
   const start = () => { setText(note.content); setError(''); setLatest(null); setEditing(true); };
 
