@@ -10,6 +10,7 @@ const { actualMetrics, trackingType } = require('../lib/workoutMetrics');
 const { quickLogKinds } = require('../lib/quickSessionReads');
 const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
 const { resolveExerciseDemo, resolvedVideoUrl } = require('../lib/exerciseDemo');
+const { registerSessionRoutes, sessionExtras, setEventEnvelope } = require('./workoutLogSession');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -366,7 +367,7 @@ async function workoutLogWithDetails(id, { media = true } = {}) {
     .select('*').eq('workout_log_id', id).eq('archived', false);
   if (responseError) throw responseError;
   const { data: loggedExercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
-    .select('*').eq('workout_log_id', id).eq('archived', false).order('position');
+    .select('*').eq('workout_log_id', id).eq('archived', false).order('position').order('created_at');
   if (exerciseError) throw exerciseError;
   const exercises = await withExerciseVideos(loggedExercises || [], { media });
   const exerciseIds = exercises.map((exercise) => exercise.id);
@@ -789,7 +790,7 @@ router.get('/:id', async (req, res) => {
   try {
     const log = await workoutLogWithDetails(req.params.id);
     if (!canReadLog(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
-    return res.json(log);
+    return res.json(await sessionExtras(log));
   } catch (error) {
     logError('workout log detail error', error);
     return res.status(500).json({ error: 'Failed to load workout' });
@@ -803,6 +804,10 @@ router.patch('/:id/sets/:setId', async (req, res) => {
     const exerciseIds = new Set(log.exercises.map((exercise) => exercise.id));
     const set = log.exercises.flatMap((exercise) => exercise.sets).find((row) => row.id === req.params.setId);
     if (!set || !exerciseIds.has(set.workout_log_exercise_id)) return res.status(404).json({ error: 'Workout set not found' });
+    // pt-session-events/v1: an event_id makes the write idempotent and
+    // revision-checked (L12/CONTRACT.md); without one the legacy path below runs.
+    const envelope = setEventEnvelope(req.body || {});
+    if (envelope) return sessionRoutes.applySetEvent(req, res, set, log.exercises.find((row) => row.id === set.workout_log_exercise_id), envelope);
     const { data, error } = await updateSetAtHandlerBoundary({
       body: req.body || {}, set, exercise: log.exercises.find((row) => row.id === set.workout_log_exercise_id),
       mutate: (payload) => supabaseAdmin.from('workout_log_sets').update({ ...payload, ...actorStamp(req.user) })
@@ -1018,11 +1023,16 @@ router.post('/:id/complete', async (req, res) => {
   }
 });
 
+const sessionRoutes = registerSessionRoutes(router, {
+  workoutLogWithDetails, requireWritableActiveLog, canWriteLog, canReadLog, actorStamp, workoutSetUpdatePayload, validLoad,
+});
+
 module.exports = router;
 module.exports.workoutLogWithDetails = workoutLogWithDetails;
 module.exports.workoutLogsWithDetailsBulk = workoutLogsWithDetailsBulk;
 module.exports.resolveExerciseVideos = resolveExerciseVideos;
 module.exports.canReadLog = canReadLog;
+module.exports.sessionExtras = sessionExtras;
 module.exports.canWriteLog = canWriteLog;
 module.exports.actorStamp = actorStamp;
 module.exports.computeLogAttribution = computeLogAttribution;

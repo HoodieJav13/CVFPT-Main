@@ -65,6 +65,11 @@ app.use('/api/clients', require('./routes/clients'));
 app.use('/api/sessions', require('./routes/sessions'));
 app.use('/api/progress', require('./routes/progress'));
 app.use('/api/check-ins', require('./routes/checkins'));
+// pt-session-events/v1 coach-only routes (L12/PT-Sub); unmatched paths fall through.
+const conductorRoutes = require('./routes/conductor');
+app.use('/api/programs', conductorRoutes.programSub);
+app.use('/api/coach-notices', conductorRoutes.notices);
+app.use('/api/group-sessions', conductorRoutes.groups);
 app.use('/api/programs', require('./routes/programs'));
 app.use('/api/resources', require('./routes/resources'));
 app.use('/api/resource-categories', require('./routes/resourceCategories'));
