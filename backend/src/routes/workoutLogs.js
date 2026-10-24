@@ -810,7 +810,9 @@ router.patch('/:id/sets/:setId', async (req, res) => {
     if (!set || !exerciseIds.has(set.workout_log_exercise_id)) return res.status(404).json({ error: 'Workout set not found' });
     // An event_id makes the write idempotent and revision-checked
     // (L12/CONTRACT.md); without one the legacy path below runs.
-    if (envelope) return sessionRoutes.applySetEvent(req, res, set, log.exercises.find((row) => row.id === set.workout_log_exercise_id), envelope);
+    // Awaited so a failing event RPC reaches this handler's catch (Express 4
+    // does not handle a rejected route promise).
+    if (envelope) return await sessionRoutes.applySetEvent(req, res, set, log.exercises.find((row) => row.id === set.workout_log_exercise_id), envelope);
     const { data, error } = await updateSetAtHandlerBoundary({
       body: req.body || {}, set, exercise: log.exercises.find((row) => row.id === set.workout_log_exercise_id),
       mutate: (payload) => supabaseAdmin.from('workout_log_sets').update({ ...payload, ...actorStamp(req.user) })
