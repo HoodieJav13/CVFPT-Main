@@ -32,16 +32,7 @@ export default defineConfig(({ mode }) => {
   // Production builds get the flags force-defined off, so no dashboard env
   // var can ever flip demo mode on in production.
   const vercelEnvironment = process.env.VERCEL_ENV || '';
-  // Temporary owner-approved PR121 verification: only this exact Preview branch.
-  const realApiVerification = vercelEnvironment === 'preview'
-    && process.env.VERCEL_GIT_COMMIT_REF === 'release/pt-seven-repairs-20261024'
-    && process.env.CVF_REAL_API_VERIFY === 'true';
-  const hostedDemoDefines = realApiVerification
-    ? {
-        'import.meta.env.REACT_APP_PREVIEW_MODE': JSON.stringify('false'),
-        'import.meta.env.REACT_APP_HOSTED_DEMO': JSON.stringify('false'),
-      }
-    : vercelEnvironment === 'preview'
+  const hostedDemoDefines = vercelEnvironment === 'preview'
     ? {
         'import.meta.env.REACT_APP_PREVIEW_MODE': JSON.stringify('true'),
         'import.meta.env.REACT_APP_HOSTED_DEMO': JSON.stringify('true'),
