@@ -133,14 +133,21 @@ export function createGroupSessionSync({ api, getSession, commit }) {
     if (!set?.entry || set.state === 'saved') return;
     if (CLOSED.has(visit.status)) {
       if (!FINISHED.has(visit.status) || !visit.logId) return;
-      if (!set.setId && set.origin !== 'extra') {
-        // Read the finished workout once to learn this set's server id.
+      if (!set.setId) {
+        // Read the finished workout once to learn this set's server id: a
+        // prescribed set by number, an extra by its operation id (its creation
+        // may have reached the server with the reply lost).
         const { data } = await api.get(`/workout-logs/${visit.logId}`);
         if (data?.client_id !== visit.traineeId) throw Object.assign(new Error(`The server returned a record that is not ${visit.traineeName}'s. Nothing was written.`), { fatal: true });
         commit((session) => updateVisit(session, key, (row) => ({ ...reconcileVisitWithLog(row, data), status: row.status })));
         visit = visitOf(key);
         set = visit.sets.find((row) => row.key === setKey);
         if (!set?.entry || set.state === 'saved') return;
+        // A finished workout never gets a new set: an extra the server never
+        // received stays here, unresolved, with its values and operation id.
+        if (!set.setId && set.origin === 'extra') {
+          throw Object.assign(new Error(`${visit.traineeName}'s workout was finished before this extra set was created. It is kept here and was not sent.`), { fatal: true });
+        }
       }
     }
     if (!set.setId && set.origin === 'extra') {
