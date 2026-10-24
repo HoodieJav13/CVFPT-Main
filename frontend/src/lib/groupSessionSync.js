@@ -188,6 +188,14 @@ export function createGroupSessionSync({ api, getSession, commit }) {
         return;
       }
       if (!visit.logId) throw new Error('Sets are still saving.');
+      // Never close over an entered set that is not saved (or kept as a
+      // conflict): a closed visit is skipped by flush/sendSet, so the entry
+      // would be stranded. It stays open, keeps its ids, and Retry re-sends it.
+      const unsaved = visit.sets.filter((set) => set.entry && !['saved', 'conflict'].includes(set.state));
+      if (unsaved.length) {
+        setError(key, `Not closed: ${unsaved.length === 1 ? 'a set is' : `${unsaved.length} sets are`} not saved yet for ${visit.traineeName}. They are kept here; Retry to send them.`);
+        throw new Error('Sets are not saved yet.');
+      }
       try {
         await api.post(`/workout-logs/${visit.logId}/complete`, {});
         commit((session) => updateVisit(session, key, (row) => ({ ...row, status: 'completed', error: null })));
