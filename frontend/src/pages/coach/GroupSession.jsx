@@ -21,7 +21,7 @@ import {
 } from '@/lib/groupSession';
 import { clearGroupSession, loadGroupSession, loadMirrorMeta, saveGroupSession } from '@/lib/groupSessionStore';
 import { createGroupSessionSync } from '@/lib/groupSessionSync';
-import { createMirrorState, mirrorMeta, resolveDivergence, restoreMirrorState, scheduleMirror } from '@/lib/groupMirror';
+import { closeMirror, createMirrorState, mirrorMeta, resolveDivergence, restoreMirrorState, scheduleMirror } from '@/lib/groupMirror';
 import GroupSummary from '@/components/group/GroupSummary';
 import ParticipantConductor from '@/components/group/ParticipantConductor';
 import { cn } from '@/lib/utils';
@@ -302,14 +302,17 @@ export default function GroupSession() {
   // request) is stored with the session in the same write and restored here
   // on mount, so a reload resumes exactly instead of guessing.
   const mirror = useRef(null);
-  if (mirror.current === null) {
-    mirror.current = sessionRef.current ? restoreMirrorState(sessionRef.current, loadMirrorMeta(localStorage, scope, sessionRef.current)) : createMirrorState(null);
-  }
+  const restoreMirror = () => (sessionRef.current ? restoreMirrorState(sessionRef.current, loadMirrorMeta(localStorage, scope, sessionRef.current)) : createMirrorState(null));
+  if (mirror.current === null) mirror.current = restoreMirror();
+  // False once this page instance is unmounted: nothing it does later (a late
+  // reply, a set save finishing) may write over what a newer instance stored.
+  const alive = useRef(true);
   // Every stored copy of the session carries the current mirror bookkeeping.
   const store = useCallback((next) => saveGroupSession(localStorage, scope, next, mirrorMeta(mirror.current, next)), [scope]);
   const mirrorCtx = useMemo(() => ({
     mirror, sessionRef, api, clock: window, onState: setMirrorState,
     persist: () => {
+      if (!alive.current) return false;
       const ok = sessionRef.current ? store(sessionRef.current) : true;
       if (!ok) setStored(false);
       return ok;
@@ -330,6 +333,7 @@ export default function GroupSession() {
   const commit = useCallback((updater) => {
     const next = updater(sessionRef.current);
     sessionRef.current = next;
+    if (!alive.current) return next; // unmounted: never store over a newer instance's copy
     setStored(next ? store(next) : true);
     setSession(next);
     if (next) pushMirror();
@@ -348,6 +352,16 @@ export default function GroupSession() {
       setLoadError(errMsg(error, 'Could not load your clients and exercises.'));
     }
   }, []);
+
+  // Mount/unmount fence (StrictMode runs cleanup then setup again: restore).
+  useEffect(() => {
+    alive.current = true;
+    if (mirror.current === null) mirror.current = restoreMirror();
+    return () => {
+      alive.current = false;
+      closeMirror(mirrorCtx);
+    };
+  }, [mirrorCtx]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (sessionRef.current?.status === 'running') sync.resume(); }, [sync]);

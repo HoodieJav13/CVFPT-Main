@@ -7,6 +7,9 @@
 //  2. A stored session without mirror bookkeeping (as written by an earlier
 //     version) that differs from the account copy: both are kept across
 //     reloads and nothing is sent until the coach chooses.
+//  3. In-app navigation away and back (a real unmount and a new page
+//     instance): a late reply for the old instance never overwrites the newer
+//     instance's stored amendment.
 import { test, expect } from '@playwright/test';
 import { TRAINEES, createGroupServer } from './fixtures/groupSessionServer.mjs';
 
@@ -23,7 +26,7 @@ async function setup(page) {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const server = createGroupServer();
-  const state = { mirror: [], errors: [], unexpected: [], offline: false };
+  const state = { mirror: [], errors: [], unexpected: [], offline: false, holdNext: false, held: [] };
   page.on('pageerror', (error) => state.errors.push(error.message));
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -35,7 +38,11 @@ async function setup(page) {
     let body = null;
     try { body = request.postDataJSON(); } catch { body = null; }
     const mirrorWrite = path.startsWith('/group-sessions') && method !== 'GET';
-    if (mirrorWrite && state.offline) {
+    if (mirrorWrite && state.holdNext) {
+      state.holdNext = false;
+      state.mirror.push({ method, outcome: 'held' });
+      await new Promise((resolve) => state.held.push(resolve)); // then answered normally
+    } else if (mirrorWrite && state.offline) {
       state.mirror.push({ method, outcome: 'no answer' });
       return route.abort('connectionreset').catch(() => {});
     }
@@ -80,6 +87,17 @@ async function amendStationB(page) {
   await page.getByTestId('group-amend-confirm').click();
   await expect(page.getByTestId('group-station-B-amended')).toBeVisible();
 }
+async function amendStationA(page) {
+  await page.getByTestId('group-amend-A').click();
+  await page.getByTestId('group-amend-exercise').selectOption('fict-lib-pushup');
+  await page.getByTestId('group-amend-sets').fill('2');
+  await page.getByTestId('group-amend-reps').fill('12');
+  await page.getByTestId('group-amend-reason').fill('Bench taken');
+  await page.getByTestId('group-amend-confirm').click();
+  await expect(page.getByTestId('group-station-A-amended')).toBeVisible();
+}
+// In-app navigation (no reload), as the app's own links do.
+const navigate = (page, path) => page.evaluate((target) => { window.history.pushState({}, '', target); window.dispatchEvent(new PopStateEvent('popstate')); }, path);
 const accountAmendments = (server) => server.db.groups[0]?.station_state?.amendments?.length ?? null;
 const storedAmendments = (page) => page.evaluate((key) => JSON.parse(localStorage.getItem(key) || 'null')?.amendments?.length ?? null, KEY);
 
@@ -122,5 +140,29 @@ test('a stored session without bookkeeping that differs from the account: both k
   await expect.poll(() => accountAmendments(server), { timeout: 10000 }).toBe(1);
   await expect(page.getByTestId('group-mirror-state')).toHaveAttribute('data-state', 'saved');
   await expect(page.getByTestId('group-mirror-diverged')).toHaveCount(0);
+  expect(state.errors).toEqual([]);
+});
+
+test('navigating away and back: a late reply for the unmounted page never overwrites the newer stored amendment', async ({ page }) => {
+  const { server, state } = await setup(page);
+  state.holdNext = true;
+  await amendStationB(page); // X: its account update is held
+  await expect.poll(() => state.held.length).toBe(1);
+  await navigate(page, '/coach/resources'); // the station page unmounts
+  await expect(page.getByTestId('group-header')).toHaveCount(0);
+  state.offline = true; // the new page instance gets no answers
+  await navigate(page, '/coach/group-session'); // a new instance mounts and loads X
+  await expect(page.getByTestId('group-station-B-amended')).toBeVisible();
+  await amendStationA(page); // newer work in the new instance
+  expect(await storedAmendments(page)).toBe(2);
+  state.held.shift()(); // the old instance's reply finally arrives
+  await page.waitForTimeout(2000);
+  expect(await storedAmendments(page)).toBe(2);
+  state.offline = false;
+  await page.reload();
+  await expect(page.getByTestId('group-station-A-amended')).toBeVisible();
+  await expect(page.getByTestId('group-station-B-amended')).toBeVisible();
+  await expect.poll(() => accountAmendments(server), { timeout: 15000 }).toBe(2);
+  await expect(page.getByTestId('group-mirror-state')).toHaveAttribute('data-state', 'saved');
   expect(state.errors).toEqual([]);
 });

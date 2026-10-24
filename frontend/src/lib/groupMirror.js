@@ -46,23 +46,41 @@ export function mirrorMeta(m, session) {
   return { v: MIRROR_META_VERSION, sessionId: m.sessionId, provenance: m.provenance, revision: m.diverged ? null : m.revision, unresolved: m.diverged ? null : unresolved };
 }
 
-function validRequest(request, sessionId) {
+// Stored bookkeeping is trusted only as a coherent whole, matching what
+// mirrorMeta can actually write: this session throughout; legacy never has a
+// confirmed revision; an unanswered request carries exactly its snapshot; a
+// create only before any confirmed revision; an update based on exactly the
+// confirmed revision.
+function coherentMeta(meta, sessionId) {
+  if (!meta || typeof meta !== 'object' || meta.v !== MIRROR_META_VERSION || meta.sessionId !== sessionId) return false;
+  const { provenance, revision, unresolved } = meta;
+  if (!['known', 'legacy'].includes(provenance)) return false;
+  if (!(revision === null || (Number.isInteger(revision) && revision >= 0))) return false;
+  if (provenance === 'legacy' && revision !== null) return false;
+  if (unresolved === null) return true;
+  const request = unresolved;
   if (!request || typeof request !== 'object' || request.sessionId !== sessionId) return false;
-  if (!request.body || typeof request.body !== 'object' || request.snapshot?.id !== sessionId) return false;
-  if (request.kind === 'create') return request.body.id === sessionId;
-  if (request.kind === 'update') return Number.isInteger(request.body.base_revision) && request.body.base_revision >= 0;
+  if (!request.snapshot || request.snapshot.id !== sessionId || !request.body || typeof request.body !== 'object') return false;
+  const sent = request.body.station_state;
+  if (!sent || sent.id !== sessionId || !sameSessionState(sent, request.snapshot)) return false;
+  if (request.kind === 'create') return revision === null && request.body.id === sessionId;
+  if (request.kind === 'update') return revision !== null && request.body.base_revision === revision;
   return false;
 }
 
-// Mount: resume from stored bookkeeping when it belongs to this session and is
-// well formed; otherwise treat the stored session as legacy (never trust part).
+// Mount: resume from stored bookkeeping when it is coherent for this session;
+// otherwise treat the stored session as legacy (never trust part of it).
 export function restoreMirrorState(session, meta) {
-  const valid = meta && typeof meta === 'object' && meta.v === MIRROR_META_VERSION && meta.sessionId === session.id
-    && ['known', 'legacy'].includes(meta.provenance)
-    && (meta.revision === null || (Number.isInteger(meta.revision) && meta.revision >= 0))
-    && (meta.unresolved === null || validRequest(meta.unresolved, session.id));
-  if (!valid) return createMirrorState(session.id, null, 'legacy');
+  if (!coherentMeta(meta, session.id)) return createMirrorState(session.id, null, 'legacy');
   return { ...createMirrorState(session.id, meta.revision, meta.provenance), unresolved: meta.unresolved };
+}
+
+// Unmount: cancel the owned timer and retire this mirror object, so a reply
+// that arrives later for this page instance stores and changes nothing.
+export function closeMirror(ctx) {
+  const m = ctx.mirror.current;
+  if (m) ctx.clock.clearTimeout(m.timer);
+  ctx.mirror.current = null;
 }
 
 function transient(error) {

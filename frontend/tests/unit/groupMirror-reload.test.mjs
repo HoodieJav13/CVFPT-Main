@@ -91,7 +91,9 @@ function mountPage({ storage, api, clock }) {
     sessionRef, mirror, states, storageResults, ctx,
     commit(update) { sessionRef.current = update(sessionRef.current); save(sessionRef.current); helper.scheduleMirror(ctx); },
     mountEffect() { if (sessionRef.current) helper.scheduleMirror(ctx); }, // the mount effect pushes the mirror
-    unmount() { clock.clearTimeout(mirror.current?.timer); mirror.current = null; },
+    // Only what the product itself does on unmount (GroupSession's effect
+    // cleanup calls closeMirror); nothing invented by the harness.
+    unmount() { if (typeof helper.closeMirror === 'function') helper.closeMirror(ctx); },
     discard() { store.clearGroupSession(storage, SCOPE); clock.clearTimeout(mirror.current.timer); mirror.current = helper.createMirrorState(null); sessionRef.current = null; },
     start(session) { page.commit(() => session); },
   };
@@ -372,3 +374,58 @@ test('storage refused when the answer arrives: the refusal is reported, and the 
   assert.equal(account(t.server, t.id).revision, 1, 'the stored request is confirmed, not committed twice');
   assert.equal(page.states.at(-1), 'saved');
 });
+
+test('two instances: a late answer for an unmounted instance never overwrites the newer instance\'s stored amendment', async () => {
+  const t = await startedAndSynced('00000000-0000-4000-8000-0000000000eb');
+  const held = { mode: 'held' };
+  t.c.plan.push(held);
+  t.page.commit(amendCableRow); // X: its update is in flight when the coach navigates away
+  await t.clock.advance(700);
+  t.page.unmount();
+  for (let i = 0; i < 20; i += 1) t.c.plan.push({ mode: 'network' }); // the new instance gets no answers
+  const page2 = mountPage({ storage: t.storage, api: t.c.api, clock: t.clock });
+  page2.mountEffect();
+  await t.clock.advance(1000);
+  page2.commit((s) => model.amendStation(s, { id: '00000000-0000-4000-8000-0000000000b1', stationId: s.stations[0].id, exercise: { exercise_library_id: 'fict-lib-pushup', name: 'Push-up', sets: '2', reps: '12' }, reason: 'Bench taken' }));
+  await t.clock.advance(1000);
+  assert.equal(store.loadGroupSession(t.storage, SCOPE).amendments.length, 2, 'the new instance stored X and its newer amendment');
+  held.ok(); // the unmounted instance's answer arrives late
+  await t.clock.advance(1000);
+  assert.equal(store.loadGroupSession(t.storage, SCOPE).amendments.length, 2, 'the late answer did not overwrite the newer stored copy');
+  t.c.plan.length = 0;
+  page2.unmount();
+  const page3 = mountPage({ storage: t.storage, api: t.c.api, clock: t.clock });
+  page3.mountEffect();
+  await t.clock.advance(5 * 60 * 1000);
+  assert.equal(page3.sessionRef.current.amendments.length, 2, 'after a reload both amendments are here');
+  assert.equal(account(t.server, t.id).station_state.amendments.length, 2, 'and on the account');
+});
+
+const INCONSISTENT = {
+    'legacy provenance with a revision': (A, B) => ({ v: 1, sessionId: A.id, provenance: 'legacy', revision: 0, unresolved: null }),
+    'update carrying another session': (A, B) => ({ v: 1, sessionId: A.id, provenance: 'known', revision: 0, unresolved: { kind: 'update', sessionId: A.id, snapshot: B, body: { base_revision: 0, station_state: { ...B, id: '00000000-0000-4000-8000-00000000dead' }, participant_ids: [] } } }),
+    'body and snapshot disagree': (A, B) => ({ v: 1, sessionId: A.id, provenance: 'known', revision: 0, unresolved: { kind: 'update', sessionId: A.id, snapshot: B, body: { base_revision: 0, station_state: { ...B, title: 'Forged' }, participant_ids: [] } } }),
+    'update base differs from the confirmed revision': (A, B) => ({ v: 1, sessionId: A.id, provenance: 'known', revision: 3, unresolved: { kind: 'update', sessionId: A.id, snapshot: B, body: { base_revision: 0, station_state: B, participant_ids: [] } } }),
+    'create after a confirmed revision': (A, B) => ({ v: 1, sessionId: A.id, provenance: 'known', revision: 0, unresolved: { kind: 'create', sessionId: A.id, snapshot: B, body: { id: A.id, title: B.title, mode: 'stations', participant_ids: [], station_state: B } } }),
+};
+for (const [name, make] of Object.entries(INCONSISTENT)) {
+  test(`inconsistent stored bookkeeping (${name}) is refused as a whole: nothing sent, both copies kept`, async () => {
+    const storage = memoryStorage();
+    const server = createGroupServer();
+    const clock = fakeClock();
+    const c = controlledApi(server);
+    const A = newSession('00000000-0000-4000-8000-0000000000f7');
+    const C = { ...A, title: 'Plan C (other device)' };
+    server.request('POST', '/group-sessions', { id: A.id, title: C.title, mode: 'stations', participant_ids: [TRAINEES[0].id], station_state: C });
+    const B = amendCableRow(A);
+    legacyEntry(storage, B, { _mirror: make(A, B) });
+    const page = mountPage({ storage, api: c.api, clock });
+    page.mountEffect();
+    await clock.advance(5 * 60 * 1000);
+    assert.equal(account(server, A.id).station_state.title, 'Plan C (other device)', `${name}: the account copy is not overwritten`);
+    assert.equal(account(server, A.id).station_state.id, A.id, `${name}`);
+    assert.equal(page.sessionRef.current.amendments.length, 1, `${name}: this device's copy kept`);
+    assert.equal(page.states.at(-1), 'diverged', `${name}: shown as undecided`);
+    assert.equal(c.log.filter((l) => l.method === 'PATCH').length, 0, `${name}: nothing sent without a choice`);
+  });
+}
