@@ -1,0 +1,239 @@
+{
+  "status": "PROPOSAL — not assigned, not a prescription",
+  "provider": "DISABLED / MOCK (in-process fixtures; no network)",
+  "contract_version": "pt-draft-proposal-v1",
+  "provenance": {
+    "request_id": "fict-req-c04-0002",
+    "input_sha256": "4777b0f380cf0a055c5ff1e51f69128ce06e44702701855c51336825a5d9edcd",
+    "catalog_revision": "pt-catalog:b4c0849769fe92921ccd072f52bbddc3d8c7291101baf096ff7ed13c0c5a7a11",
+    "catalog_sha256": "ba096bff9a93bf481284683649a0421a60754129916a9b6b28f98a929003cc96",
+    "proposal_sha256": "e98d554c7e824efcfdd7a8cde1c871d3326fdd5d6306d0acb7d7b8b826ab3788",
+    "accepted_revision": 1,
+    "accepted_sha256": "be43d66995b2065fe2d6a112a0d236de292a3f60ea8da145ca3bbfba62d0283d",
+    "accepted_by": "fict-coach-c04",
+    "accepted_at": "2026-10-21T12:00:00.000Z"
+  },
+  "schedule_proposal": [
+    {
+      "day_number": 1,
+      "weekday": "monday"
+    },
+    {
+      "day_number": 2,
+      "weekday": "wednesday"
+    },
+    {
+      "day_number": 3,
+      "weekday": "friday"
+    }
+  ],
+  "exercise_bindings": {
+    "catalog_revision": "pt-catalog:b4c0849769fe92921ccd072f52bbddc3d8c7291101baf096ff7ed13c0c5a7a11",
+    "catalog_sha256": "ba096bff9a93bf481284683649a0421a60754129916a9b6b28f98a929003cc96",
+    "accepted_revision": 1,
+    "accepted_sha256": "be43d66995b2065fe2d6a112a0d236de292a3f60ea8da145ca3bbfba62d0283d",
+    "rows": [
+      {
+        "program_draft_path": "days.0.exercises.0",
+        "day_number": 1,
+        "weekday": "monday",
+        "exercise_id": "lib-goblet",
+        "catalog_name_at_snapshot": "Goblet Squat"
+      },
+      {
+        "program_draft_path": "days.0.exercises.1",
+        "day_number": 1,
+        "weekday": "monday",
+        "exercise_id": "lib-deadbug",
+        "catalog_name_at_snapshot": "Dead Bug"
+      },
+      {
+        "program_draft_path": "days.1.exercises.0",
+        "day_number": 2,
+        "weekday": "wednesday",
+        "exercise_id": "lib-pushup",
+        "catalog_name_at_snapshot": "Push-up"
+      },
+      {
+        "program_draft_path": "days.1.exercises.1",
+        "day_number": 2,
+        "weekday": "wednesday",
+        "exercise_id": "lib-row",
+        "catalog_name_at_snapshot": "Cable Row"
+      },
+      {
+        "program_draft_path": "days.2.exercises.0",
+        "day_number": 3,
+        "weekday": "friday",
+        "exercise_id": "lib-plank",
+        "catalog_name_at_snapshot": "Plank"
+      },
+      {
+        "program_draft_path": "days.2.exercises.1",
+        "day_number": 3,
+        "weekday": "friday",
+        "exercise_id": "lib-goblet",
+        "catalog_name_at_snapshot": "Goblet Squat"
+      }
+    ]
+  },
+  "program_draft": {
+    "program": {
+      "name": "Sample C Foundations (offline draft)",
+      "description": "MOCK offline draft for coach review (fictional).",
+      "frequency_days": 3,
+      "source": "pt-draft-companion (MOCK provider proposal, coach-accepted)"
+    },
+    "days": [
+      {
+        "day_number": 1,
+        "name": "Lower + core",
+        "goal": "",
+        "notes": "Proposed weekday: monday",
+        "exercises": [
+          {
+            "name": "Goblet Squat",
+            "sets": "3",
+            "reps": "8-10",
+            "tracking_type": "reps_weight",
+            "duration_value": null,
+            "duration_unit": null,
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "90s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Strength",
+            "equipment": "Dumbbell",
+            "primary_muscle": "Quads"
+          },
+          {
+            "name": "Dead Bug",
+            "sets": "3",
+            "reps": "10",
+            "tracking_type": "reps_weight",
+            "duration_value": null,
+            "duration_unit": null,
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "45s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Core",
+            "equipment": "Bodyweight",
+            "primary_muscle": "Core"
+          }
+        ]
+      },
+      {
+        "day_number": 2,
+        "name": "Upper",
+        "goal": "",
+        "notes": "Proposed weekday: wednesday",
+        "exercises": [
+          {
+            "name": "Push-up",
+            "sets": "3",
+            "reps": "8-12",
+            "tracking_type": "reps_weight",
+            "duration_value": null,
+            "duration_unit": null,
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "60s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Strength",
+            "equipment": "Bodyweight",
+            "primary_muscle": "Chest"
+          },
+          {
+            "name": "Cable Row",
+            "sets": "3",
+            "reps": "10",
+            "tracking_type": "reps_weight",
+            "duration_value": null,
+            "duration_unit": null,
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "60s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Strength",
+            "equipment": "Cable",
+            "primary_muscle": "Back"
+          }
+        ]
+      },
+      {
+        "day_number": 3,
+        "name": "Conditioning",
+        "goal": "",
+        "notes": "Proposed weekday: friday",
+        "exercises": [
+          {
+            "name": "Plank",
+            "sets": "3",
+            "reps": "",
+            "tracking_type": "duration",
+            "duration_value": 30,
+            "duration_unit": "s",
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "45s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Core",
+            "equipment": "Bodyweight",
+            "primary_muscle": "Core"
+          },
+          {
+            "name": "Goblet Squat",
+            "sets": "2",
+            "reps": "12",
+            "tracking_type": "reps_weight",
+            "duration_value": null,
+            "duration_unit": null,
+            "distance_value": null,
+            "distance_unit": null,
+            "rest": "60s",
+            "tempo": "",
+            "client_notes": "",
+            "coach_notes": "",
+            "video_link_mode": "inherit",
+            "video_url": "",
+            "category": "Strength",
+            "equipment": "Dumbbell",
+            "primary_muscle": "Quads"
+          }
+        ]
+      }
+    ],
+    "import_meta": {
+      "source_type": "proposal",
+      "original_filename": "",
+      "parser_version": "program-draft-v1",
+      "confidence": null,
+      "warnings": [
+        "Mock provider proposal, accepted by a coach. Not a prescription; review again in the import screen before saving."
+      ],
+      "new_exercises_detected": [],
+      "possible_duplicates": []
+    }
+  }
+}

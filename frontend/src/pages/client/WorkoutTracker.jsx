@@ -4,7 +4,7 @@ import { WorkoutViewport } from '@/components/training/WorkoutViewport';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Play, Plus, Save, Timer, Trash2, WifiOff } from 'lucide-react';
+import { ArrowLeftRight, Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Plus, RefreshCw, Save, Timer, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -24,15 +24,26 @@ import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import {
   adjustRestEnd, formatRestSeconds, manualRestSeconds, REST_ADJUST_SECONDS,
 } from '@/lib/rest';
-import { safeHttpUrl } from '@/lib/safeUrl';
-import { lastTimeFills } from '@/lib/workoutSync';
+import { freshnessLabel, lastTimeFills, mergeRefresh } from '@/lib/workoutSync';
+import { SetConflictNotice, SwapStatus, canSwap } from '@/components/training/SessionCorrections';
+import SwapExerciseDialog, { readCachedSwapOptions, swapOptionsCacheKey } from '@/components/training/SwapExerciseDialog';
+import { lastTimeDate, lastTimeFillNote, lastTimeLine, pickLastTimeOccurrence } from '@/lib/lastTime';
 import { trackProductEvent } from '@/lib/telemetry';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 import { nextExercise, restAfterSet, supersetBlocks, supersetRestSeconds } from '@/lib/supersets';
+import { ExerciseMediaInline } from '@/components/training/media/ExerciseMediaInline';
+import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
+import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
+import { demoForRow } from '@/lib/exerciseDemo';
+import { nextPosterTargets } from '@/lib/exerciseMedia';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
 // database parses and backfills. The old runtime text parser is gone; text
 // only survives as a display fallback for legacy completed snapshots.
+
+// Bounded refresh (L12): no live push; the tracker re-reads the log on this
+// cadence while online and says how fresh its copy is.
+const REFRESH_SECONDS = 10;
 
 function formatTimer(seconds) {
   const safe = Math.max(0, seconds);
@@ -41,6 +52,18 @@ function formatTimer(seconds) {
 
 function displayPerformed(value, suffix = '') {
   return value === null || value === undefined ? 'Not recorded' : `${value}${suffix}`;
+}
+
+// The dated prior sets "Same as last time" would copy (what the fill reads).
+function LastTimeLine({ state, occurrence, online }) {
+  let text = null;
+  if (occurrence) text = lastTimeLine(occurrence);
+  else if (occurrence === null) text = 'No completed history yet.';
+  else if (state === 'loading') text = <><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />Loading last time…</>;
+  else if (state === 'offline' && !online) text = 'Last time unavailable offline.';
+  else if (state === 'error') text = 'Last time unavailable.';
+  if (!text) return null;
+  return <p className="break-words px-1 text-xs text-muted-foreground" data-testid="last-time-line">{text}</p>;
 }
 
 function ExerciseHistory({ logId, exercise }) {
@@ -213,12 +236,47 @@ export default function WorkoutTracker() {
   const [finishing, setFinishing] = useState(false);
   const [abandonOpen, setAbandonOpen] = useState(false);
   const [restEndsAt, setRestEndsAt] = useState(null);
-  const [lastTimeLoading, setLastTimeLoading] = useState(null);
+  // Per exercise: 'loading' | 'loaded' | 'offline' | 'error' (local UI state only).
+  const [lastTimeState, setLastTimeState] = useState({});
+  // Per exercise: the note left by the last fill; cleared only by leaving the page.
+  const [fillNotes, setFillNotes] = useState({});
+  // Exercises whose "Same as last time" copy is still running. One copy per
+  // exercise at a time: the ref is the synchronous gate (checked and set before
+  // any await, so no second continuation can register). The state renders only
+  // copies that are waiting for history, so a cached copy never disables (and
+  // never takes focus from) its button. Taps on different exercises stay
+  // independent; the background preview never marks one pending (a tap joins it).
+  const lastTimeCopying = useRef(new Set());
+  const [lastTimePending, setLastTimePending] = useState(() => new Set());
   const [validatedSets, setValidatedSets] = useState({});
   const [restAlerts, setRestAlerts] = useState(() => localStorage.getItem('cvf_rest_alerts') === 'on');
+  // Exercise guides: only the active + next posters load; others on request.
+  const [mediaRequested, setMediaRequested] = useState(() => new Set());
+  const [instruction, setInstruction] = useState(null);
+  // One click-to-load demo dialog at a time (no provider traffic until Play).
+  const [demoFor, setDemoFor] = useState(null);
+  const mediaContext = useMemo(() => ({ type: 'workout_log', id }), [id]);
   const lastTimeCache = useRef({});
+  const lastTimeRequests = useRef({});
+  const lastTimePreloaded = useRef(new Set());
   const intensity = useVisualIntensity();
-  const outbox = useWorkoutOutbox(id, setLog);
+  // Set when the server refuses a queued Finish (the outbox has already reloaded
+  // the still-active log), so finish() keeps the client here with the reason.
+  const completeRejection = useRef(null);
+  // Sets being typed into (not yet saved): refresh keeps their values and base revision.
+  const draftIds = useRef(new Set());
+  const refreshRef = useRef(null);
+  const [lastChecked, setLastChecked] = useState(null);
+  const [, setClock] = useState(0);
+  const [swapFor, setSwapFor] = useState(null);
+  const outbox = useWorkoutOutbox(id, setLog, {
+    onCompleteRejected: (message) => { completeRejection.current = message; },
+    getLog: () => logRef.current,
+    onConflict: () => {
+      toast.message('Someone else changed this set first. Both values are kept and your coach will choose.');
+      refreshRef.current?.();
+    },
+  });
   const hydratePending = outbox.hydrate;
   const restStorageKey = `cvf_rest_timer_${id}`;
 
@@ -256,6 +314,7 @@ export default function WorkoutTracker() {
         return;
       }
       setLog(hydratePending(data));
+      setLastChecked(Date.now());
       setLoadError(null);
     } catch (error) {
       setLoadError(errMsg(error, 'Failed to load workout'));
@@ -264,11 +323,110 @@ export default function WorkoutTracker() {
 
   useEffect(() => { load(); }, [load]);
 
+  const refresh = useCallback(async () => {
+    if (!navigator.onLine) return;
+    try {
+      const { data } = await api.get(`/workout-logs/${id}`);
+      if (data.status !== 'active') {
+        navigate(`${basePath}/workouts/${id}`, { replace: true });
+        return;
+      }
+      setLog((current) => hydratePending(mergeRefresh(current, data, draftIds.current)));
+      setLastChecked(Date.now());
+    } catch {
+      // Keep this device's copy; the freshness label shows its age.
+    }
+  }, [basePath, hydratePending, id, navigate]);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    const timer = window.setInterval(() => { refreshRef.current?.(); setClock((tick) => tick + 1); }, REFRESH_SECONDS * 1000);
+    const onOnline = () => refreshRef.current?.();
+    window.addEventListener('online', onOnline);
+    return () => { window.clearInterval(timer); window.removeEventListener('online', onOnline); };
+  }, []);
+
+  // Save swap choices on this phone while online, so a swap still works offline.
+  const contractLog = Boolean(log?.server_time);
+  useEffect(() => {
+    if (!contractLog || !navigator.onLine || !logRef.current) return;
+    const current = logRef.current;
+    const eligible = current.exercises.filter((exercise) => exercise.exercise_library_id && canSwap(exercise, current, false));
+    const found = {};
+    Promise.all(eligible.map((exercise) => api.get(`/workout-logs/${id}/exercises/${exercise.id}/substitution-options`)
+      .then(({ data }) => { found[exercise.id] = data; }).catch(() => {})))
+      .then(() => {
+        try { localStorage.setItem(swapOptionsCacheKey(id), JSON.stringify({ ...readCachedSwapOptions(id), ...found })); } catch { /* cache is optional */ }
+      });
+  }, [contractLog, id]);
+
+  // Re-resolve guide metadata after a failed lookup, or for one exercise whose
+  // guide changed since the workout loaded (libraryId). Never touches set data
+  // or the outbox; a failure here leaves the card as it was.
+  const retryMedia = useCallback(async (libraryId) => {
+    try {
+      const { data } = await api.post('/exercise-media/resolve', { context: mediaContext });
+      const byExercise = new Map((data.media || []).map((item) => [item.exercise_id, item]));
+      const target = (exercise) => Boolean(exercise.exercise_library_id)
+        && (libraryId ? exercise.exercise_library_id === libraryId : exercise.media_status === 'unavailable');
+      setLog((current) => current && ({
+        ...current,
+        exercises: current.exercises.map((exercise) => (target(exercise)
+          ? { ...exercise, media: byExercise.get(exercise.exercise_library_id) || null, media_status: undefined }
+          : exercise)),
+      }));
+      if (libraryId) {
+        const fresh = byExercise.get(libraryId) || null;
+        setInstruction((current) => (current?.media?.exercise_id === libraryId ? (fresh ? { ...current, media: fresh } : null) : current));
+        if (!fresh) toast.message('This exercise guide is no longer available. Your workout is unaffected.');
+      }
+    } catch {
+      toast.message('Exercise guides are still unavailable. Your workout is unaffected.');
+    }
+  }, [mediaContext]);
+
   const toggleRestAlerts = () => {
     const next = !restAlerts;
     localStorage.setItem('cvf_rest_alerts', next ? 'on' : 'off');
     setRestAlerts(next);
   };
+
+  // One history read per exercise per visit, shared by the "Last time" line and
+  // the fill button. The cached result is the occurrence the fill would use, or
+  // null when there is none; a failed read is not cached.
+  const loadLastTime = useCallback((exercise) => {
+    if (lastTimeCache.current[exercise.id] !== undefined) return Promise.resolve(lastTimeCache.current[exercise.id]);
+    if (lastTimeRequests.current[exercise.id]) return lastTimeRequests.current[exercise.id];
+    setLastTimeState((current) => ({ ...current, [exercise.id]: 'loading' }));
+    const request = api.get(`/workout-logs/${id}/exercises/${exercise.id}/history`)
+      .then(({ data }) => {
+        const occurrence = pickLastTimeOccurrence(data.occurrences, exercise);
+        lastTimeCache.current[exercise.id] = occurrence;
+        setLastTimeState((current) => ({ ...current, [exercise.id]: 'loaded' }));
+        return occurrence;
+      }, (error) => {
+        setLastTimeState((current) => ({ ...current, [exercise.id]: 'error' }));
+        throw error;
+      })
+      .finally(() => { delete lastTimeRequests.current[exercise.id]; });
+    lastTimeRequests.current[exercise.id] = request;
+    return request;
+  }, [id]);
+
+  // Preview the source for the ACTIVE exercise only, once per visit. Offline
+  // without a cached result it waits (no request) and loads on reconnect.
+  const lastTimeActiveId = log ? nextExercise(log.exercises)?.id : null;
+  useEffect(() => {
+    const exercise = lastTimeActiveId && logRef.current?.exercises.find((row) => row.id === lastTimeActiveId);
+    if (!exercise || outbox.queuedComplete) return;
+    if (lastTimeCache.current[exercise.id] !== undefined || lastTimeRequests.current[exercise.id]) return;
+    if (!outbox.online) {
+      setLastTimeState((current) => (current[exercise.id] ? current : { ...current, [exercise.id]: 'offline' }));
+      return;
+    }
+    if (lastTimePreloaded.current.has(exercise.id)) return;
+    lastTimePreloaded.current.add(exercise.id);
+    loadLastTime(exercise).catch(() => {});
+  }, [lastTimeActiveId, outbox.online, outbox.queuedComplete, loadLastTime]);
 
   if (!log && loadError) return <LoadErrorState message={loadError} scope="workout-tracker" onRetry={load} />;
   if (!log) return <LoadingScreen />;
@@ -283,6 +441,7 @@ export default function WorkoutTracker() {
   // Manual rest defaults to the current exercise's rest (else 90s); inside
   // a superset it is the group's round rest, like the automatic timer.
   const activeExercise = log.exercises.find((ex) => ex.id === activeExerciseId) || log.exercises[0];
+  const posterTargets = nextPosterTargets(log.exercises, activeExerciseId);
   const activeBlock = supersetBlocks(log.exercises).find((block) => block.items.some(({ exercise }) => exercise.id === activeExercise?.id));
   const manualRest = manualRestSeconds(activeBlock && activeBlock.kind !== 'single'
     ? { prescribed_rest_seconds: supersetRestSeconds(activeBlock.items.map(({ exercise }) => exercise)) }
@@ -303,6 +462,7 @@ export default function WorkoutTracker() {
       ...exercise,
       sets: exercise.sets.map((set) => set.id === setId ? { ...set, [key]: value } : set),
     })));
+    draftIds.current.add(setId);
     outbox.markDirty();
   };
 
@@ -321,6 +481,7 @@ export default function WorkoutTracker() {
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
       data: payload,
     });
+    draftIds.current.delete(set.id);
   };
 
   const toggleSet = (exercise, set) => {
@@ -334,6 +495,7 @@ export default function WorkoutTracker() {
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
       data: payload,
     });
+    draftIds.current.delete(set.id);
     if (status === 'completed') {
       // Inside a superset/giant set, rest waits for the end of the round.
       const rest = restAfterSet(log.exercises, exercise.id, set.id);
@@ -349,6 +511,48 @@ export default function WorkoutTracker() {
       method: 'post', url: `/workout-logs/${id}/exercises/${exercise.id}/sets`,
       data: { client_operation_id: operationId },
     });
+  };
+
+  // PT-Sub: record the swap for this workout only. A coach backup (or any
+  // choice made offline) is usable at once; an online suggestion waits for the
+  // coach. The client adds the substitute's sets itself, so they can be logged
+  // offline; nothing is copied from the original exercise.
+  const confirmSwap = (choice) => {
+    const exercise = swapFor;
+    setSwapFor(null);
+    const offline = !navigator.onLine;
+    const activate = choice.kind === 'backup' || offline || isCoach;
+    const swapId = makeId();
+    const replacementId = makeId();
+    const targets = {};
+    if (String(choice.targets.sets ?? '').trim()) targets.sets = Number(choice.targets.sets);
+    if (String(choice.targets.reps ?? '').trim()) targets.reps = String(choice.targets.reps).trim();
+    if (String(choice.targets.load_value ?? '').trim()) { targets.load_value = Number(choice.targets.load_value); targets.load_unit = 'lb'; }
+    const source = choice.kind === 'backup' ? 'coach_backup' : 'catalog_suggestion';
+    const libraryId = choice.kind === 'backup' ? choice.item.exercise_library_id : choice.item.id;
+    outbox.enqueue({
+      kind: 'substitute', exerciseId: exercise.id,
+      method: 'post', url: `/workout-logs/${id}/exercises/${exercise.id}/substitutions`,
+      data: {
+        id: swapId, replacement_log_exercise_id: replacementId, source, ...(choice.kind === 'backup' ? { backup_id: choice.item.id } : {}),
+        exercise_library_id: libraryId, trigger: choice.trigger, ...(choice.reason?.trim() ? { reason: choice.reason.trim() } : {}),
+        targets, offline, chosen_at: new Date().toISOString(), create_target_sets: false,
+      },
+      swap: { id: swapId, replacementId, name: choice.item.name, libraryId, targets, activate, source },
+    });
+    if (activate) {
+      for (let index = 0; index < (targets.sets || 1); index += 1) {
+        const operationId = makeId();
+        outbox.enqueue({
+          kind: 'add', exerciseId: replacementId, clientOperationId: operationId,
+          method: 'post', url: `/workout-logs/${id}/exercises/${replacementId}/sets`,
+          data: { client_operation_id: operationId },
+        });
+      }
+      toast.success(offline ? `Using ${choice.item.name}. Your coach will be told when you are back online.` : `Using ${choice.item.name} for this workout.`);
+    } else {
+      toast.message(`Asked your coach about ${choice.item.name}.`);
+    }
   };
 
   const removeSet = (exercise, set) => {
@@ -369,23 +573,34 @@ export default function WorkoutTracker() {
   // One tap fills blank fields from the most recent completed occurrence of
   // this exercise; typed values are never overwritten.
   const applyLastTime = async (exercise) => {
-    if (sealed || lastTimeLoading) return;
+    if (sealed || lastTimeCopying.current.has(exercise.id)) return;
+    lastTimeCopying.current.add(exercise.id);
+    try {
+      await copyLastTime(exercise);
+    } finally {
+      lastTimeCopying.current.delete(exercise.id);
+      setLastTimePending((pending) => {
+        if (!pending.has(exercise.id)) return pending;
+        const next = new Set(pending);
+        next.delete(exercise.id);
+        return next;
+      });
+    }
+  };
+
+  const copyLastTime = async (exercise) => {
     let occurrence = lastTimeCache.current[exercise.id];
     if (occurrence === undefined) {
       if (!navigator.onLine) {
         toast.error('You are offline. Reconnect to copy last time.');
         return;
       }
-      setLastTimeLoading(exercise.id);
+      setLastTimePending((pending) => new Set(pending).add(exercise.id));
       try {
-        const { data } = await api.get(`/workout-logs/${id}/exercises/${exercise.id}/history`);
-        occurrence = data.occurrences.find((row) => trackingType(row) === trackingType(exercise)) || null;
-        lastTimeCache.current[exercise.id] = occurrence;
+        occurrence = await loadLastTime(exercise);
       } catch (error) {
         toast.error(errMsg(error, 'Failed to load last time'));
         return;
-      } finally {
-        setLastTimeLoading(null);
       }
     }
     if (!occurrence) {
@@ -395,18 +610,24 @@ export default function WorkoutTracker() {
     // Re-read the exercise: anything typed while history loaded is kept.
     const current = logRef.current?.exercises.find((row) => row.id === exercise.id) || exercise;
     let filledCount = 0;
+    const filledSets = [];
     lastTimeFills(current.sets, occurrence, current).forEach(({ setId, data }) => {
       const queued = outbox.enqueue({
         kind: 'set', exerciseId: exercise.id, setId,
         method: 'patch', url: `/workout-logs/${id}/sets/${setId}`,
         data,
       });
-      if (queued) filledCount += 1;
+      if (queued) {
+        filledCount += 1;
+        filledSets.push(current.sets.find((set) => set.id === setId)?.set_number);
+      }
     });
     if (!filledCount) {
+      setFillNotes((notes) => ({ ...notes, [exercise.id]: 'Nothing copied: no matching blank fields.' }));
       toast.info('Nothing copied: no matching blank fields.');
       return;
     }
+    setFillNotes((notes) => ({ ...notes, [exercise.id]: lastTimeFillNote(filledSets.filter(Boolean), occurrence) }));
     toast.success(`Filled ${filledCount} set${filledCount === 1 ? '' : 's'} from ${new Date(occurrence.completed_at).toLocaleDateString()}`);
   };
 
@@ -423,6 +644,7 @@ export default function WorkoutTracker() {
 
   const finish = async () => {
     setFinishing(true);
+    completeRejection.current = null;
     try {
       // Queue the completion behind any pending set writes (FIFO). The
       // performance timestamp is captured at confirmation, not at sync
@@ -438,6 +660,11 @@ export default function WorkoutTracker() {
         },
       });
       const flushed = await outbox.flush();
+      if (completeRejection.current) {
+        setFinishOpen(false);
+        toast.error(completeRejection.current);
+        return;
+      }
       trackProductEvent('workout_completed', { source: isCoach ? 'coach_tracker' : 'client_tracker', offline: !flushed });
       localStorage.removeItem(restStorageKey);
       navigate(`${basePath}/workouts/${id}`, {
@@ -527,6 +754,11 @@ export default function WorkoutTracker() {
           {outbox.saveState === 'not_saved' && <><CircleAlert className="h-3.5 w-3.5 text-gold" /> Not saved yet</>}
           {!outbox.online && <Badge variant="outline"><WifiOff className="mr-1 h-3.5 w-3.5" /> Offline</Badge>}
         </span>
+        {contractLog && (
+          <span className="flex items-center gap-1 text-muted-foreground" data-testid="tracker-freshness">
+            <RefreshCw className="h-3 w-3" aria-hidden />{freshnessLabel(lastChecked, Date.now(), { online: outbox.online, everySeconds: REFRESH_SECONDS })}
+          </span>
+        )}
         {!restEndsAt && !sealed && (
           <Button
             type="button" variant="ghost" size="sm"
@@ -576,6 +808,18 @@ export default function WorkoutTracker() {
                   {exercise.sets.filter((set) => set.status === 'completed').length}/{exercise.sets.length}
                 </Badge>
               </div>
+              {(exercise.media || exercise.media_status === 'unavailable') && (
+                <ExerciseMediaInline
+                  media={exercise.media}
+                  mediaStatus={exercise.media_status}
+                  context={mediaContext}
+                  exerciseName={exercise.exercise_name}
+                  load={posterTargets.has(exercise.id) || mediaRequested.has(exercise.id)}
+                  onRequestLoad={() => setMediaRequested((current) => new Set(current).add(exercise.id))}
+                  onOpenInstruction={(media) => setInstruction({ media, exerciseName: exercise.exercise_name })}
+                  onRetryMetadata={retryMedia}
+                />
+              )}
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 {exercise.prescribed_load_value != null && <span>Load {exercise.prescribed_load_value} {exercise.prescribed_load_unit || 'lb'}</span>}
                 {trackingType(exercise) === 'reps_weight' && exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
@@ -588,20 +832,24 @@ export default function WorkoutTracker() {
                 {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
               </div>
               {exercise.prescribed_notes && <p className="text-xs text-muted-foreground">{exercise.prescribed_notes}</p>}
-              {safeHttpUrl(exercise.video_url) && (
-                <a
-                  href={safeHttpUrl(exercise.video_url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                  aria-label={`Watch demo: ${exercise.exercise_name} (opens in a new tab)`}
-                  data-testid="tracker-exercise-video"
-                >
-                  <Play className="h-4 w-4" aria-hidden /> Watch demo
-                </a>
+              {contractLog && <SwapStatus exercise={exercise} log={log} />}
+              {contractLog && canSwap(exercise, log, sealed) && (
+                <Button type="button" variant="ghost" size="sm" className="min-h-11 justify-start px-0 text-xs text-muted-foreground" onClick={() => setSwapFor(exercise)} data-testid="swap-open">
+                  <ArrowLeftRight className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Can&apos;t do this?
+                </Button>
               )}
+              <ExerciseDemoAction
+                demo={demoForRow(exercise)}
+                exerciseName={exercise.exercise_name}
+                onView={() => setDemoFor({ exerciseId: exercise.id })}
+              />
             </CardHeader>
             <CardContent className="space-y-3">
+              <LastTimeLine
+                state={lastTimeState[exercise.id]}
+                occurrence={lastTimeCache.current[exercise.id]}
+                online={outbox.online}
+              />
               <div className="hidden gap-1 px-1 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]">
                 <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span><span>RPE</span><span className="sr-only">Complete</span>
               </div>
@@ -682,6 +930,9 @@ export default function WorkoutTracker() {
                       <Trash2 aria-hidden />
                     </Button>
                   )}
+                  {(log.conflicts || []).filter((conflict) => conflict.workout_log_set_id === set.id).map((conflict) => (
+                    <SetConflictNotice key={conflict.id} conflict={conflict} logId={id} viewer={isCoach ? 'coach' : 'client'} online={outbox.online} onChanged={() => refreshRef.current?.()} />
+                  ))}
                 </div>
               ))}
               <div className="flex flex-wrap gap-2">
@@ -690,15 +941,20 @@ export default function WorkoutTracker() {
                 </Button>
                 <Button
                   type="button" variant="outline" size="sm" className="min-h-11"
-                  disabled={sealed || lastTimeLoading === exercise.id}
+                  disabled={sealed || lastTimePending.has(exercise.id)}
                   onClick={() => applyLastTime(exercise)}
+                  aria-describedby={lastTimeCache.current[exercise.id] ? `last-time-source-${exercise.id}` : undefined}
                   data-testid="same-as-last-time"
                 >
-                  {lastTimeLoading === exercise.id
+                  {lastTimePending.has(exercise.id)
                     ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />
                     : <History className="mr-1.5 h-4 w-4" />}
                   Same as last time
                 </Button>
+                {lastTimeCache.current[exercise.id] && (
+                  <span id={`last-time-source-${exercise.id}`} className="sr-only">Copies blank fields from {lastTimeDate(lastTimeCache.current[exercise.id])}.</span>
+                )}
+                <p role="status" className="w-full break-words text-xs text-muted-foreground empty:hidden" data-testid="last-time-note">{fillNotes[exercise.id] || ''}</p>
               </div>
               <ExerciseHistory logId={id} exercise={exercise} />
               <div className="space-y-1.5">
@@ -717,6 +973,30 @@ export default function WorkoutTracker() {
         )}</SupersetGroups>
       </div>
 
+      <ExerciseInstructionDialog
+        media={instruction?.media}
+        exerciseName={instruction?.exerciseName}
+        context={mediaContext}
+        open={Boolean(instruction)}
+        onOpenChange={(open) => { if (!open) setInstruction(null); }}
+        onRetryMetadata={retryMedia}
+      />
+
+      {(() => {
+        const exercise = demoFor && log.exercises.find((row) => row.id === demoFor.exerciseId);
+        return (
+          <ExerciseDemoDialog
+            demo={exercise ? demoForRow(exercise) : null}
+            exerciseName={exercise?.exercise_name}
+            media={exercise?.media || null}
+            context={mediaContext}
+            open={Boolean(exercise)}
+            onOpenChange={(open) => { if (!open) setDemoFor(null); }}
+          />
+        );
+      })()}
+
+      {swapFor && <SwapExerciseDialog exercise={swapFor} logId={id} online={outbox.online} onClose={() => setSwapFor(null)} onConfirm={confirmSwap} />}
       <Dialog open={abandonOpen} onOpenChange={setAbandonOpen}>
         <DialogContent className="max-w-sm [&>button]:h-11 [&>button]:w-11" data-testid="workout-abandon-dialog">
           <DialogHeader>

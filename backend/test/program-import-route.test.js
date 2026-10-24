@@ -139,10 +139,20 @@ test('paste parsing is coach-protected, import-limited, and commit sources remai
       name: 'Day 1',
       goal: '',
       notes: '',
-      exercises: [{ name: 'Goblet Squat', sets: '3', reps: '8' }],
+      exercises: [{ name: 'Goblet Squat', sets: '3', reps: '8', video_url: 'https://youtu.be/synthetic' }],
     }],
     import_meta: { source_type: 'paste', warnings: [] },
   };
+  // All import commit paths are NEW exercise writes. Unsafe external media
+  // must be refused before the transactional commit RPC, not silently stored.
+  for (const video_url of ['javascript:alert(1)', 'data:text/html,x', 'file:///tmp/source.mp4', 'https://user:pass@example.invalid/video']) {
+    const before = rpcCalls.length;
+    const response = await post('/import/commit', { draft: { ...draft, days: [{ ...draft.days[0], exercises: [{ ...draft.days[0].exercises[0], video_url }] }] } }, 'coach');
+    assert.equal(response.status, 400, video_url);
+    assert.match((await response.json()).error, /http\(s\)/);
+    assert.equal(rpcCalls.length, before, 'unsafe imported media must not create a program');
+  }
+
   const expectedSources = [
     ['paste', 'manual'],
     ['csv', 'import_csv'],
@@ -164,6 +174,8 @@ test('paste parsing is coach-protected, import-limited, and commit sources remai
     }, 'coach');
     assert.equal(response.status, 201);
   }
+
+  assert.ok(rpcCalls.every(({ args }) => args.p_draft.days[0].exercises[0].video_url === 'https://youtu.be/synthetic'), 'safe optional resources survive normalization and commit');
 
   assert.deepEqual(
     rpcCalls.map(({ name, args }) => [name, args.p_source]),

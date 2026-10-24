@@ -1,5 +1,34 @@
 import { test, expect, usePreviewRole, callPreviewApi } from './preview-test.mjs';
 
+test('canonical catalog selection and removal undo preserve explicit guide references', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const editor = await newWorkout(page);
+  const catalog = await callPreviewApi(page, 'get', '/programs/exercise-library');
+  const exercise = catalog.data.find((entry) => !entry.hidden);
+  expect(exercise).toBeTruthy();
+  await editor.getByTestId('workout-name-input').fill('Synthetic integrated guide session');
+  const equivalentName = `  ${exercise.name.toUpperCase().replace(/\s+/g, '   ')}  `;
+  await editor.getByTestId('workout-exercise-name-input').fill(equivalentName);
+  await expect(editor.getByTestId('workout-exercise-demo-library')).toBeChecked();
+  await editor.getByTestId('workout-exercise-demo-custom').check();
+  const demoUrl = 'https://youtu.be/SYNTHdemo02';
+  await editor.getByTestId('workout-exercise-video-input').fill(demoUrl);
+  await editor.getByTestId('workout-exercise-duplicate-button').click();
+  const rows = editor.getByTestId('workout-exercise-row');
+  await expect(rows).toHaveCount(2);
+  const trigger = rows.nth(1).locator('h3 button');
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+  await rows.nth(1).getByTestId('workout-exercise-remove-button').click();
+  await editor.getByRole('button', { name: 'Undo removal', exact: true }).click();
+  await expect(rows).toHaveCount(2);
+  await editor.getByTestId('workout-save-button').click();
+  await expect(editor).not.toBeVisible();
+  const workouts = await callPreviewApi(page, 'get', '/programs/workouts');
+  const saved = workouts.data.find((entry) => entry.name === 'Synthetic integrated guide session');
+  expect(saved.exercises.map((row) => [row.exercise_library_id, row.video_link_mode, row.video_url]))
+    .toEqual([[exercise.id, 'override', demoUrl], [exercise.id, 'override', demoUrl]]);
+});
+
 async function newWorkout(page) {
   await usePreviewRole(page, 'coach');
   await page.goto('/coach/programs');

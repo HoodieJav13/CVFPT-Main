@@ -59,12 +59,17 @@ export default function PreviewToolbar() {
   const [incompleteAnalytics, setIncompleteAnalytics] = useState(() => {
     try { return localStorage.getItem('cvf_preview_incomplete_analytics') === '1'; } catch { return false; }
   });
+  // Separate synthetic scenario for exercise photos/previews (off by default
+  // so baseline fixtures stay unchanged). Processing in preview is simulated.
+  const [mediaDemo, setMediaDemo] = useState(() => {
+    try { return localStorage.getItem('cvf_preview_media_scenario') === '1'; } catch { return false; }
+  });
   const clients = useMemo(() => getPreviewClients(), []);
   const [speed, setSpeed] = useState(getPreviewSpeed());
   const [failMode, setFailMode] = useState(getPreviewFailMode());
   // A switch left on from an earlier visit is the main way this layer could
   // mislead, so its state is visible without opening the panel.
-  const modified = speed !== 'normal' || failMode !== 'off';
+  const modified = speed !== 'normal' || failMode !== 'off' || mediaDemo;
   // On desktop the toolbar sits over page content, so the test-state controls
   // stay folded away unless opened or in use. The phone panel is already
   // behind its own toggle and shows them directly.
@@ -114,6 +119,16 @@ export default function PreviewToolbar() {
     // when already viewing analytics (an in-app navigate would be a no-op
     // there). Preview fixtures reset on reload; role + flag persist.
     window.location.assign('/coach/analytics');
+  };
+
+  const toggleMediaDemo = (checked) => {
+    setMediaDemo(checked);
+    try {
+      if (checked) localStorage.setItem('cvf_preview_media_scenario', '1');
+      else localStorage.removeItem('cvf_preview_media_scenario');
+    } catch { /* private mode: the scenario just won't persist */ }
+    // Fixtures are built once per load; a hard load applies the switch.
+    window.location.assign(role === 'client' ? '/client/programs' : role === 'admin' ? '/admin' : '/coach/programs');
   };
 
   const reset = () => {
@@ -219,6 +234,16 @@ export default function PreviewToolbar() {
               <option value="write-once">Fail next save</option>
               <option value="reads">Fail loads</option>
             </select>
+            <label className="flex h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-2 text-xs lg:h-8" data-testid="preview-media-demo">
+              <input
+                type="checkbox"
+                checked={mediaDemo}
+                onChange={(e) => toggleMediaDemo(e.target.checked)}
+                className="h-3.5 w-3.5 accent-primary"
+                data-testid="preview-media-demo-checkbox"
+              />
+              Exercise media demo
+            </label>
             <button
               type="button"
               onClick={reset}

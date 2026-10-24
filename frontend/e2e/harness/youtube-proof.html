@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YouTube player proof harness (test only)</title>
+</head>
+<body>
+<main style="max-width:640px;margin:16px auto;font-family:system-ui">
+  <p>Test-only page: loads the app's real click-to-load player module with a public sample video id. No app data, accounts or tokens.</p>
+  <button id="play" type="button" style="min-height:44px">Play sample</button>
+  <div id="slot" style="width:100%;min-width:200px"></div>
+  <p id="state" role="status">idle</p>
+</main>
+<script type="module" src="./youtube-proof.js"></script>
+</body>
+</html>

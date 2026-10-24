@@ -300,6 +300,36 @@ test('A7 client assignment allowlist adds only kind and quick_session_completed'
   for (const hidden of ['created_by_coach_id', 'create_request_id', 'create_request_hash', 'library_template_id']) assert.ok(!(hidden in row), hidden);
 });
 
+// Exercise Media integration: optional external resources keep the existing
+// Quick payload/hash contract, while unsafe NEW links never reach its RPC.
+test('Quick create rejects unsafe new external video links before its idempotent create RPC', async () => {
+  for (const video_url of ['javascript:alert(1)', 'data:text/html,x', 'file:///tmp/source.mp4', 'https://user:pass@example.invalid/video']) {
+    reset();
+    rpcHandlers.create_quick_session = created();
+    rpcHandlers.get_quick_session_completion = completion(false);
+    const response = await call('POST', '/quick-sessions', createBody({ exercises: [{ custom_name: 'Synthetic plank', sets: 1, reps: '5', video_url }] }));
+    assert.equal(response.status, 400, video_url);
+    assert.match(response.body.error, /http\(s\)/);
+    assert.equal(rpcCalls.length, 0, 'no receipt or source write for an unsafe link');
+  }
+});
+
+test('Quick safe optional video links preserve normalized payload and exact server request hash', async () => {
+  for (const video_url of [null, '', 'https://youtu.be/synthetic', 'http://example.invalid/owned-resource']) {
+    reset();
+    rpcHandlers.create_quick_session = created();
+    rpcHandlers.get_quick_session_completion = completion(false);
+    const body = createBody({ exercises: [{ custom_name: 'Synthetic plank', sets: 1, reps: '5', video_url }] });
+    const expected = normalizeQuickSessionCreate(body, { today: todayDateInTz() });
+    const response = await call('POST', '/quick-sessions', body);
+    assert.equal(response.status, 201);
+    const create = rpcCalls.find((entry) => entry.name === 'create_quick_session');
+    assert.equal(create.args.p_request_id, expected.request_id);
+    assert.equal(create.args.p_hash, quickSessionHash(expected.payload));
+    assert.deepEqual(create.args.p_exercises, expected.payload.exercises);
+  }
+});
+
 for (const role of ['coach', 'admin']) {
   test(`archive sanitizes receipt metadata for authorized ${role} while preserving the coach contract`, async () => {
     reset();

@@ -1,0 +1,2631 @@
+{
+  "schema_version": 1,
+  "generated_by": "scripts/exercise-guides/build-visual-review.mjs",
+  "capture": {
+    "tool": "frontend/e2e/exercise-guides-visual.capture.mjs via frontend/playwright.exercise-guides-visual.config.mjs",
+    "browser": "Chromium headless shell 149.0.7827.55 (Playwright 1.61.1)",
+    "emulation": "reduced motion; app dark theme; device scale factor 1",
+    "data": "identical intercepted synthetic responses for both variants; YouTube hosts stubbed; fictional actors only",
+    "posters": {
+      "label": "SYNTHETIC TEST MEDIA - NOT INSTRUCTION",
+      "processor": "sharp 0.35.5 / libvips 8.18.7",
+      "records": [
+        {
+          "name": "goblet-poster.jpg",
+          "from": "goblet-squat-photo.jpg",
+          "source_dims": {
+            "width": 1600,
+            "height": 900
+          },
+          "width": 640,
+          "height": 360,
+          "bytes": 17700,
+          "sha256": "fafa4cf1774d643dff6ddf90c924b5577dacdefb0f2914c90c0c60dd71d52abb"
+        },
+        {
+          "name": "split-poster.jpg",
+          "from": "split-squat-portrait.jpg",
+          "source_dims": {
+            "width": 1080,
+            "height": 1350
+          },
+          "width": 640,
+          "height": 360,
+          "bytes": 7203,
+          "sha256": "4c43133324f22b4223f154297b315daed167953bb0e96a08e6513a38035606b2"
+        },
+        {
+          "name": "row-poster.jpg",
+          "from": "band-row-thumbnail.png",
+          "source_dims": {
+            "width": 1280,
+            "height": 720
+          },
+          "width": 640,
+          "height": 360,
+          "bytes": 18947,
+          "sha256": "db5ce09de2815cc3103a4263db62fc099a505e67af641f6c4174fd037f2d2b03"
+        }
+      ]
+    }
+  },
+  "sources": {
+    "baseline": {
+      "commit": "f3c063c4997b1ad49a1e7ceca5107ee6aae3c1dd",
+      "tree": "90df1beaabf6222874075844b482635972f35a74",
+      "tracked_changes": [],
+      "note": "pinned f3c063c, rendered from a disposable local clone in the session scratchpad"
+    },
+    "proposed": {
+      "commit": "88b2d7afa5658ef6ffea4f83a57a5d6718fb1f36",
+      "tree": "43873a9bdc560d6a3391af6d154bcdca0785f467",
+      "tracked_changes": [
+        "M frontend/e2e/exercise-guides-visual.capture.mjs"
+      ]
+    }
+  },
+  "direction": {
+    "classification": "Not treated as a new visual direction: View demo takes the exact slot, left edge and type of the released External video link; the dialog reuses the accepted instruction-dialog pattern; the coach control is a standard fieldset. No bold probe was made.",
+    "owner_decision": "pending — owner visual/content acceptance remains a release gate",
+    "tracker_layout": [
+      {
+        "viewport": "320x740",
+        "first_set_input_top_px": {
+          "baseline": 555,
+          "proposed": 555
+        },
+        "control_dock_top_px": {
+          "baseline": 540,
+          "proposed": 540
+        },
+        "document_width_px": {
+          "baseline": 320,
+          "proposed": 320
+        },
+        "provider_requests_before_play": 0
+      },
+      {
+        "viewport": "390x844",
+        "first_set_input_top_px": {
+          "baseline": 543,
+          "proposed": 543
+        },
+        "control_dock_top_px": {
+          "baseline": 644,
+          "proposed": 644
+        },
+        "document_width_px": {
+          "baseline": 390,
+          "proposed": 390
+        },
+        "provider_requests_before_play": 0
+      },
+      {
+        "viewport": "1440x900",
+        "first_set_input_top_px": {
+          "baseline": 438,
+          "proposed": 438
+        },
+        "control_dock_top_px": {
+          "baseline": 770,
+          "proposed": 770
+        },
+        "document_width_px": {
+          "baseline": 1440,
+          "proposed": 1440
+        },
+        "provider_requests_before_play": 0
+      }
+    ],
+    "player_sizes": [
+      {
+        "state": "demo-dialog-player",
+        "viewport": "320x740",
+        "player": [
+          270,
+          202
+        ],
+        "document_width": 320
+      },
+      {
+        "state": "demo-dialog-player",
+        "viewport": "390x844",
+        "player": [
+          340,
+          202
+        ],
+        "document_width": 390
+      },
+      {
+        "state": "demo-dialog-player",
+        "viewport": "1440x900",
+        "player": [
+          622,
+          351
+        ],
+        "document_width": 1440
+      },
+      {
+        "state": "demo-dialog-loading",
+        "viewport": "320x740",
+        "player": [
+          270,
+          202
+        ],
+        "document_width": 320
+      },
+      {
+        "state": "demo-dialog-error-150",
+        "viewport": "320x740",
+        "player": [
+          270,
+          202
+        ],
+        "document_width": 320
+      },
+      {
+        "state": "demo-dialog-limited",
+        "viewport": "320x740",
+        "player": [
+          270,
+          202
+        ],
+        "document_width": 320
+      },
+      {
+        "state": "refine-zoom200-player",
+        "viewport": "640x450",
+        "player": [
+          590,
+          272
+        ],
+        "document_width": 640
+      }
+    ]
+  },
+  "limitations": [
+    "Rendered by Playwright 1.61.1 with Chromium headless shell 149.0.7827.55 only. WebKit is not in the local browser cache, so Safari/iOS rendering is not verified; no physical phone was used.",
+    "Every YouTube host is routed to a deterministic stub. The \"player\" in these images is a labelled synthetic page (\"Synthetic embed stub: not YouTube\"), not Google's player; real provider behavior is covered separately by the headless provider proof and is not shown here.",
+    "Both variants run against identical intercepted synthetic API responses (page.route). The posters were rendered by the real ImageOnlyProcessor from the synthetic photo fixtures. These captures prove rendered frontend behavior only; authorization, server validation, storage and processing are proven by the backend, SQL and real-local integration lanes.",
+    "The baseline ignores the new `demo` and `video_link_mode` fields, so it renders every link as External video and copies the library link into workout rows, exactly as released code does.",
+    "New surfaces (demo dialog states, still selection, refinement checks) have no baseline equivalent; they are shown proposed-only and say so.",
+    "All media is synthetic test-pattern content labelled \"SYNTHETIC TEST MEDIA — NOT INSTRUCTION\"; YouTube ids are synthetic. No exercise demonstration accuracy is shown or certified.",
+    "Cold visibility and visual/content acceptance are not self-certified; they await owner review.",
+    "Two consecutive full captures at the final code head were 79/84 byte-identical; the other five differed by at most 767 pixels, confined to decoded media (poster downscaling, a video frame) and a one-pixel focus-ring row. No layout differed.",
+    "The proposed capture ran on commit 88b2d7a with uncommitted tracked changes limited to capture tooling (M frontend/e2e/exercise-guides-visual.capture.mjs); no product source differed."
+  ],
+  "images": [
+    {
+      "file": "images/tracker-top-baseline-320x740.png",
+      "state": "tracker-top",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "070429faa5c4c6874454910ff85bc43aec9b4fe6ac0e37c9ede7d86e74611aae",
+      "bytes": 82188,
+      "note": "Active exercise: photo + cues. Baseline opens every link externally; proposed shows View demo for a YouTube link.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 555,
+          "width": 138,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-external-card-baseline-320x740.png",
+      "state": "tracker-external-card",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "fd10e0e2c30b7624ba976e1299456eea41bb6afb3909cbd73c96eb78575055c2",
+      "bytes": 62894,
+      "note": "Generic (non-YouTube) link: unchanged External video link that opens a new tab.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 455,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -1390,
+          "width": 138,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-long-name-baseline-320x740.png",
+      "state": "tracker-long-name",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "c7980146e6d8ce631b39ef981dcc66325da6510baff9a84f191fe31d259fb3e7",
+      "bytes": 68516,
+      "note": "Long name, legacy YouTube link, no photo: proposed View demo; baseline external link.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 455,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -2227,
+          "width": 138,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/history-detail-baseline-320x740.png",
+      "state": "history-detail",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "430bd834a0414d8e5d58517705c2f555e1444bce547479c8c724b8111d89aa5f",
+      "bytes": 107134,
+      "note": "Completed workout: proposed \"Current demo\" (today's demo, labelled as not a historical record).",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/client-programs-baseline-320x740.png",
+      "state": "client-programs",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "aad6253576005118a0319f7d5ac3fb2cbee36d613b9d7c24c69a893b65ccecbd",
+      "bytes": 108172,
+      "note": "Assigned workout exercise list: proposed Demo action for YouTube links, Video for other links.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-library-demo-baseline-320x740.png",
+      "state": "coach-workout-library-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "e53e5e54e7f3b5630dc39c902690765ec575e3a695b9db98290dfeffcd3593fd",
+      "bytes": 89162,
+      "note": "Library exercise: proposed \"Use library demo\" (followed live, nothing copied); baseline copies the library URL into the row.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "workout-name-input",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-custom-demo-baseline-320x740.png",
+      "state": "coach-workout-custom-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "546401d6eb4f5e8cd0339cbdf1513c46ae18cb3a043fd5cde66720ce417b08a6",
+      "bytes": 89325,
+      "note": "Explicit custom link for this workout (override); library changes do not update it.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-legacy-demo-baseline-320x740.png",
+      "state": "coach-workout-legacy-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "28b527f3d938db6a3c0013439e80b4ffb81d04e3732f899ea17869688c1d685d",
+      "bytes": 88475,
+      "note": "Saved link from before inheritance: labelled Legacy, kept as is until the coach chooses.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-quick-demo-baseline-320x740.png",
+      "state": "coach-quick-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "ea71366101a8d3a7975799b4d7bd386f200024a9db995bdb8ee3da20919f5d54",
+      "bytes": 55249,
+      "note": "Quick session row, More: proposed library-demo choice (Quick v1 body unchanged); baseline has no demo control.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "quick-session-more-button",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-media-photos-baseline-320x740.png",
+      "state": "coach-media-photos",
+      "variant": "baseline",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "34f8f4b0e2cfa1eee61fc6dfb050dcf69fbbeb43680c6d7dfd604e26d42e3094",
+      "bytes": 51695,
+      "note": "Draft guide: proposed photo-first (no video upload in the default photos mode) with the optional still-from-clip; baseline offers video upload.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-top-baseline-390x844.png",
+      "state": "tracker-top",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "80645bf7bb15faae6b02d294d208e431ae9f84cbcfd7eee8371674d021d74aa5",
+      "bytes": 100907,
+      "note": "Active exercise: photo + cues. Baseline opens every link externally; proposed shows View demo for a YouTube link.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 543,
+          "width": 208,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-external-card-baseline-390x844.png",
+      "state": "tracker-external-card",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "3f2c89e03066d64a5bf25570bee8897151aeaea5e8ab66522cefa6988aff1f29",
+      "bytes": 79164,
+      "note": "Generic (non-YouTube) link: unchanged External video link that opens a new tab.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": {
+          "x": 16,
+          "y": 559,
+          "width": 358,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -1274,
+          "width": 208,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-long-name-baseline-390x844.png",
+      "state": "tracker-long-name",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "3d208feca7b759fcac56a52caf89b67f1a9e0bb314aabc4cd4c63d61d513545e",
+      "bytes": 83998,
+      "note": "Long name, legacy YouTube link, no photo: proposed View demo; baseline external link.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": {
+          "x": 16,
+          "y": 559,
+          "width": 358,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -2059,
+          "width": 208,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/history-detail-baseline-390x844.png",
+      "state": "history-detail",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "2cfbe49022bd709038fbec50a7bffaededd005afc8cb002498a5cd8f779aec0e",
+      "bytes": 145200,
+      "note": "Completed workout: proposed \"Current demo\" (today's demo, labelled as not a historical record).",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/client-programs-baseline-390x844.png",
+      "state": "client-programs",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "ae16cbba1ea1a6c7651e36965747f0407820a28eb4a4560688b0092f070346c9",
+      "bytes": 139390,
+      "note": "Assigned workout exercise list: proposed Demo action for YouTube links, Video for other links.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-library-demo-baseline-390x844.png",
+      "state": "coach-workout-library-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "f70be15b6e721216ff96c2acaaab84ac775df8b34654e5adecb4cc64c6e5cb66",
+      "bytes": 119280,
+      "note": "Library exercise: proposed \"Use library demo\" (followed live, nothing copied); baseline copies the library URL into the row.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "workout-name-input",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-custom-demo-baseline-390x844.png",
+      "state": "coach-workout-custom-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "0de0409051daaec44c7a1cbb96ce412078a1865e771f093d5d1e3368362a5786",
+      "bytes": 119805,
+      "note": "Explicit custom link for this workout (override); library changes do not update it.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-legacy-demo-baseline-390x844.png",
+      "state": "coach-workout-legacy-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "0dbafb6e967a897e394d0792bdbd23cb446ddd8d05ae8e91dd296913cf08beaf",
+      "bytes": 109509,
+      "note": "Saved link from before inheritance: labelled Legacy, kept as is until the coach chooses.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-quick-demo-baseline-390x844.png",
+      "state": "coach-quick-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "2d6b0432891a9cb3a4a59a2264d8cf8ea35213b8b25485ae937dbb8b4692f479",
+      "bytes": 67508,
+      "note": "Quick session row, More: proposed library-demo choice (Quick v1 body unchanged); baseline has no demo control.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "quick-session-more-button",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-media-photos-baseline-390x844.png",
+      "state": "coach-media-photos",
+      "variant": "baseline",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "68e3ea50cc6cbad4e7793facc3296ded93460d94ebd648a6c000143bbe0d3531",
+      "bytes": 59553,
+      "note": "Draft guide: proposed photo-first (no video upload in the default photos mode) with the optional still-from-clip; baseline offers video upload.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-top-baseline-1440x900.png",
+      "state": "tracker-top",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "5665493e29be5f2d0ba52637c6b4ef22a2aad86cab0a414507fd524adcf7e4ea",
+      "bytes": 259087,
+      "note": "Active exercise: photo + cues. Baseline opens every link externally; proposed shows View demo for a YouTube link.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": {
+          "x": 365,
+          "y": 770,
+          "width": 960,
+          "height": 90
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": 438,
+          "width": 347,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-external-card-baseline-1440x900.png",
+      "state": "tracker-external-card",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "4bdaa760c54ad82e2cb72d794837f9e4372966b42e12c9b94d3e9bc6e0dc7da0",
+      "bytes": 269262,
+      "note": "Generic (non-YouTube) link: unchanged External video link that opens a new tab.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": {
+          "x": 365,
+          "y": 738,
+          "width": 960,
+          "height": 90
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": -983,
+          "width": 347,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-long-name-baseline-1440x900.png",
+      "state": "tracker-long-name",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "aac6c0e6d368cbdcfa9086c318317fa7171786a9e54f266c0c7bfa206c48f4a6",
+      "bytes": 276329,
+      "note": "Long name, legacy YouTube link, no photo: proposed View demo; baseline external link.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": {
+          "x": 365,
+          "y": 738,
+          "width": 960,
+          "height": 90
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": -1586,
+          "width": 347,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/history-detail-baseline-1440x900.png",
+      "state": "history-detail",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "ff773c4d65fedb44949d3706aaeb1ac9eb6880152c1ff4b1fb47041ab4c99d17",
+      "bytes": 318711,
+      "note": "Completed workout: proposed \"Current demo\" (today's demo, labelled as not a historical record).",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/client-programs-baseline-1440x900.png",
+      "state": "client-programs",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "db19dc0f2f0f1d5841b03aafaeaf87345097a053cd2e972d0f8eb7f4452a0c72",
+      "bytes": 258784,
+      "note": "Assigned workout exercise list: proposed Demo action for YouTube links, Video for other links.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-library-demo-baseline-1440x900.png",
+      "state": "coach-workout-library-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "d67d662bfdec5cbc484b940ba7fe8d5bc0dcc0aacc53ee6c59142d04024fc4e8",
+      "bytes": 277057,
+      "note": "Library exercise: proposed \"Use library demo\" (followed live, nothing copied); baseline copies the library URL into the row.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "workout-rail-row",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-custom-demo-baseline-1440x900.png",
+      "state": "coach-workout-custom-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "53e2117f7f9433e81770a6f459f15261f4c7c7f1dd14d171e7b13fc28db6b038",
+      "bytes": 274348,
+      "note": "Explicit custom link for this workout (override); library changes do not update it.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-legacy-demo-baseline-1440x900.png",
+      "state": "coach-workout-legacy-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "29eaf816ed11fd03dc5b2b8a73f5e8b2cbd1204ff0d261bc1c0440d1adefe02d",
+      "bytes": 271188,
+      "note": "Saved link from before inheritance: labelled Legacy, kept as is until the coach chooses.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-quick-demo-baseline-1440x900.png",
+      "state": "coach-quick-demo",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "596d2768aa361e8e030418f3bdd97de40372bda21f1f30060bcb44dede61c62b",
+      "bytes": 165547,
+      "note": "Quick session row, More: proposed library-demo choice (Quick v1 body unchanged); baseline has no demo control.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "quick-session-more-button",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-media-photos-baseline-1440x900.png",
+      "state": "coach-media-photos",
+      "variant": "baseline",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "452b167517ba0c9cb5a805c134b7741fef05ace1eb1bf6d949850dbf8e547c4a",
+      "bytes": 159601,
+      "note": "Draft guide: proposed photo-first (no video upload in the default photos mode) with the optional still-from-clip; baseline offers video upload.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-top-proposed-320x740.png",
+      "state": "tracker-top",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "51f563fd70a45ba9152ee8cade1aa377c545e9614eadba4895d94cfb9f877172",
+      "bytes": 81738,
+      "note": "Active exercise: photo + cues. Baseline opens every link externally; proposed shows View demo for a YouTube link.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 555,
+          "width": 138,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-demo-focus-proposed-320x740.png",
+      "state": "tracker-demo-focus",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "21abb7628ac3c780dfe77119b68691ca7961ccf1d7d3c2eb026e088779bdab1c",
+      "bytes": 82616,
+      "note": "Keyboard focus on View demo (focus ring, 44px target).",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 555,
+          "width": 138,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "tracker-exercise-demo",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/demo-dialog-facade-proposed-320x740.png",
+      "state": "demo-dialog-facade",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "c8107bc05cb94fe58f89a1d9a996370a76b9e26fa23a9f16e45075b4ba439aa6",
+      "bytes": 60355,
+      "note": "Demo dialog before Play: first-party photo, cues and notice only. Zero provider requests.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 555,
+          "width": 138,
+          "height": 48
+        },
+        "player": null,
+        "facade": {
+          "x": 25,
+          "y": 223,
+          "width": 356,
+          "height": 200
+        },
+        "dialog": {
+          "x": 0,
+          "y": 138,
+          "width": 320,
+          "height": 464
+        },
+        "focused": "exercise-demo-play",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/demo-dialog-player-proposed-320x740.png",
+      "state": "demo-dialog-player",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "b68e54245d7262472e84b3930ed124e503f7c6f55c8a15f8bc8aa673c5d1db96",
+      "bytes": 40532,
+      "note": "After Play: one privacy-enhanced player (stub page here, not YouTube) at least 200x200; Open on YouTube stays.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 555,
+          "width": 138,
+          "height": 48
+        },
+        "player": {
+          "x": 25,
+          "y": 208,
+          "width": 270,
+          "height": 202
+        },
+        "facade": null,
+        "dialog": {
+          "x": 0,
+          "y": 123,
+          "width": 320,
+          "height": 494
+        },
+        "focused": "exercise-demo-player",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/tracker-external-card-proposed-320x740.png",
+      "state": "tracker-external-card",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "fd10e0e2c30b7624ba976e1299456eea41bb6afb3909cbd73c96eb78575055c2",
+      "bytes": 62894,
+      "note": "Generic (non-YouTube) link: unchanged External video link that opens a new tab.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 455,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -1390,
+          "width": 138,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "tracker-exercise-demo",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/tracker-long-name-proposed-320x740.png",
+      "state": "tracker-long-name",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "a9d284efd8e9d2b918367c9de769c1210d9691e4e244dd277623b9424da102dc",
+      "bytes": 67989,
+      "note": "Long name, legacy YouTube link, no photo: proposed View demo; baseline external link.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 455,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -2227,
+          "width": 138,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "tracker-exercise-demo",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/history-detail-proposed-320x740.png",
+      "state": "history-detail",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "a3fa5c78734323f780a1684268e8df80a45854f8fe6684a71942d1feb1a4557b",
+      "bytes": 104437,
+      "note": "Completed workout: proposed \"Current demo\" (today's demo, labelled as not a historical record).",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/history-demo-dialog-proposed-320x740.png",
+      "state": "history-demo-dialog",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "5d326a07a866410026dd78a3108800e1764429376c60309943ea25c5416f2533",
+      "bytes": 61625,
+      "note": "History demo dialog: labelled current demo, not what was shown during the workout.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": {
+          "x": 25,
+          "y": 233,
+          "width": 356,
+          "height": 200
+        },
+        "dialog": {
+          "x": 0,
+          "y": 128,
+          "width": 320,
+          "height": 484
+        },
+        "focused": "exercise-demo-play",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/client-programs-proposed-320x740.png",
+      "state": "client-programs",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "a6a96f3494d942abb93662495ef7969c7b61b7cf38b629f8b903ccb862cfb6d2",
+      "bytes": 108037,
+      "note": "Assigned workout exercise list: proposed Demo action for YouTube links, Video for other links.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/client-programs-dialog-proposed-320x740.png",
+      "state": "client-programs-dialog",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "ad31685441bca1ee35fd26a90f509eaa9b211da848c55fee231279d39f61d4e1",
+      "bytes": 44234,
+      "note": "Demo dialog from the plan view: no photo context, exercise name facade.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": {
+          "x": 25,
+          "y": 250,
+          "width": 356,
+          "height": 200
+        },
+        "dialog": {
+          "x": 0,
+          "y": 165,
+          "width": 320,
+          "height": 410
+        },
+        "focused": "exercise-demo-play",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-library-demo-proposed-320x740.png",
+      "state": "coach-workout-library-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "f8ca23434a1969ebd99ab9f2e89daf0c2cdf0c11d6e33f48fd3dc2a82fa8ecff",
+      "bytes": 96282,
+      "note": "Library exercise: proposed \"Use library demo\" (followed live, nothing copied); baseline copies the library URL into the row.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "workout-name-input",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-custom-demo-proposed-320x740.png",
+      "state": "coach-workout-custom-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "fa33f6bd21c658fe0aa9b2cdbfcec58885761c0f72bec636ca588f022c4e5285",
+      "bytes": 94420,
+      "note": "Explicit custom link for this workout (override); library changes do not update it.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-legacy-demo-proposed-320x740.png",
+      "state": "coach-workout-legacy-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "450112183715fee61877073b01eb446c7588e79341006920bbb6f439862e7746",
+      "bytes": 98895,
+      "note": "Saved link from before inheritance: labelled Legacy, kept as is until the coach chooses.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-quick-demo-proposed-320x740.png",
+      "state": "coach-quick-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "eb643ea300720eaea549ab66fd9677a92fd3d51e629232d7325bd6eed08919ec",
+      "bytes": 67671,
+      "note": "Quick session row, More: proposed library-demo choice (Quick v1 body unchanged); baseline has no demo control.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "quick-session-more-button",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-media-photos-proposed-320x740.png",
+      "state": "coach-media-photos",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "34f8f4b0e2cfa1eee61fc6dfb050dcf69fbbeb43680c6d7dfd604e26d42e3094",
+      "bytes": 51695,
+      "note": "Draft guide: proposed photo-first (no video upload in the default photos mode) with the optional still-from-clip; baseline offers video upload.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-still-confirmed-proposed-320x740.png",
+      "state": "coach-still-confirmed",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "9d5fba0ed2eecec0506dcfdc78592c25f0b93332e40ea9c7c44e50a40ac1b4c0",
+      "bytes": 43959,
+      "note": "Local still selection: only the chosen frame is uploaded; the clip stays on this device.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-top-proposed-390x844.png",
+      "state": "tracker-top",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "185b6feeb3d67ab5b8926ad3b76a25edd25ec9953e11990bd69f0ca4bc1c5b8e",
+      "bytes": 100485,
+      "note": "Active exercise: photo + cues. Baseline opens every link externally; proposed shows View demo for a YouTube link.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 543,
+          "width": 208,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-demo-focus-proposed-390x844.png",
+      "state": "tracker-demo-focus",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "559c27ed5b5b2f154eb7915d77ce3c914035e1651a91ca821458f0b7d7dbde6c",
+      "bytes": 101279,
+      "note": "Keyboard focus on View demo (focus ring, 44px target).",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 543,
+          "width": 208,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "tracker-exercise-demo",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/demo-dialog-facade-proposed-390x844.png",
+      "state": "demo-dialog-facade",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "a9b6325603dc8e4e35158a0e3009c55dc96f98c5deeb376d9c94db35210aa984",
+      "bytes": 69390,
+      "note": "Demo dialog before Play: first-party photo, cues and notice only. Zero provider requests.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 543,
+          "width": 208,
+          "height": 48
+        },
+        "player": null,
+        "facade": {
+          "x": 25,
+          "y": 275,
+          "width": 356,
+          "height": 200
+        },
+        "dialog": {
+          "x": 0,
+          "y": 190,
+          "width": 390,
+          "height": 464
+        },
+        "focused": "exercise-demo-play",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/demo-dialog-player-proposed-390x844.png",
+      "state": "demo-dialog-player",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "8d4c775995e9b3c8907165f9d300cf818c8b9656c4b63b603e6c269577391119",
+      "bytes": 48976,
+      "note": "After Play: one privacy-enhanced player (stub page here, not YouTube) at least 200x200; Open on YouTube stays.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": {
+          "x": 16,
+          "y": 644,
+          "width": 358,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 543,
+          "width": 208,
+          "height": 48
+        },
+        "player": {
+          "x": 25,
+          "y": 270,
+          "width": 340,
+          "height": 202
+        },
+        "facade": null,
+        "dialog": {
+          "x": 0,
+          "y": 185,
+          "width": 390,
+          "height": 474
+        },
+        "focused": "exercise-demo-player",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/tracker-external-card-proposed-390x844.png",
+      "state": "tracker-external-card",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "d5ddcd6f9a2134eeffb065b01f3b996c082bb5b850a0a50b267fd460184a0d25",
+      "bytes": 79230,
+      "note": "Generic (non-YouTube) link: unchanged External video link that opens a new tab.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": {
+          "x": 16,
+          "y": 559,
+          "width": 358,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -1274,
+          "width": 208,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "tracker-exercise-demo",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/tracker-long-name-proposed-390x844.png",
+      "state": "tracker-long-name",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "4a04744b64dd1745482daa47948264479ffc272893d1528e3672894500a138c1",
+      "bytes": 83564,
+      "note": "Long name, legacy YouTube link, no photo: proposed View demo; baseline external link.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": {
+          "x": 16,
+          "y": 559,
+          "width": 358,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": -2059,
+          "width": 208,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "tracker-exercise-demo",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/history-detail-proposed-390x844.png",
+      "state": "history-detail",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "41b661c65c7185eac6629b9d69fd77e9ef632a5ebacabf743d0bea19d2f94646",
+      "bytes": 143537,
+      "note": "Completed workout: proposed \"Current demo\" (today's demo, labelled as not a historical record).",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/history-demo-dialog-proposed-390x844.png",
+      "state": "history-demo-dialog",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "164c025d2ca7aadf569e625e051f2a2e1f2bb11f82efe3a62b3342ceb1d1f9b2",
+      "bytes": 80437,
+      "note": "History demo dialog: labelled current demo, not what was shown during the workout.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": {
+          "x": 25,
+          "y": 285,
+          "width": 356,
+          "height": 200
+        },
+        "dialog": {
+          "x": 0,
+          "y": 180,
+          "width": 390,
+          "height": 484
+        },
+        "focused": "exercise-demo-play",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/client-programs-proposed-390x844.png",
+      "state": "client-programs",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "97cde4178e617c9fbd1fb6d4b37fedd80a9b99f506414cf7e72ae898edfac3eb",
+      "bytes": 139243,
+      "note": "Assigned workout exercise list: proposed Demo action for YouTube links, Video for other links.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/client-programs-dialog-proposed-390x844.png",
+      "state": "client-programs-dialog",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "046ef3dd49f36a55a1bfdd93fe0a3a805b53118ce2d04edf233f8075ae85d371",
+      "bytes": 51642,
+      "note": "Demo dialog from the plan view: no photo context, exercise name facade.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": {
+          "x": 25,
+          "y": 302,
+          "width": 356,
+          "height": 200
+        },
+        "dialog": {
+          "x": 0,
+          "y": 217,
+          "width": 390,
+          "height": 410
+        },
+        "focused": "exercise-demo-play",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-library-demo-proposed-390x844.png",
+      "state": "coach-workout-library-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "44e8874aa02d8dbbac63c3951ad33fc59ba549424eb3dd2f576e54d52f7a1ee7",
+      "bytes": 118680,
+      "note": "Library exercise: proposed \"Use library demo\" (followed live, nothing copied); baseline copies the library URL into the row.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "workout-name-input",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-custom-demo-proposed-390x844.png",
+      "state": "coach-workout-custom-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "e47d02ff4b93b2e97a750bdced81056da569934d7a4b7d11497623045fd3b7ab",
+      "bytes": 124654,
+      "note": "Explicit custom link for this workout (override); library changes do not update it.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-legacy-demo-proposed-390x844.png",
+      "state": "coach-workout-legacy-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "6a412d199bb318af1fbee444cef694f994d5bfc740b06154abccbeebd47ed84f",
+      "bytes": 127428,
+      "note": "Saved link from before inheritance: labelled Legacy, kept as is until the coach chooses.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-quick-demo-proposed-390x844.png",
+      "state": "coach-quick-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "9d5ba63e26bb21f737e236713e86721e8f7163ef3d3e7727332b3da58aec598b",
+      "bytes": 81812,
+      "note": "Quick session row, More: proposed library-demo choice (Quick v1 body unchanged); baseline has no demo control.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "quick-session-more-button",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-media-photos-proposed-390x844.png",
+      "state": "coach-media-photos",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "0951225a51baf3d10e90eabbe1d26074e0d73784eaf9744a38d867ef931f7ee7",
+      "bytes": 59503,
+      "note": "Draft guide: proposed photo-first (no video upload in the default photos mode) with the optional still-from-clip; baseline offers video upload.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-still-confirmed-proposed-390x844.png",
+      "state": "coach-still-confirmed",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "ae13c561fb11018931c4b6b670e0e89676d6ded4f2d8d1c457ecd3b5998caf2b",
+      "bytes": 54418,
+      "note": "Local still selection: only the chosen frame is uploaded; the clip stays on this device.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-top-proposed-1440x900.png",
+      "state": "tracker-top",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "d5cba58f0a6c18244070ede4bf10876f7f9b583697feffd0dde385b153742fe0",
+      "bytes": 258496,
+      "note": "Active exercise: photo + cues. Baseline opens every link externally; proposed shows View demo for a YouTube link.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": {
+          "x": 365,
+          "y": 770,
+          "width": 960,
+          "height": 90
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": 438,
+          "width": 347,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/tracker-demo-focus-proposed-1440x900.png",
+      "state": "tracker-demo-focus",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "0be8e9cf0e100e19af2d086b4f760c41d18b9351ffa300afbb32394e795bcf7f",
+      "bytes": 260201,
+      "note": "Keyboard focus on View demo (focus ring, 44px target).",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": {
+          "x": 365,
+          "y": 770,
+          "width": 960,
+          "height": 90
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": 438,
+          "width": 347,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "tracker-exercise-demo",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/demo-dialog-facade-proposed-1440x900.png",
+      "state": "demo-dialog-facade",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "90d6960aae227d35e5734383f5feef65b817f6a6e0b32a96adee78b842890cb7",
+      "bytes": 151690,
+      "note": "Demo dialog before Play: first-party photo, cues and notice only. Zero provider requests.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": {
+          "x": 365,
+          "y": 770,
+          "width": 960,
+          "height": 90
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": 438,
+          "width": 347,
+          "height": 48
+        },
+        "player": null,
+        "facade": {
+          "x": 409,
+          "y": 228,
+          "width": 622,
+          "height": 350
+        },
+        "dialog": {
+          "x": 384,
+          "y": 143,
+          "width": 672,
+          "height": 614
+        },
+        "focused": "exercise-demo-play",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/demo-dialog-player-proposed-1440x900.png",
+      "state": "demo-dialog-player",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "b222378dc0deca9dd6750141473228a55bc872eb4f2728698c480538d33f1ae9",
+      "bytes": 99430,
+      "note": "After Play: one privacy-enhanced player (stub page here, not YouTube) at least 200x200; Open on YouTube stays.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": {
+          "x": 365,
+          "y": 770,
+          "width": 960,
+          "height": 90
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": 438,
+          "width": 347,
+          "height": 48
+        },
+        "player": {
+          "x": 409,
+          "y": 234,
+          "width": 622,
+          "height": 351
+        },
+        "facade": null,
+        "dialog": {
+          "x": 384,
+          "y": 149,
+          "width": 672,
+          "height": 603
+        },
+        "focused": "exercise-demo-player",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/tracker-external-card-proposed-1440x900.png",
+      "state": "tracker-external-card",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "647a42244c7aee86acd4f8a31caa8429384a114c30b19b1511380da0c7b780f2",
+      "bytes": 268682,
+      "note": "Generic (non-YouTube) link: unchanged External video link that opens a new tab.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": {
+          "x": 365,
+          "y": 738,
+          "width": 960,
+          "height": 90
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": -983,
+          "width": 347,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "tracker-exercise-demo",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/tracker-long-name-proposed-1440x900.png",
+      "state": "tracker-long-name",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "df55bfa858e1983947e08ceef955c236be0b7837637de13a76c6d9c61b81ae3a",
+      "bytes": 275843,
+      "note": "Long name, legacy YouTube link, no photo: proposed View demo; baseline external link.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": {
+          "x": 365,
+          "y": 738,
+          "width": 960,
+          "height": 90
+        },
+        "firstSetInput": {
+          "x": 426,
+          "y": -1586,
+          "width": 347,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "tracker-exercise-demo",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/history-detail-proposed-1440x900.png",
+      "state": "history-detail",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "bdcc6f3e7b900162623abb998a505361dd63f051de06a756ef2bed1120ba900f",
+      "bytes": 312312,
+      "note": "Completed workout: proposed \"Current demo\" (today's demo, labelled as not a historical record).",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/history-demo-dialog-proposed-1440x900.png",
+      "state": "history-demo-dialog",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "0abf6b122e0ead31feec70102ac301334cd3d99772ddbdfcdb2b71fa3bbb8984",
+      "bytes": 161994,
+      "note": "History demo dialog: labelled current demo, not what was shown during the workout.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": {
+          "x": 409,
+          "y": 238,
+          "width": 622,
+          "height": 350
+        },
+        "dialog": {
+          "x": 384,
+          "y": 133,
+          "width": 672,
+          "height": 634
+        },
+        "focused": "exercise-demo-play",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/client-programs-proposed-1440x900.png",
+      "state": "client-programs",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "85167e7396a524e820510f5f1a99964fd5cebf81cd8519eb321ad2a784567b68",
+      "bytes": 258768,
+      "note": "Assigned workout exercise list: proposed Demo action for YouTube links, Video for other links.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/client-programs-dialog-proposed-1440x900.png",
+      "state": "client-programs-dialog",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "f71ee998231e2416b3230dd6c6cbe9a8ed1df0467ffc4ed203842c8d2d850536",
+      "bytes": 91570,
+      "note": "Demo dialog from the plan view: no photo context, exercise name facade.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": {
+          "x": 409,
+          "y": 255,
+          "width": 622,
+          "height": 350
+        },
+        "dialog": {
+          "x": 384,
+          "y": 170,
+          "width": 672,
+          "height": 560
+        },
+        "focused": "exercise-demo-play",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-library-demo-proposed-1440x900.png",
+      "state": "coach-workout-library-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "cfe6529be33f77d6db7ce2d11f82b473ad217e721fd0846f5541afdf657bf776",
+      "bytes": 280972,
+      "note": "Library exercise: proposed \"Use library demo\" (followed live, nothing copied); baseline copies the library URL into the row.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "workout-rail-row",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-custom-demo-proposed-1440x900.png",
+      "state": "coach-workout-custom-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "ddf4a06fd4d5359aca740d69e2cc601e88ec7a071e233a95741faee926930ea5",
+      "bytes": 271563,
+      "note": "Explicit custom link for this workout (override); library changes do not update it.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-workout-legacy-demo-proposed-1440x900.png",
+      "state": "coach-workout-legacy-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "872d5d5efa5751dda23b14da39f78536ab97bec08f64bdc4755d47e531a7a741",
+      "bytes": 274128,
+      "note": "Saved link from before inheritance: labelled Legacy, kept as is until the coach chooses.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-quick-demo-proposed-1440x900.png",
+      "state": "coach-quick-demo",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "592fa87aafda0feb69bcc9259fbd31c8872def00e69d078d2c7765035e0fc52d",
+      "bytes": 170346,
+      "note": "Quick session row, More: proposed library-demo choice (Quick v1 body unchanged); baseline has no demo control.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "quick-session-more-button",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-media-photos-proposed-1440x900.png",
+      "state": "coach-media-photos",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "fe789b1b60885f5e7e924399087d8e6e2304e2336bf6d177846111a9f15638b8",
+      "bytes": 128889,
+      "note": "Draft guide: proposed photo-first (no video upload in the default photos mode) with the optional still-from-clip; baseline offers video upload.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BUTTON",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/coach-still-confirmed-proposed-1440x900.png",
+      "state": "coach-still-confirmed",
+      "variant": "proposed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "23316cb34731574d97fbffdf06db8c6657ce241ba865344404403eae0b85c39d",
+      "bytes": 111944,
+      "note": "Local still selection: only the chosen frame is uploaded; the clip stays on this device.",
+      "metrics": {
+        "scrollWidth": 1440,
+        "innerWidth": 1440,
+        "dock": null,
+        "firstSetInput": null,
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "BODY",
+        "providerRequests": 0
+      }
+    },
+    {
+      "file": "images/demo-dialog-loading-proposed-320x740.png",
+      "state": "demo-dialog-loading",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "dae6f9c337719f92bdc03771ef53f46a2fb5f0a0bf63e257ddef10ad5a487f2d",
+      "bytes": 39221,
+      "note": "Slow player: calm status (spinner static under reduced motion); Open on YouTube stays.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 555,
+          "width": 138,
+          "height": 48
+        },
+        "player": {
+          "x": 25,
+          "y": 228,
+          "width": 270,
+          "height": 202
+        },
+        "facade": null,
+        "dialog": {
+          "x": 0,
+          "y": 143,
+          "width": 320,
+          "height": 454
+        },
+        "focused": "exercise-demo-player",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/demo-dialog-error-150-proposed-320x740.png",
+      "state": "demo-dialog-error-150",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "45634186fb55942ea171faa6ec487a7ea150da3b73755b15a7dee6d805356ebd",
+      "bytes": 38010,
+      "note": "Embedding refused (101/150): cause, Try again and Open on YouTube.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 555,
+          "width": 138,
+          "height": 48
+        },
+        "player": {
+          "x": 25,
+          "y": 159,
+          "width": 270,
+          "height": 202
+        },
+        "facade": null,
+        "dialog": {
+          "x": 0,
+          "y": 74,
+          "width": 320,
+          "height": 592
+        },
+        "focused": "exercise-demo-player",
+        "providerRequests": 4
+      }
+    },
+    {
+      "file": "images/demo-dialog-limited-proposed-320x740.png",
+      "state": "demo-dialog-limited",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "6f3ec812090ce25ac268baeb2e155a3bdec34f7342109772acf14fbc7cc9bb99",
+      "bytes": 39327,
+      "note": "IFrame API blocked: player still mounted, honest limited-controls note, external fallback.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 555,
+          "width": 138,
+          "height": 48
+        },
+        "player": {
+          "x": 25,
+          "y": 198,
+          "width": 270,
+          "height": 202
+        },
+        "facade": null,
+        "dialog": {
+          "x": 0,
+          "y": 113,
+          "width": 320,
+          "height": 514
+        },
+        "focused": "exercise-demo-player",
+        "providerRequests": 6
+      }
+    },
+    {
+      "file": "images/demo-dialog-photo-unavailable-proposed-320x740.png",
+      "state": "demo-dialog-photo-unavailable",
+      "variant": "proposed",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "22b9d26af8b5a37d07c3baf97c8df8524ea74392741e3aa571517ef28d3a55c2",
+      "bytes": 42688,
+      "note": "Photo link expired: the facade shows the exercise name; Play still works.",
+      "metrics": {
+        "scrollWidth": 320,
+        "innerWidth": 320,
+        "dock": {
+          "x": 16,
+          "y": 540,
+          "width": 288,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 555,
+          "width": 138,
+          "height": 48
+        },
+        "player": null,
+        "facade": {
+          "x": 25,
+          "y": 223,
+          "width": 356,
+          "height": 200
+        },
+        "dialog": {
+          "x": 0,
+          "y": 138,
+          "width": 320,
+          "height": 464
+        },
+        "focused": "exercise-demo-play",
+        "providerRequests": 6
+      }
+    },
+    {
+      "file": "images/refine-zoom200-player-proposed-640x450.png",
+      "state": "refine-zoom200-player",
+      "variant": "proposed",
+      "viewport": {
+        "width": 640,
+        "height": 450
+      },
+      "sha256": "dc56aade9352e72441093cf92385bb3f6c9a95e04a5132461d3c7e4012d2edd8",
+      "bytes": 20616,
+      "note": "1280x900 at 200% zoom (640x450 CSS px): dialog scrolls, player stays at least 200x200, no overflow.",
+      "metrics": {
+        "scrollWidth": 640,
+        "innerWidth": 640,
+        "dock": {
+          "x": 16,
+          "y": 264,
+          "width": 608,
+          "height": 90
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 234,
+          "width": 171,
+          "height": 48
+        },
+        "player": {
+          "x": 25,
+          "y": 103,
+          "width": 590,
+          "height": 272
+        },
+        "facade": null,
+        "dialog": {
+          "x": 0,
+          "y": 18,
+          "width": 640,
+          "height": 414
+        },
+        "focused": "exercise-demo-player",
+        "providerRequests": 2
+      }
+    },
+    {
+      "file": "images/refine-keyboard-short-proposed-390x420.png",
+      "state": "refine-keyboard-short",
+      "variant": "proposed",
+      "viewport": {
+        "width": 390,
+        "height": 420
+      },
+      "sha256": "c94550ac6b8df7b31b68aac5c3adcb911a06cae532d69f76a3c680b921c3a92a",
+      "bytes": 40160,
+      "note": "Short (keyboard-open) viewport: the focused weight input stays above the pinned timer/Finish controls.",
+      "metrics": {
+        "scrollWidth": 390,
+        "innerWidth": 390,
+        "dock": {
+          "x": 16,
+          "y": 220,
+          "width": 358,
+          "height": 104
+        },
+        "firstSetInput": {
+          "x": 77,
+          "y": 122,
+          "width": 208,
+          "height": 48
+        },
+        "player": null,
+        "facade": null,
+        "dialog": null,
+        "focused": "INPUT",
+        "providerRequests": 2
+      }
+    }
+  ]
+}

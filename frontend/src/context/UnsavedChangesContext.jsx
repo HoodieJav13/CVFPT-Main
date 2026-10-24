@@ -6,11 +6,13 @@ const snapshot = (form) => JSON.stringify(form, (key, value) => key === '_uid' ?
 const WARNING = 'You have unsaved workout changes. Discard them and continue?';
 export function UnsavedChangesProvider({ children }) {
   const entries = useRef(new Map());
-  const register = useCallback((id, dirty, onDiscard) => { entries.current.set(id, { dirty, onDiscard }); return () => entries.current.delete(id); }, []);
+  const register = useCallback((id, dirty, onDiscard, warning) => { entries.current.set(id, { dirty, onDiscard, warning }); return () => entries.current.delete(id); }, []);
   const confirmDiscard = useCallback(() => {
     const dirty = [...entries.current.values()].filter((entry) => entry.dirty);
     if (!dirty.length) return true;
-    if (!window.confirm(WARNING)) return false;
+    // One dirty form names itself; several, or a form without its own text, keep the original wording.
+    const warning = dirty.length === 1 && dirty[0].warning ? dirty[0].warning : WARNING;
+    if (!window.confirm(warning)) return false;
     dirty.forEach((entry) => entry.onDiscard?.());
     return true;
   }, []);
@@ -31,12 +33,12 @@ export function UnsavedChangesProvider({ children }) {
   return <Context.Provider value={{ register, confirmDiscard }}>{children}</Context.Provider>;
 }
 export function useDiscardChanges() { return useContext(Context).confirmDiscard; }
-export function useUnsavedChanges(dirty, onDiscard) {
+export function useUnsavedChanges(dirty, onDiscard, warning) {
   const id = useId();
   const { register } = useContext(Context);
   const discardRef = useRef(onDiscard);
   discardRef.current = onDiscard;
-  useLayoutEffect(() => register(id, dirty, () => discardRef.current?.()), [id, dirty, register]);
+  useLayoutEffect(() => register(id, dirty, () => discardRef.current?.(), warning), [id, dirty, register, warning]);
 }
 export function useFormChanges(form, identity, active = true, onDiscard) {
   const [baseline, setBaseline] = useState(() => snapshot(form));

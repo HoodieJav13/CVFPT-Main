@@ -91,3 +91,36 @@ export function lastTimeFills(sets, occurrence, exercise = {}) {
   });
   return fills;
 }
+
+/**
+ * Bounded refresh (L12): adopt the server copy of the log, except for sets the
+ * person is still typing into. A draft keeps its typed values AND the revision
+ * it was typed against, so saving it later is checked against what the other
+ * person changed meanwhile (both values are kept if they differ).
+ */
+export function mergeRefresh(localLog, serverLog, draftSetIds) {
+  if (!localLog || !draftSetIds?.size) return serverLog;
+  const localSets = new Map(localLog.exercises.flatMap((exercise) => exercise.sets.map((set) => [set.id, set])));
+  return {
+    ...serverLog,
+    exercises: serverLog.exercises.map((exercise) => ({
+      ...exercise,
+      sets: exercise.sets.map((set) => {
+        const draft = draftSetIds.has(set.id) ? localSets.get(set.id) : null;
+        if (!draft) return set;
+        const kept = { ...set, revision: draft.revision ?? 0 };
+        CLIENT_SET_FIELDS.forEach((field) => { kept[field] = draft[field]; });
+        return kept;
+      }),
+    })),
+  };
+}
+
+/** Plain-language freshness for bounded refresh labels. */
+export function freshnessLabel(lastCheckedAt, now = Date.now(), { online = true, everySeconds } = {}) {
+  if (!lastCheckedAt) return online ? 'Not checked with the server yet' : 'Offline · not checked with the server yet';
+  const seconds = Math.max(0, Math.round((now - lastCheckedAt) / 1000));
+  const age = seconds < 60 ? `${seconds} s ago` : `${Math.round(seconds / 60)} min ago`;
+  if (!online) return `Offline · last checked ${age}; showing this device's copy`;
+  return everySeconds ? `Checked ${age} · refreshes every ${everySeconds} s` : `Checked ${age}`;
+}

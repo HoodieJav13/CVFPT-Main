@@ -58,6 +58,27 @@ export function applyOptimistic(log, operation) {
       };
     });
   }
+  if (operation.kind === 'substitute') {
+    // pt-session-events/v1 (PT-Sub): a swap usable now (coach backup, or
+    // chosen offline) shows its replacement immediately; the original row and
+    // its prescription stay as they are. An online suggestion waits for the
+    // coach, so only the waiting state is shown.
+    const swap = operation.swap;
+    const marked = updateExercise(log, operation.exerciseId, (exercise) => ({ ...exercise, pending_swap: swap }));
+    if (!swap.activate || marked.exercises.some((exercise) => exercise.id === swap.replacementId)) return marked;
+    const index = marked.exercises.findIndex((exercise) => exercise.id === operation.exerciseId);
+    const original = marked.exercises[index];
+    const replacement = {
+      id: swap.replacementId, workout_log_id: log.id, exercise_name: swap.name, exercise_library_id: swap.libraryId,
+      substitutes_log_exercise_id: operation.exerciseId, substitution_id: swap.id, source_workout_exercise_id: null,
+      prescribed_sets: swap.targets.sets ? String(swap.targets.sets) : null, prescribed_reps: swap.targets.reps || null,
+      prescribed_load_value: swap.targets.load_value ?? null, prescribed_load_unit: swap.targets.load_value == null ? null : (swap.targets.load_unit || 'lb'),
+      tracking_type: 'reps_weight', position: original?.position ?? 0, plan_revision: 0, backups: [], sets: [], local_only: true,
+    };
+    const exercises = [...marked.exercises];
+    exercises.splice(index + 1, 0, replacement);
+    return { ...marked, exercises };
+  }
   if (operation.kind === 'archive') {
     return updateExercise(log, operation.exerciseId, (exercise) => ({
       ...exercise,
@@ -68,6 +89,37 @@ export function applyOptimistic(log, operation) {
   // active locally (finished-locally is derived from queue contents) until
   // the server confirms — we do not celebrate unsynced data.
   return log;
+}
+
+// Entries the server can no longer accept because the workout was finished
+// (e.g. by the coach) before this device reconnected. They are kept on the
+// device and shown, never silently deleted (review P2-1). Set values on
+// existing sets do reach the server as a disagreement for the coach.
+export function undeliveredStorageKey(logId) {
+  return `cvf_workout_undelivered_${logId}`;
+}
+
+export function readUndelivered(logId) {
+  try { return JSON.parse(localStorage.getItem(undeliveredStorageKey(logId)) || '[]'); } catch { return []; }
+}
+
+function dropUndelivered(logId, operationId) {
+  try {
+    const rows = readUndelivered(logId).filter((row) => row.id !== operationId);
+    if (rows.length) localStorage.setItem(undeliveredStorageKey(logId), JSON.stringify(rows));
+    else localStorage.removeItem(undeliveredStorageKey(logId));
+  } catch { /* nothing kept */ }
+}
+
+function keepUndelivered(logId, operation) {
+  try {
+    const rows = readUndelivered(logId).filter((row) => row.id !== operation.id);
+    rows.push({ ...operation, kept_at: new Date().toISOString() });
+    localStorage.setItem(undeliveredStorageKey(logId), JSON.stringify(rows));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function outboxStorageKey(logId) {
@@ -83,7 +135,30 @@ export function hasQueuedCompleteFor(logId) {
   return readQueue(logId).some((operation) => operation.kind === 'complete');
 }
 
-export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRejected } = {}) {
+// pt-session-events/v1: every set write carries an idempotency id, the set
+// revision this device last saw, a per-device sequence and whether it was made
+// offline, so the server can replay safely and keep (never overwrite) a value
+// someone else changed meanwhile (L12/CONTRACT.md §1).
+function nextLocalSeq(logId) {
+  const key = `cvf_workout_seq_${logId}`;
+  let value = 0;
+  try { value = Number(localStorage.getItem(key)) || 0; localStorage.setItem(key, String(value + 1)); } catch { /* sequence is advisory */ }
+  return value + 1;
+}
+
+export function setEventEnvelope(log, operation, eventId, logId) {
+  const exercise = log?.exercises?.find((row) => row.id === operation.exerciseId);
+  const set = exercise?.sets?.find((row) => row.id === operation.setId);
+  return {
+    event_id: eventId,
+    base_revision: Number.isInteger(set?.revision) ? set.revision : 0,
+    local_seq: nextLocalSeq(logId),
+    offline: typeof navigator !== 'undefined' && navigator.onLine === false,
+    plan_revision_seen: Number.isInteger(exercise?.plan_revision) ? exercise.plan_revision : 0,
+  };
+}
+
+export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRejected, getLog, onConflict } = {}) {
   const storageKey = outboxStorageKey(logId);
   const initial = useMemo(() => {
     try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch { return []; }
@@ -96,8 +171,13 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
   const resolvedIdsRef = useRef(new Map());
   const syncedRef = useRef(onCompleteSynced);
   const rejectedRef = useRef(onCompleteRejected);
+  const getLogRef = useRef(getLog);
+  const keptNoticeRef = useRef(false);
+  const conflictRef = useRef(onConflict);
   syncedRef.current = onCompleteSynced;
   rejectedRef.current = onCompleteRejected;
+  getLogRef.current = getLog;
+  conflictRef.current = onConflict;
   const [saveState, setSaveState] = useState(initial.length ? 'not_saved' : 'saved');
   const [online, setOnline] = useState(navigator.onLine);
   const [queuedComplete, setQueuedComplete] = useState(initial.some((operation) => operation.kind === 'complete'));
@@ -127,7 +207,8 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
         const operation = queueRef.current[0];
         try {
           const { data } = await api.request({ method: operation.method, url: operation.url, data: operation.data });
-          if (operation.kind === 'set' && !metricWriteAcknowledged(operation.data, data)) {
+          const outcome = data?.event?.outcome;
+          if (operation.kind === 'set' && (!outcome || outcome === 'applied') && !metricWriteAcknowledged(operation.data, data)) {
             const error = new Error('The server did not acknowledge your metrics. They are kept on this device; retry after the app update.');
             error.metricAcknowledgementMissing = true;
             throw error;
@@ -144,6 +225,21 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
             queueRef.current = queueRef.current.map((queued) => rewritePendingSetId(queued, pendingId, data.id));
           }
           persist(queueRef.current.filter((queued) => queued.id !== operation.id));
+          if (operation.kind === 'set' && outcome) {
+            // Keep the values on screen; adopt the server's revision so the next
+            // write is based on what the server now holds.
+            setLog((current) => updateExercise(current, operation.exerciseId, (exercise) => ({
+              ...exercise,
+              sets: exercise.sets.map((set) => (set.id === operation.setId && outcome !== 'conflict'
+                ? { ...set, revision: data.revision, last_actor_role: data.last_actor_role, completed_plan_revision: data.completed_plan_revision }
+                : set)),
+            })));
+            if (outcome === 'conflict' || (outcome === 'replayed' && data.event.original_outcome === 'conflict')) conflictRef.current?.(data);
+          }
+          if (operation.kind === 'substitute' && data?.log) {
+            const remaining = queueRef.current;
+            setLog(remaining.reduce((current, queued) => applyOptimistic(current, queued), data.log));
+          }
           if (operation.kind === 'complete') {
             setLog(() => data);
             syncedRef.current?.(data);
@@ -151,7 +247,16 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
         } catch (error) {
           if (error.metricAcknowledgementMissing && !operation.attempts) toast.error(error.message);
           const status = error?.response?.status;
+          // An expired session (401, or the token refresh itself failing) says
+          // nothing about the write: keep the queue for replay after sign-in.
+          if (status === 401 || error?.config?.url?.includes('/auth/refresh')) {
+            setSaveState('not_saved');
+            return false;
+          }
           if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+            // Keep the entry on the device BEFORE it leaves the queue, so there
+            // is no moment (an app close, a reload) where it exists nowhere.
+            const keptFirst = operation.kind !== 'complete' && keepUndelivered(logId, operation);
             const remaining = queueRef.current.filter((queued) => queued.id !== operation.id);
             persist(remaining);
             let fresh = null;
@@ -162,6 +267,16 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
             } catch {
               // The failed write is still removed; a later page reload reconciles server state.
             }
+            if (operation.kind !== 'complete' && ((fresh && fresh.status !== 'active') || (!fresh && (status === 409 || String(operation.setId || '').startsWith('pending-'))))) {
+              // Finished elsewhere first: the performance stays on this device.
+              if (!keptNoticeRef.current) {
+                keptNoticeRef.current = true;
+                toast.message('This workout was finished before your entries synced. They are kept on this phone; set values went to your coach to review.');
+              }
+              continue;
+            }
+            // Still active: an ordinary rejection (bad value), as before.
+            if (keptFirst) dropUndelivered(logId, operation.id);
             if (operation.kind === 'complete') {
               // Duplicate send after an ambiguous failure: already completed
               // on the server means success, not error.
@@ -202,13 +317,17 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
     if (isWriteBlocked(queueRef.current, operation)) return false;
     const resolvedId = operation.setId && resolvedIdsRef.current.get(operation.setId);
     const target = resolvedId ? rewritePendingSetId(operation, operation.setId, resolvedId) : operation;
-    const queued = { id: makeId(), attempts: 0, ...target };
+    const queueId = makeId();
+    const enveloped = target.kind === 'set' && !target.data?.event_id
+      ? { ...target, data: { ...target.data, ...setEventEnvelope(getLogRef.current?.(), target, queueId, logId) } }
+      : target;
+    const queued = { id: queueId, attempts: 0, ...enveloped };
     persist([...queueRef.current, queued]);
     setLog((current) => applyOptimistic(current, queued));
     setSaveState('saving');
     window.setTimeout(() => flush(), 0);
     return true;
-  }, [flush, persist, setLog]);
+  }, [flush, logId, persist, setLog]);
 
   /** "Keep editing instead": a queued completion is client-local until sent. */
   const removeQueuedComplete = useCallback(() => {

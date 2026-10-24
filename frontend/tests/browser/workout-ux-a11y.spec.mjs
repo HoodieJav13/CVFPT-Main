@@ -35,7 +35,9 @@ test('workout and library authoring fields retain associated labels after typing
  for (const id of ['workout-name-input', 'workout-goal-input', 'workout-description-input', ...['name','sets','reps','rest','tempo','rpe','default-load','video','client-notes','coach-notes'].map(f => `workout-exercise-${f}-input`)]) {
   expect(await dialog.getByTestId(id).evaluate(e => [...e.labels].filter(l => l.textContent.trim()).length)).toBeGreaterThan(0);
  }
- await page.keyboard.press('Escape'); await page.getByTestId('training-builder-tab-library').click(); await page.getByTestId('exercise-library-create-button').click();
+ // The draft has a typed exercise name, so closing asks to discard it.
+ page.once('dialog', (prompt) => prompt.accept());
+ await page.keyboard.press('Escape'); await expect(dialog).not.toBeVisible(); await page.getByTestId('training-builder-tab-library').click(); await page.getByTestId('exercise-library-create-button').click();
  for (const f of ['name','category','equipment','primary-muscle','secondary-muscles','video','notes']) expect(await page.getByTestId(`exercise-library-${f}-input`).evaluate(e => [...e.labels].filter(l => l.textContent.trim()).length)).toBeGreaterThan(0);
  expect(results.unexpected).toEqual([]);
 });

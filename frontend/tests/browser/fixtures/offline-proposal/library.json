@@ -1,0 +1,53 @@
+[
+ {
+  "id": "lib-goblet",
+  "name": "Goblet Squat",
+  "category": "Strength",
+  "equipment": "Dumbbell",
+  "primary_muscle": "Quads",
+  "review_status": "approved",
+  "archived": false,
+  "hidden": false,
+  "video_url": "https://www.youtube.com/watch?v=SYNTHc04gob"
+ },
+ {
+  "id": "lib-row",
+  "name": "Cable Row",
+  "category": "Strength",
+  "equipment": "Cable",
+  "primary_muscle": "Back",
+  "review_status": "approved",
+  "archived": false,
+  "hidden": false
+ },
+ {
+  "id": "lib-plank",
+  "name": "Plank",
+  "category": "Core",
+  "equipment": "Bodyweight",
+  "primary_muscle": "Core",
+  "review_status": "approved",
+  "archived": false,
+  "hidden": false
+ },
+ {
+  "id": "lib-deadbug",
+  "name": "Dead Bug",
+  "category": "Core",
+  "equipment": "Bodyweight",
+  "primary_muscle": "Core",
+  "review_status": "approved",
+  "archived": false,
+  "hidden": false
+ },
+ {
+  "id": "lib-pushup",
+  "name": "Push-up",
+  "category": "Strength",
+  "equipment": "Bodyweight",
+  "primary_muscle": "Chest",
+  "review_status": "approved",
+  "archived": false,
+  "hidden": false
+ }
+]

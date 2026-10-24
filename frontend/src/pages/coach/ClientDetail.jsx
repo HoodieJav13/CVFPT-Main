@@ -1,5 +1,6 @@
 import { useFormChanges } from '@/context/UnsavedChangesContext';
 import ClientInviteCard from '@/components/ClientInviteCard';
+import CoachNotes from '@/components/CoachNotes';
 import { setPrescription, trackingTargets } from '@/lib/workoutMetrics';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router';
@@ -360,6 +361,8 @@ function OverviewTab({ client, waiver, reload, user, onInviteIntent, onInviteCur
           <Row label="Client since" value={fmtDate(client.created_at)} />
         </CardContent>
       </Card>
+
+      <CoachNotes client={client} coachId={user.profile?.id} />
 
       <CoachClientWeek clientId={client.id} />
 

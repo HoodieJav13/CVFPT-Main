@@ -29,6 +29,8 @@ test('typed outbox survives reload and an ambiguous add response, then completes
     if (path === '/telemetry/events') return route.fulfill({ status: 204 });
     if (path === '/workout-logs/log-1' && method === 'GET') return failLogReads ? route.abort('failed') : json(log);
     if (path === '/workout-logs/mine') return json([log]);
+    // The tracker previews the active exercise's last time (one read per exercise per visit).
+    if (path === '/workout-logs/log-1/exercises/ex-1/history' && method === 'GET') return json({ occurrences: [], next_cursor: null });
     if (path === '/workout-logs/log-1/exercises/ex-1/sets' && method === 'POST') {
       addAttempts += 1;
       let set = log.exercises[0].sets.find((row) => row.client_operation_id === body.client_operation_id);

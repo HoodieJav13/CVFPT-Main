@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/select';
 import {
   AlertTriangle, Archive, ArrowDown, ArrowUp, BookOpen, CalendarDays, CheckCircle2, CircleAlert, Copy, Download,
-  Dumbbell, Eye, EyeOff, FileText, FileUp, GripVertical, Link2, Loader2, Pencil, Plus, Trash2, Unlink, UserPlus, Video,
+  Dumbbell, Eye, EyeOff, FileText, FileUp, GripVertical, Link2, Loader2, Pencil, Plus, Trash2, Unlink, UserPlus,
 } from 'lucide-react';
 import {
   DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors,
@@ -45,14 +45,21 @@ import {
 } from '@/lib/supersets';
 import { downloadBlob } from '@/lib/download';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { recheckBeforeCommit, verifyOfflineProposal } from '@/lib/offlineDraftImport.js';
 import { useAuth } from '@/context/AuthContext';
 import {
   AuthorByline, AuthorFilter, HiddenBadge, LegacyLockDialog,
 } from '@/components/training/TemplateBits';
 import { SupersetGroups } from '@/components/training/SupersetGroups';
 import {
-  authorOptions, exerciseFilterOptions, filterByAuthor, filterExercises, groupVariations, isLegacyLockError,
+  ExerciseMediaBadge, ExerciseMediaButton, ExerciseMediaDialog, LibraryMediaSummary, MediaReadinessFilter, matchesMediaFilter, useLibraryMediaStatus,
+} from '@/components/training/media/LibraryMediaControls';
+import {
+  authorOptions, chooseLibraryExercise, settleCatalogName, demoFieldsForCopy, demoFieldsFromRow, demoProblem, exerciseFilterOptions, filterByAuthor, filterExercises,
+  groupVariations, isLegacyLockError,
 } from '@/lib/trainingLibrary';
+import { DemoLinkField } from '@/components/training/DemoLinkField';
 
 const {
   normalizeDraft,
@@ -62,7 +69,7 @@ const {
 } = draftTools;
 
 const EMPTY_LIBRARY = { name: '', category: '', equipment: '', primary_muscle: '', secondary_muscles: '', video_url: '', notes: '' };
-const EMPTY_EXERCISE = { tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null, id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '', superset_group: null };
+const EMPTY_EXERCISE = { tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null, id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '', video_link_mode: null, superset_group: null };
 // Builder rows carry a client-only _uid so accordion state follows an
 // exercise when it is reordered (the save RPC ignores unknown keys).
 let exerciseUid = 0;
@@ -191,17 +198,22 @@ function ExerciseLibraryTab({ library, reload }) {
   const [equipment, setEquipment] = useState('all');
   const [saving, setSaving] = useState(false);
 
+  const media = useLibraryMediaStatus();
+  const [mediaFilter, setMediaFilter] = useState('all');
+  const [mediaExercise, setMediaExercise] = useState(null);
   const options = useMemo(() => exerciseFilterOptions(library), [library]);
   const filtered = useMemo(
-    () => filterExercises(library, { search, category, muscle, equipment }),
-    [library, search, category, muscle, equipment],
+    () => filterExercises(library, { search, category, muscle, equipment })
+      .filter((exercise) => !media.enabled || matchesMediaFilter(media.byExercise.get(exercise.id), mediaFilter)),
+    [library, search, category, muscle, equipment, media.enabled, media.byExercise, mediaFilter],
   );
-  const filtersActive = category !== 'all' || muscle !== 'all' || equipment !== 'all' || search.trim() !== '';
+  const filtersActive = category !== 'all' || muscle !== 'all' || equipment !== 'all' || mediaFilter !== 'all' || search.trim() !== '';
   const clearFilters = () => {
     setSearch('');
     setCategory('all');
     setMuscle('all');
     setEquipment('all');
+    setMediaFilter('all');
   };
 
   const openCreate = () => {
@@ -313,11 +325,13 @@ function ExerciseLibraryTab({ library, reload }) {
           </Button>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="exercise-library-filters">
+      <div className={cn('grid grid-cols-1 gap-2', media.enabled ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3')} data-testid="exercise-library-filters">
         <LibraryFilter label="Category" allLabel="All categories" value={category} onChange={setCategory} options={options.categories} testId="exercise-library-filter-category" />
         <LibraryFilter label="Muscle" allLabel="All muscles" value={muscle} onChange={setMuscle} options={options.muscles} testId="exercise-library-filter-muscle" />
         <LibraryFilter label="Equipment" allLabel="All equipment" value={equipment} onChange={setEquipment} options={options.equipment} testId="exercise-library-filter-equipment" />
+        {media.enabled && <MediaReadinessFilter value={mediaFilter} onChange={setMediaFilter} />}
       </div>
+      {media.enabled && <LibraryMediaSummary summary={media.summary} />}
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <p aria-live="polite" data-testid="exercise-library-count">
           {filtersActive ? `Showing ${filtered.length} of ${library.length} exercises` : `${library.length} exercises`}
@@ -336,17 +350,18 @@ function ExerciseLibraryTab({ library, reload }) {
       )}
       <div className="grid gap-3 md:grid-cols-2">
         {filtered.map((exercise) => (
-          <Card key={exercise.id} data-testid="exercise-library-card">
+          <Card key={exercise.id} className="min-w-0" data-testid="exercise-library-card">
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2 font-medium">{exercise.name}{exercise.hidden && <HiddenBadge />}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-medium [overflow-wrap:anywhere]">{exercise.name}{exercise.hidden && <HiddenBadge />}{media.enabled && <ExerciseMediaBadge item={media.byExercise.get(exercise.id)} />}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {[exercise.category, exercise.equipment, exercise.primary_muscle].filter(Boolean).join(' - ') || 'No tags'}
                   </p>
-                  {safeHttpUrl(exercise.video_url) && <a href={safeHttpUrl(exercise.video_url)} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">Video</a>}
+                  {safeHttpUrl(exercise.video_url) && <a href={safeHttpUrl(exercise.video_url)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">External video</a>}
                 </div>
                 <div className="flex gap-1.5">
+                  {media.enabled && <ExerciseMediaButton exercise={exercise} onOpen={setMediaExercise} />}
                   <IconButton label={exercise.hidden ? `Unhide ${exercise.name}` : `Hide ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(exercise)} data-testid="exercise-library-hide-button">{exercise.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</IconButton>
                   <IconButton label={`Edit ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(exercise)} data-testid="exercise-library-edit-button"><Pencil className="h-3.5 w-3.5" /></IconButton>
                   <IconButton label={`Archive ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(exercise)} data-testid="exercise-library-archive-button"><Archive className="h-3.5 w-3.5" /></IconButton>
@@ -369,12 +384,13 @@ function ExerciseLibraryTab({ library, reload }) {
               <LabeledField label="Primary muscle"><Input value={form.primary_muscle} onChange={(e) => setForm({ ...form, primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="exercise-library-primary-muscle-input" /></LabeledField>
               <LabeledField label="Secondary muscles"><Input value={form.secondary_muscles} onChange={(e) => setForm({ ...form, secondary_muscles: e.target.value })} placeholder="Secondary muscles" data-testid="exercise-library-secondary-muscles-input" /></LabeledField>
             </div>
-            <LabeledField label="YouTube video URL"><Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="YouTube video URL" data-testid="exercise-library-video-input" /></LabeledField>
+            <LabeledField label="External video link (optional)"><Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="https://… (opens in a new tab)" data-testid="exercise-library-video-input" /></LabeledField>
             <LabeledField label="Notes"><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" data-testid="exercise-library-notes-input" /></LabeledField>
             <DialogFooter><Button size="touch" disabled={saving} className="rounded-xl" data-testid="exercise-library-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save exercise'}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+      <ExerciseMediaDialog exercise={mediaExercise} onClose={() => setMediaExercise(null)} onChanged={media.reload} />
     </div>
   );
 }
@@ -404,7 +420,8 @@ export function workoutToForm(workout) {
       default_load_unit: ex.default_load_unit || 'lb',
       client_notes: ex.client_notes || ex.notes || '',
       coach_notes: ex.coach_notes || '',
-      video_url: ex.video_url || ex.library_exercise?.video_url || '',
+      // Never the library link: an inheriting row follows the library live.
+      ...demoFieldsFromRow(ex),
       superset_group: ex.superset_group || null,
     })) : [newExerciseRow()],
   };
@@ -470,6 +487,11 @@ function WorkoutsTab({ workouts, library, reload, onSaved, onCatalogCreated }) {
     e.preventDefault();
     if (!form.exercises.some((ex) => ex.exercise_library_id || ex.custom_name.trim())) {
       toast.error('Add at least one exercise');
+      return;
+    }
+    const demoIssue = form.exercises.map(demoProblem).find(Boolean);
+    if (demoIssue) {
+      toast.error(`Demo video: ${demoIssue}`);
       return;
     }
     setSaving(true);
@@ -540,13 +562,20 @@ function WorkoutsTab({ workouts, library, reload, onSaved, onCatalogCreated }) {
     }
   };
 
+  // One copy per tap: a double tap (or a second tap while the first is in
+  // flight) must not create a second hidden variation.
+  const duplicating = useRef(new Set());
   const duplicate = async (workout) => {
+    if (duplicating.current.has(workout.id)) return;
+    duplicating.current.add(workout.id);
     try {
       await api.post(`/programs/workouts/${workout.id}/save-as-template`, {});
       toast.success('Saved a hidden variation. Unhide it when it is ready to assign.');
       reload();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      duplicating.current.delete(workout.id);
     }
   };
 
@@ -788,13 +817,20 @@ function StructuredProgramsTab({ programs, workouts, library, reload, onCatalogC
     }
   };
 
+  // One copy per tap: a double tap (or a second tap while the first is in
+  // flight) must not create a second hidden variation.
+  const duplicating = useRef(new Set());
   const duplicate = async (program) => {
+    if (duplicating.current.has(program.id)) return;
+    duplicating.current.add(program.id);
     try {
       await api.post(`/programs/${program.id}/save-as-template`, {});
       toast.success('Saved a hidden variation. Unhide it when it is ready to assign.');
       reload();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      duplicating.current.delete(program.id);
     }
   };
 
@@ -923,6 +959,21 @@ function StructuredProgramsTab({ programs, workouts, library, reload, onCatalogC
   );
 }
 
+// Proposal saves whose outcome is unknown (lost reply or 5xx), by canonical
+// proposal hash, for the rest of this page session: checking the same proposal
+// again keeps Save blocked. Nothing in the page lifts it; a reload forgets it.
+const unresolvedProposalSaves = new Map();
+
+// New programs with the same name as an unknown-outcome save: candidates for
+// the coach to inspect. A list read is not a write receipt, so a match never
+// confirms that this save was created, and no match never shows it failed.
+function findPossibleMatches(programs, outcome) {
+  const name = String(outcome.sent.program.name || '').trim().toLowerCase();
+  return (Array.isArray(programs) ? programs : [])
+    .filter((program) => !outcome.baselineIds.includes(program.id) && String(program.name || '').trim().toLowerCase() === name)
+    .map((program) => ({ id: program.id, name: program.name, days: Array.isArray(program.days) ? program.days.length : null }));
+}
+
 function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, reload, onCatalogCreated: notifyCreated }) {
   const [library, rememberCreated] = useBuilderCatalog(initialLibrary);
   const onCatalogCreated = (item) => { rememberCreated(item); notifyCreated?.(item); };
@@ -934,7 +985,47 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
   const [errors, setErrors] = useState([]);
   const [openReviewDays, setOpenReviewDays] = useState([]);
   const [parsing, setParsing] = useState(false);
+  // Bumped on close: a parse reply for a discarded import must not repopulate it.
+  const parseSeq = useRef(0);
   const [saving, setSaving] = useState(false);
+  // Offline draft proposal (MOCK companion export): verified identity, refusal,
+  // the coach's explicit review confirmation, and an honest save failure.
+  const [proposal, setProposal] = useState(null);
+  const [proposalRefusal, setProposalRefusal] = useState(null);
+  const [proposalConfirmed, setProposalConfirmedState] = useState(false);
+  // How the last proposal save ended when it did not succeed:
+  // refused (definitely not written), stale (not sent: the draft changed during
+  // the final check) or unknown (sent; the reply was lost or a 5xx). Unknown is
+  // never resolved by a list read; it lasts for this page session.
+  const [saveOutcome, setSaveOutcome] = useState(null);
+  const [postPending, setPostPending] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
+  // One save per tap: a second tap during the re-check or write is ignored.
+  const committingProposal = useRef(false);
+  // While the POST is in flight the form is frozen and the dialog cannot close.
+  const postInFlight = useRef(false);
+  // Each edit makes a new draft revision; the coach's tick approves exactly one.
+  const draftRevision = useRef(0);
+  const approvedRevision = useRef(-1);
+  const setProposalConfirmed = (value) => {
+    approvedRevision.current = value ? draftRevision.current : -1;
+    setProposalConfirmedState(value);
+  };
+  // Ends an unsent proposal save (close, discard, source change, new file or
+  // check): bumping parseSeq makes its catalog reply a no-op.
+  const invalidateProposalSave = () => {
+    parseSeq.current += 1;
+    committingProposal.current = false;
+    setSaving(false);
+  };
+  const resetProposal = () => {
+    invalidateProposalSave();
+    setProposal(null);
+    setProposalRefusal(null);
+    setProposalConfirmed(false);
+    setSaveOutcome(null);
+    setReconciling(false);
+  };
 
   const changes = useFormChanges({ pasteText, fileName: file?.name, draft }, open, open);
   const validation = draft ? validateDraft(draft) : { valid: false, errors: [] };
@@ -948,9 +1039,17 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
   if (draft && reviewOpenValues.length === 0 && availableReviewDays.length > 0) reviewOpenValues.push(availableReviewDays[0]);
 
   const close = (value, saved = false) => {
+    // A sent save cannot be called off; the dialog stays until its reply.
+    if (!value && postInFlight.current) return;
     if (!value && !saved && !changes.confirmDiscard()) return;
+    if (!value && !saved && saveOutcome?.kind === 'unknown') {
+      toast.warning(`Save outcome unknown: check Programs for "${saveOutcome.sent.program.name}" before importing it again.`, { duration: 10_000 });
+      reload();
+    }
     onOpenChange(value);
     if (!value) {
+      parseSeq.current += 1;
+      setParsing(false);
       setFile(null);
       setPasteText('');
       setPasteError('');
@@ -958,12 +1057,16 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
       setErrors([]);
       setOpenReviewDays([]);
       setSourceType('csv');
+      resetProposal();
     }
   };
 
   const selectSource = (nextSource) => {
     if (nextSource !== sourceType && !changes.confirmDiscard()) return;
-    if (sourceType === 'paste' || nextSource === 'paste') {
+    if (sourceType === 'paste' || nextSource === 'paste' || sourceType === 'proposal' || nextSource === 'proposal') {
+      resetProposal();
+      parseSeq.current += 1;
+      setParsing(false);
       setFile(null);
       setPasteText('');
       setPasteError('');
@@ -985,6 +1088,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
 
   const parseFile = async () => {
     if (!file) return toast.error('Choose a file to import');
+    const seq = ++parseSeq.current;
     setParsing(true);
     setErrors([]);
     setOpenReviewDays([]);
@@ -993,16 +1097,57 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
       form.append('file', file);
       const endpoint = sourceType === 'pdf' ? '/programs/import/parse-pdf' : '/programs/import/parse-csv';
       const { data } = await api.post(endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (seq !== parseSeq.current) return;
       setDraft(normalizeDraft(data.draft));
       setErrors(data.errors || []);
       toast.success(data.message || 'Import parsed. Review before saving.');
     } catch (e) {
+      if (seq !== parseSeq.current) return;
       const response = e.response?.data;
       if (response?.draft) setDraft(normalizeDraft(response.draft));
       setErrors(response?.errors || []);
       toast.error(errMsg(e, 'Could not parse import'));
     } finally {
-      setParsing(false);
+      if (seq === parseSeq.current) setParsing(false);
+    }
+  };
+
+  const loadLibraryRows = async () => (await api.get('/programs/exercise-library?include_hidden=true')).data;
+
+  const checkProposal = async () => {
+    if (!file) return toast.error('Choose a proposal file');
+    // A new check ends any unsent save of the previous one first.
+    resetProposal();
+    const seq = ++parseSeq.current;
+    setParsing(true);
+    setDraft(null);
+    setErrors([]);
+    setOpenReviewDays([]);
+    try {
+      let envelope;
+      try {
+        envelope = JSON.parse(await file.text());
+      } catch {
+        envelope = undefined;
+      }
+      const result = envelope === undefined
+        ? { ok: false, refusal: { code: 'invalid_proposal_file', message: 'This file is not JSON.', errors: [] } }
+        : await verifyOfflineProposal(envelope, await loadLibraryRows());
+      if (seq !== parseSeq.current) return;
+      if (!result.ok) {
+        setProposalRefusal(result.refusal);
+        return;
+      }
+      draftRevision.current += 1;
+      setProposal(result);
+      setDraft(normalizeDraft(result.draft));
+      const unresolved = unresolvedProposalSaves.get(result.identity.proposal_sha256);
+      if (unresolved) setSaveOutcome(unresolved);
+    } catch (e) {
+      if (seq !== parseSeq.current) return;
+      setProposalRefusal({ code: 'catalog_unavailable', message: errMsg(e, 'Could not load the exercise catalog to check this proposal.'), errors: [] });
+    } finally {
+      if (seq === parseSeq.current) setParsing(false);
     }
   };
 
@@ -1023,6 +1168,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
       setPasteError(PASTE_NO_EXERCISES_MESSAGE);
       return;
     }
+    const seq = ++parseSeq.current;
     setParsing(true);
     setDraft(null);
     setErrors([]);
@@ -1030,8 +1176,10 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
     setPasteError('');
     try {
       const { data } = await api.post('/programs/import/parse-paste', { text: pasteText });
+      if (seq !== parseSeq.current) return;
       showPasteDraft(data);
     } catch (e) {
+      if (seq !== parseSeq.current) return;
       const response = e.response?.data;
       if (response?.draft) {
         showPasteDraft(response);
@@ -1040,7 +1188,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
         setPasteError(message);
       }
     } finally {
-      setParsing(false);
+      if (seq === parseSeq.current) setParsing(false);
     }
   };
 
@@ -1048,6 +1196,11 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
     const nextDraft = normalizeDraft(input);
     setDraft(nextDraft);
     if (sourceType === 'paste') setErrors(validateDraft(nextDraft).errors);
+    // The coach confirms the draft as it is now; any later edit needs a new confirmation.
+    if (sourceType === 'proposal') {
+      draftRevision.current += 1;
+      setProposalConfirmed(false);
+    }
   };
 
   const setProgram = (updates) => {
@@ -1091,6 +1244,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
       toast.error('Fix draft errors before saving');
       return;
     }
+    if (sourceType === 'proposal') return commitProposal();
     setSaving(true);
     try {
       const { data } = await api.post('/programs/import/commit', { draft: checked.draft });
@@ -1106,6 +1260,182 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
     }
   };
 
+  const loadProgramIds = async () => ((await api.get('/programs')).data || []).map((program) => program.id);
+
+  // Saves a reviewed proposal as a program template only (never assigned).
+  // Before anything is sent: the catalog is re-read and the draft re-checked,
+  // and the save goes ahead only if this import is still open (no close,
+  // discard, source change or new check) and the coach's tick still approves
+  // the current draft revision. Edits stay possible during that check; an edit
+  // stops this save and keeps the newer text. Once the POST is sent the form is
+  // frozen until its reply.
+  const commitProposal = async () => {
+    const seq = parseSeq.current;
+    const revision = draftRevision.current;
+    if (!proposal || !proposalConfirmed || approvedRevision.current !== revision || committingProposal.current) return;
+    if (saveOutcome?.kind === 'unknown') return;
+    committingProposal.current = true;
+    setSaving(true);
+    setSaveOutcome(null);
+    const approvedDraft = draft;
+    let rechecked;
+    let baselineIds;
+    try {
+      const [rows, ids] = await Promise.all([loadLibraryRows(), loadProgramIds()]);
+      baselineIds = ids;
+      rechecked = await recheckBeforeCommit(proposal, approvedDraft, rows);
+    } catch (e) {
+      rechecked = { ok: false, refusal: { code: 'catalog_unavailable', message: `${errMsg(e, 'Could not re-check the exercise catalog and vault')}. Nothing was saved.`, errors: [] } };
+    }
+    // Closed, discarded, source changed or a new check started: nothing is sent,
+    // and nothing here touches whatever the dialog shows now.
+    if (seq !== parseSeq.current) return;
+    if (draftRevision.current !== revision || approvedRevision.current !== revision) {
+      committingProposal.current = false;
+      setSaving(false);
+      setSaveOutcome({ kind: 'stale', message: 'Not sent: the draft changed during the final check. Your edits are kept; review them and confirm again to save.' });
+      return;
+    }
+    if (!rechecked.ok) {
+      committingProposal.current = false;
+      setSaving(false);
+      setProposalRefusal(rechecked.refusal);
+      setProposalConfirmed(false);
+      toast.error(`Not saved: ${rechecked.refusal.message}`);
+      return;
+    }
+    setProposalRefusal(null);
+    postInFlight.current = true;
+    setPostPending(true);
+    try {
+      const { data } = await api.post('/programs/import/commit', { draft: rechecked.draft });
+      postInFlight.current = false;
+      toast.success('Program saved to vault (not assigned)', {
+        description: `${data.created_exercises?.length || 0} new exercises, ${data.reused_exercises?.length || 0} reused. Assign it from Assignments when ready.`,
+      });
+      close(false, true);
+      reload();
+    } catch (e) {
+      postInFlight.current = false;
+      const status = e?.response?.status;
+      const message = errMsg(e, status ? `The server answered ${status}` : 'No reply from the server');
+      if (status >= 400 && status < 500) {
+        // The existing import route answers 4xx (validation, auth, rate limit)
+        // only before it writes, so this save definitely created nothing.
+        setSaveOutcome({ kind: 'refused', message });
+        setProposalConfirmed(false);
+        toast.error(`Not saved: ${message}`);
+      } else {
+        // A lost reply or a 5xx can follow a committed create: the outcome is
+        // unknown, so Save stays blocked until the vault is checked.
+        const outcome = { kind: 'unknown', message, sent: rechecked.draft, baselineIds };
+        unresolvedProposalSaves.set(proposal.identity.proposal_sha256, outcome);
+        setSaveOutcome(outcome);
+        toast.error('Save outcome unknown: the program may have been created. Saving this proposal again is blocked; check Programs.');
+      }
+    } finally {
+      postInFlight.current = false;
+      setPostPending(false);
+      committingProposal.current = false;
+      setSaving(false);
+    }
+  };
+
+  // Looks for possible matches in the existing program list. The outcome stays
+  // unknown either way: the reviewed draft is kept and saving this proposal
+  // again stays blocked, because the first request may still complete and a
+  // same-named program may come from elsewhere.
+  const lookForMatches = async () => {
+    if (saveOutcome?.kind !== 'unknown' || reconciling) return;
+    const seq = parseSeq.current;
+    const outcome = saveOutcome;
+    setReconciling(true);
+    try {
+      const { data } = await api.get('/programs');
+      if (seq !== parseSeq.current) return;
+      const next = { ...outcome, checkError: null, lookedAt: new Date().toISOString(), possibleMatches: findPossibleMatches(data, outcome) };
+      unresolvedProposalSaves.set(proposal.identity.proposal_sha256, next);
+      setSaveOutcome(next);
+    } catch (e) {
+      if (seq !== parseSeq.current) return;
+      setSaveOutcome({ ...outcome, checkError: errMsg(e, 'Could not read the vault') });
+    } finally {
+      if (seq === parseSeq.current) setReconciling(false);
+    }
+  };
+
+  // Refusals and save failures show where the coach is: above the inputs
+  // before a draft exists, next to Save once it does.
+  const proposalStatus = (
+    <>
+      {sourceType === 'proposal' && proposalRefusal && (
+        <Alert variant="destructive" aria-live="polite" data-testid="program-import-proposal-refusal" data-code={proposalRefusal.code}>
+          <CircleAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>Proposal refused ({proposalRefusal.code}). Nothing was saved.</AlertTitle>
+          <AlertDescription>
+            <p>{proposalRefusal.message}</p>
+            {proposalRefusal.errors?.length > 0 && (
+              <ul className="mt-2 list-disc pl-5">
+                {proposalRefusal.errors.map((error, i) => <li key={`${error.path}-${i}`}>{error.path ? `${error.path}: ` : ''}{error.message}</li>)}
+              </ul>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && postPending && (
+        <Alert aria-live="polite" data-testid="program-import-save-pending">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <AlertTitle>Saving: sent to the server</AlertTitle>
+          <AlertDescription>Waiting for its reply. The save cannot be called off now, so the form stays locked until the server answers.</AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveOutcome?.kind === 'stale' && (
+        <Alert aria-live="polite" className="border-gold/30 bg-gold/10" data-testid="program-import-save-stale">
+          <AlertTriangle className="h-4 w-4 text-gold" aria-hidden />
+          <AlertTitle>Not sent</AlertTitle>
+          <AlertDescription>{saveOutcome.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveOutcome?.kind === 'refused' && (
+        <Alert variant="destructive" aria-live="assertive" data-testid="program-import-save-refused">
+          <CircleAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>Not saved</AlertTitle>
+          <AlertDescription>{saveOutcome.message}. The server refused it before writing, so no program was created. Your reviewed draft is still here; confirm again to retry.</AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveOutcome?.kind === 'unknown' && (
+        <Alert variant="destructive" aria-live="assertive" data-testid="program-import-save-failed" data-outcome="unknown">
+          <CircleAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>Save outcome unknown</AlertTitle>
+          <AlertDescription>
+            <p>{saveOutcome.message}. The program may have been created, or may still be created by the request already sent. Your reviewed draft is still here.</p>
+            <p className="mt-1">Saving this proposal again is blocked for the rest of this page session, so it cannot be created twice. Check Programs for &ldquo;{saveOutcome.sent.program.name}&rdquo;. If you are sure it was not created, reloading the page clears this guard and lets you import it again.</p>
+            {saveOutcome.checkError && <p className="mt-1">Could not check yet: {saveOutcome.checkError}.</p>}
+            {saveOutcome.lookedAt && !saveOutcome.checkError && (saveOutcome.possibleMatches.length > 0 ? (
+              <div className="mt-2" data-testid="program-import-save-possible-matches">
+                <p className="font-medium">Possible matches, not confirmed: new programs with this name.</p>
+                <ul className="mt-1 list-disc pl-5">
+                  {saveOutcome.possibleMatches.map((match) => <li key={match.id}>{match.name}{match.days != null ? ` · ${match.days} days` : ''} <span className="font-mono text-xs">({match.id})</span></li>)}
+                </ul>
+                <p className="mt-1">A program list cannot show which save created them. Open each in Programs and compare it with this draft; one may be this save or another one.</p>
+              </div>
+            ) : (
+              <p className="mt-2" data-testid="program-import-save-no-match-yet">No new program with this name was in the vault at {new Date(saveOutcome.lookedAt).toLocaleTimeString()}. That does not show the save failed: the request may still finish.</p>
+            ))}
+            <Button type="button" size="sm" variant="outline" className="mt-2 rounded-xl" disabled={reconciling} onClick={lookForMatches} data-testid="program-import-save-reconcile">
+              {reconciling ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Look for possible matches'}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+    </>
+  );
+
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogContent aria-describedby={undefined} className="max-h-[92dvh] max-w-4xl overflow-y-auto" data-testid="program-import-dialog">
@@ -1116,12 +1446,13 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
           <div className="grid gap-3 lg:grid-cols-[180px_1fr_auto] lg:items-end">
             <div className="space-y-1.5">
               <Label>Source</Label>
-              <Select value={sourceType} onValueChange={selectSource}>
+              <Select value={sourceType} onValueChange={selectSource} disabled={postPending}>
                 <SelectTrigger className="h-11 rounded-xl" data-testid="program-import-source-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="csv">CSV template</SelectItem>
                   <SelectItem value="paste">Paste program</SelectItem>
                   <SelectItem value="pdf">PDF extraction</SelectItem>
+                  <SelectItem value="proposal">Offline draft proposal (MOCK)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1150,6 +1481,20 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                   </Button>
                 </div>
               </>
+            ) : sourceType === 'proposal' ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="program-import-proposal-file-input">Proposal file (.json)</Label>
+                  <Input id="program-import-proposal-file-input" size="touch" type="file" accept=".json,application/json" disabled={parsing || postPending}
+                    onChange={(e) => { resetProposal(); setFile(e.target.files?.[0] || null); setDraft(null); setErrors([]); }}
+                    data-testid="program-import-proposal-file-input" />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="touch" className="rounded-xl" type="button" onClick={checkProposal} disabled={parsing || postPending || !file} data-testid="program-import-proposal-check-button">
+                    {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check proposal'}
+                  </Button>
+                </div>
+              </>
             ) : (
               <>
                 <div className="space-y-1.5">
@@ -1172,6 +1517,18 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
             </Alert>
           )}
 
+          {sourceType === 'proposal' && (
+            <Alert className="border-gold/30 bg-gold/10" data-testid="program-import-proposal-mock-banner">
+              <AlertTriangle className="h-4 w-4 text-gold" aria-hidden />
+              <AlertTitle>MOCK offline draft. Not a prescription, not assigned.</AlertTitle>
+              <AlertDescription>
+                Optional. The file comes from the offline drafting companion (provider disabled, fictional fixtures). It is checked against the current exercise catalog, then you review and edit it here. Saving creates a program template only; assigning stays a separate step.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {!draft && proposalStatus}
+
           {draft?.import_meta?.warnings?.length > 0 && (
             <div className="rounded-xl border border-gold/30 bg-gold/10 p-3 text-sm text-gold">
               <div className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" /> Warnings</div>
@@ -1192,10 +1549,12 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
 
           {draft && (
             <div className="space-y-4" data-testid="program-import-review">
+              <fieldset disabled={postPending} aria-busy={postPending} className="m-0 min-w-0 space-y-4 border-0 p-0">
+              {sourceType === 'proposal' && proposal && <ProposalIdentityPanel proposal={proposal} draft={draft} />}
               <div className="rounded-xl border border-border bg-card/50 p-4 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
                   <Input value={draft.program.name} onChange={(e) => setProgram({ name: e.target.value })} placeholder="Program name" data-testid="program-import-name-input" />
-                  <Select value={String(draft.program.frequency_days)} onValueChange={(value) => setProgram({ frequency_days: Number(value) })}>
+                  <Select value={String(draft.program.frequency_days)} onValueChange={(value) => setProgram({ frequency_days: Number(value) })} disabled={sourceType === 'proposal'}>
                     <SelectTrigger className="rounded-xl" data-testid="program-import-frequency-select"><SelectValue /></SelectTrigger>
                     <SelectContent>{(sourceType === 'paste' ? PROGRAM_FREQUENCIES : IMPORT_FREQUENCIES).map((d) => <SelectItem key={d} value={d}>{frequencyLabel(d)}</SelectItem>)}</SelectContent>
                   </Select>
@@ -1235,7 +1594,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                       </AccordionTrigger>
                       <AccordionContent className="space-y-3 pb-4">
                         <div className="grid gap-2 sm:grid-cols-[90px_1fr_1fr]">
-                          <Input type="number" min="1" max="5" value={day.day_number} onChange={(e) => setDay(dayIndex, { day_number: Number(e.target.value) })} data-testid="program-import-day-number-input" />
+                          <Input type="number" min="1" max="5" value={day.day_number} disabled={sourceType === 'proposal'} onChange={(e) => setDay(dayIndex, { day_number: Number(e.target.value) })} data-testid="program-import-day-number-input" />
                           <Input value={day.name} onChange={(e) => setDay(dayIndex, { name: e.target.value })} placeholder="Workout day name" data-testid="program-import-day-name-input" />
                           <Input value={day.goal} onChange={(e) => setDay(dayIndex, { goal: e.target.value })} placeholder="Goal/focus" data-testid="program-import-day-goal-input" />
                         </div>
@@ -1250,6 +1609,7 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                                 size="touchIcon"
                                 className="shrink-0 rounded-xl text-muted-foreground"
                                 onClick={() => removeExercise(dayIndex, exerciseIndex)}
+                                disabled={sourceType === 'proposal'}
                                 data-testid="program-import-exercise-remove-button"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -1269,13 +1629,13 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                               <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" data-testid="program-import-exercise-coach-notes-input" />
                             </div>
                             <div className="grid gap-2 sm:grid-cols-4">
-                              <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value })} placeholder="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
+                              <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value, video_link_mode: e.target.value.trim() ? 'override' : 'inherit' })} placeholder="Video URL (optional; blank uses the library demo)" aria-label="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
                               <Input value={exercise.equipment} onChange={(e) => setExercise(dayIndex, exerciseIndex, { equipment: e.target.value })} placeholder="Equipment" data-testid="program-import-exercise-equipment-input" />
                               <Input value={exercise.primary_muscle} onChange={(e) => setExercise(dayIndex, exerciseIndex, { primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="program-import-exercise-primary-muscle-input" />
                             </div>
                           </div>
                         ))}
-                        <Button type="button" variant="outline" className="rounded-xl" onClick={() => addExercise(dayIndex)} data-testid="program-import-exercise-add-button">
+                        <Button type="button" variant="outline" className="rounded-xl" disabled={sourceType === 'proposal'} onClick={() => addExercise(dayIndex)} data-testid="program-import-exercise-add-button">
                           <Plus className="h-4 w-4 mr-1.5" /> Add exercise
                         </Button>
                       </AccordionContent>
@@ -1284,17 +1644,68 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                 })}
               </Accordion>
 
+              {proposalStatus}
+              {sourceType === 'proposal' && proposal && (
+                <div className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-3">
+                  <Checkbox id="program-import-proposal-confirm" checked={proposalConfirmed} disabled={saving}
+                    onCheckedChange={(value) => setProposalConfirmed(value === true)} className="mt-0.5" data-testid="program-import-proposal-confirm" />
+                  <Label htmlFor="program-import-proposal-confirm" className="text-sm font-normal leading-snug">
+                    I reviewed every day and exercise of this MOCK proposal and want to save it as a program template. It will not be assigned to anyone.
+                  </Label>
+                </div>
+              )}
               <DialogFooter>
                 <Button variant="outline" className="rounded-xl" onClick={() => close(false)}>Cancel</Button>
-                <Button className="rounded-xl" disabled={saving || !validation.valid} onClick={commit} data-testid="program-import-save-button">
+                <Button className="rounded-xl" disabled={saving || !validation.valid || (sourceType === 'proposal' && (!proposal || !proposalConfirmed || saveOutcome?.kind === 'unknown'))} onClick={commit} data-testid="program-import-save-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save to vault'}
                 </Button>
               </DialogFooter>
+              </fieldset>
             </div>
           )}
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Identity of a verified offline proposal and its stable exercise bindings,
+// with each bound row's current name so a coach edit is visible before saving.
+function ProposalIdentityPanel({ proposal, draft }) {
+  const { identity, bindings } = proposal;
+  const rowAt = (path) => {
+    const [, day, exercise] = /^days\.(\d+)\.exercises\.(\d+)$/.exec(path) || [];
+    return draft.days[Number(day)]?.exercises?.[Number(exercise)];
+  };
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4 text-sm" data-testid="program-import-proposal-panel">
+      <div className="font-medium">Offline proposal identity</div>
+      <dl className="grid gap-x-3 gap-y-1 [overflow-wrap:anywhere] sm:grid-cols-[170px_1fr]">
+        <dt className="text-muted-foreground">Proposal SHA-256 (canonical)</dt><dd className="font-mono text-xs" data-testid="program-import-proposal-sha">{identity.proposal_sha256}</dd>
+        <dt className="text-muted-foreground">Catalog revision</dt><dd className="font-mono text-xs" data-testid="program-import-proposal-catalog">{identity.catalog_revision}</dd>
+        <dt className="text-muted-foreground">Accepted snapshot</dt><dd className="font-mono text-xs">r{identity.accepted_revision} · {identity.accepted_sha256}</dd>
+        <dt className="text-muted-foreground">Request</dt><dd>{identity.request_id} · accepted offline by {identity.accepted_by}</dd>
+      </dl>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[320px] text-left text-xs" data-testid="program-import-proposal-bindings">
+          <thead className="text-muted-foreground"><tr><th className="py-1 pr-2 font-medium">Row</th><th className="py-1 pr-2 font-medium">Bound exercise</th><th className="py-1 font-medium">Catalog id</th></tr></thead>
+          <tbody>
+            {bindings.map((binding) => {
+              const row = rowAt(binding.program_draft_path);
+              const changed = !row || row.name !== binding.catalog_name_at_snapshot;
+              return (
+                <tr key={binding.program_draft_path} className="border-t border-border" data-testid="program-import-proposal-binding-row">
+                  <td className="py-1 pr-2">Day {binding.day_number} · {binding.weekday}</td>
+                  <td className="py-1 pr-2">{binding.catalog_name_at_snapshot}{changed && <Badge variant="outline" className="ml-2 border-destructive/30 text-destructive">edited: {row?.name || 'removed'}</Badge>}</td>
+                  <td className="py-1 font-mono">{binding.exercise_id}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-muted-foreground">Bindings are checked again against the catalog when you save. Prescriptions can be edited; a bound exercise cannot be swapped, and rows cannot be added, removed or renumbered.</p>
+    </div>
   );
 }
 
@@ -1422,13 +1833,10 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
     setForm((current) => ({ ...current, exercises: current.exercises.map((ex, i) => i === index ? { ...ex, ...updates } : ex) }));
   };
 
+  // Picking a library exercise inherits its demo live; the link is never copied.
   const chooseExercise = (index, value) => {
-    const match = matchCatalogExercise(library, value);
-    if (match) {
-      setExercise(index, { exercise_library_id: match.id, custom_name: match.name, video_url: match.video_url || '' });
-    } else {
-      setExercise(index, { exercise_library_id: '', custom_name: value });
-    }
+    const match = matchCatalogExercise(library, value) || null;
+    setExercise(index, chooseLibraryExercise(form.exercises[index], match, value));
   };
 
   const setExercises = (exercises) => setForm({ ...form, exercises });
@@ -1497,8 +1905,8 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
         </div>
         <AccordionContent className="space-y-2 pb-3">
           <div className="flex items-center gap-2">
-            <LabeledField label="Exercise name"><Input className="min-w-0" list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" /></LabeledField>
-            <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
+            <LabeledField label="Exercise name"><Input className="min-w-0" list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} onBlur={() => { const settled = settleCatalogName(exercise, library); if (settled) setExercise(index, settled); }} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" /></LabeledField>
+            <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid, ...demoFieldsForCopy(exercise) }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
             <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => removal.remove(form.exercises, index)} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
           </div>
           <ExerciseCatalogAction exercise={exercise} library={library} onCreated={onCatalogCreated} onChange={(fields) => setExercise(index, fields)} disabled={saving} />
@@ -1530,7 +1938,7 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
           </div>
           <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] items-end gap-2">
             <LabeledField label="Target RPE"><Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" /></LabeledField>
-            <LabeledField label="Default load"><Input type="number" min="0" step="0.5" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" /></LabeledField>
+            <LabeledField label="Default load"><Input type="number" min="0" step="any" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" /></LabeledField>
             <div className="space-y-1"><Label htmlFor={`${idPrefix}-${rowValue(exercise, index)}-load-unit`}>Unit</Label>
             <Select value={exercise.default_load_unit || 'lb'} onValueChange={(value) => setExercise(index, { default_load_unit: value })}>
               <SelectTrigger id={`${idPrefix}-${rowValue(exercise, index)}-load-unit`} className="h-11" aria-label="Default load unit"><SelectValue /></SelectTrigger>
@@ -1538,10 +1946,11 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
             </Select>
             </div>
           </div>
-          <div className="relative">
-            <Video className="absolute bottom-3.5 left-3 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-            <LabeledField label="Video URL"><Input value={exercise.video_url} onChange={(e) => setExercise(index, { video_url: e.target.value })} placeholder="Video URL" className="pl-9" data-testid="workout-exercise-video-input" /></LabeledField>
-          </div>
+          <DemoLinkField
+            exercise={exercise}
+            libraryExercise={library.find((ex) => ex.id === exercise.exercise_library_id)}
+            onChange={(fields) => setExercise(index, fields)}
+          />
           <LabeledField label="Client notes"><Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" /></LabeledField>
           <LabeledField label="Coach notes (internal)"><Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" /></LabeledField>
         </AccordionContent>

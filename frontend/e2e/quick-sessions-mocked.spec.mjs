@@ -842,3 +842,27 @@ for (const recovery of ['retry', 'status']) {
     expect(await pendingEntries(page)).toEqual([]);
   });
 }
+
+test('typing a custom name key by key past a catalog name keeps its spaces; a typed catalog name still links', async ({ page }) => {
+  const backend = new FakeBackend();
+  await install(page, backend);
+  await openBuilder(page);
+  const name = page.getByTestId('quick-session-exercise-name-input').first();
+  await name.click();
+  await name.pressSequentially('Goblet Squat hold');
+  await expect(name).toHaveValue('Goblet Squat hold');
+  await page.getByTestId('quick-session-add-exercise-button').click();
+  const second = page.getByTestId('quick-session-exercise-name-input').nth(1);
+  await second.click();
+  await second.pressSequentially('goblet squat ');
+  await page.getByTestId('quick-session-sets-input').first().click();
+  await expect(second).toHaveValue('Goblet Squat');
+  await page.getByTestId('quick-session-sets-input').first().fill('3');
+  await page.getByTestId('quick-session-sets-input').nth(1).fill('3');
+  await page.getByTestId('quick-session-assign-button').click();
+  await expect(page.getByTestId('quick-session-saved')).toBeVisible();
+  const [first, linked] = backend.createAttempts.at(-1).exercises;
+  expect(first.custom_name).toBe('Goblet Squat hold');
+  expect(first.exercise_library_id || null).toBeNull();
+  expect(linked).toMatchObject({ custom_name: 'Goblet Squat', exercise_library_id: 'lib-1' });
+});
