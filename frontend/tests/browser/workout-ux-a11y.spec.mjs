@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { exerciseName, setupWorkoutUx } from './workout-ux-fixture.mjs';
+import { exerciseName, openRpe, setupWorkoutUx } from './workout-ux-fixture.mjs';
 async function tracker(page) {
  const data = await setupWorkoutUx(page); await page.goto('/client/workouts/ux-log/track');
  await expect(page.getByTestId('workout-tracker')).toBeVisible(); await page.evaluate(() => document.fonts.ready); return data;
@@ -12,6 +12,7 @@ async function editor(page) {
 
 test('invalid fields retain values with associated inline errors and never enqueue or start rest', async ({ page }) => {
  const { results } = await tracker(page);
+ await openRpe(page); // P1: optional RPE opens on demand.
  for (const [field, value, message, corrected] of [
   [`${exerciseName} set 1 performed RPE`, '11', 'Use RPE 1–10', ''],
   [`${exerciseName} set 1 performed reps`, '2.5', 'Use a whole number of reps', ''],
@@ -43,7 +44,8 @@ test('workout and library authoring fields retain associated labels after typing
 });
 
 test('entry feedback uses calm associated guidance with a non-color cue',async({page})=>{
- await tracker(page);const input=page.getByLabel(`${exerciseName} set 1 performed RPE`,{exact:true});await input.fill('11');await input.blur();
+ await tracker(page);await openRpe(page); // P1: optional RPE opens on demand.
+ const input=page.getByLabel(`${exerciseName} set 1 performed RPE`,{exact:true});await input.fill('11');await input.blur();
  const id=await input.getAttribute('aria-describedby');const feedback=page.locator(`[id="${id}"]`);
  await expect(feedback).toHaveAttribute('role','status');await expect(feedback).toHaveText('Use RPE 1–10 in 0.5 steps, or leave blank.');
  await expect(feedback.locator('svg[aria-hidden="true"]')).toHaveCount(1);
@@ -53,6 +55,7 @@ test('entry feedback uses calm associated guidance with a non-color cue',async({
 
 test('offline invalid input never enters the queue; a corrected value still syncs', async ({ page, context }) => {
  const { results } = await tracker(page);
+ await openRpe(page); // P1: optional RPE opens on demand.
  await context.setOffline(true);
  const input = page.getByLabel(`${exerciseName} set 1 performed RPE`, { exact: true });
  await input.fill('11'); await input.blur();

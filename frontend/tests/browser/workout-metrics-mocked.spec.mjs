@@ -57,6 +57,8 @@ test('typed outbox survives reload and an ambiguous add response, then completes
   const duration = (number) => page.getByLabel(`Run set ${number} performed duration`, { exact: true });
   const distance = (number) => page.getByLabel(`Run set ${number} performed distance`, { exact: true });
   await expect(duration(1)).toHaveValue('');
+  // P1: optional RPE opens on demand.
+  await page.getByTestId('tracker-exercise-card').filter({ has: page.getByText('Run', { exact: true }) }).getByTestId('rpe-toggle').click();
   await page.getByLabel('Run set 1 performed RPE', { exact: true }).fill('11');
   await page.getByRole('button', { name: 'Complete set 1', exact: true }).click();
   await expect(page.getByText('Use RPE 1–10 in 0.5 steps, or leave blank.').first()).toBeVisible();

@@ -4,7 +4,7 @@ import { WorkoutViewport } from '@/components/training/WorkoutViewport';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeftRight, Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Plus, RefreshCw, Save, Timer, Trash2, WifiOff } from 'lucide-react';
+import { ArrowLeftRight, Bell, BellOff, Check, ChevronDown, CircleAlert, Clock3, History, Info, Loader2, Plus, RefreshCw, Repeat2, Save, Timer, Trash2, WifiOff } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -30,7 +30,9 @@ import SwapExerciseDialog, { readCachedSwapOptions, swapOptionsCacheKey } from '
 import { lastTimeDate, lastTimeFillNote, lastTimeLine, pickLastTimeOccurrence } from '@/lib/lastTime';
 import { trackProductEvent } from '@/lib/telemetry';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
-import { nextExercise, restAfterSet, supersetBlocks, supersetRestSeconds } from '@/lib/supersets';
+import { exerciseMarkers, nextExercise, restAfterSet, supersetBlocks, supersetRestSeconds } from '@/lib/supersets';
+import { nextWork, outlineBlocks, repeatPlan } from '@/lib/workoutGuide';
+import { WorkoutOutline } from '@/components/training/WorkoutOutline';
 import { ExerciseMediaInline } from '@/components/training/media/ExerciseMediaInline';
 import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
 import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
@@ -269,6 +271,13 @@ export default function WorkoutTracker() {
   const [lastChecked, setLastChecked] = useState(null);
   const [, setClock] = useState(0);
   const [swapFor, setSwapFor] = useState(null);
+  // P1 guidance: compact outline, next-row reveal and per-card details.
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [reveal, setReveal] = useState(null);
+  const [announcement, setAnnouncement] = useState('');
+  const [detailsOpen, setDetailsOpen] = useState({});
+  const [rpeOpen, setRpeOpen] = useState({});
+  const landedRef = useRef(false);
   const outbox = useWorkoutOutbox(id, setLog, {
     onCompleteRejected: (message) => { completeRejection.current = message; },
     getLog: () => logRef.current,
@@ -313,9 +322,20 @@ export default function WorkoutTracker() {
         navigate(`${basePath}/workouts/${id}`, { replace: true });
         return;
       }
-      setLog(hydratePending(data));
+      const hydrated = hydratePending(data);
+      setLog(hydrated);
       setLastChecked(Date.now());
       setLoadError(null);
+      // First load (fresh or resumed) lands on the next unfinished set with no
+      // focus change. A fresh workout scrolls only as far as needed ('nearest')
+      // so its weight, reps and Complete controls are whole while the title and
+      // save status stay as high as possible; a resume centres the row.
+      if (!landedRef.current) {
+        landedRef.current = true;
+        const next = nextWork(hydrated.exercises);
+        const resumed = hydrated.exercises.some((exercise) => exercise.sets.some((set) => set.status === 'completed'));
+        if (next) setReveal({ ...next, initial: !resumed, nonce: Date.now() });
+      }
     } catch (error) {
       setLoadError(errMsg(error, 'Failed to load workout'));
     }
@@ -344,6 +364,26 @@ export default function WorkoutTracker() {
     window.addEventListener('online', onOnline);
     return () => { window.clearInterval(timer); window.removeEventListener('online', onOnline); };
   }, []);
+
+  // Bring the next unfinished set into view after a completion or on resume,
+  // without moving focus and never while the person is typing in a field. A
+  // jump chosen from the outline (force) moves focus to that exercise.
+  useEffect(() => {
+    if (!reveal) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const tracker = document.querySelector('[data-testid="workout-tracker"]');
+      const active = document.activeElement;
+      const editing = active && tracker?.contains(active) && active.matches('input, textarea, select, [contenteditable="true"]');
+      if (editing && !reveal.force) return;
+      const selector = reveal.setId ? `[data-set-id="${CSS.escape(reveal.setId)}"]` : `[data-exercise-id="${CSS.escape(reveal.exerciseId)}"]`;
+      const target = tracker?.querySelector(selector);
+      if (!target) return;
+      target.scrollIntoView({ block: reveal.force ? 'start' : reveal.initial ? 'nearest' : 'center', behavior: 'auto' });
+      if (reveal.force) tracker.querySelector(`[data-exercise-heading="${CSS.escape(reveal.exerciseId)}"]`)?.focus({ preventScroll: true });
+      if (reveal.exerciseName && !reveal.initial) setAnnouncement(`Next: ${reveal.exerciseName}${reveal.setNumber ? `, set ${reveal.setNumber}` : ''}`);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [reveal]);
 
   // Save swap choices on this phone while online, so a swap still works offline.
   const contractLog = Boolean(log?.server_time);
@@ -446,8 +486,14 @@ export default function WorkoutTracker() {
   const manualRest = manualRestSeconds(activeBlock && activeBlock.kind !== 'single'
     ? { prescribed_rest_seconds: supersetRestSeconds(activeBlock.items.map(({ exercise }) => exercise)) }
     : activeExercise);
-  const isActiveSet = (exercise, set) => !sealed && set.status !== 'completed'
-    && set.id === exercise.sets.find((s) => s.status !== 'completed')?.id;
+  // One active row for the whole workout: the round-aware next unfinished set
+  // (P1). Before, every card highlighted its own first pending set, so in a
+  // superset A1 set 2 looked current while A2 set 1 was next.
+  const next = nextWork(log.exercises);
+  const isActiveSet = (exercise, set) => !sealed && set.id === next?.setId;
+  const markers = exerciseMarkers(log.exercises);
+  const outline = outlineBlocks(log.exercises);
+  const nextIndex = next ? log.exercises.findIndex((exercise) => exercise.id === next.exerciseId) : -1;
   const setRowClass = (exercise, set) => {
     if (set.status === 'completed') return 'bg-success/5 opacity-55';
     if (isActiveSet(exercise, set)) return 'bg-primary/15 ring-1 ring-primary/40';
@@ -472,6 +518,12 @@ export default function WorkoutTracker() {
   const errorId = (set, field) => `set-${set.id}-${field}-error`;
   const errorProps = (exercise, set, field) => entryErrors(exercise, set)[field]
     ? { 'aria-invalid': true, 'aria-describedby': errorId(set, field) } : {};
+  // RPE is optional (P1): its column opens on demand, and it always stays
+  // shown while any set holds an RPE value or an RPE error, so nothing entered
+  // or wrong is ever hidden.
+  const rpeLocked = (exercise) => exercise.sets.some((set) => (set.actual_rpe !== null && set.actual_rpe !== undefined && set.actual_rpe !== '')
+    || entryErrors(exercise, set).actual_rpe);
+  const showRpe = (exercise) => Boolean(rpeOpen[exercise.id]) || rpeLocked(exercise);
 
   const saveSet = (exercise, set) => {
     let payload;
@@ -496,12 +548,42 @@ export default function WorkoutTracker() {
       data: payload,
     });
     draftIds.current.delete(set.id);
-    if (status === 'completed') {
-      // Inside a superset/giant set, rest waits for the end of the round.
-      const rest = restAfterSet(log.exercises, exercise.id, set.id);
-      if (rest.seconds > 0) startRest(rest.seconds);
-      else if (rest.clear) clearRest();
-    }
+    if (status === 'completed') afterCompletion(exercise, set);
+  };
+
+  // After a set is completed: the round-aware rest rule (unchanged), then reveal
+  // the next unfinished set without an extra Next action.
+  const afterCompletion = (exercise, set) => {
+    // Inside a superset/giant set, rest waits for the end of the round.
+    const rest = restAfterSet(log.exercises, exercise.id, set.id);
+    if (rest.seconds > 0) startRest(rest.seconds);
+    else if (rest.clear) clearRest();
+    const updated = updateExercise(logRef.current || log, exercise.id, (row) => ({
+      ...row, sets: row.sets.map((item) => (item.id === set.id ? { ...item, status: 'completed' } : item)),
+    }));
+    const following = nextWork(updated.exercises);
+    if (following) setReveal({ ...following, nonce: Date.now() });
+    else setAnnouncement('All sets done. Finish the workout when ready.');
+  };
+
+  // Explicit "same as the previous set": records this set as performed with the
+  // previous completed set's actuals. Never inferred from the prescription and
+  // never applied to a set the person already typed into (workoutGuide.repeatPlan).
+  const repeatPrevious = (exercise, set) => {
+    const plan = repeatPlan(exercise, set, { drafting: draftIds.current.has(set.id), conflicts: log.conflicts });
+    if (!plan.available) return;
+    outbox.enqueue({
+      kind: 'set', exerciseId: exercise.id, setId: set.id,
+      method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
+      data: plan.payload,
+    });
+    afterCompletion(exercise, set);
+  };
+
+  const jumpTo = (exerciseId) => {
+    setOutlineOpen(false);
+    const exercise = log.exercises.find((row) => row.id === exerciseId);
+    setReveal({ exerciseId, exerciseName: exercise?.exercise_name, force: true, nonce: Date.now() });
   };
 
   const addSet = (exercise) => {
@@ -724,7 +806,20 @@ export default function WorkoutTracker() {
   );
 
   return (
-    <WorkoutViewport controls={controls}>
+    <WorkoutViewport
+      controls={controls}
+      headerSticky={!outlineOpen}
+      header={(
+        <WorkoutOutline
+          blocks={outline}
+          next={next ? { ...next, marker: hasGroups ? markers[nextIndex] : null } : null}
+          expanded={outlineOpen}
+          onToggle={() => setOutlineOpen((open) => !open)}
+          onJump={jumpTo}
+          sealed={sealed}
+        />
+      )}
+    >
       <PageHeader
         title={log.workout_name}
         subtitle={isCoach && log.client?.name ? `For ${log.client.name}` : null}
@@ -748,6 +843,7 @@ export default function WorkoutTracker() {
         </div>
       )}
       <div className="mb-4 flex items-center gap-2 text-xs">
+        <span className="sr-only" aria-live="polite" data-testid="next-set-announcement">{announcement}</span>
         <span className="flex items-center gap-2" aria-live="polite" data-testid="workout-save-state">
           {outbox.saveState === 'saved' && <><Save className="h-3.5 w-3.5 text-success" /> Saved</>}
           {outbox.saveState === 'saving' && <><Loader2 className="h-3.5 w-3.5 animate-spin text-primary motion-reduce:animate-none" /> Saving</>}
@@ -792,12 +888,13 @@ export default function WorkoutTracker() {
           <Card
             className={cn(exercise.id === activeExerciseId && !sealed && 'border-primary/35 shadow-[var(--app-elev-soft)]')}
             data-testid="tracker-exercise-card"
+            data-exercise-id={exercise.id}
           >
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-2">
                 <CardTitle className="flex min-w-0 items-center gap-2 font-display text-lg">
                   {hasGroups && <ExerciseMarker marker={marker} />}
-                  <span className="min-w-0 break-words">{exercise.exercise_name}</span>
+                  <span className="min-w-0 break-words outline-none" tabIndex={-1} data-exercise-heading={exercise.id}>{exercise.exercise_name}</span>
                 </CardTitle>
                 <Badge
                   variant="outline"
@@ -850,11 +947,15 @@ export default function WorkoutTracker() {
                 occurrence={lastTimeCache.current[exercise.id]}
                 online={outbox.online}
               />
-              <div className="hidden gap-1 px-1 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]">
-                <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span><span>RPE</span><span className="sr-only">Complete</span>
+              <div className={cn('hidden gap-1 px-1 text-xs font-medium text-muted-foreground sm:grid', showRpe(exercise)
+                ? 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]'
+                : 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_2.75rem]')}>
+                <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>{showRpe(exercise) && <span>RPE</span>}<span className="sr-only">Complete</span>
               </div>
               {exercise.sets.map((set) => (
-                <div key={set.id} className={`grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-end gap-1 rounded-md px-1 py-1 sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem] sm:items-center ${setRowClass(exercise, set)}`}>
+                <div key={set.id} data-set-id={set.id} data-active={isActiveSet(exercise, set) ? 'true' : undefined} className={cn('grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-end gap-1 rounded-md px-1 py-1 sm:items-center', showRpe(exercise)
+                  ? 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]'
+                  : 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_2.75rem]', setRowClass(exercise, set))}>
                   <span className={cn('row-span-2 self-center text-center text-sm tabular-nums sm:row-span-1', isActiveSet(exercise, set) && 'font-semibold text-primary')}>{set.set_number}</span>
                   <div className="col-span-3 min-w-0 sm:col-span-1">
                     <span className="text-xs text-muted-foreground sm:hidden">Weight</span>
@@ -884,20 +985,24 @@ export default function WorkoutTracker() {
                       </Select>
                     </div>
                   </div>
-                  <div className="col-start-2 min-w-0 sm:col-start-auto">
+                  <div className={cn('col-start-2 min-w-0 sm:col-start-auto', !showRpe(exercise) && 'col-span-2 sm:col-span-1')}>
                     <span className="text-xs text-muted-foreground sm:hidden">{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>
                     {trackingType(exercise) === 'reps_weight' ? <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
                       placeholder={exercise.prescribed_reps || undefined}
                       onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
                       {...errorProps(exercise, set, 'actual_reps')} aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} /> : <span aria-hidden className="text-center text-muted-foreground">—</span>}
                   </div>
-                  <div className="min-w-0">
+                  {showRpe(exercise) && <div className="min-w-0">
                     <span className="text-xs text-muted-foreground sm:hidden">RPE</span>
                     <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-11 px-2 text-sm tabular-nums" value={set.actual_rpe ?? ''}
                       placeholder={exercise.prescribed_rpe || undefined}
-                      onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
+                      onChange={(event) => {
+                        // Keep the column open once edited, so clearing a value never unmounts the focused field.
+                        setRpeOpen((current) => (current[exercise.id] ? current : { ...current, [exercise.id]: true }));
+                        setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value);
+                      }} onBlur={() => saveSet(exercise, set)} disabled={sealed}
                       {...errorProps(exercise, set, 'actual_rpe')} aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
-                  </div>
+                  </div>}
                   <Button
                     type="button" size="icon" variant={set.status === 'completed' ? 'default' : 'outline'}
                     className="h-11 w-11" disabled={sealed} onClick={() => toggleSet(exercise, set)}
@@ -933,6 +1038,21 @@ export default function WorkoutTracker() {
                   {(log.conflicts || []).filter((conflict) => conflict.workout_log_set_id === set.id).map((conflict) => (
                     <SetConflictNotice key={conflict.id} conflict={conflict} logId={id} viewer={isCoach ? 'coach' : 'client'} online={outbox.online} onChanged={() => refreshRef.current?.()} />
                   ))}
+                  {!sealed && set.id === exercise.sets.find((row) => row.status !== 'completed')?.id && (() => {
+                    const plan = repeatPlan(exercise, set, { drafting: draftIds.current.has(set.id), conflicts: log.conflicts });
+                    if (plan.available) {
+                      return (
+                        <Button type="button" variant="secondary" size="sm" className="col-span-full min-h-11 justify-start whitespace-normal text-left"
+                          onClick={() => repeatPrevious(exercise, set)} data-testid="repeat-previous-set"
+                          aria-label={`Record ${exercise.exercise_name} set ${set.set_number} as done, ${plan.label.replace(/^Same as/, 'same as')}`}>
+                          <Repeat2 className="mr-1.5 h-4 w-4 shrink-0" aria-hidden /> Done · {plan.label}
+                        </Button>
+                      );
+                    }
+                    return plan.reason && !plan.quiet
+                      ? <p className="col-span-full text-xs text-muted-foreground" data-testid="repeat-unavailable">{plan.reason}</p>
+                      : null;
+                  })()}
                 </div>
               ))}
               <div className="flex flex-wrap gap-2">
@@ -951,23 +1071,52 @@ export default function WorkoutTracker() {
                     : <History className="mr-1.5 h-4 w-4" />}
                   Same as last time
                 </Button>
+                {!rpeLocked(exercise) && !sealed && (
+                  <Button type="button" variant="ghost" size="sm" className="min-h-11 px-2 text-muted-foreground" aria-expanded={showRpe(exercise)}
+                    data-testid="rpe-toggle" onClick={() => {
+                      const opening = !rpeOpen[exercise.id];
+                      setRpeOpen((current) => ({ ...current, [exercise.id]: opening }));
+                      setAnnouncement(opening ? `RPE fields shown for ${exercise.exercise_name}` : `RPE fields hidden for ${exercise.exercise_name}`);
+                    }}>
+                    {showRpe(exercise) ? 'Hide RPE' : 'Add RPE'}
+                  </Button>
+                )}
                 {lastTimeCache.current[exercise.id] && (
                   <span id={`last-time-source-${exercise.id}`} className="sr-only">Copies blank fields from {lastTimeDate(lastTimeCache.current[exercise.id])}.</span>
                 )}
                 <p role="status" className="w-full break-words text-xs text-muted-foreground empty:hidden" data-testid="last-time-note">{fillNotes[exercise.id] || ''}</p>
               </div>
-              <ExerciseHistory logId={id} exercise={exercise} />
-              <div className="space-y-1.5">
-                <Label htmlFor={`notes-${exercise.id}`}>Exercise notes</Label>
-                <Textarea
-                  id={`notes-${exercise.id}`} rows={2} value={exercise.client_notes || ''} disabled={sealed}
-                  onChange={(event) => {
-                    setLog((current) => updateExercise(current, exercise.id, (row) => ({ ...row, client_notes: event.target.value })));
-                    outbox.markDirty();
-                  }}
-                  onBlur={() => saveNotes(exercise)}
-                />
-              </div>
+              {(() => {
+                // History and notes are optional, so they open on demand (P1).
+                // Notes that already have text stay open: nothing entered is hidden.
+                const open = detailsOpen[exercise.id] ?? Boolean(exercise.client_notes);
+                return (
+                  <>
+                    <Button type="button" variant="ghost" size="sm" className="min-h-11 px-2 text-muted-foreground"
+                      aria-expanded={open} aria-controls={`details-${exercise.id}`} data-testid="exercise-details-toggle"
+                      onClick={() => setDetailsOpen((current) => ({ ...current, [exercise.id]: !open }))}>
+                      {open ? 'Hide history & notes' : 'History & notes'}
+                      <ChevronDown className={cn('ml-1.5 h-4 w-4 transition-transform motion-reduce:transition-none', open && 'rotate-180')} aria-hidden />
+                    </Button>
+                    {open && (
+                      <div id={`details-${exercise.id}`} className="space-y-3" data-testid="exercise-details">
+                        <ExerciseHistory logId={id} exercise={exercise} />
+                        <div className="space-y-1.5">
+                          <Label htmlFor={`notes-${exercise.id}`}>Exercise notes</Label>
+                          <Textarea
+                            id={`notes-${exercise.id}`} rows={2} value={exercise.client_notes || ''} disabled={sealed}
+                            onChange={(event) => {
+                              setLog((current) => updateExercise(current, exercise.id, (row) => ({ ...row, client_notes: event.target.value })));
+                              outbox.markDirty();
+                            }}
+                            onBlur={() => saveNotes(exercise)}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </CardContent>
           </Card>
         )}</SupersetGroups>

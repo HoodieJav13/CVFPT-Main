@@ -1,4 +1,6 @@
 export const exerciseName='Single-arm Dumbbell Bulgarian Split Squat with Front-foot Elevation';
+// P1: optional RPE fields open on demand per exercise card.
+export const openRpe=(page,name=exerciseName)=>page.getByTestId('tracker-exercise-card').filter({has:page.getByText(name,{exact:true})}).getByTestId('rpe-toggle').click();
 function data() {
  const sets=(id,load)=>[1,2,3].map(n=>({id:`${id}-set-${n}`,workout_log_exercise_id:id,set_number:n,status:'pending',set_origin:'prescribed',actual_load_value:load,actual_load_unit:'lb',actual_reps:null,actual_rpe:null,actual_duration_value:null,actual_duration_unit:null,actual_distance_value:null,actual_distance_unit:null}));
  const exercises=[{id:'ex-a',exercise_name:exerciseName,tracking_type:'reps_weight',prescribed_sets:3,prescribed_reps:'8–10',prescribed_rpe:'7',prescribed_rest_seconds:60,superset_group:'group-a',sort_order:0,sets:sets('ex-a',135.5)},{id:'ex-b',exercise_name:'Chest-supported row',tracking_type:'reps_weight',prescribed_sets:3,prescribed_reps:'10',prescribed_rpe:'7',prescribed_rest_seconds:60,superset_group:'group-a',sort_order:1,sets:sets('ex-b',27.5)}];

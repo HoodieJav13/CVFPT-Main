@@ -170,6 +170,7 @@ test('after a failed preview a tap retries once while delayed, and typing during
   await goblet(page).getByTestId('same-as-last-time').click();
   await expect.poll(() => state.reads['ex-goblet']).toBe(2);
   await expect(goblet(page).getByTestId('same-as-last-time')).toBeDisabled();
+  await goblet(page).getByTestId('rpe-toggle').click(); // P1: optional RPE opens on demand.
   await page.getByRole('spinbutton', { name: 'Goblet Squat set 3 performed RPE', exact: true }).fill('9');
   tapHold.release();
   await expect(goblet(page).getByTestId('last-time-note')).toHaveText('Filled sets 1–3 from Sep 14, 2026. Typed values kept.');
@@ -220,6 +221,7 @@ test('the note survives set completion, active-exercise change and sync; it clea
   for (const n of [1, 2, 3]) await goblet(page).getByRole('button', { name: `Complete set ${n}`, exact: true }).click();
   await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
   await expect(deadbug(page).getByTestId('last-time-line')).toHaveText('No completed history yet.');
+  await goblet(page).getByTestId('exercise-details-toggle').click(); // P1: history & notes open on demand.
   await goblet(page).getByRole('button', { name: /Exercise history/ }).click();
   await expect(note).toHaveText('Filled sets 1–3 from Sep 14, 2026. Typed values kept.');
   // Reload: local UI state only.

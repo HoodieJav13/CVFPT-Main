@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { exerciseName, setupWorkoutUx } from './workout-ux-fixture.mjs';
+import { exerciseName, openRpe, setupWorkoutUx } from './workout-ux-fixture.mjs';
 async function tracker(page) {
  const data = await setupWorkoutUx(page); await page.goto('/client/workouts/ux-log/track');
  await expect(page.getByTestId('workout-tracker')).toBeVisible(); await page.evaluate(() => document.fonts.ready); return data;
@@ -113,7 +113,7 @@ for (const width of [320, 390]) test(`phone Start, PDF and completion actions fi
 });
 
 test('short viewport preserves document scrolling and focused input through resize', async ({page}) => {
- await page.setViewportSize({width:320,height:640});await tracker(page);
+ await page.setViewportSize({width:320,height:640});await tracker(page);await openRpe(page); // P1: optional RPE opens on demand.
  const input=page.getByLabel(`${exerciseName} set 1 performed RPE`,{exact:true});await input.fill('7.5');
  await page.setViewportSize({width:320,height:260});
  await expect(input).toBeFocused();await expect(input).toHaveValue('7.5');await expect(input).toBeInViewport({ratio:1});

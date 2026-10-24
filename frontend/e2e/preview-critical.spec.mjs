@@ -553,6 +553,7 @@ test('client workout completion creates a coach notification with immutable resu
   await squat.getByRole('combobox', { name: 'Goblet Squat set 1 weight unit', exact: true }).click();
   await page.getByRole('option', { name: 'kg', exact: true }).click();
   await squat.getByRole('button', { name: 'Complete set 1' }).click();
+  await squat.getByTestId('exercise-details-toggle').click(); // P1: history & notes open on demand.
   await squat.getByRole('textbox', { name: 'Exercise notes' }).fill('Offline sequence preserved.');
   await squat.getByRole('textbox', { name: 'Exercise notes' }).blur();
   await squat.getByRole('button', { name: 'Add set' }).click();
@@ -643,6 +644,7 @@ test('exercise history is network-only, paginated, retryable, and independent fr
   const card = page.getByTestId('tracker-exercise-card').first();
   const reps = card.getByRole('spinbutton', { name: 'Goblet Squat set 1 performed reps' });
   const rpe = card.getByRole('spinbutton', { name: 'Goblet Squat set 1 performed RPE' });
+  await card.getByTestId('rpe-toggle').click(); // P1: optional RPE opens on demand.
   await expect(reps).toHaveValue('');
   await expect(rpe).toHaveValue('');
   await reps.fill('8');
@@ -660,6 +662,7 @@ test('exercise history is network-only, paginated, retryable, and independent fr
   await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
 
   await page.evaluate(() => localStorage.setItem('cvf_preview_history_failure', 'once'));
+  await card.getByTestId('exercise-details-toggle').click(); // P1: history & notes open on demand.
   const disclosure = card.getByRole('button', { name: /Exercise history/ });
   await disclosure.focus();
   await page.keyboard.press('Space');
@@ -691,6 +694,7 @@ test('exercise history is network-only, paginated, retryable, and independent fr
 
   await context.setOffline(true);
   const secondCard = page.getByTestId('tracker-exercise-card').nth(1);
+  await secondCard.getByTestId('exercise-details-toggle').click(); // P1: history & notes open on demand.
   await secondCard.getByRole('button', { name: /Exercise history/ }).click();
   await expect(secondCard.getByRole('alert')).toContainText('offline');
   await expect(card.getByRole('button', { name: 'Complete set 2' })).toBeEnabled();
@@ -704,6 +708,11 @@ test('exercise history disclosure stays keyboard-operable without desktop overfl
   await page.getByTestId('start-program-workout').first().click();
 
   const card = page.getByTestId('tracker-exercise-card').first();
+  // P1: history & notes open on demand. Opened by keyboard too.
+  const details = card.getByTestId('exercise-details-toggle');
+  await details.focus();
+  await page.keyboard.press('Enter');
+  await expect(details).toHaveAttribute('aria-expanded', 'true');
   const disclosure = card.getByRole('button', { name: /Exercise history/ });
   await disclosure.focus();
   await page.keyboard.press('Enter');
@@ -830,6 +839,7 @@ test('offline extra set keeps its edits through sync, and a sealed tracker locks
   await expect(reps).toBeDisabled();
   await expect(squat.getByRole('combobox', { name: 'Goblet Squat set 4 weight unit' })).toBeDisabled();
   await expect(squat.getByRole('button', { name: 'Remove extra set' })).toBeDisabled();
+  await squat.getByTestId('exercise-details-toggle').click(); // P1: history & notes open on demand.
   await expect(squat.getByLabel('Exercise notes')).toBeDisabled();
   await expect(squat.getByRole('button', { name: 'Add set' })).toBeDisabled();
   await expect(squat.getByTestId('same-as-last-time')).toBeDisabled();
@@ -862,6 +872,7 @@ test('Same as last time keeps reps typed while history is still loading', async 
   await startDayOne();
   await reps1.fill('8');
   await reps1.blur();
+  await squat.getByTestId('rpe-toggle').click(); // P1: optional RPE opens on demand.
   await rpe1.fill('7');
   await rpe1.blur();
   await squat.getByRole('button', { name: 'Complete set 1' }).click();
@@ -880,6 +891,7 @@ test('Same as last time keeps reps typed while history is still loading', async 
   await startDayOne();
   const trackPath = new URL(page.url()).pathname;
   await expect(reps1).toHaveValue('');
+  await squat.getByTestId('rpe-toggle').click(); // P1: optional RPE opens on demand.
   await expect(rpe1).toHaveValue('');
   await squat.getByTestId('same-as-last-time').click();
   await expect(squat.getByTestId('same-as-last-time')).toBeDisabled();
