@@ -13,7 +13,9 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { SetConflictNotice, SwapStatus } from '@/components/training/SessionCorrections';
+import { SetConflictNotice, SwapStatus, setValueText } from '@/components/training/SessionCorrections';
+import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
+import { performedSet, trackingType, tracks } from '@/lib/workoutMetrics';
 import { CoachConflictActions, CoachSwapActions } from '@/components/group/CoachSessionActions';
 
 // L12 coach-first group logging (pt-session-events/v1, L12/CONTRACT.md).
@@ -50,9 +52,17 @@ async function sendCoachSet(logId, set, payload, baseRevision) {
   return data;
 }
 
+const METRICS = ['duration', 'distance'];
+// The typed metric values a set shows: its own, else blank in the prescribed unit.
+const metricState = (set, exercise) => Object.fromEntries(METRICS.map((metric) => [metric, {
+  value: set[`actual_${metric}_value`] ?? '',
+  unit: set[`actual_${metric}_unit`] || exercise[`prescribed_${metric}_unit`] || (metric === 'duration' ? 's' : 'm'),
+}]));
+
 function CoachSetRow({ log, exercise, set, onSaved }) {
   const [reps, setReps] = useState(set.actual_reps ?? '');
   const [load, setLoad] = useState(set.actual_load_value ?? exercise.prescribed_load_value ?? '');
+  const [metrics, setMetrics] = useState(() => metricState(set, exercise));
   const [dirty, setDirty] = useState(false);
   const [baseRevision, setBaseRevision] = useState(set.revision ?? 0);
   const [state, setState] = useState(set.status === 'completed' ? 'saved' : 'idle');
@@ -62,20 +72,39 @@ function CoachSetRow({ log, exercise, set, onSaved }) {
     if (dirty) return;
     setReps(set.actual_reps ?? '');
     setLoad(set.actual_load_value ?? exercise.prescribed_load_value ?? '');
+    setMetrics(metricState(set, exercise));
     setBaseRevision(set.revision ?? 0);
     setState(set.status === 'completed' ? 'saved' : 'idle');
-  }, [dirty, set.actual_reps, set.actual_load_value, set.revision, set.status, exercise.prescribed_load_value]);
+  }, [dirty, set.actual_reps, set.actual_load_value, set.actual_duration_value, set.actual_duration_unit, set.actual_distance_value, set.actual_distance_unit, set.revision, set.status, exercise.prescribed_load_value]);
+  const touch = () => { if (!dirty) { setDirty(true); setBaseRevision(set.revision ?? 0); } };
   const edit = (setter) => (event) => {
-    if (!dirty) { setDirty(true); setBaseRevision(set.revision ?? 0); }
+    touch();
     setter(event.target.value);
   };
+  const editMetric = (metric, key) => (value) => {
+    touch();
+    setMetrics((current) => ({ ...current, [metric]: { ...current[metric], [key]: value } }));
+  };
+  const repsWeight = trackingType(exercise) === 'reps_weight';
   const save = async () => {
-    const payload = {
-      status: 'completed',
-      actual_reps: reps === '' ? null : Number(reps),
-      actual_load_value: load === '' ? null : Number(load),
-      actual_load_unit: load === '' ? null : (set.actual_load_unit || exercise.prescribed_load_unit || 'lb'),
-    };
+    // The shared tracker rules build and validate the performed values: reps
+    // only for reps/weight, typed duration/distance values with their units
+    // otherwise. RPE is not edited here, so it is never sent (or cleared).
+    let payload;
+    try {
+      const { actual_rpe: _rpe, ...performed } = performedSet({
+        status: 'completed',
+        actual_reps: repsWeight ? reps : '',
+        actual_load_value: load,
+        actual_load_unit: set.actual_load_unit || exercise.prescribed_load_unit || 'lb',
+        ...Object.fromEntries(METRICS.flatMap((metric) => [[`actual_${metric}_value`, metrics[metric].value], [`actual_${metric}_unit`, metrics[metric].unit]])),
+      }, exercise);
+      payload = performed;
+    } catch (error) {
+      setState('error');
+      toast.error(error.message || 'Check the values and try again.');
+      return;
+    }
     setState('saving');
     try {
       const data = await sendCoachSet(log.id, set, payload, dirty ? baseRevision : (set.revision ?? 0));
@@ -100,9 +129,9 @@ function CoachSetRow({ log, exercise, set, onSaved }) {
     return (
       <div className="flex flex-wrap items-center gap-2 text-sm" data-testid={tid} data-state={set.status === 'completed' ? 'saved' : 'not-done'} data-actor={set.last_actor_role || ''}>
         <span className="w-12 text-xs text-muted-foreground">Set {set.set_number}</span>
-        {set.status === 'completed'
-          ? <span className="tabular-nums">{set.actual_reps ?? '—'} × {set.actual_load_value ?? '—'}{set.actual_load_value != null ? ` ${set.actual_load_unit || 'lb'}` : ''}</span>
-          : <span className="text-xs text-muted-foreground">not done</span>}
+        {set.status !== 'completed' ? <span className="text-xs text-muted-foreground">not done</span>
+          : repsWeight ? <span className="tabular-nums">{set.actual_reps ?? '—'} × {set.actual_load_value ?? '—'}{set.actual_load_value != null ? ` ${set.actual_load_unit || 'lb'}` : ''}</span>
+            : <span className="tabular-nums">{setValueText(set, { withStatus: false })}</span>}
         {set.last_actor_role === 'client' && <Badge variant="outline" className="text-xs">by client</Badge>}
       </div>
     );
@@ -110,8 +139,16 @@ function CoachSetRow({ log, exercise, set, onSaved }) {
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid={tid} data-state={state} data-actor={set.last_actor_role || ''}>
       <span className="w-12 text-xs text-muted-foreground">Set {set.set_number}</span>
-      <Input aria-label={`${exercise.exercise_name} set ${set.set_number} reps`} className="h-11 w-16" inputMode="numeric" value={reps} disabled={sealed} onChange={edit(setReps)} data-testid={`${tid}-reps`} />
-      <span className="text-xs text-muted-foreground">×</span>
+      {repsWeight && <>
+        <Input aria-label={`${exercise.exercise_name} set ${set.set_number} reps`} className="h-11 w-16" inputMode="numeric" value={reps} disabled={sealed} onChange={edit(setReps)} data-testid={`${tid}-reps`} />
+        <span className="text-xs text-muted-foreground">×</span>
+      </>}
+      {METRICS.filter((metric) => tracks(exercise, metric)).map((metric) => (
+        <div key={metric} className="w-44">
+          <WorkoutMetricInput metric={metric} label={`${exercise.exercise_name} set ${set.set_number} ${metric}`} value={metrics[metric].value} unit={metrics[metric].unit}
+            disabled={sealed} onValueChange={editMetric(metric, 'value')} onUnitChange={editMetric(metric, 'unit')} />
+        </div>
+      ))}
       <Input aria-label={`${exercise.exercise_name} set ${set.set_number} weight`} className="h-11 w-20" inputMode="decimal" value={load} disabled={sealed} onChange={edit(setLoad)} data-testid={`${tid}-load`} />
       <Button type="button" size="sm" className="h-11 min-w-20" variant={state === 'saved' && !dirty ? 'outline' : 'default'} disabled={sealed || state === 'saving'} onClick={save} data-testid={`${tid}-save`}>
         {state === 'saving' ? <Loader2 className="animate-spin" /> : state === 'saved' && !dirty ? <Check /> : null}
@@ -127,11 +164,15 @@ function PlanEditDialog({ log, exercise, onClose }) {
   const [reps, setReps] = useState(exercise.prescribed_reps || '');
   const [load, setLoad] = useState(exercise.prescribed_load_value ?? '');
   const [busy, setBusy] = useState(false);
+  // The value is edited in the exercise's existing unit (the server's same
+  // default when none is set); that unit is sent with it, never converted.
+  const unit = exercise.prescribed_load_unit || 'lb';
   const save = async () => {
     setBusy(true);
     try {
       await api.patch(`/workout-logs/${log.id}/exercises/${exercise.id}/plan`, {
-        event_id: makeId(), base_plan_revision: exercise.plan_revision || 0, prescribed_reps: reps, prescribed_load_value: load === '' ? null : Number(load),
+        event_id: makeId(), base_plan_revision: exercise.plan_revision || 0, prescribed_reps: reps,
+        prescribed_load_value: load === '' ? null : Number(load), prescribed_load_unit: load === '' ? null : unit,
       });
       toast.success('Plan updated for the sets not done yet.');
       onClose(true);
@@ -151,7 +192,7 @@ function PlanEditDialog({ log, exercise, onClose }) {
         </DialogHeader>
         <div className="grid grid-cols-2 gap-2">
           <label className="space-y-1 text-xs text-muted-foreground">Reps<Input className="min-h-11" value={reps} onChange={(e) => setReps(e.target.value)} data-testid="plan-edit-reps" /></label>
-          <label className="space-y-1 text-xs text-muted-foreground">Load (lb)<Input className="min-h-11" value={load} onChange={(e) => setLoad(e.target.value)} data-testid="plan-edit-load" /></label>
+          <label className="space-y-1 text-xs text-muted-foreground">Load ({unit})<Input className="min-h-11" value={load} onChange={(e) => setLoad(e.target.value)} data-testid="plan-edit-load" /></label>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onClose(false)}>Cancel</Button>

@@ -9,13 +9,14 @@ import { toast } from 'sonner';
 // pt-session-events/v1 client views (L12/PT-Sub). Only facts about the
 // client's own workout appear here; nothing from the coach's private notes.
 
-export function setValueText(value = {}) {
+export function setValueText(value = {}, { withStatus = true } = {}) {
   const parts = [];
   if (value.actual_reps != null) parts.push(`${value.actual_reps} reps`);
   if (value.actual_load_value != null) parts.push(`${Number(value.actual_load_value)} ${value.actual_load_unit || 'lb'}`);
   if (value.actual_duration_value != null) parts.push(`${value.actual_duration_value} ${value.actual_duration_unit || ''}`.trim());
   if (value.actual_distance_value != null) parts.push(`${value.actual_distance_value} ${value.actual_distance_unit || ''}`.trim());
   const text = parts.join(' × ') || 'no values';
+  if (!withStatus) return text;
   return value.status === 'completed' ? `${text} (done)` : `${text} (not done)`;
 }
 
