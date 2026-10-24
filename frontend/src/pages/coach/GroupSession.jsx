@@ -19,9 +19,9 @@ import {
   effectiveExercise, getVisit, inSessionTraineeIds, occupantsFor, openVisit, recordEntry, restoreStation,
   keepUnsyncedWork, roundBlockers, stationFor, stationLabel, substituteTrainee, unsyncedSets, validateSetup,
 } from '@/lib/groupSession';
-import { clearGroupSession, loadGroupSession, saveGroupSession } from '@/lib/groupSessionStore';
+import { clearGroupSession, loadGroupSession, loadMirrorMeta, saveGroupSession } from '@/lib/groupSessionStore';
 import { createGroupSessionSync } from '@/lib/groupSessionSync';
-import { createMirrorState, scheduleMirror } from '@/lib/groupMirror';
+import { createMirrorState, mirrorMeta, resolveDivergence, restoreMirrorState, scheduleMirror } from '@/lib/groupMirror';
 import GroupSummary from '@/components/group/GroupSummary';
 import ParticipantConductor from '@/components/group/ParticipantConductor';
 import { cn } from '@/lib/utils';
@@ -298,31 +298,43 @@ export default function GroupSession() {
   // one mirror per session id, sends updates one at a time, re-sends a request
   // whose outcome is unknown before any newer copy, retries transient failures
   // with bounded backoff, and adopts another device's change while keeping this
-  // device's unsaved entries.
-  const mirror = useRef(createMirrorState(null));
+  // device's unsaved entries. Its bookkeeping (confirmed revision, unanswered
+  // request) is stored with the session in the same write and restored here
+  // on mount, so a reload resumes exactly instead of guessing.
+  const mirror = useRef(null);
+  if (mirror.current === null) {
+    mirror.current = sessionRef.current ? restoreMirrorState(sessionRef.current, loadMirrorMeta(localStorage, scope, sessionRef.current)) : createMirrorState(null);
+  }
+  // Every stored copy of the session carries the current mirror bookkeeping.
+  const store = useCallback((next) => saveGroupSession(localStorage, scope, next, mirrorMeta(mirror.current, next)), [scope]);
   const mirrorCtx = useMemo(() => ({
     mirror, sessionRef, api, clock: window, onState: setMirrorState,
+    persist: () => {
+      const ok = sessionRef.current ? store(sessionRef.current) : true;
+      if (!ok) setStored(false);
+      return ok;
+    },
     adopt: (remote) => {
       const adopted = keepUnsyncedWork(remote, sessionRef.current);
       if (adopted) {
         sessionRef.current = adopted;
-        saveGroupSession(localStorage, scope, adopted);
+        setStored(store(adopted));
         setSession(adopted);
       }
       return adopted;
     },
-  }), [scope]);
+  }), [store]);
   const pushMirror = useCallback(() => scheduleMirror(mirrorCtx), [mirrorCtx]);
 
   // Write-ahead: every change is stored on this device before any request.
   const commit = useCallback((updater) => {
     const next = updater(sessionRef.current);
     sessionRef.current = next;
-    setStored(next ? saveGroupSession(localStorage, scope, next) : true);
+    setStored(next ? store(next) : true);
     setSession(next);
     if (next) pushMirror();
     return next;
-  }, [scope, pushMirror]);
+  }, [store, pushMirror]);
 
   const sync = useMemo(() => createGroupSessionSync({ api, getSession: () => sessionRef.current, commit }), [commit]);
 
@@ -451,10 +463,17 @@ export default function GroupSession() {
         ) : <><Check className="h-4 w-4 text-primary" /> All entered sets are saved</>}
         {keptForReview ? <span className="text-xs text-muted-foreground" data-testid="group-kept-for-review">· {keptForReview} kept for review in the trainee&apos;s workout</span> : null}
         <span className="text-xs text-muted-foreground" data-testid="group-mirror-state" data-state={mirrorState}>
-          {mirrorState === 'saved' ? '· Plan saved to your account' : mirrorState === 'replaced' ? '· Plan was changed on another device; showing that version' : mirrorState === 'local' ? '· Plan only on this device for now' : ''}
+          {mirrorState === 'saved' ? '· Plan saved to your account' : mirrorState === 'replaced' ? '· Plan was changed on another device; showing that version' : mirrorState === 'local' ? '· Plan only on this device for now' : mirrorState === 'diverged' ? '· Plan on this device differs from the copy on your account' : ''}
         </span>
         {!stored ? <span className="text-destructive">This browser refused to store the session; do not reload until everything is saved.</span> : null}
       </div>
+      {mirrorState === 'diverged' ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs" role="alert" data-testid="group-mirror-diverged">
+          <AlertTriangle className="h-3.5 w-3.5 text-gold" /> This device can&apos;t tell whether its plan or the copy on your account is newer. Both are kept until you choose.
+          <Button type="button" size="sm" variant="outline" onClick={() => resolveDivergence(mirrorCtx, 'local')} data-testid="group-mirror-keep-local">Send this device&apos;s plan</Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => resolveDivergence(mirrorCtx, 'remote')} data-testid="group-mirror-use-account">Use the account&apos;s copy</Button>
+        </div>
+      ) : null}
       {heldRecords.map((visit) => (
         <div key={visit.key} className="flex flex-wrap items-center gap-2 text-xs text-destructive" role="alert" data-testid="group-held-record">
           <AlertTriangle className="h-3.5 w-3.5" /> {visit.error}
@@ -469,7 +488,7 @@ export default function GroupSession() {
       <div>
         <PageHeader title={session.title} subtitle="Session summary" testId="group-header"
           action={<Button variant="outline" onClick={discard} data-testid="group-new">Start a new session</Button>} />
-        {pending.length || keptForReview || heldRecords.length ? <div className="mb-4">{syncStatus}</div> : null}
+        {pending.length || keptForReview || heldRecords.length || mirrorState === 'diverged' ? <div className="mb-4">{syncStatus}</div> : null}
         <GroupSummary session={session} />
       </div>
     );
