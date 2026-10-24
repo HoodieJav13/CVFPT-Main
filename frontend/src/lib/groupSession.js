@@ -301,23 +301,52 @@ export function sameSessionState(a, b) {
   return canonical(a) === canonical(b);
 }
 
+const isPending = (set) => Boolean(set.entry) && !['saved', 'conflict'].includes(set.state);
+const requestOf = (visit) => visit.requestId ?? visit.body?.request_id ?? null;
+// Two copies of one visit describe the same server records only when they
+// share the request id and no server id disagrees (an id one side lacks is
+// fine). A set's server id must not disagree either.
+function sameIdentity(local, remote) {
+  if (requestOf(local) !== requestOf(remote)) return false;
+  if (['assignmentId', 'logId', 'logExerciseId'].some((field) => local[field] && remote[field] && local[field] !== remote[field])) return false;
+  return local.sets.filter(isPending).every((set) => {
+    const other = remote.sets.find((row) => row.key === set.key);
+    return !set.setId || !other?.setId || set.setId === other.setId;
+  });
+}
+
 // Adopting another device's copy of the plan must not drop this device's
 // write-ahead work: every entered set that has not reached the trainee's
 // workout (neither saved nor kept as a conflict) is carried over with its
-// visit ids and event id, so Retry can still send exactly that event.
+// event id. When both copies describe the same server records, ids this
+// device never received are taken from the other copy (never mixed). When
+// they describe different records, this device's visit is kept whole, under
+// its own ids, as a separate record; without server ids it is not sent
+// automatically, so no second Quick Session or start is created.
 export function keepUnsyncedWork(remote, local) {
   if (!remote || !local || remote.id !== local.id) return remote;
-  const pending = unsyncedSets(local);
-  if (!pending.length) return remote;
+  const pendingVisits = [...new Map(unsyncedSets(local).map(({ visit }) => [visit.key, visit])).values()];
+  if (!pendingVisits.length) return remote;
   const visits = { ...(remote.visits || {}) };
-  for (const { visit: localVisit } of pending) {
+  for (const localVisit of pendingVisits) {
     const key = localVisit.key;
     const remoteVisit = visits[key];
     if (!remoteVisit) { visits[key] = localVisit; continue; }
+    if (!sameIdentity(localVisit, remoteVisit)) {
+      const ownKey = `${key}~${requestOf(localVisit)}`;
+      visits[ownKey] = localVisit.logId
+        ? { ...localVisit, key: ownKey }
+        : { ...localVisit, key: ownKey, status: 'blocked', error: `Entered on this device for a different record of ${localVisit.traineeName}'s station; not sent automatically. Try again to send it as its own record.` };
+      continue;
+    }
     const sets = [...remoteVisit.sets];
-    for (const set of localVisit.sets.filter((row) => row.entry && !['saved', 'conflict'].includes(row.state))) {
+    for (const set of localVisit.sets.filter(isPending)) {
       const index = sets.findIndex((row) => row.key === set.key);
-      if (index === -1) sets.push(set); else sets[index] = set;
+      if (index === -1) { sets.push(set); continue; }
+      const server = sets[index];
+      // This device's entry and event stay; the server set (and the revision
+      // it was read at) come from the copy that has them.
+      sets[index] = set.setId ? set : { ...set, setId: server.setId ?? null, serverRevision: server.serverRevision ?? set.serverRevision };
     }
     visits[key] = {
       ...remoteVisit,

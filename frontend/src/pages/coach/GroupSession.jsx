@@ -332,8 +332,8 @@ export default function GroupSession() {
             if (!stillCurrent()) return;
             m.revision = data.session.revision;
           }
-          setMirrorState(replaced ? 'replaced' : 'saved');
-          if (sessionRef.current === sent && !m.again) return;
+          if (sessionRef.current === sent && !m.again) { setMirrorState(replaced ? 'replaced' : 'saved'); return; }
+          setMirrorState('pending'); // a newer copy is queued; not saved yet
         } catch (error) {
           if (!stillCurrent()) return;
           const remote = error.response?.status === 409 ? error.response.data?.session : null;
@@ -354,6 +354,12 @@ export default function GroupSession() {
           if (!adopted || adopted === remote.station_state) return;
           // Mirror the kept entries on top of the adopted copy.
         }
+      }
+      // Each pass is bounded; newer work still queued gets another pass on the
+      // usual debounce instead of waiting for the next edit.
+      if (stillCurrent()) {
+        window.clearTimeout(m.timer);
+        m.timer = window.setTimeout(() => sendMirror(), 600);
       }
     } finally {
       m.inFlight = false;
@@ -491,18 +497,47 @@ export default function GroupSession() {
     );
   }
 
+  const pending = unsyncedSets(session);
+  const keptForReview = Object.values(session.visits).flatMap((visit) => visit.sets).filter((set) => set.entry && set.state === 'conflict').length;
+  // Records kept from this device that another device's plan describes
+  // differently: shown with an explicit action rather than sent silently.
+  const heldRecords = Object.values(session.visits).filter((visit) => visit.status === 'blocked' && visit.key.includes('~') && visit.sets.some((set) => set.entry && !['saved', 'conflict'].includes(set.state)));
+  const syncStatus = (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="group-sync-status" aria-live="polite">
+        {pending.length ? (
+          <>
+            <CloudOff className="h-4 w-4 text-gold" /> {pending.length} set(s) waiting to save
+            <Button size="sm" variant="outline" onClick={() => sync.flush()} data-testid="group-retry-all"><RefreshCw /> Retry now</Button>
+          </>
+        ) : <><Check className="h-4 w-4 text-primary" /> All entered sets are saved</>}
+        {keptForReview ? <span className="text-xs text-muted-foreground" data-testid="group-kept-for-review">· {keptForReview} kept for review in the trainee&apos;s workout</span> : null}
+        <span className="text-xs text-muted-foreground" data-testid="group-mirror-state" data-state={mirrorState}>
+          {mirrorState === 'saved' ? '· Plan saved to your account' : mirrorState === 'replaced' ? '· Plan was changed on another device; showing that version' : mirrorState === 'local' ? '· Plan only on this device for now' : ''}
+        </span>
+        {!stored ? <span className="text-destructive">This browser refused to store the session; do not reload until everything is saved.</span> : null}
+      </div>
+      {heldRecords.map((visit) => (
+        <div key={visit.key} className="flex flex-wrap items-center gap-2 text-xs text-destructive" role="alert" data-testid="group-held-record">
+          <AlertTriangle className="h-3.5 w-3.5" /> {visit.error}
+          <Button type="button" size="sm" variant="outline" onClick={() => sync.retryVisit(visit.key)}>Try again</Button>
+        </div>
+      ))}
+    </div>
+  );
+
   if (session.status === 'finished') {
     return (
       <div>
         <PageHeader title={session.title} subtitle="Session summary" testId="group-header"
           action={<Button variant="outline" onClick={discard} data-testid="group-new">Start a new session</Button>} />
+        {pending.length || keptForReview || heldRecords.length ? <div className="mb-4">{syncStatus}</div> : null}
         <GroupSummary session={session} />
       </div>
     );
   }
 
   const round = session.round;
-  const pending = unsyncedSets(session);
   const blockers = roundBlockers(session);
   const present = inSessionTraineeIds(session);
   const candidates = (clients || []).filter((row) => !present.has(row.id));
@@ -512,18 +547,7 @@ export default function GroupSession() {
     <div className="space-y-4">
       <PageHeader title={session.title} subtitle={`Round ${round + 1} of ${session.roundCount}`} testId="group-header"
         action={<Button variant="ghost" onClick={discard} data-testid="group-discard">Close session</Button>} />
-      <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="group-sync-status" aria-live="polite">
-        {pending.length ? (
-          <>
-            <CloudOff className="h-4 w-4 text-gold" /> {pending.length} set(s) waiting to save
-            <Button size="sm" variant="outline" onClick={() => sync.flush()} data-testid="group-retry-all"><RefreshCw /> Retry now</Button>
-          </>
-        ) : <><Check className="h-4 w-4 text-primary" /> All entered sets are saved</>}
-        <span className="text-xs text-muted-foreground" data-testid="group-mirror-state" data-state={mirrorState}>
-          {mirrorState === 'saved' ? '· Plan saved to your account' : mirrorState === 'replaced' ? '· Plan was changed on another device; showing that version' : mirrorState === 'local' ? '· Plan only on this device for now' : ''}
-        </span>
-        {!stored ? <span className="text-destructive">This browser refused to store the session; do not reload until everything is saved.</span> : null}
-      </div>
+      {syncStatus}
       <div className="grid gap-4 xl:grid-cols-2">
         {session.stations.map((station) => (
           <StationCard key={station.id} session={session} station={station}
