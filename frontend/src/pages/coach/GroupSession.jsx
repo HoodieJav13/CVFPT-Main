@@ -17,10 +17,13 @@ import { quickSessionEnvironment } from '@/lib/quickSessions';
 import {
   MAX_STATIONS, MIN_STATIONS, activeOccupant, addExtraSet, advanceRound, amendStation, createGroupSession,
   effectiveExercise, getVisit, inSessionTraineeIds, occupantsFor, openVisit, recordEntry, restoreStation,
-  roundBlockers, stationFor, stationLabel, substituteTrainee, unsyncedSets, validateSetup,
+  keepUnsyncedWork, roundBlockers, sameSessionState, stationFor, stationLabel, substituteTrainee, unsyncedSets, validateSetup,
 } from '@/lib/groupSession';
 import { clearGroupSession, loadGroupSession, saveGroupSession } from '@/lib/groupSessionStore';
 import { createGroupSessionSync } from '@/lib/groupSessionSync';
+
+// One session's coach-account mirror bookkeeping (see pushMirror below).
+const freshMirror = (sessionId, revision = null) => ({ sessionId, revision, timer: null, inFlight: false, again: false, lastSent: null });
 import GroupSummary from '@/components/group/GroupSummary';
 import ParticipantConductor from '@/components/group/ParticipantConductor';
 import { cn } from '@/lib/utils';
@@ -292,54 +295,80 @@ export default function GroupSession() {
   const [mode, setMode] = useState('choose');
   const [serverOpen, setServerOpen] = useState([]);
   const [mirrorState, setMirrorState] = useState('pending');
-  // The mirror revision belongs to one session id; a different session (or
-  // none) never inherits it, and replies for another session are ignored.
-  const mirror = useRef({ sessionId: null, revision: null, timer: null });
+  // The mirror belongs to one session id; a different session (or none) never
+  // inherits it, and replies for another session are ignored. Updates for a
+  // session go one at a time: a change made while one is in flight is sent
+  // next, based on the revision that reply returns, so this device never
+  // conflicts with itself. A conflict reply carries the server's copy: when it
+  // is exactly what this device last sent (its reply was lost), nothing is
+  // replaced and the newer local copy is sent; otherwise another device changed
+  // the plan and its copy is adopted, keeping this device's unsaved entries.
+  const mirror = useRef(freshMirror(null));
 
-  // The station plan also goes to the coach's account (pt-session-events/v1 §4),
-  // so another coach device can resume it. Coach-only; never sent to trainees.
-  const pushMirror = useCallback(() => {
-    window.clearTimeout(mirror.current.timer);
-    mirror.current.timer = window.setTimeout(async () => {
-      const current = sessionRef.current;
-      if (!current) return;
-      const sessionId = current.id;
-      if (mirror.current.sessionId !== sessionId) mirror.current = { sessionId, revision: null, timer: mirror.current.timer };
-      // Only a reply for the session still shown here may move its mirror.
-      const stillCurrent = () => mirror.current.sessionId === sessionId && sessionRef.current?.id === sessionId;
-      const ids = [...new Set(current.slots.flatMap((slot) => slot.occupants.map((row) => row.traineeId)))].slice(0, 6);
-      try {
-        if (mirror.current.revision === null) {
-          const { data } = await api.post('/group-sessions', { id: current.id, title: current.title, mode: 'stations', participant_ids: ids, station_state: current });
+  const sendMirror = useCallback(async () => {
+    const m = mirror.current;
+    if (m.inFlight) { m.again = true; return; }
+    m.inFlight = true;
+    const stillCurrent = () => mirror.current === m && sessionRef.current?.id === m.sessionId;
+    let replaced = false; // keeps "changed on another device" visible after re-sending kept entries
+    try {
+      for (let attempt = 0; attempt < 5 && stillCurrent(); attempt += 1) {
+        m.again = false;
+        const sent = sessionRef.current;
+        const ids = [...new Set(sent.slots.flatMap((slot) => slot.occupants.map((row) => row.traineeId)))].slice(0, 6);
+        try {
+          if (m.revision === null) {
+            m.lastSent = sent;
+            const { data } = await api.post('/group-sessions', { id: sent.id, title: sent.title, mode: 'stations', participant_ids: ids, station_state: sent });
+            if (!stillCurrent()) return;
+            m.revision = data.session.revision;
+            if (data.outcome !== 'created') { attempt -= 1; continue; } // replayed create: send the current copy
+          } else {
+            m.lastSent = sent;
+            const { data } = await api.patch(`/group-sessions/${sent.id}`, {
+              base_revision: m.revision, station_state: sent, participant_ids: ids,
+              ...(sent.status === 'finished' ? { status: 'finished' } : {}),
+            });
+            if (!stillCurrent()) return;
+            m.revision = data.session.revision;
+          }
+          setMirrorState(replaced ? 'replaced' : 'saved');
+          if (sessionRef.current === sent && !m.again) return;
+        } catch (error) {
           if (!stillCurrent()) return;
-          mirror.current.revision = data.session.revision;
-          if (data.outcome === 'created') { setMirrorState('saved'); return; }
-        }
-        const { data } = await api.patch(`/group-sessions/${current.id}`, {
-          base_revision: mirror.current.revision, station_state: sessionRef.current, participant_ids: ids,
-          ...(current.status === 'finished' ? { status: 'finished' } : {}),
-        });
-        if (!stillCurrent()) return;
-        mirror.current.revision = data.session.revision;
-        setMirrorState('saved');
-      } catch (error) {
-        if (!stillCurrent()) return;
-        if (error.response?.status === 409 && error.response.data?.session) {
-          // Another coach device changed the plan: adopt it rather than overwrite.
-          mirror.current.revision = error.response.data.session.revision;
-          const remote = error.response.data.session.station_state;
-          if (remote) {
-            sessionRef.current = remote;
-            saveGroupSession(localStorage, scope, remote);
-            setSession(remote);
+          const remote = error.response?.status === 409 ? error.response.data?.session : null;
+          if (!remote) { setMirrorState('local'); return; }
+          m.revision = remote.revision;
+          // This device's own earlier update (its reply was lost): keep the newer local copy.
+          if (remote.station_state && m.lastSent && sameSessionState(remote.station_state, m.lastSent)) continue;
+          // Another coach device changed the plan: adopt it rather than overwrite,
+          // keeping entered sets that have not reached the trainee's workout yet.
+          const adopted = remote.station_state ? keepUnsyncedWork(remote.station_state, sessionRef.current) : null;
+          if (adopted) {
+            sessionRef.current = adopted;
+            saveGroupSession(localStorage, scope, adopted);
+            setSession(adopted);
           }
           setMirrorState('replaced');
-        } else {
-          setMirrorState('local');
+          replaced = true;
+          if (!adopted || adopted === remote.station_state) return;
+          // Mirror the kept entries on top of the adopted copy.
         }
       }
-    }, 600);
+    } finally {
+      m.inFlight = false;
+    }
   }, [scope]);
+
+  const pushMirror = useCallback(() => {
+    window.clearTimeout(mirror.current.timer);
+    mirror.current.timer = window.setTimeout(() => {
+      const current = sessionRef.current;
+      if (!current) return;
+      if (mirror.current.sessionId !== current.id) mirror.current = { ...freshMirror(current.id), timer: mirror.current.timer };
+      sendMirror();
+    }, 600);
+  }, [sendMirror]);
 
   // Write-ahead: every change is stored on this device before any request.
   const commit = useCallback((updater) => {
@@ -371,7 +400,7 @@ export default function GroupSession() {
     api.get('/group-sessions/open').then(({ data }) => setServerOpen((data.sessions || []).filter((row) => row.mode === 'stations' && row.station_state))).catch(() => {});
   }, [pushMirror]);
   const resumeHere = (row) => {
-    mirror.current = { sessionId: row.id, revision: row.revision, timer: mirror.current.timer };
+    mirror.current = { ...freshMirror(row.id, row.revision), timer: mirror.current.timer };
     commit(() => ({ ...row.station_state, environment: scope.environment, coachId: scope.coachId }));
     sync.resume();
   };
@@ -428,7 +457,7 @@ export default function GroupSession() {
     if (!window.confirm(warning)) return;
     clearGroupSession(localStorage, scope);
     window.clearTimeout(mirror.current.timer);
-    mirror.current = { sessionId: null, revision: null, timer: null };
+    mirror.current = freshMirror(null);
     setMirrorState('pending');
     sessionRef.current = null;
     setSession(null);

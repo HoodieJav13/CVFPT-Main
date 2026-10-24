@@ -289,6 +289,47 @@ export function unsyncedSets(session) {
     .map((set) => ({ visit, set })));
 }
 
+// Same plan content regardless of key order (the server stores JSON as jsonb,
+// which does not keep the order this device wrote).
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+  return JSON.stringify(value ?? null);
+}
+
+export function sameSessionState(a, b) {
+  return canonical(a) === canonical(b);
+}
+
+// Adopting another device's copy of the plan must not drop this device's
+// write-ahead work: every entered set that has not reached the trainee's
+// workout (neither saved nor kept as a conflict) is carried over with its
+// visit ids and event id, so Retry can still send exactly that event.
+export function keepUnsyncedWork(remote, local) {
+  if (!remote || !local || remote.id !== local.id) return remote;
+  const pending = unsyncedSets(local);
+  if (!pending.length) return remote;
+  const visits = { ...(remote.visits || {}) };
+  for (const { visit: localVisit } of pending) {
+    const key = localVisit.key;
+    const remoteVisit = visits[key];
+    if (!remoteVisit) { visits[key] = localVisit; continue; }
+    const sets = [...remoteVisit.sets];
+    for (const set of localVisit.sets.filter((row) => row.entry && !['saved', 'conflict'].includes(row.state))) {
+      const index = sets.findIndex((row) => row.key === set.key);
+      if (index === -1) sets.push(set); else sets[index] = set;
+    }
+    visits[key] = {
+      ...remoteVisit,
+      assignmentId: remoteVisit.assignmentId || localVisit.assignmentId,
+      logId: remoteVisit.logId || localVisit.logId,
+      logExerciseId: remoteVisit.logExerciseId || localVisit.logExerciseId,
+      sets,
+    };
+  }
+  return { ...remote, visits };
+}
+
 // A round can advance once every visit with recorded work is closed on the
 // server and nothing is waiting to sync.
 export function roundBlockers(session, round = session.round) {
