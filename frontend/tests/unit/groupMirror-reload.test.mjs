@@ -73,9 +73,17 @@ const retitle = (title) => (s) => ({ ...s, title });
 
 // One page mount, as GroupSession does it at this source revision.
 function mountPage({ storage, api, clock }) {
-  const sessionRef = { current: store.loadGroupSession(storage, SCOPE) };
-  const meta = typeof store.loadMirrorMeta === 'function' && sessionRef.current ? store.loadMirrorMeta(storage, SCOPE, sessionRef.current) : null;
-  const mirror = { current: typeof helper.restoreMirrorState === 'function' && sessionRef.current ? helper.restoreMirrorState(sessionRef.current, meta) : helper.createMirrorState(null) };
+  // Exactly the page's reads at this source revision: one parsed entry where
+  // the store offers it, otherwise the session and its bookkeeping separately.
+  const single = typeof store.loadGroupSessionEntry === 'function';
+  const entry = single ? store.loadGroupSessionEntry(storage, SCOPE) : null;
+  const sessionRef = { current: single ? entry.session : store.loadGroupSession(storage, SCOPE) };
+  const readMeta = () => {
+    if (single) return entry.session && entry.session === sessionRef.current ? entry.meta : null;
+    return typeof store.loadMirrorMeta === 'function' && sessionRef.current ? store.loadMirrorMeta(storage, SCOPE, sessionRef.current) : null;
+  };
+  const restore = () => (typeof helper.restoreMirrorState === 'function' && sessionRef.current ? helper.restoreMirrorState(sessionRef.current, readMeta()) : helper.createMirrorState(null));
+  const mirror = { current: restore() };
   const states = [];
   const storageResults = [];
   const metaOf = () => (typeof helper.mirrorMeta === 'function' ? helper.mirrorMeta(mirror.current) : undefined);
@@ -91,6 +99,8 @@ function mountPage({ storage, api, clock }) {
     sessionRef, mirror, states, storageResults, ctx,
     commit(update) { sessionRef.current = update(sessionRef.current); save(sessionRef.current); helper.scheduleMirror(ctx); },
     mountEffect() { if (sessionRef.current) helper.scheduleMirror(ctx); }, // the mount effect pushes the mirror
+    // React StrictMode (development) runs effect cleanup then setup again on mount.
+    strictModeResetup() { if (typeof helper.closeMirror === 'function') helper.closeMirror(ctx); if (mirror.current === null) mirror.current = restore(); },
     // Only what the product itself does on unmount (GroupSession's effect
     // cleanup calls closeMirror); nothing invented by the harness.
     unmount() { if (typeof helper.closeMirror === 'function') helper.closeMirror(ctx); },
@@ -427,5 +437,47 @@ for (const [name, make] of Object.entries(INCONSISTENT)) {
     assert.equal(page.sessionRef.current.amendments.length, 1, `${name}: this device's copy kept`);
     assert.equal(page.states.at(-1), 'diverged', `${name}: shown as undecided`);
     assert.equal(c.log.filter((l) => l.method === 'PATCH').length, 0, `${name}: nothing sent without a choice`);
+  });
+}
+
+// Another tab stores a different coherent envelope for the same session id
+// between two reads of this page's mount.
+function successiveReadStorage(first, later) {
+  const base = memoryStorage();
+  const key = store.groupSessionKey(SCOPE);
+  let reads = 0;
+  return {
+    ...base, map: base.map,
+    getItem(k) { if (k !== key || base.map.has(k)) return base.getItem(k); reads += 1; return reads === 1 ? first : later; },
+    setItem(k, v) { base.setItem.call(this, k, v); },
+    get reads() { return reads; },
+  };
+}
+
+for (const strict of [false, true]) {
+  test(`mount reads the session and its bookkeeping from one stored entry${strict ? ' (with StrictMode re-setup)' : ''}: never pairs this copy with another tab's revision`, async () => {
+    const server = createGroupServer();
+    const clock = fakeClock();
+    const c = controlledApi(server);
+    const A = newSession('00000000-0000-4000-8000-0000000000fa');
+    // Account: another tab/device already moved it to C at revision 1.
+    server.request('POST', '/group-sessions', { id: A.id, title: A.title, mode: 'stations', participant_ids: [TRAINEES[0].id, TRAINEES[1].id], station_state: A });
+    const C = { ...A, title: 'Plan C (other tab)' };
+    server.request('PATCH', `/group-sessions/${A.id}`, { base_revision: 0, station_state: C, participant_ids: [TRAINEES[0].id, TRAINEES[1].id] });
+    assert.equal(account(server, A.id).revision, 1);
+    // First read: this tab's B, based on revision 0. Later reads: the other tab's C at revision 1.
+    const B = amendCableRow(A);
+    const envelopeB = JSON.stringify({ ...B, _mirror: { v: 1, sessionId: A.id, provenance: 'known', revision: 0, unresolved: null } });
+    const envelopeC = JSON.stringify({ ...C, _mirror: { v: 1, sessionId: A.id, provenance: 'known', revision: 1, unresolved: null } });
+    const storage = successiveReadStorage(envelopeB, envelopeC);
+    const page = mountPage({ storage, api: c.api, clock });
+    if (strict) page.strictModeResetup();
+    page.mountEffect();
+    await clock.advance(5 * 60 * 1000);
+    assert.equal(account(server, A.id).station_state.title, 'Plan C (other tab)', 'C is not overwritten');
+    assert.equal(account(server, A.id).station_state.amendments.length, 0);
+    const first = c.log.find((l) => l.method === 'PATCH');
+    assert.equal(first?.body.base_revision, 0, 'B is sent against the revision it was stored with');
+    assert.equal(page.sessionRef.current.title, 'Plan C (other tab)', 'the newer copy is adopted under the existing policy');
   });
 }

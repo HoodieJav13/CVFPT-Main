@@ -30,6 +30,17 @@ export function loadGroupSession(storage, scope) {
   return session;
 }
 
+// The session and its raw mirror bookkeeping from ONE read of the stored
+// entry, so they always describe the same write (another tab may store a
+// newer entry between two separate reads). The bookkeeping is validated by
+// groupMirror.restoreMirrorState before any use.
+export function loadGroupSessionEntry(storage, scope) {
+  const entry = readEntry(storage, scope);
+  if (!entry) return { session: null, meta: null };
+  const { _mirror: meta = null, ...session } = entry;
+  return { session, meta };
+}
+
 // The raw mirror bookkeeping stored with that session, or null. It is
 // validated by groupMirror.restoreMirrorState before any use.
 export function loadMirrorMeta(storage, scope, session) {

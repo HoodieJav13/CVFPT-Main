@@ -19,7 +19,7 @@ import {
   effectiveExercise, getVisit, inSessionTraineeIds, occupantsFor, openVisit, recordEntry, restoreStation,
   keepUnsyncedWork, roundBlockers, stationFor, stationLabel, substituteTrainee, unsyncedSets, validateSetup,
 } from '@/lib/groupSession';
-import { clearGroupSession, loadGroupSession, loadMirrorMeta, saveGroupSession } from '@/lib/groupSessionStore';
+import { clearGroupSession, loadGroupSessionEntry, saveGroupSession } from '@/lib/groupSessionStore';
 import { createGroupSessionSync } from '@/lib/groupSessionSync';
 import { closeMirror, createMirrorState, mirrorMeta, resolveDivergence, restoreMirrorState, scheduleMirror } from '@/lib/groupMirror';
 import GroupSummary from '@/components/group/GroupSummary';
@@ -279,7 +279,10 @@ function SubstituteDialog({ target, candidates, onClose, onConfirm }) {
 export default function GroupSession() {
   const { user } = useAuth();
   const scope = useMemo(() => ({ environment: quickSessionEnvironment(), coachId: user?.profile?.id }), [user?.profile?.id]);
-  const [session, setSession] = useState(() => (scope.coachId ? loadGroupSession(localStorage, scope) : null));
+  // The session and its mirror bookkeeping come from ONE read of the stored
+  // entry (never two reads that another tab could write between).
+  const [initialEntry] = useState(() => (scope.coachId ? loadGroupSessionEntry(localStorage, scope) : { session: null, meta: null }));
+  const [session, setSession] = useState(initialEntry.session);
   const sessionRef = useRef(session);
   const [stored, setStored] = useState(true);
   const [clients, setClients] = useState(null);
@@ -302,7 +305,13 @@ export default function GroupSession() {
   // request) is stored with the session in the same write and restored here
   // on mount, so a reload resumes exactly instead of guessing.
   const mirror = useRef(null);
-  const restoreMirror = () => (sessionRef.current ? restoreMirrorState(sessionRef.current, loadMirrorMeta(localStorage, scope, sessionRef.current)) : createMirrorState(null));
+  // Restores from that same read (also on StrictMode's cleanup-then-setup).
+  // A session that is no longer the one read is restored as legacy: safe,
+  // because nothing is sent for it without the coach's choice.
+  const restoreMirror = () => {
+    if (!sessionRef.current) return createMirrorState(null);
+    return restoreMirrorState(sessionRef.current, initialEntry.session === sessionRef.current ? initialEntry.meta : null);
+  };
   if (mirror.current === null) mirror.current = restoreMirror();
   // False once this page instance is unmounted: nothing it does later (a late
   // reply, a set save finishing) may write over what a newer instance stored.
