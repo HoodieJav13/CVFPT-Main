@@ -301,20 +301,18 @@ function registerSessionRoutes(router, deps) {
       if (!canWriteLog(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
       const { data: sub } = await supabaseAdmin.from('workout_log_substitutions').select('*').eq('id', req.params.subId).eq('workout_log_id', log.id).maybeSingle();
       if (!sub) return res.status(404).json({ error: 'Swap not found' });
-      if (sub.decision_event_id === body.event_id.toLowerCase()) return res.json({ outcome: 'replayed', substitution: sub, log: await detailedLogResponse(log.id) });
-      if (sub.status !== 'pending_confirmation') return res.status(409).json({ error: 'This swap was already decided.', substitution: sub });
-      if (body.decision === 'approve') {
-        if (log.status !== 'active') return res.status(409).json({ error: 'The workout is no longer active.' });
-        const { error: activateError } = await supabaseAdmin.rpc('activate_workout_substitution', { p_sub_id: sub.id });
-        if (activateError) throw activateError;
-      }
-      const { data: decided, error } = await supabaseAdmin.from('workout_log_substitutions').update({
-        status: body.decision === 'approve' ? 'active' : 'declined', decided_by_coach_id: req.user.coach.id,
-        decided_at: new Date().toISOString(), decision_event_id: body.event_id.toLowerCase(),
-      }).eq('id', sub.id).eq('status', 'pending_confirmation').select().maybeSingle();
+      // One locked transaction (decide_workout_substitution): the first
+      // decision wins, the same event replays, and an approval's activation
+      // and its recorded decision commit or roll back together.
+      const { data, error } = await supabaseAdmin.rpc('decide_workout_substitution', {
+        p_log_id: log.id, p_sub_id: sub.id, p_decision: body.decision, p_event_id: body.event_id.toLowerCase(), p_coach_id: req.user.coach.id,
+      });
       if (error) throw error;
-      if (!decided) return res.status(409).json({ error: 'This swap was already decided.' });
-      return res.json({ outcome: body.decision, substitution: decided, log: await detailedLogResponse(log.id) });
+      if (data.outcome === 'not_found') return res.status(404).json({ error: 'Swap not found' });
+      if (data.outcome === 'replayed') return res.json({ outcome: 'replayed', substitution: data.substitution, log: await detailedLogResponse(log.id) });
+      if (data.outcome === 'already_decided') return res.status(409).json({ error: 'This swap was already decided.', substitution: data.substitution });
+      if (data.outcome === 'log_not_active') return res.status(409).json({ error: 'The workout is no longer active.' });
+      return res.json({ outcome: body.decision, substitution: data.substitution, log: await detailedLogResponse(log.id) });
     } catch (error) {
       logError('substitution decision error', error);
       return res.status(500).json({ error: 'Failed to record the decision' });
