@@ -30,7 +30,7 @@ export class HttpError extends Error {
 export const networkError = () => Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' });
 
 export function createGroupServer() {
-  const db = { assignments: [], logs: [], requests: [], faults: [], seq: 0, activeOther: new Set(), groups: [] };
+  const db = { assignments: [], logs: [], requests: [], faults: [], seq: 0, activeOther: new Set(), groups: [], conflicts: [], events: new Map() };
   const nextId = (prefix) => `${prefix}-${++db.seq}`;
   const fingerprint = (body) => JSON.stringify({ ...body, request_id: undefined });
 
@@ -108,8 +108,22 @@ export function createGroupServer() {
     if (method === 'PATCH' && match) {
       const log = db.logs.find((row) => row.id === match[1]);
       if (!log) throw new HttpError(404, { error: 'Workout log not found' });
-      if (log.status !== 'active') throw new HttpError(409, { error: 'Workout is not active' });
       const set = log.exercises.flatMap((row) => row.sets).find((row) => row.id === match[2]);
+      if (log.status !== 'active') {
+        // pt-session-events/v1 (apply_workout_set_event): a contract write to a
+        // finished log is kept as a disagreement for the coach and never changes
+        // the logged set; a legacy write (no event_id) is refused.
+        if (!body.event_id) throw new HttpError(409, { error: 'Workout is not active' });
+        if (!set) throw new HttpError(404, { error: 'Workout set not found' });
+        const seen = db.events.get(body.event_id);
+        if (seen) return { ...set, event: { id: body.event_id, outcome: 'replayed', original_outcome: seen.outcome, conflict_id: seen.conflictId } };
+        const incoming = { status: body.status, actual_reps: body.actual_reps, actual_load_value: body.actual_load_value, actual_load_unit: body.actual_load_unit };
+        const same = Object.entries(incoming).every(([key, value]) => (set[key] ?? null) === (value ?? null));
+        const conflictId = same ? null : nextId('conflict');
+        if (!same) db.conflicts.push({ id: conflictId, logId: log.id, setId: set.id, eventId: body.event_id, baseRevision: body.base_revision, incoming });
+        db.events.set(body.event_id, { outcome: same ? 'unchanged' : 'conflict', conflictId });
+        return { ...set, event: { id: body.event_id, outcome: same ? 'unchanged' : 'conflict', conflict_id: conflictId } };
+      }
       if (!set) throw new HttpError(404, { error: 'Workout set not found' });
       Object.assign(set, { status: body.status, actual_reps: body.actual_reps, actual_load_value: body.actual_load_value, actual_load_unit: body.actual_load_unit, revision: (set.revision || 0) + 1 });
       return { ...set, event: body.event_id ? { id: body.event_id, outcome: 'applied' } : undefined };

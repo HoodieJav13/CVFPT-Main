@@ -13,6 +13,12 @@ import {
 } from './groupSession.js';
 
 const CLOSED = new Set(['completed', 'abandoned', 'missing']);
+// A visit closed on the server (possibly by another coach device) can still
+// hold a set this device entered but never delivered. That set is sent with
+// its stored event to the existing contract, which keeps a late value as a
+// disagreement for the coach and never changes the logged set or reopens the
+// workout. A visit whose record is missing has nowhere to send it.
+const FINISHED = new Set(['completed', 'abandoned']);
 
 function status(error) {
   return error?.response?.status ?? null;
@@ -122,10 +128,28 @@ export function createGroupSessionSync({ api, getSession, commit }) {
   }
 
   async function sendSet(key, setKey) {
-    const visit = await ensureStarted(key);
-    if (CLOSED.has(visit.status)) return;
+    let visit = await ensureStarted(key);
     let set = visit.sets.find((row) => row.key === setKey);
     if (!set?.entry || set.state === 'saved') return;
+    if (CLOSED.has(visit.status)) {
+      if (!FINISHED.has(visit.status) || !visit.logId) return;
+      if (!set.setId) {
+        // Read the finished workout once to learn this set's server id: a
+        // prescribed set by number, an extra by its operation id (its creation
+        // may have reached the server with the reply lost).
+        const { data } = await api.get(`/workout-logs/${visit.logId}`);
+        if (data?.client_id !== visit.traineeId) throw Object.assign(new Error(`The server returned a record that is not ${visit.traineeName}'s. Nothing was written.`), { fatal: true });
+        commit((session) => updateVisit(session, key, (row) => ({ ...reconcileVisitWithLog(row, data), status: row.status })));
+        visit = visitOf(key);
+        set = visit.sets.find((row) => row.key === setKey);
+        if (!set?.entry || set.state === 'saved') return;
+        // A finished workout never gets a new set: an extra the server never
+        // received stays here, unresolved, with its values and operation id.
+        if (!set.setId && set.origin === 'extra') {
+          throw Object.assign(new Error(`${visit.traineeName}'s workout was finished before this extra set was created. It is kept here and was not sent.`), { fatal: true });
+        }
+      }
+    }
     if (!set.setId && set.origin === 'extra') {
       const { data } = await api.post(`/workout-logs/${visit.logId}/exercises/${visit.logExerciseId}/sets`, { client_operation_id: set.operationId });
       commit((session) => updateVisitSet(session, key, setKey, (row) => ({ ...row, setId: data.id })));
@@ -150,9 +174,10 @@ export function createGroupSessionSync({ api, getSession, commit }) {
     });
     const outcome = data?.event?.outcome === 'replayed' ? data.event.original_outcome : data?.event?.outcome;
     if (outcome === 'conflict') {
-      commit((session) => updateVisitSet(session, key, setKey, (row) => (sameEntry(row.entry, sent)
-        ? { ...row, state: 'conflict', error: `${visit.traineeName} changed this set on their own phone first. Both values are kept; choose the final one in their workout.` }
-        : row)));
+      const text = FINISHED.has(visit.status)
+        ? `${visit.traineeName}'s workout was finished before this set arrived. Both values are kept for review in their workout; nothing logged was changed.`
+        : `${visit.traineeName} changed this set on their own phone first. Both values are kept; choose the final one in their workout.`;
+      commit((session) => updateVisitSet(session, key, setKey, (row) => (sameEntry(row.entry, sent) ? { ...row, state: 'conflict', error: text } : row)));
       return;
     }
     commit((session) => updateVisitSet(session, key, setKey, (row) => (sameEntry(row.entry, sent)
@@ -188,6 +213,14 @@ export function createGroupSessionSync({ api, getSession, commit }) {
         return;
       }
       if (!visit.logId) throw new Error('Sets are still saving.');
+      // Never close over an entered set that is not saved (or kept as a
+      // conflict): a closed visit is skipped by flush/sendSet, so the entry
+      // would be stranded. It stays open, keeps its ids, and Retry re-sends it.
+      const unsaved = visit.sets.filter((set) => set.entry && !['saved', 'conflict'].includes(set.state));
+      if (unsaved.length) {
+        setError(key, `Not closed: ${unsaved.length === 1 ? 'a set is' : `${unsaved.length} sets are`} not saved yet for ${visit.traineeName}. They are kept here; Retry to send them.`);
+        throw new Error('Sets are not saved yet.');
+      }
       try {
         await api.post(`/workout-logs/${visit.logId}/complete`, {});
         commit((session) => updateVisit(session, key, (row) => ({ ...row, status: 'completed', error: null })));
@@ -238,7 +271,7 @@ export function createGroupSessionSync({ api, getSession, commit }) {
     if (!session) return;
     const jobs = [];
     for (const visit of Object.values(session.visits)) {
-      if (CLOSED.has(visit.status) || visit.status === 'blocked') continue;
+      if (visit.status === 'blocked' || (CLOSED.has(visit.status) && !(FINISHED.has(visit.status) && visit.logId))) continue;
       for (const set of visit.sets) if (set.entry && !['saved', 'conflict'].includes(set.state)) jobs.push(saveSet(visit.key, set.key));
     }
     await Promise.all(jobs);
