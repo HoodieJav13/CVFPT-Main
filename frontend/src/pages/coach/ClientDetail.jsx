@@ -1,3 +1,7 @@
+import { useFormChanges } from '@/context/UnsavedChangesContext';
+import ClientInviteCard from '@/components/ClientInviteCard';
+import CoachNotes from '@/components/CoachNotes';
+import { setPrescription, trackingTargets } from '@/lib/workoutMetrics';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
@@ -14,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -31,7 +35,15 @@ import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { CoachClientWeek } from '@/components/WeekRhythm';
 import { SaveTemplateDialog } from '@/components/training/TemplateBits';
+import { SupersetGroups } from '@/components/training/SupersetGroups';
+import { HistoryShowMore } from '@/components/training/HistoryShowMore';
+import { useHistoryPages } from '@/lib/useHistoryPages';
 import { WorkoutDialog, workoutToForm } from '@/pages/coach/Programs';
+import {
+  QuickSessionBuilder, QuickSessionRecovery, QuickSessionSaved, newQuickForm, useQuickSession,
+} from '@/components/training/QuickSessionBuilder';
+import { QuickSessionBadge } from '@/components/training/QuickSessionBadge';
+import { activeCardAssignments, isQuickAssignment, isQuickSessionLog } from '@/lib/quickSessions';
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -84,6 +96,23 @@ export default function ClientDetail() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // On phones the tab strip scrolls sideways. Keep the selected tab inside
+  // the visible part (minus the 32px trailing fade) on load and on change,
+  // including deep links such as ?tab=programs from the dashboard queue.
+  const tabListRef = useRef(null);
+  const [tabsAtEnd, setTabsAtEnd] = useState(false);
+  const syncTabsAtEnd = (list) => setTabsAtEnd(list.scrollLeft + list.clientWidth >= list.scrollWidth - 1);
+  useEffect(() => {
+    const list = tabListRef.current;
+    const active = list?.querySelector('[data-state="active"]');
+    if (!list || !active) return;
+    const listBox = list.getBoundingClientRect();
+    const tabBox = active.getBoundingClientRect();
+    if (tabBox.left < listBox.left) list.scrollLeft += tabBox.left - listBox.left;
+    else if (tabBox.right > listBox.right - 32) list.scrollLeft += tabBox.right - (listBox.right - 32);
+    syncTabsAtEnd(list);
+  }, [activeTab, loading, loadedId]);
 
   const hasCurrentClient = loadedId === id;
   if (!hasCurrentClient && loadError?.id === id) return <LoadErrorState message={loadError.message} scope="client-detail" onRetry={() => { setLoading(true); setLoadError(null); load(); }} />;
@@ -168,17 +197,17 @@ export default function ClientDetail() {
       {/* Controlled: navigating to the same client with a different ?tab=
           (e.g. a dashboard action-queue link) must switch the visible tab. */}
       <Tabs key={client.id} value={activeTab} onValueChange={selectTab}>
-        <TabsList className="h-auto min-h-[52px] w-full snap-x justify-start overflow-x-auto rounded-xl tab-overflow-fade" aria-label="Client detail sections" data-testid="client-detail-tabs">
+        <TabsList ref={tabListRef} onScroll={(event) => syncTabsAtEnd(event.currentTarget)} data-at-end={tabsAtEnd} className="h-auto min-h-[52px] w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade" aria-label="Client detail sections" data-testid="client-detail-tabs">
           <TabsTrigger value="overview" className="min-h-11" data-testid="tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="check-ins" className="min-h-11" data-testid="tab-check-ins">Check-ins</TabsTrigger>
           <TabsTrigger value="progress" className="min-h-11" data-testid="tab-progress">Progress</TabsTrigger>
           <TabsTrigger value="sessions" className="min-h-11" data-testid="tab-sessions">Sessions</TabsTrigger>
-          <TabsTrigger value="programs" className="min-h-11 snap-start" data-testid="tab-programs">Programs</TabsTrigger>
+          <TabsTrigger value="programs" className="min-h-11" data-testid="tab-programs">Programs</TabsTrigger>
         </TabsList>
         <p className="mt-1 text-right text-[11px] text-muted-foreground sm:hidden" data-testid="client-tabs-overflow-hint">Swipe tabs for more</p>
 
         <TabsContent value="overview">
-          <OverviewTab client={client} waiver={waiver} reload={load} user={user} />
+          <OverviewTab client={client} waiver={waiver} reload={load} user={user} onInviteIntent={() => { loadSequence.current += 1; }} onInviteCurrent={setClient} />
         </TabsContent>
         <TabsContent value="check-ins">
           <CheckInsTab clientId={client.id} />
@@ -206,7 +235,7 @@ function ClientStatusBadges({ client }) {
       {client.auth_user_id ? (
         <Badge variant="outline" className="bg-success/15 text-success-foreground border-success/25">Account active</Badge>
       ) : client.invited ? (
-        <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Invited - awaiting signup</Badge>
+        <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25">Can claim account · Signup pending</Badge>
       ) : (
         <Badge variant="outline" className="text-muted-foreground">Not invited</Badge>
       )}
@@ -214,7 +243,7 @@ function ClientStatusBadges({ client }) {
   );
 }
 
-function OverviewTab({ client, waiver, reload, user }) {
+function OverviewTab({ client, waiver, reload, user, onInviteIntent, onInviteCurrent }) {
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({
     name: client.name, email: client.email || '', phone: client.phone || '',
@@ -241,18 +270,6 @@ function OverviewTab({ client, waiver, reload, user }) {
       toast.error(errMsg(err));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const toggleInvite = async (invited) => {
-    try {
-      const { data } = await api.patch(`/clients/${client.id}/invite`, { invited });
-      if (!invited) toast.success('Invitation removed');
-      else if (data.invite_email === 'sent') toast.success('Invite email sent - they can claim their account from the link');
-      else toast.success('Client invited - tell them to sign up with their email');
-      reload();
-    } catch (err) {
-      toast.error(errMsg(err));
     }
   };
 
@@ -306,14 +323,13 @@ function OverviewTab({ client, waiver, reload, user }) {
           <SectionLabel>Profile</SectionLabel>
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="rounded-lg" data-testid="edit-client-button">
-                <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
+              <Button variant="ghost" size="touchIcon" className="-my-2 rounded-lg" aria-label="Edit profile" title="Edit profile" data-testid="edit-client-button">
+                <Pencil aria-hidden />
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md" aria-describedby={undefined}>
               <DialogHeader>
                 <DialogTitle>Edit profile</DialogTitle>
-                <DialogDescription>Update this client&apos;s contact and coaching details.</DialogDescription>
               </DialogHeader>
               <form onSubmit={saveEdit} className="space-y-3.5">
                 <div className="space-y-1.5"><Label>Name</Label>
@@ -346,31 +362,15 @@ function OverviewTab({ client, waiver, reload, user }) {
         </CardContent>
       </Card>
 
+      <CoachNotes client={client} coachId={user.profile?.id} />
+
       <CoachClientWeek clientId={client.id} />
 
       <Card>
         <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="font-medium text-sm">Client portal invitation</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {client.auth_user_id
-                  ? 'This client has claimed their account.'
-                  : client.invited
-                    ? `Invited - they can sign up from the invite email using ${client.email || 'their email'}.`
-                    : 'Toggle on to email the client a signup link.'}
-              </p>
-            </div>
-            <Switch
-              checked={client.invited || Boolean(client.auth_user_id)}
-              disabled={Boolean(client.auth_user_id)}
-              onCheckedChange={toggleInvite}
-              data-testid="client-invite-switch"
-            />
-          </div>
+          <ClientInviteCard client={client} onIntent={onInviteIntent} onCurrent={onInviteCurrent} />
           {Boolean(client.auth_user_id) && client.email && (
-            <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-              <p className="text-xs text-muted-foreground">Locked out? Email them a password reset link.</p>
+            <div className="flex items-center justify-end gap-3 border-t border-border pt-3">
               <Button variant="outline" size="sm" className="min-h-9 rounded-lg shrink-0" disabled={sendingReset}
                 onClick={sendPasswordReset} data-testid="client-send-password-reset-button">
                 {sendingReset ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send password reset'}
@@ -418,7 +418,7 @@ function OverviewTab({ client, waiver, reload, user }) {
       {user.role === 'admin' && (
         <Card>
           <CardContent className="p-4">
-            <p className="font-medium text-sm mb-2">Assigned coach (admin)</p>
+            <p className="font-medium text-sm mb-2">Assigned coach</p>
             <Select value={client.coach_id} onValueChange={reassign}>
               <SelectTrigger className="rounded-xl" data-testid="admin-reassign-client-button">
                 <SelectValue placeholder="Select coach" />
@@ -513,7 +513,7 @@ function CheckInsTab({ clientId }) {
         </Button>
       </div>
       {checkIns.length === 0 && (
-        <EmptyState icon={ClipboardCheck} title="No check-ins yet" subtitle="Client and coach check-ins will show here." testId="coach-check-ins-empty" />
+        <EmptyState icon={ClipboardCheck} title="No check-ins yet" testId="coach-check-ins-empty" />
       )}
       {checkIns.map((checkIn) => (
         <Card key={checkIn.id} data-testid="coach-check-in-card">
@@ -551,10 +551,9 @@ function CheckInsTab({ clientId }) {
       ))}
 
       <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setEditing(null); }}>
-        <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit check-in' : 'New check-in'}</DialogTitle>
-            <DialogDescription>Create or update this client&apos;s check-in details and coach notes.</DialogDescription>
           </DialogHeader>
           <CheckInForm initial={editing} saving={saving} onSubmit={save} submitLabel={editing ? 'Save changes' : 'Save check-in'} coachMode />
         </DialogContent>
@@ -714,10 +713,9 @@ function ProgressTab({ clientId }) {
               <Plus className="h-4 w-4 mr-1.5" /> New metric
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-sm" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>{editingMetric ? 'Edit metric' : 'New metric'}</DialogTitle>
-              <DialogDescription>Create or edit a tracked metric and choose which direction counts as improvement.</DialogDescription>
             </DialogHeader>
             <form onSubmit={saveMetric} className="space-y-3.5">
               <div className="space-y-1.5"><Label>Name *</Label>
@@ -734,11 +732,11 @@ function ProgressTab({ clientId }) {
                     <SelectItem value="neutral">Track only — no PRs</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">Used only to recognize genuine personal records.</p>
+                <p className="text-xs text-muted-foreground">Sets which entries count as personal records.</p>
               </div>
               <div className="space-y-1.5"><Label>Goal{metricForm.unit ? ` (${metricForm.unit})` : ''}</Label>
                 <Input type="number" step="any" inputMode="decimal" value={metricForm.target_value} onChange={(e) => setMetricForm({ ...metricForm, target_value: e.target.value })} placeholder="Optional target" data-testid="metric-target-input" />
-                <p className="text-xs text-muted-foreground">Shown to the client as a goal line on their chart. Leave blank for no goal.</p>
+                <p className="text-xs text-muted-foreground">Shown on the client&apos;s chart.</p>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={saving} className="rounded-xl w-full sm:w-auto" data-testid="metric-save-button">
@@ -782,7 +780,7 @@ function ProgressTab({ clientId }) {
               </div>
             </CardHeader>
             <CardContent>
-              {m.entries.length > 0 ? (
+              {m.entries.length > 0 && (
                 <>
                   <MetricChart entries={m.entries} unit={m.unit} targetValue={m.target_value} />
                   <div className="mt-3 space-y-2">
@@ -799,8 +797,6 @@ function ProgressTab({ clientId }) {
                     ))}
                   </div>
                 </>
-              ) : (
-                <p className="text-sm text-muted-foreground py-4 text-center">Log the first entry to see the chart.</p>
               )}
             </CardContent>
           </Card>
@@ -808,10 +804,9 @@ function ProgressTab({ clientId }) {
       })}
 
       <Dialog open={Boolean(entryFor)} onOpenChange={(o) => { if (!o) { setEntryFor(null); setEditingEntry(null); } }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editingEntry ? 'Edit' : 'Log'} {entryFor?.name}</DialogTitle>
-            <DialogDescription>Record the value and date for this tracked metric.</DialogDescription>
           </DialogHeader>
           <form onSubmit={saveEntry} className="space-y-3.5">
             <div className="grid grid-cols-2 gap-3">
@@ -821,7 +816,7 @@ function ProgressTab({ clientId }) {
                 <Input type="date" value={entryForm.recorded_on} onChange={(e) => setEntryForm({ ...entryForm, recorded_on: e.target.value })} data-testid="entry-date-input" /></div>
             </div>
             <div className="space-y-1.5"><Label>Notes</Label>
-              <Input value={entryForm.notes} onChange={(e) => setEntryForm({ ...entryForm, notes: e.target.value })} placeholder="PR! Great depth." data-testid="entry-notes-input" /></div>
+              <Input value={entryForm.notes} onChange={(e) => setEntryForm({ ...entryForm, notes: e.target.value })} data-testid="entry-notes-input" /></div>
             <DialogFooter>
               <Button type="submit" disabled={saving} className="rounded-xl w-full sm:w-auto" data-testid="entry-save-button">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingEntry ? 'Save changes' : 'Log entry'}
@@ -863,12 +858,12 @@ function SessionsTab({ clientId }) {
           <Plus className="h-4 w-4 mr-1.5" /> Schedule session
         </Button>
       </div>
-      {sessions.length === 0 && <EmptyState icon={CalendarDays} title="No sessions yet" subtitle="Schedule the first session for this client." />}
+      {sessions.length === 0 && <EmptyState icon={CalendarDays} title="No sessions yet" />}
       {sessions.map((s) => (
         <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-4 py-3" data-testid="client-session-row">
           <div>
             <p className="font-medium text-sm">{fmtDay(s.scheduled_at)} - {fmtTime(s.scheduled_at)}</p>
-            <p className="text-xs text-muted-foreground">{s.duration_minutes}m - {s.location || 'No location'}</p>
+            <p className="text-xs text-muted-foreground">{s.duration_minutes}m{s.location ? ` · ${s.location}` : ''}</p>
           </div>
           <StatusBadge status={s.status} />
         </div>
@@ -879,11 +874,15 @@ function SessionsTab({ clientId }) {
 
 function ProgramsTab({ clientId, sessionContextId = null }) {
   const navigate = useNavigate();
+  const { user, sessionEpoch } = useAuth();
   const [starting, setStarting] = useState(null);
+  useEffect(() => { setStarting(null); }, [clientId, user?.profile?.id, sessionEpoch]);
   const [programs, setPrograms] = useState(null);
   const [workouts, setWorkouts] = useState(null);
   const [workoutAssignments, setWorkoutAssignments] = useState(null);
-  const [workoutHistory, setWorkoutHistory] = useState(null);
+  const historyPages = useHistoryPages(`/workout-logs/client/${clientId}`);
+  const workoutHistory = historyPages.items;
+  const { fetchFirst: fetchHistory, setFirstPage: setHistoryPage } = historyPages;
   const [loadError, setLoadError] = useState(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignmentType, setAssignmentType] = useState('program');
@@ -901,30 +900,62 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   const [copySaving, setCopySaving] = useState(false);
   const [templateTarget, setTemplateTarget] = useState(null); // { kind, id, name, parent, label }
   const [templateSaving, setTemplateSaving] = useState(false);
+  // Quick sessions: one page-lifetime controller; workout data stays in memory.
+  const quick = useQuickSession({
+    clientId,
+    onStarted: (log) => { if (log?.id) navigate(`/coach/workouts/${log.id}/track`); },
+  });
+  const [quickLibrary, setQuickLibrary] = useState(null);
+  const [quickLibraryError, setQuickLibraryError] = useState(null);
+  const [quickLibraryAttempt, setQuickLibraryAttempt] = useState(0);
+  const discardQuickDraft = () => {
+    // Only a definitive rejection is safe to forget with the confirmed form discard.
+    // Saving/uncertain requests keep their existing recovery controls and routing record.
+    if (quick.state.phase === 'rejected' && quick.state.record) quick.controller.discard(quick.state.record);
+    quick.setForm(newQuickForm());
+  };
+  const quickChanges = useFormChanges(quick.form, clientId, assignOpen && assignmentType === 'quick' && ['editing', 'rejected'].includes(quick.state.phase), discardQuickDraft);
+  const savedQuickId = quick.state.assignment?.id || null;
+  const recoveredCount = quick.state.recovered.length;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isCurrent = () => true) => {
     try {
       const [programRes, workoutRes, assignmentRes, historyRes, programAssignmentRes] = await Promise.all([
         api.get('/programs'),
         api.get('/programs/workouts'),
         api.get(`/programs/workout-assignments/client/${clientId}`),
-        api.get(`/workout-logs/client/${clientId}`),
+        fetchHistory(),
         api.get(`/programs/program-assignments/client/${clientId}`),
       ]);
+      if (!isCurrent()) return;
       setPrograms(programRes.data);
       setWorkouts(workoutRes.data);
       setProgramAssignments(programAssignmentRes.data);
       setWorkoutAssignments(assignmentRes.data);
-      setWorkoutHistory(historyRes.data);
+      setHistoryPage(historyRes);
       setLoadError(null);
     } catch (e) {
+      if (!isCurrent()) return;
       const message = errMsg(e);
       setLoadError(message);
       toast.error(message);
     }
-  }, [clientId]);
+  }, [clientId, fetchHistory, setHistoryPage]);
 
   useEffect(() => { load(); }, [load]);
+  // A confirmed or recovered quick session appears as a card without a manual refresh.
+  useEffect(() => { if (savedQuickId || recoveredCount) load(); }, [savedQuickId, recoveredCount, load]);
+  useEffect(() => {
+    if (!assignOpen || assignmentType !== 'quick' || quickLibrary) return;
+    let cancelled = false;
+    setQuickLibraryError(null);
+    api.get('/programs/exercise-library').then(({ data }) => {
+      if (!cancelled) setQuickLibrary(data || []);
+    }).catch((err) => {
+      if (!cancelled) setQuickLibraryError(errMsg(err, 'Could not load the exercise library'));
+    });
+    return () => { cancelled = true; };
+  }, [assignOpen, assignmentType, quickLibrary, quickLibraryAttempt, clientId, user?.profile?.id, sessionEpoch]);
 
   const awaitingInitialData = !programs || !workouts || !workoutAssignments || !workoutHistory || !programAssignments;
   if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="client-detail-programs" onRetry={() => { setLoadError(null); load(); }} />;
@@ -942,8 +973,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
   const assignedSourceIds = new Set(programAssignments.map((a) => a.program.source_program_id || a.program.id));
   const available = programs.filter((p) => !p.hidden && !assignedSourceIds.has(p.id));
   const assignableWorkouts = workouts.filter((w) => !w.hidden);
-  const activeWorkouts = workoutAssignments.filter((a) => a.assignment_mode === 'active');
-  const datedWorkouts = workoutAssignments
+  // Completed quick sessions leave the active cards (history keeps them).
+  const cardAssignments = activeCardAssignments(workoutAssignments);
+  const activeWorkouts = cardAssignments.filter((a) => a.assignment_mode === 'active');
+  const datedWorkouts = cardAssignments
     .filter((a) => a.assignment_mode === 'dated')
     .sort((a, b) => String(a.assigned_for || '').localeCompare(String(b.assigned_for || '')));
 
@@ -963,6 +996,8 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
 
   const assign = async (e) => {
     e.preventDefault();
+    // Quick sessions save only through their own explicit Assign / Start now actions.
+    if (assignmentType === 'quick') return;
     setSaving(true);
     try {
       if (assignmentType === 'program') {
@@ -1021,7 +1056,37 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
     }
   };
 
-  const noAssignments = assigned.length === 0 && workoutAssignments.length === 0;
+  const noAssignments = assigned.length === 0 && cardAssignments.length === 0;
+
+  const finishQuickSession = () => {
+    quick.controller.resetForNew();
+    quick.setForm(newQuickForm());
+    setAssignOpen(false);
+    setAssignmentType('program');
+    load();
+  };
+
+  const saveQuickToLibrary = async (assignment) => {
+    const isCurrent = quick.beginCardOperation('library', assignment.id);
+    if (!isCurrent()) return;
+    try {
+      await api.post(`/programs/quick-sessions/${assignment.id}/save-to-library`);
+      if (!isCurrent()) return;
+      toast.success('Saved to the shared studio library as a hidden template.');
+      load(isCurrent);
+    } catch (err) {
+      if (!isCurrent()) return;
+      toast.error(`Saving to library failed · ${errMsg(err, 'Try again')}`);
+    }
+  };
+
+  const quickStartedEdit = (err) => {
+    if (err?.response?.data?.code !== 'quick_session_started') return false;
+    toast.error(err.response.data.error);
+    setCopyEditor(null);
+    load();
+    return true;
+  };
 
   const openCopyEditor = async (workout) => {
     try {
@@ -1029,7 +1094,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         const { data } = await api.get('/programs/exercise-library');
         setCopyLibrary(data);
       }
-      setCopyEditor({ workout, form: workoutToForm(workout) });
+      // Edit the server's current copy, not this page's possibly stale one
+      // (a just-saved edit may not have reloaded yet).
+      const { data: fresh } = await api.get(`/programs/workouts/${workout.id}`);
+      setCopyEditor({ workout: fresh, form: workoutToForm(fresh) });
     } catch (err) {
       toast.error(errMsg(err));
     }
@@ -1044,6 +1112,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       setCopyEditor(null);
       load();
     } catch (err) {
+      if (quickStartedEdit(err)) return;
       toast.error(errMsg(err));
     } finally {
       setCopySaving(false);
@@ -1075,7 +1144,9 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
     return workouts.find((template) => template.id === id) || null;
   };
 
-  const startWorkout = async (key, source) => {
+  const startWorkout = async (key, source, quickSession = false) => {
+    const isCurrent = quickSession ? quick.beginCardOperation('start', source.workout_assignment_id) : () => true;
+    if (!isCurrent()) return;
     setStarting(key);
     try {
       const { data } = await api.post('/workout-logs/start', {
@@ -1083,8 +1154,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         client_id: clientId,
         ...(sessionContextId ? { session_id: sessionContextId } : {}),
       });
+      if (!isCurrent()) return;
       navigate(`/coach/workouts/${data.workout_log.id}/track`);
     } catch (error) {
+      if (!isCurrent()) return;
       const active = error.response?.data?.active_workout;
       if (error.response?.status === 409 && active?.id) {
         toast.info(`${active.workout_name} is already in progress — opening it.`);
@@ -1093,33 +1166,56 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         toast.error(errMsg(error, 'Could not start workout'));
       }
     } finally {
-      setStarting(null);
+      if (isCurrent()) setStarting(null);
     }
   };
 
   return (
     <div className="space-y-3 mt-1">
       <div className="flex justify-end">
-        <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+        <Dialog open={assignOpen} onOpenChange={(next) => { if (next || quickChanges.confirmDiscard()) setAssignOpen(next); }}>
           <DialogTrigger asChild>
             <Button size="sm" className="rounded-xl" data-testid="assign-program-button">
               <Plus className="h-4 w-4 mr-1.5" /> Assign training
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>Assign training</DialogTitle>
-              <DialogDescription>Choose a program and start date to assign to this client.</DialogDescription>
             </DialogHeader>
             <form onSubmit={assign} className="space-y-4">
-              <Select value={assignmentType} onValueChange={(value) => { setAssignmentType(value); setExerciseLoads({}); }}>
+              <Select value={assignmentType} onValueChange={(value) => { if (value !== assignmentType && !quickChanges.confirmDiscard()) return; setAssignmentType(value); setExerciseLoads({}); }}>
                 <SelectTrigger className="rounded-xl" data-testid="client-assignment-type-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="program">Long-term program</SelectItem>
                   <SelectItem value="workout">Standalone workout</SelectItem>
+                  <SelectItem value="quick">Quick session</SelectItem>
                 </SelectContent>
               </Select>
-              {assignmentType === 'program' ? (
+              {assignmentType === 'quick' ? (
+                quick.state.phase === 'saved'
+                  ? <QuickSessionSaved state={quick.state} controller={quick.controller} onDone={finishQuickSession} onOpenActive={(id) => navigate(`/coach/workouts/${id}/track`)} />
+                  : quickLibrary === null
+                    ? quickLibraryError
+                      ? <div role="alert" className="space-y-3 py-4 text-sm" data-testid="quick-session-library-error">
+                          <p>{quickLibraryError}</p>
+                          <Button type="button" variant="secondary" className="min-h-11 rounded-xl" onClick={() => setQuickLibraryAttempt((attempt) => attempt + 1)}>Try again</Button>
+                        </div>
+                      : <div role="status" aria-label="Loading exercise library" className="flex justify-center py-6" data-testid="quick-session-library-loading"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden /></div>
+                    : (
+                      <>
+                        <QuickSessionRecovery state={quick.state} controller={quick.controller} />
+                        <QuickSessionBuilder
+                          onCatalogCreated={(item) => setQuickLibrary((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item])}
+                          form={quick.form}
+                          setForm={quick.setForm}
+                          library={quickLibrary.filter((exercise) => !exercise.hidden)}
+                          state={quick.state}
+                          onSave={(intent) => quick.controller.save(quick.form, intent)}
+                        />
+                      </>
+                    )
+              ) : assignmentType === 'program' ? (
                 <>
                   <Select value={selectedProgram} onValueChange={(value) => { setSelectedProgram(value); setExerciseLoads({}); }}>
                     <SelectTrigger className="rounded-xl" data-testid="assign-program-select">
@@ -1129,7 +1225,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                       {available.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  {available.length === 0 && <p className="text-xs text-muted-foreground">All your programs are already assigned to this client. Create more from the Programs tab.</p>}
+                  {available.length === 0 && <p className="text-xs text-muted-foreground">All programs are already assigned.</p>}
                 </>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-3">
@@ -1156,7 +1252,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                   </div>
                 </div>
               )}
-              {selectedTraining && (
+              {assignmentType !== 'quick' && selectedTraining && (
                 <AssignmentLoadFields
                   type={assignmentType}
                   selection={selectedTraining}
@@ -1164,12 +1260,12 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                   onChange={setExerciseLoads}
                 />
               )}
-              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" data-testid="client-assignment-notes-input" />
-              <DialogFooter>
+              {assignmentType !== 'quick' && <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" data-testid="client-assignment-notes-input" />}
+              {assignmentType !== 'quick' && <DialogFooter>
                 <Button type="submit" disabled={saving || (assignmentType === 'program' ? !selectedProgram : !selectedWorkout)} className="rounded-xl w-full sm:w-auto" data-testid="assign-confirm-button">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign'}
                 </Button>
-              </DialogFooter>
+              </DialogFooter>}
             </form>
           </DialogContent>
         </Dialog>
@@ -1177,24 +1273,32 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       {sessionContextId && (
         <div className="flex gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2" data-testid="session-context-banner">
           <CalendarDays className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-          <p className="text-xs">Starting a workout here will link it to the selected session.</p>
+          <p className="text-xs">Workouts started here link to the selected session.</p>
         </div>
       )}
-      {noAssignments && <EmptyState icon={Dumbbell} title="No training assigned" subtitle="Assign a structured program or standalone workout to this client." />}
+      {!assignOpen && <QuickSessionRecovery state={quick.state} controller={quick.controller} onReentered={() => { quick.setForm(newQuickForm()); setAssignmentType('quick'); setAssignOpen(true); }} />}
+      {quick.state.recovered.map((entry) => (
+        <div key={entry.request_id} className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-sm" role="status" data-testid="quick-session-recovered">
+          <span className="min-w-0 flex-1">An earlier quick session was saved: {entry.assignment?.workout?.name || 'Quick session'}.</span>
+          <Button size="sm" variant="ghost" className="min-h-11 rounded-lg sm:min-h-0" onClick={() => quick.controller.dismissRecovered(entry.request_id)} data-testid="quick-session-recovered-dismiss">Dismiss</Button>
+        </div>
+      ))}
+      {noAssignments && <EmptyState icon={Dumbbell} title="No training assigned" />}
       {assigned.map((p) => {
         const assignment = (p.active_assignments || []).find((row) => row.client?.id === clientId);
         return (
         <Card key={p.id} data-testid="assigned-program-card">
           <CardContent className="p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
+            {/* Phones: actions stack under the title and wrap, so the card never forces a sideways scroll. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+              <div className="min-w-0">
                 <p className="font-display font-semibold">{p.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} {p.frequency_days === 1 ? 'day' : 'days'}/week - {p.exercise_count} exercises</p>
               </div>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
                 <ExistingLoadEditor type="program" assignment={assignment} selection={p} onSaved={load} />
-                <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setTemplateTarget({ kind: 'program', id: p.id, name: `${p.name} (variation)`, parent: programTemplateParent(p), label: 'program' })} data-testid="save-program-template-button">Save as template</Button>
-                <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
+                <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => setTemplateTarget({ kind: 'program', id: p.id, name: `${p.name} (variation)`, parent: programTemplateParent(p), label: 'program' })} data-testid="save-program-template-button">Save as template</Button>
+                <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>
               </div>
             </div>
             <div className="divide-y divide-border">
@@ -1208,13 +1312,13 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
                       <p className="text-sm font-medium">{day.workout?.name || 'Workout day'}</p>
                     </div>
                     {day.workout && day.workout.is_template === false && (
-                      <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground shrink-0" onClick={() => openCopyEditor(day.workout)} data-testid="edit-client-workout-button">
-                        <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                      <Button size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground shrink-0" onClick={() => openCopyEditor(day.workout)} aria-label={`Edit ${day.workout.name || 'workout day'}`} title="Edit" data-testid="edit-client-workout-button">
+                        <Pencil aria-hidden />
                       </Button>
                     )}
                     {assignment && day.id && (
                       <Button
-                        size="sm" variant="secondary" className="rounded-lg shrink-0"
+                        size="sm" variant="secondary" className="min-h-11 rounded-lg shrink-0 sm:min-h-0"
                         disabled={starting === `${assignment.id}-${day.id}`}
                         onClick={() => startWorkout(`${assignment.id}-${day.id}`, { program_assignment_id: assignment.id, program_day_id: day.id })}
                         data-testid="coach-log-program-workout"
@@ -1232,10 +1336,10 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         );
       })}
       {activeWorkouts.map((assignment) => (
-        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} onEdit={openCopyEditor} onSaveTemplate={(workout) => setTemplateTarget({ kind: 'workout', id: workout.id, name: `${workout.name} (variation)`, parent: workoutTemplateParent(workout), label: 'workout day' })} />
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} onEdit={openCopyEditor} onSaveTemplate={(workout) => setTemplateTarget({ kind: 'workout', id: workout.id, name: `${workout.name} (variation)`, parent: workoutTemplateParent(workout), label: 'workout day' })} onSaveQuickToLibrary={saveQuickToLibrary} />
       ))}
       {datedWorkouts.map((assignment) => (
-        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} onEdit={openCopyEditor} onSaveTemplate={(workout) => setTemplateTarget({ kind: 'workout', id: workout.id, name: `${workout.name} (variation)`, parent: workoutTemplateParent(workout), label: 'workout day' })} />
+        <CoachWorkoutAssignment key={assignment.id} assignment={assignment} onArchive={unassignWorkout} onReload={load} starting={starting} onStart={startWorkout} onEdit={openCopyEditor} onSaveTemplate={(workout) => setTemplateTarget({ kind: 'workout', id: workout.id, name: `${workout.name} (variation)`, parent: workoutTemplateParent(workout), label: 'workout day' })} onSaveQuickToLibrary={saveQuickToLibrary} />
       ))}
       <SaveTemplateDialog
         open={Boolean(templateTarget)}
@@ -1248,6 +1352,7 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
       />
       {copyEditor && (
         <WorkoutDialog
+          onCatalogCreated={(item) => setCopyLibrary((current) => (current || []).some((entry) => entry.id === item.id) ? current : [...(current || []), item])}
           open
           onOpenChange={(next) => { if (!next) setCopyEditor(null); }}
           form={copyEditor.form}
@@ -1259,13 +1364,14 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
         />
       )}
       <section className="space-y-3 pt-3" data-testid="coach-client-workout-history">
-        <div><h3 className="font-display text-lg font-semibold">Workout history</h3><p className="text-sm text-muted-foreground">Completed self-guided workouts.</p></div>
-        {workoutHistory.length === 0 ? <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">No completed workouts yet.</p> : workoutHistory.slice(0, 12).map((log) => (
+        <h3 className="font-display text-lg font-semibold">Workout history</h3>
+        {workoutHistory.length === 0 ? <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">No completed workouts yet.</p> : workoutHistory.map((log) => (
           <Link key={log.id} to={`/coach/workouts/${log.id}`} className="flex min-h-14 items-center justify-between rounded-md border border-border bg-card/60 px-4 py-3 hover:bg-card">
-            <span><span className="block font-medium">{log.workout_name}</span><span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)}</span></span>
+            <span><span className="block font-medium">{log.workout_name}</span>{isQuickSessionLog(log) && <span className="block text-xs font-medium text-primary" data-testid="coach-history-quick-session-label">Quick session</span>}<span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)}</span></span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
         ))}
+        <HistoryShowMore pages={historyPages} testId="coach-history-show-more" />
       </section>
     </div>
   );
@@ -1319,7 +1425,7 @@ function AssignmentLoadFields({ type, selection, values, onChange }) {
           );
         })}
       </div>
-      <p className="text-xs text-muted-foreground">Blank values use the workout default.</p>
+      <p className="text-xs text-muted-foreground">Blank uses the workout default.</p>
     </div>
   );
 }
@@ -1360,6 +1466,8 @@ function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
       onSaved();
     } catch (error) {
       toast.error(errMsg(error));
+      // A begun quick session is read-only now: close and refresh instead of retrying.
+      if (error?.response?.data?.code === 'quick_session_started') { setOpen(false); onSaved(); }
     } finally {
       setSaving(false);
     }
@@ -1368,9 +1476,9 @@ function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
   if (!assignment) return null;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button type="button" size="sm" variant="outline" onClick={openEditor} data-testid="edit-assigned-loads"><SlidersHorizontal className="mr-1 h-3.5 w-3.5" /> Loads</Button>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Client loads</DialogTitle><DialogDescription>Set the starting load for each exercise in this assignment.</DialogDescription></DialogHeader>
+      <Button type="button" size="sm" variant="outline" className="min-h-11 sm:min-h-0" onClick={openEditor} data-testid="edit-assigned-loads"><SlidersHorizontal className="mr-1 h-3.5 w-3.5" /> Loads</Button>
+      <DialogContent aria-describedby={undefined}>
+        <DialogHeader><DialogTitle>Client loads</DialogTitle></DialogHeader>
         <AssignmentLoadFields type={type} selection={selection} values={values} onChange={setValues} />
         <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save loads'}</Button></DialogFooter>
       </DialogContent>
@@ -1378,8 +1486,9 @@ function ExistingLoadEditor({ type, assignment, selection, onSaved }) {
   );
 }
 
-function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onStart, onEdit, onSaveTemplate }) {
+function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onStart, onEdit, onSaveTemplate, onSaveQuickToLibrary }) {
   const workout = assignment.workout || {};
+  const quickSession = isQuickAssignment(assignment);
   const label = assignment.assignment_mode === 'dated'
     ? `Dated: ${assignment.assigned_for ? fmtDate(assignment.assigned_for) : 'No date'}`
     : 'Active template';
@@ -1387,17 +1496,19 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
   return (
     <Card data-testid="assigned-workout-card">
       <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        {/* Phones: actions stack under the title and wrap, so the card never forces a sideways scroll. */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+          <div className="min-w-0">
+            {quickSession && <QuickSessionBadge className="mb-1" />}
             <p className="font-display font-semibold">{workout.name}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{label} - {(workout.exercises || []).length} exercises</p>
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
             {onStart && (
               <Button
-                size="sm" variant="secondary" className="rounded-lg"
+                size="sm" variant="secondary" className="min-h-11 rounded-lg sm:min-h-0"
                 disabled={starting === assignment.id}
-                onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })}
+                onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id }, quickSession)}
                 data-testid="coach-log-standalone-workout"
               >
                 {starting === assignment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log workout'}
@@ -1405,12 +1516,16 @@ function CoachWorkoutAssignment({ assignment, onArchive, onReload, starting, onS
             )}
             <ExistingLoadEditor type="workout" assignment={assignment} selection={workout} onSaved={onReload} />
             {onEdit && workout.is_template === false && (
-              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onEdit(workout)} data-testid="edit-client-workout-button"><Pencil className="mr-1 h-3.5 w-3.5" /> Edit</Button>
+              <Button size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onEdit(workout)} aria-label={`Edit ${workout.name || 'workout'}`} title="Edit" data-testid="edit-client-workout-button"><Pencil aria-hidden /></Button>
             )}
-            {onSaveTemplate && (
-              <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onSaveTemplate(workout)} data-testid="save-workout-template-button">Save as template</Button>
+            {quickSession ? (
+              assignment.library_template_id
+                ? <span className="flex min-h-11 items-center px-2 text-xs text-muted-foreground sm:min-h-0" data-testid="quick-session-in-library">In studio library</span>
+                : onSaveQuickToLibrary && <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onSaveQuickToLibrary(assignment)} data-testid="quick-session-card-save-library">Save to library</Button>
+            ) : onSaveTemplate && (
+              <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onSaveTemplate(workout)} data-testid="save-workout-template-button">Save as template</Button>
             )}
-            <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">Unassign</Button>
+            <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => onArchive(assignment)} data-testid="unassign-workout-button">Unassign</Button>
           </div>
         </div>
         {assignment.notes && (
@@ -1429,11 +1544,11 @@ function CoachExerciseRows({ exercises }) {
   if (!exercises.length) return null;
   return (
     <div className="mt-1 divide-y divide-border/70">
-      {exercises.slice(0, 6).map((exercise, index) => (
-        <div key={exercise.id || index} className="py-2">
+      <SupersetGroups exercises={exercises.slice(0, 6)} className="py-2" innerClassName="divide-y divide-border/70">{(exercise, { marker }) => (
+        <div className="py-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">
-              <span className="text-muted-foreground mr-2 tabular-nums">{index + 1}.</span>{coachExerciseName(exercise)}
+              <span className="text-muted-foreground mr-2 tabular-nums">{marker}.</span>{coachExerciseName(exercise)}
             </p>
             <span className="flex items-center gap-2 shrink-0">
               {safeHttpUrl(exercise.video_url || exercise.library_exercise?.video_url) && (
@@ -1441,13 +1556,14 @@ function CoachExerciseRows({ exercises }) {
                   <Play className="h-3 w-3" /> Video
                 </a>
               )}
-              {(exercise.sets || exercise.reps) && <Badge variant="outline" className="tabular-nums">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+              {(exercise.sets || exercise.reps) && <Badge variant="outline" className="tabular-nums">{setPrescription(exercise)}</Badge>}
             </span>
           </div>
+          {trackingTargets(exercise).map((target) => <p key={target} className="mt-1 text-xs text-muted-foreground">{target}</p>)}
           {(exercise.client_notes || exercise.notes) && <p className="text-xs text-muted-foreground mt-1">{exercise.client_notes || exercise.notes}</p>}
           {exercise.coach_notes && <p className="text-xs text-primary mt-1">Coach: {exercise.coach_notes}</p>}
         </div>
-      ))}
+      )}</SupersetGroups>
     </div>
   );
 }

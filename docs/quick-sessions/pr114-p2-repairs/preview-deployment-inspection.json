@@ -1,0 +1,200 @@
+[
+  {
+    "kind": "project-2",
+    "result": {
+      "id": "prj_YvVQow09rIhmucl0cinJ8UdYYCB3",
+      "name": "cvfpt-frontend",
+      "framework": "vite",
+      "accountId": "team_5TG7dfiEgMNOzxI64aylh0FJ",
+      "createdAt": 1783749238730,
+      "updatedAt": 1792122956515,
+      "nodeVersion": "24.x",
+      "live": false,
+      "latestDeployment": {
+        "id": "dpl_8KURCzXrxVDwJSNMdd3jvNdbCv1J",
+        "url": "cvfpt-frontend-hfc801hyg-cvf.vercel.app",
+        "createdAt": 1792122916613,
+        "readyState": "READY",
+        "target": "production"
+      },
+      "domains": [
+        "app.corevaluefit.com",
+        "cvfpt-frontend.vercel.app",
+        "cvfpt-frontend-cvf.vercel.app",
+        "cvfpt-frontend-git-main-cvf.vercel.app"
+      ],
+      "passwordProtection": {
+        "enabled": false,
+        "deploymentType": null
+      },
+      "ssoProtection": {
+        "enabled": true,
+        "deploymentType": "preview"
+      },
+      "trustedIps": {
+        "enabled": false,
+        "deploymentType": null,
+        "addresses": [],
+        "protectionMode": null
+      }
+    }
+  },
+  {
+    "kind": "project-3",
+    "result": {
+      "id": "prj_Nz1mtxPIh66opVQeLbzlVbai9t3f",
+      "name": "cvfpt-backend",
+      "framework": "express",
+      "accountId": "team_5TG7dfiEgMNOzxI64aylh0FJ",
+      "createdAt": 1783749248500,
+      "updatedAt": 1792122937825,
+      "nodeVersion": "24.x",
+      "live": false,
+      "latestDeployment": {
+        "id": "dpl_DENNz7nbMDxTFKvFY6vxy2VFpB5U",
+        "url": "cvfpt-backend-lmo185wgh-cvf.vercel.app",
+        "createdAt": 1792122916575,
+        "readyState": "READY",
+        "target": "production"
+      },
+      "domains": [
+        "cvfpt-backend.vercel.app",
+        "cvfpt-backend-cvf.vercel.app",
+        "cvfpt-backend-git-main-cvf.vercel.app"
+      ],
+      "passwordProtection": {
+        "enabled": false,
+        "deploymentType": null
+      },
+      "ssoProtection": {
+        "enabled": false,
+        "deploymentType": null
+      },
+      "trustedIps": {
+        "enabled": false,
+        "deploymentType": null,
+        "addresses": [],
+        "protectionMode": null
+      }
+    }
+  },
+  {
+    "kind": "preview-history-2",
+    "result": {
+      "deployments": {
+        "pagination": {
+          "count": 1,
+          "prev": 1792032681007
+        },
+        "deployments": [
+          {
+            "id": "dpl_9fiVArLG4a9Hd5aGY81ZJef4KgZW",
+            "name": "cvfpt-frontend",
+            "url": "cvfpt-frontend-hpso5w12y-cvf.vercel.app",
+            "created": 1792032681007,
+            "state": "READY",
+            "target": null,
+            "creator": {
+              "uid": "eSOcClMLq33s9kPRoJiwijwj",
+              "username": "hoodiejav13"
+            },
+            "meta": {
+              "githubCommitRef": "codex/quick-sessions-review-repairs",
+              "githubCommitSha": "a8a6a4958697c4d2d663ac9cc147a9b1ecc813b3",
+              "githubCommitMessage": "docs: add paired evidence for frozen Quick prescriptions",
+              "githubRepo": "CVFPT-Main",
+              "githubOrg": "HoodieJav13"
+            },
+            "inspectorUrl": "https://vercel.com/cvf/cvfpt-frontend/9fiVArLG4a9Hd5aGY81ZJef4KgZW",
+            "isRollbackCandidate": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "kind": "preview-history-3",
+    "result": {
+      "deployments": {
+        "pagination": {
+          "count": 1,
+          "prev": 1792032681000
+        },
+        "deployments": [
+          {
+            "id": "dpl_Ce5AFWgbSNyivTBWaFtQYt6ep9eh",
+            "name": "cvfpt-backend",
+            "url": "cvfpt-backend-r9oueoovg-cvf.vercel.app",
+            "created": 1792032681000,
+            "state": "READY",
+            "target": null,
+            "creator": {
+              "uid": "eSOcClMLq33s9kPRoJiwijwj",
+              "username": "hoodiejav13"
+            },
+            "meta": {
+              "githubCommitRef": "codex/quick-sessions-review-repairs",
+              "githubCommitSha": "a8a6a4958697c4d2d663ac9cc147a9b1ecc813b3",
+              "githubCommitMessage": "docs: add paired evidence for frozen Quick prescriptions",
+              "githubRepo": "CVFPT-Main",
+              "githubOrg": "HoodieJav13"
+            },
+            "inspectorUrl": "https://vercel.com/cvf/cvfpt-backend/Ce5AFWgbSNyivTBWaFtQYt6ep9eh",
+            "isRollbackCandidate": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "kind": "repair-branch-deployments-0",
+    "result": {
+      "deployments": {
+        "pagination": {
+          "count": 0
+        },
+        "deployments": []
+      }
+    }
+  },
+  {
+    "kind": "repair-branch-deployments-1",
+    "result": {
+      "deployments": {
+        "pagination": {
+          "count": 0
+        },
+        "deployments": []
+      }
+    }
+  },
+  {
+    "kind": "git-deployment-context",
+    "teams": [
+      {
+        "slug": "cvf",
+        "id": "team_5TG7dfiEgMNOzxI64aylh0FJ",
+        "linkedProjects": [
+          {
+            "id": "prj_YvVQow09rIhmucl0cinJ8UdYYCB3",
+            "name": "cvfpt-frontend",
+            "link": {
+              "type": "github",
+              "org": "HoodieJav13",
+              "repo": "CVFPT-Main"
+            }
+          },
+          {
+            "id": "prj_Nz1mtxPIh66opVQeLbzlVbai9t3f",
+            "name": "cvfpt-backend",
+            "link": {
+              "type": "github",
+              "org": "HoodieJav13",
+              "repo": "CVFPT-Main"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

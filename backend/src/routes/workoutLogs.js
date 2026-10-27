@@ -6,6 +6,12 @@ const { todayDateInTz, dateInTz } = require('../utils/time');
 const { addDays, buildWeekRhythm } = require('../lib/rhythm');
 const { dispatchPush, sendToCoaches } = require('../services/push');
 
+const { actualMetrics, trackingType } = require('../lib/workoutMetrics');
+const { quickLogKinds } = require('../lib/quickSessionReads');
+const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
+const { resolveExerciseDemo, resolvedVideoUrl } = require('../lib/exerciseDemo');
+const { registerSessionRoutes, sessionExtras, setEventEnvelope } = require('./workoutLogSession');
+
 const router = express.Router();
 router.use(requireAuth);
 
@@ -38,11 +44,78 @@ function decodeHistoryCursor(value) {
   }
 }
 
+// Completed-workout list paging (?paged=1). Keyset on (completed_at, id),
+// newest first. The cursor is server-issued; it is strictly validated (ISO
+// timestamp + UUID) because its values are placed in a filter expression.
+const LOG_PAGE_DEFAULT = 20;
+const LOG_PAGE_MAX = 50;
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:?\d{2})$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function decodeLogListCursor(value) {
+  if (value === undefined) return null;
+  if (typeof value !== 'string' || !value || value.length > 512) throw new Error('invalid');
+  let parsed;
+  try {
+    parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('invalid');
+  }
+  if (!parsed || Object.keys(parsed).sort().join(',') !== 'completed_at,id'
+    || typeof parsed.completed_at !== 'string' || !ISO_TIMESTAMP.test(parsed.completed_at)
+    || typeof parsed.id !== 'string' || !UUID.test(parsed.id)) throw new Error('invalid');
+  return parsed;
+}
+
+function encodeLogListCursor(row) {
+  return Buffer.from(JSON.stringify({ completed_at: row.completed_at, id: row.id })).toString('base64url');
+}
+
+function logPageSize(value) {
+  const size = Number(value);
+  return Number.isInteger(size) && size >= 1 ? Math.min(size, LOG_PAGE_MAX) : LOG_PAGE_DEFAULT;
+}
+
+async function completedLogsPage(clientId, { cursor, limit }, { db = supabaseAdmin, details = workoutLogsWithDetailsBulk } = {}) {
+  let query = db.from('workout_logs').select('id, completed_at')
+    .eq('client_id', clientId).eq('status', 'completed').eq('archived', false);
+  if (cursor) {
+    query = query.or(`completed_at.lt."${cursor.completed_at}",and(completed_at.eq."${cursor.completed_at}",id.lt.${cursor.id})`);
+  }
+  const { data, error } = await query
+    .order('completed_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1);
+  if (error) throw error;
+  const rows = data || [];
+  const page = rows.slice(0, limit);
+  return {
+    logs: await details(page.map((row) => row.id)),
+    next_cursor: rows.length > limit ? encodeLogListCursor(page[page.length - 1]) : null,
+  };
+}
+
+// The unpaged form (an array of up to 50) stays for existing callers.
+async function sendCompletedLogs(req, res, clientId) {
+  if (req.query.paged !== '1') {
+    const { data, error } = await supabaseAdmin.from('workout_logs')
+      .select('id').eq('client_id', clientId).eq('status', 'completed').eq('archived', false)
+      .order('completed_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
+  }
+  let cursor;
+  try {
+    cursor = decodeLogListCursor(req.query.cursor);
+  } catch {
+    return res.status(400).json({ error: 'Invalid history cursor' });
+  }
+  return res.json(await completedLogsPage(clientId, { cursor, limit: logPageSize(req.query.limit) }));
+}
+
 function encodeHistoryCursor(occurrence) {
   return Buffer.from(JSON.stringify({ completed_at: occurrence.completed_at, id: occurrence.workout_log_id })).toString('base64url');
 }
 
-function workoutSetUpdatePayload(body, set, now = new Date().toISOString()) {
+function workoutSetUpdatePayload(body, set, now = new Date().toISOString(), exercise = {}) {
   const status = body.status === 'completed' ? 'completed' : body.status === 'pending' ? 'pending' : set.status;
   const loadValue = Object.hasOwn(body, 'actual_load_value') ? body.actual_load_value : set.actual_load_value;
   const loadUnit = Object.hasOwn(body, 'actual_load_unit') ? body.actual_load_unit : set.actual_load_unit;
@@ -51,7 +124,9 @@ function workoutSetUpdatePayload(body, set, now = new Date().toISOString()) {
   const actualRpe = Object.hasOwn(body, 'actual_rpe') ? body.actual_rpe : set.actual_rpe;
   if (!validPerformedReps(actualReps)) throw Object.assign(new Error('Reps must be a nonnegative whole number or null'), { status: 400 });
   if (!validPerformedRpe(actualRpe)) throw Object.assign(new Error('RPE must be 1 through 10 in 0.5 increments or null'), { status: 400 });
+  if (trackingType(exercise) !== 'reps_weight' && actualReps != null) throw Object.assign(new Error('Reps do not match the exercise tracking type'), { status: 400 });
   return {
+    ...actualMetrics(body, set, exercise),
     status,
     actual_load_value: loadValue === '' || loadValue === null ? null : Number(loadValue),
     actual_load_unit: loadValue === '' || loadValue === null ? null : loadUnit,
@@ -62,15 +137,15 @@ function workoutSetUpdatePayload(body, set, now = new Date().toISOString()) {
   };
 }
 
-async function updateSetAtHandlerBoundary({ body, set, mutate, now }) {
-  const payload = workoutSetUpdatePayload(body, set, now);
+async function updateSetAtHandlerBoundary({ body, set, exercise, mutate, now }) {
+  const payload = workoutSetUpdatePayload(body, set, now, exercise);
   return mutate(payload);
 }
 
 function workoutRpcStatus(error) {
   const message = error?.message || '';
   if (/not found|Assigned workout/i.test(message)) return 404;
-  if (/not active|cannot be changed/i.test(message)) return 409;
+  if (/not active|cannot be changed|logged changes/i.test(message)) return 409;
   if (/required|Complete at least one set/i.test(message)) return 400;
   return 500;
 }
@@ -237,7 +312,52 @@ function computeLogAttribution(log) {
   return 'mixed';
 }
 
-async function workoutLogWithDetails(id) {
+// Demo for each logged exercise, resolved LIVE from the source workout row's
+// reference mode (docs/exercise-guides/design.md): 'inherit' follows the
+// current library link, 'override' keeps the coach's per-workout link, and
+// unclassified legacy rows keep the old precedence (nonempty safe workout
+// link, then the library). Only http(s) links are ever returned. The snapshot
+// has no video column and is never rewritten; `demo` is the current guide.
+function resolveExerciseVideos(exercises, workoutExercises = [], libraryExercises = []) {
+  const bySource = new Map(workoutExercises.map((row) => [row.id, row]));
+  const library = new Map(libraryExercises.map((row) => [row.id, row]));
+  return exercises.map((exercise) => {
+    const source = bySource.get(exercise.source_workout_exercise_id) || null;
+    const libraryId = exercise.exercise_library_id || source?.exercise_library_id;
+    const reference = { workoutExercise: source, libraryExercise: library.get(libraryId) || null };
+    return { ...exercise, video_url: resolvedVideoUrl(reference), demo: resolveExerciseDemo(reference) };
+  });
+}
+
+async function withExerciseVideos(exercises, { media = true } = {}) {
+  if (!exercises.length) return exercises;
+  const sourceIds = [...new Set(exercises.map((row) => row.source_workout_exercise_id).filter(Boolean))];
+  let sources = [];
+  if (sourceIds.length) {
+    const { data, error } = await supabaseAdmin.from('workout_exercises')
+      .select('id, video_url, video_link_mode, exercise_library_id').in('id', sourceIds);
+    if (error) throw error;
+    sources = data || [];
+  }
+  const libraryIds = [...new Set([
+    ...exercises.map((row) => row.exercise_library_id),
+    ...sources.map((row) => row.exercise_library_id),
+  ].filter(Boolean))];
+  let library = [];
+  if (libraryIds.length) {
+    const { data, error } = await supabaseAdmin.from('exercise_library')
+      .select('id, video_url').in('id', libraryIds);
+    if (error) throw error;
+    library = data || [];
+  }
+  const resolved = resolveExerciseVideos(exercises, sources, library);
+  if (!media) return resolved;
+  // Current exercise guide (live by design; never part of the log snapshot).
+  const sourceLibrary = new Map(sources.map((row) => [row.id, row.exercise_library_id]));
+  return attachExerciseMedia(resolved, (row) => row.exercise_library_id || sourceLibrary.get(row.source_workout_exercise_id));
+}
+
+async function workoutLogWithDetails(id, { media = true } = {}) {
   const { data: log, error } = await supabaseAdmin.from('workout_logs')
     .select('*, client:clients(id, name, coach_id, archived)')
     .eq('id', id).eq('archived', false).maybeSingle();
@@ -246,10 +366,11 @@ async function workoutLogWithDetails(id) {
   const { data: coachResponses, error: responseError } = await supabaseAdmin.from('workout_coach_responses')
     .select('*').eq('workout_log_id', id).eq('archived', false);
   if (responseError) throw responseError;
-  const { data: exercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
-    .select('*').eq('workout_log_id', id).eq('archived', false).order('position');
+  const { data: loggedExercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
+    .select('*').eq('workout_log_id', id).eq('archived', false).order('position').order('created_at');
   if (exerciseError) throw exerciseError;
-  const exerciseIds = (exercises || []).map((exercise) => exercise.id);
+  const exercises = await withExerciseVideos(loggedExercises || [], { media });
+  const exerciseIds = exercises.map((exercise) => exercise.id);
   let sets = [];
   if (exerciseIds.length) {
     const { data, error: setError } = await supabaseAdmin.from('workout_log_sets')
@@ -263,8 +384,11 @@ async function workoutLogWithDetails(id) {
     rows.push(set);
     setsByExercise.set(set.workout_log_exercise_id, rows);
   });
+  const kinds = await quickLogKinds([log], { db: supabaseAdmin });
   const detailed = {
     ...log,
+    // Safe provenance enum ('quick' | 'assigned' | null); distinct from quick_completed.
+    workout_assignment_kind: kinds.get(log.id) ?? null,
     coach_responses: (coachResponses || []).sort(newestCoachResponseFirst),
     exercises: (exercises || []).map((exercise) => ({
       ...exercise,
@@ -321,11 +445,13 @@ async function workoutLogsWithDetailsBulk(ids) {
     rows.push(response);
     responsesByLog.set(response.workout_log_id, rows);
   }
+  const kinds = await quickLogKinds(logs || [], { db: supabaseAdmin });
   const position = new Map(ids.map((id, index) => [id, index]));
   return (logs || [])
     .map((log) => {
       const detailed = {
         ...log,
+        workout_assignment_kind: kinds.get(log.id) ?? null,
         coach_responses: (responsesByLog.get(log.id) || []).sort(newestCoachResponseFirst),
         exercises: exercisesByLog.get(log.id) || [],
       };
@@ -342,7 +468,7 @@ async function clientActiveLog(clientId) {
 }
 
 async function requireWritableActiveLog(req, res) {
-  const log = await workoutLogWithDetails(req.params.id);
+  const log = await workoutLogWithDetails(req.params.id, { media: false });
   if (!canWriteLog(req.user, log)) {
     res.status(404).json({ error: 'Workout log not found' });
     return null;
@@ -356,7 +482,7 @@ async function requireWritableActiveLog(req, res) {
 
 function createExerciseHistoryHandler({
   findLog = workoutLogWithDetails,
-  runHistory = (args) => supabaseAdmin.rpc('get_workout_exercise_history', args),
+  runHistory = (args) => supabaseAdmin.rpc('get_workout_exercise_history_v2', args),
 } = {}) {
   return async function exerciseHistoryHandler(req, res) {
     let cursor;
@@ -393,28 +519,41 @@ function createExerciseHistoryHandler({
       if (error) throw error;
       const grouped = new Map();
       for (const row of data || []) {
-        if (!grouped.has(row.workout_log_id)) grouped.set(row.workout_log_id, {
+        const occurrenceId = `${row.workout_log_id}:${row.workout_log_exercise_id || 'legacy'}`;
+        if (!grouped.has(occurrenceId)) grouped.set(occurrenceId, {
+          occurrence_id: occurrenceId,
+          workout_log_exercise_id: row.workout_log_exercise_id ?? null,
           workout_log_id: row.workout_log_id,
           completed_at: row.completed_at,
           exercise_name: row.exercise_name,
+          tracking_type: row.tracking_type ?? 'reps_weight',
           sets: [],
         });
-        grouped.get(row.workout_log_id).sets.push({
+        grouped.get(occurrenceId).sets.push({
           set_number: row.set_number,
           actual_load_value: row.actual_load_value,
           actual_load_unit: row.actual_load_unit,
           actual_reps: row.actual_reps,
           actual_rpe: row.actual_rpe,
+          actual_duration_value: row.actual_duration_value ?? null,
+          actual_duration_unit: row.actual_duration_unit ?? null,
+          actual_distance_value: row.actual_distance_value ?? null,
+          actual_distance_unit: row.actual_distance_unit ?? null,
         });
       }
       const allOccurrences = [...grouped.values()]
         .map((occurrence) => ({ ...occurrence, sets: occurrence.sets.sort((a, b) => a.set_number - b.set_number) }))
         .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)
-          || b.workout_log_id.localeCompare(a.workout_log_id));
-      const occurrences = allOccurrences.slice(0, 10);
+          || b.workout_log_id.localeCompare(a.workout_log_id)
+          || b.occurrence_id.localeCompare(a.occurrence_id));
+      // The SQL lookahead and cursor count workouts, so keep every matching
+      // exercise in each selected workout instead of splitting a cursor group.
+      const logIds = [...new Set(allOccurrences.map((row) => row.workout_log_id))];
+      const selectedLogIds = new Set(logIds.slice(0, 10));
+      const occurrences = allOccurrences.filter((row) => selectedLogIds.has(row.workout_log_id));
       return res.json({
         occurrences,
-        next_cursor: allOccurrences.length > 10 ? encodeHistoryCursor(occurrences[occurrences.length - 1]) : null,
+        next_cursor: logIds.length > 10 ? encodeHistoryCursor(occurrences[occurrences.length - 1]) : null,
       });
     } catch (error) {
       logError('exercise history error', error);
@@ -503,11 +642,7 @@ router.get('/active', requireClient, async (req, res) => {
 
 router.get('/mine', requireClient, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin.from('workout_logs')
-      .select('id').eq('client_id', req.user.client.id).eq('status', 'completed').eq('archived', false)
-      .order('completed_at', { ascending: false }).limit(50);
-    if (error) throw error;
-    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
+    return await sendCompletedLogs(req, res, req.user.client.id);
   } catch (error) {
     logError('client workout history error', error);
     return res.status(500).json({ error: 'Failed to load workout history' });
@@ -536,7 +671,7 @@ async function weekRhythmForClient(clientId) {
   const today = todayDateInTz();
   const since = addDays(today, -186);
   const { data: assignments, error } = await supabaseAdmin.from('workout_assignments')
-    .select('id, assigned_for, workout:workouts(name)')
+    .select('id, assigned_for, workout:workouts!workout_assignments_workout_id_fkey(name)')
     .eq('client_id', clientId).eq('assignment_mode', 'dated').eq('archived', false)
     .gte('assigned_for', since);
   if (error) throw error;
@@ -595,7 +730,7 @@ router.get('/coach-feedback/unread-count', requireClient, async (req, res) => {
 
 router.patch('/:id/coach-feedback/read', requireClient, async (req, res) => {
   try {
-    const log = await workoutLogWithDetails(req.params.id);
+    const log = await workoutLogWithDetails(req.params.id, { media: false });
     if (!log || log.client_id !== req.user.client.id) return res.status(404).json({ error: 'Workout log not found' });
     const unreadIds = (log.coach_responses || []).filter((response) => !response.read_at).map((response) => response.id);
     if (!unreadIds.length) return res.json({ updated: 0, read_at: null });
@@ -621,11 +756,7 @@ router.get('/client/:clientId', requireCoach, async (req, res) => {
     const { data: client } = await supabaseAdmin.from('clients').select('*')
       .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
     if (!client || !canAccessClient(req.user, client)) return res.status(404).json({ error: 'Client not found' });
-    const { data, error } = await supabaseAdmin.from('workout_logs').select('id')
-      .eq('client_id', client.id).eq('status', 'completed').eq('archived', false)
-      .order('completed_at', { ascending: false }).limit(50);
-    if (error) throw error;
-    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
+    return await sendCompletedLogs(req, res, client.id);
   } catch (error) {
     logError('coach workout history error', error);
     return res.status(500).json({ error: 'Failed to load workout history' });
@@ -636,7 +767,7 @@ router.put('/:id/coach-response', requireCoach, async (req, res) => {
   const validation = validateCoachResponseContent(req.body);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   try {
-    const log = await workoutLogWithDetails(req.params.id);
+    const log = await workoutLogWithDetails(req.params.id, { media: false });
     if (!canAuthorCoachResponse(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
     if (log.status !== 'completed') return res.status(409).json({ error: 'Only completed workouts accept coach responses' });
     const { data, error } = await supabaseAdmin.rpc('save_workout_coach_response', {
@@ -659,7 +790,7 @@ router.get('/:id', async (req, res) => {
   try {
     const log = await workoutLogWithDetails(req.params.id);
     if (!canReadLog(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
-    return res.json(log);
+    return res.json(await sessionExtras(log));
   } catch (error) {
     logError('workout log detail error', error);
     return res.status(500).json({ error: 'Failed to load workout' });
@@ -668,13 +799,22 @@ router.get('/:id', async (req, res) => {
 
 router.patch('/:id/sets/:setId', async (req, res) => {
   try {
-    const log = await requireWritableActiveLog(req, res);
+    // pt-session-events/v1: a contract write (event_id) also reaches a log that
+    // was finished meanwhile, where the database keeps it as a disagreement for
+    // the coach instead of losing it (review P2-1); legacy writes stay 409.
+    const envelope = setEventEnvelope(req.body || {});
+    const log = envelope ? await sessionRoutes.writableLogAnyStatus(req, res) : await requireWritableActiveLog(req, res);
     if (!log) return undefined;
     const exerciseIds = new Set(log.exercises.map((exercise) => exercise.id));
     const set = log.exercises.flatMap((exercise) => exercise.sets).find((row) => row.id === req.params.setId);
     if (!set || !exerciseIds.has(set.workout_log_exercise_id)) return res.status(404).json({ error: 'Workout set not found' });
+    // An event_id makes the write idempotent and revision-checked
+    // (L12/CONTRACT.md); without one the legacy path below runs.
+    // Awaited so a failing event RPC reaches this handler's catch (Express 4
+    // does not handle a rejected route promise).
+    if (envelope) return await sessionRoutes.applySetEvent(req, res, set, log.exercises.find((row) => row.id === set.workout_log_exercise_id), envelope);
     const { data, error } = await updateSetAtHandlerBoundary({
-      body: req.body || {}, set,
+      body: req.body || {}, set, exercise: log.exercises.find((row) => row.id === set.workout_log_exercise_id),
       mutate: (payload) => supabaseAdmin.from('workout_log_sets').update({ ...payload, ...actorStamp(req.user) })
         .eq('id', set.id).eq('archived', false).select().single(),
     });
@@ -813,7 +953,7 @@ router.post('/quick-complete', requireClient, async (req, res) => {
       p_session_id: await resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId }),
     });
     if (startErr) throw startErr;
-    if (started.outcome === 'conflict') {
+    if (started.outcome === 'conflict' || started.outcome === 'resumed') {
       const active = await workoutLogWithDetails(started.workout_log_id);
       return res.status(409).json({ error: 'Finish or abandon your active workout first', active_workout: active });
     }
@@ -822,16 +962,10 @@ router.post('/quick-complete', requireClient, async (req, res) => {
     }
     const logId = started.workout_log_id;
 
-    // Sets → completed with values left null (honest "not tracked").
-    const { error: allErr } = await supabaseAdmin.rpc('complete_all_workout_sets_v2', {
-      p_workout_log_id: logId, p_client_id: clientId, p_entered_by: 'client', p_entered_by_coach_id: null,
-    });
-    if (allErr) throw allErr;
-    // Flag while still active — the immutability trigger guards child sets,
-    // not the parent log row.
-    await supabaseAdmin.from('workout_logs').update({ quick_completed: true }).eq('id', logId);
-    const { error: completeErr } = await supabaseAdmin.rpc('complete_workout_log_v2', {
-      p_workout_log_id: logId, p_client_id: clientId, p_notes: '', p_feedback: '', p_completed_at: null,
+    // Atomic and guarded: discard only untouched prescription defaults.
+    // Concurrently logged values remain active for the client to resume.
+    const { error: completeErr } = await supabaseAdmin.rpc('quick_complete_workout_log_v2', {
+      p_workout_log_id: logId, p_client_id: clientId,
     });
     if (completeErr) throw completeErr;
 
@@ -862,7 +996,7 @@ router.post('/:id/abandon', async (req, res) => {
 
 router.post('/:id/complete', async (req, res) => {
   try {
-    const log = await workoutLogWithDetails(req.params.id);
+    const log = await workoutLogWithDetails(req.params.id, { media: false });
     if (!canWriteLog(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
     // Performance-time completion (docs/offline-workout-completion.md):
     // a queued offline finish carries the locally-confirmed timestamp. Only
@@ -894,9 +1028,16 @@ router.post('/:id/complete', async (req, res) => {
   }
 });
 
+const sessionRoutes = registerSessionRoutes(router, {
+  workoutLogWithDetails, requireWritableActiveLog, canWriteLog, canReadLog, actorStamp, workoutSetUpdatePayload, validLoad,
+});
+
 module.exports = router;
 module.exports.workoutLogWithDetails = workoutLogWithDetails;
+module.exports.workoutLogsWithDetailsBulk = workoutLogsWithDetailsBulk;
+module.exports.resolveExerciseVideos = resolveExerciseVideos;
 module.exports.canReadLog = canReadLog;
+module.exports.sessionExtras = sessionExtras;
 module.exports.canWriteLog = canWriteLog;
 module.exports.actorStamp = actorStamp;
 module.exports.computeLogAttribution = computeLogAttribution;
@@ -907,6 +1048,10 @@ module.exports.validateCoachResponseContent = validateCoachResponseContent;
 module.exports.validPerformedReps = validPerformedReps;
 module.exports.validPerformedRpe = validPerformedRpe;
 module.exports.decodeHistoryCursor = decodeHistoryCursor;
+module.exports.decodeLogListCursor = decodeLogListCursor;
+module.exports.encodeLogListCursor = encodeLogListCursor;
+module.exports.logPageSize = logPageSize;
+module.exports.completedLogsPage = completedLogsPage;
 module.exports.workoutSetUpdatePayload = workoutSetUpdatePayload;
 module.exports.updateSetAtHandlerBoundary = updateSetAtHandlerBoundary;
 module.exports.createExerciseHistoryHandler = createExerciseHistoryHandler;

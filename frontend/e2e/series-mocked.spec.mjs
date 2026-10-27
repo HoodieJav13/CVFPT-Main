@@ -132,29 +132,31 @@ async function install(page, backend) {
   });
 }
 
-/** Drive the branded DateTimePicker (copied from live-auth.spec.mjs). */
+/** Drive the branded DateTimePicker, including earlier dates when editing a series row. */
 async function pickDateTime(page, testId, target, slotText = '9:00 AM') {
   await page.getByTestId(testId).click();
   const panel = page.getByTestId(`${testId}-panel`);
   const dayName = new RegExp(`${target.toLocaleDateString('en-US', { month: 'long' })} ${target.getDate()}(st|nd|rd|th)?, ${target.getFullYear()}`);
+  const targetMonth = target.getFullYear() * 12 + target.getMonth();
   for (let hops = 0; hops < 3; hops += 1) {
     if (await panel.getByRole('button', { name: dayName }).count()) break;
-    await panel.getByRole('button', { name: /next month/i }).click();
+    const displayed = new Date(`1 ${await panel.getByRole('status').textContent()}`);
+    const displayedMonth = displayed.getFullYear() * 12 + displayed.getMonth();
+    await panel.getByRole('button', { name: displayedMonth > targetMonth ? /previous month/i : /next month/i }).click();
   }
   await panel.getByRole('button', { name: dayName }).first().click();
   await panel.getByTestId('time-slot').filter({ hasText: slotText }).first().click();
   await expect(panel).toBeHidden();
 }
 
-// Open the editor, choose the client and a start 10 days out at 9:00 AM, switch on Repeat,
+// Open the editor, choose the client and a start (default 10 days out) at 9:00 AM, switch on Repeat,
 // 3 weekly sessions, optionally choose a program (declining the assignment and picking a starting day),
 // and press Preview. Returns the first date (YYYY-MM-DD).
-async function startPreview(page, { program = null, assign = true, startingDay = null } = {}) {
+async function startPreview(page, { program = null, assign = true, startingDay = null, start = daysFromNow(10) } = {}) {
   await page.goto('/coach/sessions');
   await page.getByTestId('session-create-button').click();
   await page.getByTestId('session-client-select').click();
   await page.getByRole('option', { name: CLIENT.name }).click();
-  const start = daysFromNow(10);
   await pickDateTime(page, 'session-datetime-input', start, '9:00 AM');
   await page.getByTestId('session-repeat-toggle').click();
   await page.getByTestId('series-count-input').fill('3');
@@ -197,16 +199,29 @@ test('a conflicting date is fixed with a suggestion, then the series saves', asy
   expect(await pendingKeys(page)).toEqual([]); // cleared after a definitive success
 });
 
-test('moving a row onto another flags BOTH rows as a batch conflict', async ({ page }) => {
-  const backend = new FakeBackend();
-  await install(page, backend);
-  const first = iso(daysFromNow(10));
-  await startPreview(page);
-  await pickDateTime(page, 'series-row-datetime-g3', new Date(`${plusDays(first, 7)}T12:00:00`), '9:00 AM');
-  await expect(page.getByTestId('series-row-g2')).toHaveAttribute('data-conflict', 'batch');
-  await expect(page.getByTestId('series-row-g3')).toHaveAttribute('data-conflict', 'batch');
-  expect(backend.checkCalls.at(-1).slots).toHaveLength(3); // the whole selection, not just the edited row
-  await expect(page.getByTestId('series-create-button')).toBeDisabled();
+test.describe('moving a row onto another flags BOTH rows as a batch conflict', () => {
+  test.use({ timezoneId: 'UTC' });
+  // Keep the runner's explicit start date and the browser calendar on the same day.
+  // Cover same-month, backward month/year, and forward month/year navigation.
+  for (const today of ['2026-10-07', '2026-10-08', '2026-10-31', '2026-12-08', '2026-12-31']) {
+    test(`at ${today}`, async ({ page }) => {
+      await page.clock.setFixedTime(new Date(`${today}T12:00:00Z`));
+      const backend = new FakeBackend();
+      await install(page, backend);
+      const first = plusDays(today, 10);
+      await startPreview(page, { start: new Date(`${first}T12:00:00`) });
+      await pickDateTime(page, 'series-row-datetime-g3', new Date(`${plusDays(first, 7)}T12:00:00`), '9:00 AM');
+      await expect(page.getByTestId('series-row-g2')).toHaveAttribute('data-conflict', 'batch');
+      await expect(page.getByTestId('series-row-g3')).toHaveAttribute('data-conflict', 'batch');
+      expect(backend.checkCalls.at(-1).slots).toHaveLength(3); // the whole selection, not just the edited row
+      expect(backend.checkCalls.at(-1).slots.filter((slot) => slot.key === 'g2' || slot.key === 'g3')
+        .map(({ date, time }) => ({ date, time }))).toEqual([
+          { date: plusDays(first, 7), time: '09:00' },
+          { date: plusDays(first, 7), time: '09:00' },
+        ]);
+      await expect(page.getByTestId('series-create-button')).toBeDisabled();
+    });
+  }
 });
 
 test('a delayed (stale) check response never overwrites newer state', async ({ page }) => {

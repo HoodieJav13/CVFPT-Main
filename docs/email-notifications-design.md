@@ -128,6 +128,24 @@ keys):
 - Minimal branded HTML: dark-on-light for email-client compatibility, logo
   header, one clear line per fact, one button deep-linking into the app
   (e.g. `/client/sessions`). Plain-text alternative part included.
+- Owner-selected appearance (2026-10-02): original CVF logo at 88px, live
+  Core Value Fitness wordmark, teal masthead/action, warm off-white reading
+  surface and optional graphite dark-mode styling. Literal colors live in
+  backend-local `emailBrand.js` with app-token parity coverage. Essential
+  presentation-table layout and spacing are inline; media queries enhance
+  narrow/dark displays. The logo URL uses only the existing action's app
+  origin and `/logo.png`; it contains no account/reset query. Live branding
+  remains when the remote image is blocked. Actual mail-client rendering
+  remains a separate release check; browser screenshots are not delivery proof.
+- Yahoo contrast correction (review branch, 2026-10-03): the one received
+  fictional test showed Yahoo's desktop dark theme changing wordmark/action
+  text to `#D5CDC3` while leaving teal `#5EC4D4`, giving 1.29:1 contrast.
+  Only those three text elements now pair inline `-webkit-text-fill-color`
+  with the existing ink `#181511` color fallback (8.94:1 on teal). Body copy
+  still adapts normally. The regression models the observed color rewrite;
+  it does not reproduce Yahoo sanitization or verify delivery. Clients that
+  strip or rewrite text-fill may still show the issue. A real Yahoo retest
+  requires separate send approval; this branch is not a released correction.
 - Session times formatted in **America/Denver** with the day of week
   ("Thu Aug 6, 11:00 AM"), matching the in-app convention.
 - Instant session emails carry date/time, duration, location, and the other

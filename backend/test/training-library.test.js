@@ -122,3 +122,18 @@ test('filterByAuthor keeps variations with their roots without pulling in siblin
   assert.equal(filterByAuthor(rows, 'a', user).some((r) => r.id === 'legacy'), false, 'unattributed templates only in the unfiltered view');
   assert.deepEqual(filterByAuthor(rows, 'nobody', user), []);
 });
+
+test('quick sessions: the client assignment allowlist adds only the type label and completion flag', () => {
+  const safe = clientSafeWorkoutAssignment({
+    id: 'qa', client_id: 'k', workout_id: 'w', assignment_mode: 'dated', assigned_for: '2031-01-01', notes: null,
+    archived: false, created_at: 't', kind: 'quick', quick_session_completed: true,
+    created_by_coach_id: 'coach-a', create_request_id: 'r', create_request_hash: 'v1:secret', library_template_id: 'tmpl',
+    workout: { id: 'w', name: 'Quick session · 2031-01-01', coach_id: 'coach-a', client_id: 'k', is_template: false, exercises: [] },
+  });
+  assert.equal(safe.kind, 'quick');
+  assert.equal(safe.quick_session_completed, true);
+  for (const field of ['created_by_coach_id', 'create_request_id', 'create_request_hash', 'library_template_id']) {
+    assert.equal(field in safe, false, field);
+  }
+  assert.equal('coach_id' in safe.workout, false);
+});

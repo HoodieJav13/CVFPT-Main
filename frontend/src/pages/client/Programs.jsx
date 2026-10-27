@@ -1,3 +1,5 @@
+import { setPrescription, trackingTargets } from '@/lib/workoutMetrics';
+import { trackingType } from '@/lib/workoutMetrics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { api, errMsg } from '@/lib/api';
@@ -11,15 +13,23 @@ import { fmtDate, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
 import { hasQueuedCompleteFor } from '@/lib/workoutOutbox';
 import { trackProductEvent } from '@/lib/telemetry';
-import { safeHttpUrl } from '@/lib/safeUrl';
+import { demoForRow } from '@/lib/exerciseDemo';
+import { ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
 import { downloadBlob, filenameFromDisposition } from '@/lib/download';
+import { SupersetGroups } from '@/components/training/SupersetGroups';
+import { useHistoryPages } from '@/lib/useHistoryPages';
+import { HistoryShowMore } from '@/components/training/HistoryShowMore';
+import { QuickSessionBadge } from '@/components/training/QuickSessionBadge';
+import { activeCardAssignments, isQuickAssignment, isQuickSessionLog } from '@/lib/quickSessions';
 
 export default function ClientPrograms() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [assignments, setAssignments] = useState(null);
   const [activeLog, setActiveLog] = useState(null);
-  const [history, setHistory] = useState(null);
+  const historyPages = useHistoryPages('/workout-logs/mine');
+  const history = historyPages.items;
+  const { fetchFirst: fetchHistory, setFirstPage: setHistoryPage } = historyPages;
   const [starting, setStarting] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const viewTracked = useRef(false);
@@ -31,18 +41,18 @@ export default function ClientPrograms() {
       const [assigned, active, logs] = await Promise.all([
         api.get('/programs/client/assigned'),
         api.get('/workout-logs/active'),
-        api.get('/workout-logs/mine'),
+        fetchHistory(),
       ]);
       setAssignments(Array.isArray(assigned.data) ? { programs: assigned.data, workouts: [] } : assigned.data);
       setActiveLog(active.data);
-      setHistory(logs.data);
+      setHistoryPage(logs);
       setLoadError(null);
     } catch (error) {
       const message = errMsg(error, 'Failed to load programs');
       setLoadError(message);
       toast.error(message);
     }
-  }, []);
+  }, [fetchHistory, setHistoryPage]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -75,7 +85,8 @@ export default function ClientPrograms() {
   if (!assignments || history === null) return <LoadingScreen />;
 
   const programAssignments = assignments.programs || [];
-  const workoutAssignments = assignments.workouts || [];
+  // Completed quick sessions leave the active cards; history keeps them.
+  const workoutAssignments = activeCardAssignments(assignments.workouts);
   const activeWorkouts = workoutAssignments.filter((assignment) => assignment.assignment_mode === 'active');
   const datedWorkouts = workoutAssignments
     .filter((assignment) => assignment.assignment_mode === 'dated')
@@ -85,12 +96,12 @@ export default function ClientPrograms() {
 
   return (
     <div>
-      <PageHeader title="My training" subtitle="Your current plan, other workouts, and history" />
+      <PageHeader title="My training" />
       {activeLog && (
         <Card className="mb-5 border-primary/30 bg-primary/5" data-testid="active-workout-banner">
           <CardContent className="flex items-center justify-between gap-3 p-4">
             <div className="min-w-0"><p className="text-xs font-medium uppercase text-primary">{hasQueuedCompleteFor(activeLog.id) ? 'Finishing — waiting to sync' : 'In progress'}</p><p className="truncate font-display font-semibold">{activeLog.workout_name}</p></div>
-            <Button asChild><Link to={hasQueuedCompleteFor(activeLog.id) ? `/client/workouts/${activeLog.id}` : `/client/workouts/${activeLog.id}/track`}>{hasQueuedCompleteFor(activeLog.id) ? 'View' : 'Resume'}</Link></Button>
+            <Button size="touch" asChild><Link to={hasQueuedCompleteFor(activeLog.id) ? `/client/workouts/${activeLog.id}` : `/client/workouts/${activeLog.id}/track`}>{hasQueuedCompleteFor(activeLog.id) ? 'View' : 'Resume'}</Link></Button>
           </CardContent>
         </Card>
       )}
@@ -117,9 +128,9 @@ export default function ClientPrograms() {
         </div>
       )}
       <div className="space-y-5">
-        {view === 'current' && (
+        {view === 'current' && hasTrainingContent && (
           <section className="space-y-3" role="tabpanel" data-testid="client-training-current">
-            <div><h2 className="font-display text-lg font-semibold">Current program</h2><p className="text-sm text-muted-foreground">Your primary coach-built training plan.</p></div>
+            <h2 className="font-display text-lg font-semibold">Current program</h2>
             {programAssignments.length === 0
               ? <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No current program assigned.</div>
               : programAssignments.map((assignment) => <ProgramAssignmentCard key={assignment.id} assignment={assignment} starting={starting} onStart={startWorkout} />)}
@@ -128,7 +139,7 @@ export default function ClientPrograms() {
 
         {view === 'other' && (
           <section className="space-y-3" role="tabpanel" data-testid="client-training-other">
-            <div><h2 className="font-display text-lg font-semibold">Other workouts</h2><p className="text-sm text-muted-foreground">Dated assignments and reusable standalone workouts.</p></div>
+            <h2 className="font-display text-lg font-semibold">Other workouts</h2>
             {(activeWorkouts.length > 0 || datedWorkouts.length > 0)
               ? [...activeWorkouts, ...datedWorkouts].map((assignment) => <WorkoutAssignmentCard key={assignment.id} assignment={assignment} starting={starting} onStart={startWorkout} />)
               : <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No other workouts assigned.</div>}
@@ -136,10 +147,11 @@ export default function ClientPrograms() {
         )}
 
         {view === 'history' && <section className="space-y-3" role="tabpanel" data-testid="client-workout-history">
-          <div><h2 className="font-display text-lg font-semibold">Workout history</h2><p className="text-sm text-muted-foreground">Completed self-guided workouts.</p></div>
+          <h2 className="font-display text-lg font-semibold">Workout history</h2>
           {history.length === 0 ? (
             <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No completed workouts yet.</div>
-          ) : history.slice(0, 12).map((log) => <HistoryRow key={log.id} log={log} />)}
+          ) : history.map((log) => <HistoryRow key={log.id} log={log} />)}
+          <HistoryShowMore pages={historyPages} />
         </section>}
       </div>
     </div>
@@ -189,12 +201,15 @@ function WorkoutAssignmentCard({ assignment, starting, onStart }) {
           <div><p className="font-display font-semibold">{workout.name}</p>{(workout.goal || workout.description) && <p className="mt-1 text-sm text-muted-foreground">{workout.goal || workout.description}</p>}</div>
           <div className="flex shrink-0 items-center gap-2">
             <DownloadPdfButton path={`/programs/client/workout-assignments/${assignment.id}/log-sheet.pdf`} name={workout.name} testId="download-workout-pdf" />
-            <Button size="sm" disabled={starting === assignment.id} onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })} data-testid="start-standalone-workout">
+            <Button size="sm" className="h-11 min-w-11" disabled={starting === assignment.id} onClick={() => onStart(assignment.id, { workout_assignment_id: assignment.id })} data-testid="start-standalone-workout">
               {starting === assignment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Start'}
             </Button>
           </div>
         </div>
-        <Badge variant="outline" className="w-fit"><CalendarDays className="mr-1 h-3.5 w-3.5" /> {label}</Badge>
+        <div className="flex flex-wrap gap-2">
+          {isQuickAssignment(assignment) && <QuickSessionBadge />}
+          <Badge variant="outline" className="w-fit"><CalendarDays className="mr-1 h-3.5 w-3.5" /> {label}</Badge>
+        </div>
         {assignment.notes && <AssignmentNote>{assignment.notes}</AssignmentNote>}
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="exercises" className="last:border-b-0">
@@ -219,7 +234,7 @@ function WorkoutDay({ day, assignmentId, loads, loading, onStart }) {
       <AccordionContent className="space-y-3 pb-3">
         {day.notes && <p className="text-xs text-muted-foreground">{day.notes}</p>}
         <ExerciseList exercises={day.workout?.exercises || []} loads={loads} assignmentId={assignmentId} dayId={day.id} />
-        <Button size="sm" disabled={loading} onClick={onStart} data-testid="start-program-workout">
+        <Button size="touch" disabled={loading} onClick={onStart} data-testid="start-program-workout">
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Start workout'}
         </Button>
       </AccordionContent>
@@ -228,28 +243,36 @@ function WorkoutDay({ day, assignmentId, loads, loading, onStart }) {
 }
 
 function ExerciseList({ exercises, loads = [] }) {
+  const [demoFor, setDemoFor] = useState(null);
   if (exercises.length === 0) return <p className="mt-3 text-sm text-muted-foreground">No exercises added yet.</p>;
   const loadByExercise = new Map(loads.map((load) => [load.workout_exercise_id, load]));
   return (
     <div className="mt-2 divide-y divide-border/70">
-      {exercises.map((exercise, index) => {
+      <ExerciseDemoDialog demo={demoFor ? demoForRow(demoFor) : null} exerciseName={demoFor ? exerciseName(demoFor) : ''}
+        open={Boolean(demoFor)} onOpenChange={(open) => { if (!open) setDemoFor(null); }} />
+      <SupersetGroups exercises={exercises} className="py-2.5" innerClassName="divide-y divide-border/70">{(exercise, { index, marker }) => {
         const assignedLoad = loadByExercise.get(exercise.id);
         const load = assignedLoad || (exercise.default_load_value !== null ? { load_value: exercise.default_load_value, load_unit: exercise.default_load_unit } : null);
         return (
           <div key={exercise.id || `${exerciseName(exercise)}-${index}`} className="py-2.5" data-testid="client-exercise-row">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-medium"><span className="mr-2 text-muted-foreground">{index + 1}.</span>{exerciseName(exercise)}</p>
+              <p className="text-sm font-medium"><span className="mr-2 text-muted-foreground">{marker}.</span>{exerciseName(exercise)}</p>
               <span className="flex shrink-0 items-center gap-2">
-                {exerciseVideo(exercise) && <a href={exerciseVideo(exercise)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"><Play className="h-3 w-3" /> Video</a>}
-                {(exercise.sets || exercise.reps) && <Badge variant="outline">{exercise.sets || '?'} x {exercise.reps || '?'}</Badge>}
+                {demoForRow(exercise)?.kind === 'youtube' && (
+                  <button type="button" onClick={() => setDemoFor(exercise)} aria-label={`View demo: ${exerciseName(exercise)}`}
+                    className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary relative after:absolute after:-inset-x-1 after:-inset-y-3" data-testid="client-exercise-demo"><Play className="h-3 w-3" /> Demo</button>
+                )}
+                {demoForRow(exercise)?.kind === 'external' && <a href={demoForRow(exercise).url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary relative after:absolute after:-inset-x-1 after:-inset-y-3"><Play className="h-3 w-3" /> Video</a>}
+                {(exercise.sets || (trackingType(exercise) === 'reps_weight' && exercise.reps)) && <Badge variant="outline">{setPrescription(exercise)}</Badge>}
               </span>
             </div>
+            {trackingTargets(exercise).map((target) => <p key={target} className="mt-1 text-xs text-muted-foreground">{target}</p>)}
             <p className="mt-1 text-xs text-muted-foreground">
               {[load && `Load: ${load.load_value} ${load.load_unit}`, exercise.target_rpe && `RPE: ${exercise.target_rpe}`, exercise.rest && `Rest: ${exercise.rest}`, exercise.tempo && `Tempo: ${exercise.tempo}`, clientExerciseNotes(exercise)].filter(Boolean).join(' - ')}
             </p>
           </div>
         );
-      })}
+      }}</SupersetGroups>
     </div>
   );
 }
@@ -262,6 +285,7 @@ function HistoryRow({ log }) {
     <Link to={`/client/workouts/${log.id}`} className="flex min-h-16 items-center justify-between gap-3 rounded-md border border-border bg-card/60 px-4 py-3 transition-colors hover:bg-card" data-testid="workout-history-row">
       <span className="min-w-0">
         <span className="block truncate font-medium">{log.workout_name}</span>
+        {isQuickSessionLog(log) && <span className="block text-xs font-medium text-primary" data-testid="history-quick-session-label">Quick session</span>}
         <span className="text-xs text-muted-foreground">{fmtDateTime(log.completed_at)} - {completed} sets</span>
         {hasUnreadCoachFeedback && <span className="mt-1 block text-xs font-medium text-primary" data-testid="new-coach-feedback-marker">New coach feedback</span>}
       </span>
@@ -285,7 +309,7 @@ function DownloadPdfButton({ path, name, testId }) {
     }
   };
   return (
-    <Button size="sm" variant="outline" disabled={downloading} onClick={download} aria-label={`Download ${name || 'workout'} as a printable PDF`} data-testid={testId}>
+    <Button size="sm" className="h-11 min-w-11" variant="outline" disabled={downloading} onClick={download} aria-label={`Download ${name || 'workout'} as a printable PDF`} data-testid={testId}>
       {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
       <span className="ml-1.5">PDF</span>
     </Button>
@@ -297,5 +321,4 @@ function AssignmentNote({ children }) {
 }
 
 function exerciseName(exercise) { return exercise.library_exercise?.name || exercise.custom_name || exercise.name || 'Exercise'; }
-function exerciseVideo(exercise) { return safeHttpUrl(exercise.video_url || exercise.library_exercise?.video_url); }
 function clientExerciseNotes(exercise) { return exercise.client_notes || exercise.notes || ''; }

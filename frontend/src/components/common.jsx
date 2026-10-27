@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
-import { AlertCircle, Loader2, RotateCcw } from 'lucide-react';
+import { Link } from 'react-router';
+import { AlertCircle, ChevronRight, Loader2, RotateCcw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -66,6 +67,18 @@ export function IconButton({ label, children, ...props }) {
         <TooltipContent side="top">{label}</TooltipContent>
       </UiTooltip>
     </TooltipProvider>
+  );
+}
+
+// Icon-only navigation (owner 2026-10-01: fewer words on screen). The words
+// stay in aria-label for screen readers and in title for hover/long-press.
+export function IconLink({ to, label, icon: Icon = ChevronRight, className, ...props }) {
+  return (
+    <Button asChild variant="ghost" size="touchIcon" className={cn('-my-2 shrink-0 rounded-lg text-primary', className)}>
+      <Link to={to} aria-label={label} title={label} {...props}>
+        <Icon aria-hidden />
+      </Link>
+    </Button>
   );
 }
 

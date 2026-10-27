@@ -1,0 +1,42 @@
+{
+  "fixture": "band-row.mp4",
+  "tolerance": "mean absolute RGB difference at 64x36 against the generated 640x360 JPEG; the coach crop view and the saved-time frame must be < 12 and at least 2x below the scrub-position control",
+  "poster": {
+    "saved_ms": 500,
+    "scrub_ms": 4000,
+    "crop_px": {
+      "x": 0,
+      "y": 124,
+      "width": 840,
+      "height": 472
+    },
+    "coachView": 0.86,
+    "selected": 0.92,
+    "scrubControl": 6.49,
+    "output": {
+      "width": 640,
+      "height": 360,
+      "bytes": 2976,
+      "sha256": "02288b1dbc1a92aaa7f433c2024afb1fd1e8626e3f08aabd83fa3c7e64e0102a"
+    }
+  },
+  "end_still": {
+    "saved_ms": 5000,
+    "scrub_ms": 1000,
+    "crop_px": {
+      "x": 0,
+      "y": 124,
+      "width": 840,
+      "height": 472
+    },
+    "coachView": 1.6,
+    "selected": 1.62,
+    "scrubControl": 7.7,
+    "output": {
+      "width": 640,
+      "height": 360,
+      "bytes": 5738,
+      "sha256": "4b94fcb8962ecfcf53e968c1810f9da39dafbcd68072a1bfcd89165dd6d33731"
+    }
+  }
+}

@@ -411,6 +411,11 @@
       -webkit-mask-image: linear-gradient(to right, black calc(100% - 32px), transparent);
       mask-image: linear-gradient(to right, black calc(100% - 32px), transparent);
     }
+    /* Nothing left to reveal once the list is scrolled to its end. */
+    .tab-overflow-fade[data-at-end="true"] {
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
   }
 }
 

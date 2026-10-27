@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
+import { createBrowserRouter, RouterProvider, Routes, Route, Navigate, useLocation } from 'react-router';
 import { domAnimation, LazyMotion } from 'framer-motion';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
@@ -22,6 +22,7 @@ import ClientWaiver from '@/pages/client/Waiver';
 import WorkoutLogDetail from '@/pages/WorkoutLogDetail';
 import WorkoutTracker from '@/pages/client/WorkoutTracker';
 import '@/App.css';
+import { UnsavedChangesProvider } from '@/context/UnsavedChangesContext';
 
 // The coach/admin tree (including the large Training Builder) loads on
 // demand — phone-first clients no longer download it. Client pages stay
@@ -38,6 +39,7 @@ const CoachResources = lazy(() => import('@/pages/coach/Resources'));
 const CoachMessages = lazy(() => import('@/pages/coach/Messages'));
 const CoachNotifications = lazy(() => import('@/pages/coach/Notifications'));
 const CoachAnalytics = lazy(() => import('@/pages/coach/Analytics'));
+const GroupSession = lazy(() => import('@/pages/coach/GroupSession'));
 const AdminPage = lazy(() => import('@/pages/admin/Admin'));
 // Dev/preview only: never even fetched in production builds.
 const PreviewToolbar = isPreviewMode ? lazy(() => import('@/components/PreviewToolbar')) : () => null;
@@ -75,7 +77,16 @@ export default function App() {
     <LazyMotion features={domAnimation} strict>
       <AuthProvider>
         <NotificationsProvider>
-        <BrowserRouter>
+          <RouterProvider router={router} />
+        </NotificationsProvider>
+        <Toaster position="top-center" richColors />
+      </AuthProvider>
+    </LazyMotion>
+  );
+}
+
+function AppRoutes() {
+  return <UnsavedChangesProvider>
           <Suspense fallback={<LoadingScreen />}>
           <Routes>
             <Route path="/" element={<RoleRedirect />} />
@@ -99,6 +110,7 @@ export default function App() {
             <Route path="sessions/:id" element={<CoachSessionDetail />} />
             <Route path="calendar" element={<CoachCalendar />} />
             <Route path="analytics" element={<CoachAnalytics />} />
+            <Route path="group-session" element={<GroupSession />} />
             <Route path="programs" element={<Programs />} />
             <Route path="resources" element={<CoachResources />} />
             <Route path="messages" element={<CoachMessages />} />
@@ -145,10 +157,6 @@ export default function App() {
           <PreviewToolbar />
           <AnnotationOverlay />
           </Suspense>
-        </BrowserRouter>
-        </NotificationsProvider>
-        <Toaster position="top-center" richColors />
-      </AuthProvider>
-    </LazyMotion>
-  );
+  </UnsavedChangesProvider>;
 }
+const router = createBrowserRouter([{ path: "*", element: <AppRoutes /> }]);

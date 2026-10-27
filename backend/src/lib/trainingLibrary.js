@@ -26,6 +26,11 @@ const CLIENT_EXERCISE_FIELDS = [
   'id', 'workout_id', 'exercise_library_id', 'custom_name', 'sets', 'reps', 'rest', 'rest_seconds',
   'tempo', 'target_rpe', 'default_load_value', 'default_load_unit', 'notes', 'client_notes',
   'video_url', 'position', 'archived', 'created_at',
+  // Current exercise guide: an explicit DTO built by lib/exerciseMedia/serialization.js.
+  'media', 'media_status',
+  // Current demo: an explicit DemoDTO built by lib/exerciseDemo.js. The internal
+  // reference mode (video_link_mode) stays private.
+  'demo',
 ];
 const CLIENT_LIBRARY_EXERCISE_FIELDS = [
   'id', 'name', 'category', 'equipment', 'primary_muscle', 'secondary_muscles', 'video_url',
@@ -33,6 +38,8 @@ const CLIENT_LIBRARY_EXERCISE_FIELDS = [
 const CLIENT_PROGRAM_ASSIGNMENT_FIELDS = ['id', 'program_id', 'client_id', 'notes', 'archived', 'created_at'];
 const CLIENT_WORKOUT_ASSIGNMENT_FIELDS = [
   'id', 'client_id', 'workout_id', 'assignment_mode', 'assigned_for', 'notes', 'archived', 'created_at',
+  // Quick sessions: the type label and the authoritative completion flag only.
+  'kind', 'quick_session_completed',
 ];
 
 function clientSafeExercise(exercise) {

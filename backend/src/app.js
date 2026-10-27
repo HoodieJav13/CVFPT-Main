@@ -65,6 +65,11 @@ app.use('/api/clients', require('./routes/clients'));
 app.use('/api/sessions', require('./routes/sessions'));
 app.use('/api/progress', require('./routes/progress'));
 app.use('/api/check-ins', require('./routes/checkins'));
+// pt-session-events/v1 coach-only routes (L12/PT-Sub); unmatched paths fall through.
+const conductorRoutes = require('./routes/conductor');
+app.use('/api/programs', conductorRoutes.programSub);
+app.use('/api/coach-notices', conductorRoutes.notices);
+app.use('/api/group-sessions', conductorRoutes.groups);
 app.use('/api/programs', require('./routes/programs'));
 app.use('/api/resources', require('./routes/resources'));
 app.use('/api/resource-categories', require('./routes/resourceCategories'));
@@ -81,6 +86,8 @@ app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/telemetry', require('./routes/telemetry').router);
 app.use('/api/announcements', require('./routes/announcements'));
 app.use('/api/push', require('./routes/push'));
+// Fail-closed: answers 503 unless the local media adapter is configured.
+app.use('/api/exercise-media', require('./routes/exerciseMedia'));
 
 // Unknown routes answer JSON, not Express's default HTML page.
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

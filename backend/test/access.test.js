@@ -92,3 +92,18 @@ test('template programs cannot compose client instances, and instances cannot li
   assert.equal(programDaysUseAccessibleWorkouts(coachA, days, [templateWorkout], { instanceClientId: 'client-1' }), false);
   assert.equal(programDaysUseAccessibleWorkouts(coachB, days, [instanceWorkout], { instanceClientId: 'client-1' }), false);
 });
+
+test('client instances follow the client\'s current coach when the owner is loaded', () => {
+  // Cloned while client c belonged to coach A; an admin has since moved c to coach B.
+  const workout = { id: 'w', coach_id: 'coach-a', is_template: false, client_id: 'c', archived: false, client_owner: { coach_id: 'coach-b' } };
+  const program = { id: 'p', coach_id: 'coach-a', is_template: false, client_id: 'c', client_owner: { coach_id: 'coach-b' } };
+  assert.equal(canAccessWorkout(coachA, workout), false, 'former coach is masked');
+  assert.equal(canManageWorkout(coachA, workout), false);
+  assert.equal(canAccessProgram(coachA, program), false);
+  assert.equal(canAccessWorkout(coachB, workout), true, 'current coach takes over');
+  assert.equal(canAccessProgram(coachB, program), true);
+  assert.equal(canAccessWorkout(admin, workout), true);
+  assert.equal(canAccessWorkout(coachA, { ...workout, client_owner: null }), false, 'a missing owner fails closed');
+  assert.equal(programDaysUseAccessibleWorkouts(coachA, [{ workout_id: 'w' }], [workout], { instanceClientId: 'c' }), false);
+  assert.equal(programDaysUseAccessibleWorkouts(coachB, [{ workout_id: 'w' }], [workout], { instanceClientId: 'c' }), true);
+});

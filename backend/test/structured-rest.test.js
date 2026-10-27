@@ -10,6 +10,7 @@ const migration = fs.readFileSync(
 );
 const tracker = fs.readFileSync(path.join(root, 'frontend', 'src', 'pages', 'client', 'WorkoutTracker.jsx'), 'utf8');
 const restLib = fs.readFileSync(path.join(root, 'frontend', 'src', 'lib', 'rest.js'), 'utf8');
+const supersetsLib = fs.readFileSync(path.join(root, 'frontend', 'src', 'lib', 'supersets.js'), 'utf8');
 const builder = fs.readFileSync(path.join(root, 'frontend', 'src', 'pages', 'coach', 'Programs.jsx'), 'utf8');
 
 test('structured rest schema: parser, columns, range checks, service-role only', () => {
@@ -47,7 +48,11 @@ test('fill triggers keep every writer consistent, explicit values winning', () =
 });
 
 test('tracker reads the structured column and never parses rest text', () => {
-  assert.match(tracker, /exercise\.prescribed_rest_seconds > 0/);
+  // The timer duration comes from restAfterSet, which reads only the
+  // structured column (round-aware for supersets).
+  assert.match(tracker, /restAfterSet\(log\.exercises, exercise\.id, set\.id\)/);
+  assert.match(supersetsLib, /Number\(exercise\.prescribed_rest_seconds\) \|\| 0/);
+  assert.doesNotMatch(supersetsLib, /prescribed_rest\b(?!_seconds)/);
   assert.doesNotMatch(tracker, /function parseRest\b/);
   assert.doesNotMatch(tracker, /parseRestSeconds/);
   // Display falls back to legacy text; the timer never does.

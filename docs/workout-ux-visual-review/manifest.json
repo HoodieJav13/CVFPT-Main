@@ -1,0 +1,3018 @@
+{
+  "schemaVersion": 3,
+  "createdAt": "2026-10-06T00:01:57.559Z",
+  "browser": "149.0.7827.55",
+  "sources": {
+    "before": {
+      "sha": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "url": "http://127.0.0.1:42744"
+    },
+    "after": {
+      "sha": "770e7139c8442983d7189be33f328cd4bae84521",
+      "url": "http://127.0.0.1:42742"
+    }
+  },
+  "fixture": "Identical synthetic workout-ux-fixture.mjs data, log started_at fixed 2026-10-05T11:55Z, Date.now frozen to 2026-10-05T12:00Z, no real client data.",
+  "appSourceChangedAfterInitialReview": true,
+  "limitations": [
+    "Synthetic intercepted API responses prove rendered frontend behavior, not hosted/backend data writes or authorization.",
+    "Requested logical anchors match where feasible. The reserved footer reduces available entry space, so After obstruction anchors clamp to the entry-region bottom; Before also clamps at document top for390px. Exact requested/actual positions and both document/region scroll offsets are recorded.",
+    "Owner revision reserves a separate timer/Finish footer and scrolls entries above it. Very short or keyboard viewports use document scrolling with focused-field clearance. Full-page captures show actual document extent; they do not expand clipped regional content.",
+    "Chromium dark/reduced-motion capture only; no physical keyboard, iOS Safari or installed PWA proof."
+  ],
+  "captures": [
+    {
+      "scene": "weight",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/weight-320-before.png",
+      "sha256": "7e08215c76dcd6af48d52afec93b9ba687fdef20aea0e62f52c1fddcd3c388d8",
+      "fullContext": [
+        "screenshots/weight-320-before-full.png"
+      ],
+      "scrollState": "First exercise, set 1 weight top anchored at 260px.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 237,
+        "documentWidth": 352,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "weight": {
+          "rect": {
+            "x": 91,
+            "y": 260,
+            "width": 28,
+            "height": 48,
+            "top": 260,
+            "right": 119,
+            "bottom": 308,
+            "left": 91
+          },
+          "value": "135.5",
+          "usableWidth": 10,
+          "textWidth": 38.26185607910156,
+          "font": "600 18px Oswald, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "weight",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/weight-320-after.png",
+      "sha256": "430e736fcd17f01a3552afe797a2fe1a008f2b175720e3602722c7ffd0f00907",
+      "fullContext": [
+        "screenshots/weight-320-after-full.png"
+      ],
+      "scrollState": "First exercise, set 1 weight top anchored at 260px.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "weight": {
+          "rect": {
+            "x": 91,
+            "y": 260,
+            "width": 124,
+            "height": 48,
+            "top": 260,
+            "right": 215,
+            "bottom": 308,
+            "left": 91
+          },
+          "value": "135.5",
+          "usableWidth": 106,
+          "textWidth": 38.26185607910156,
+          "font": "600 18px Oswald, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 16,
+            "y": 85,
+            "width": 288,
+            "height": 343,
+            "top": 85,
+            "right": 304,
+            "bottom": 428,
+            "left": 16
+          },
+          "scrollTop": 249,
+          "scrollHeight": 3580,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-top",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/builder-top-320-before.png",
+      "sha256": "823d9d3c54825b15cac39818c301ecf3e906be2b9198ef64a26ac22d99cafa65",
+      "fullContext": [],
+      "scrollState": "Top of editor, expanded first exercise.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 318,
+          "scrollWidth": 588,
+          "scrollTop": 0,
+          "rect": {
+            "x": 0,
+            "y": 32,
+            "width": 320,
+            "height": 576,
+            "top": 32,
+            "right": 320,
+            "bottom": 608,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 30,
+            "y": 454,
+            "width": 257.015625,
+            "height": 36,
+            "top": 454,
+            "right": 287.015625,
+            "bottom": 490,
+            "left": 30
+          },
+          "value": "3",
+          "usableWidth": 231,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-top",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/builder-top-320-after.png",
+      "sha256": "a38949920a63b731fdf677bdf546453543350b710415100498692e9910806487",
+      "fullContext": [],
+      "scrollState": "Top of editor, expanded first exercise.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 318,
+          "scrollWidth": 318,
+          "scrollTop": 0,
+          "rect": {
+            "x": 0,
+            "y": 32,
+            "width": 320,
+            "height": 576,
+            "top": 32,
+            "right": 320,
+            "bottom": 608,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 30,
+            "y": 602,
+            "width": 122,
+            "height": 44,
+            "top": 602,
+            "right": 152,
+            "bottom": 646,
+            "left": 30
+          },
+          "value": "3",
+          "usableWidth": 96,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [
+            "Sets"
+          ],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-lower",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/builder-lower-320-before.png",
+      "sha256": "1cb12faa2ac029d956d19f61d6e85dcbe64a5a5c16adcd54b959aed6e00140fd",
+      "fullContext": [],
+      "scrollState": "Coach notes anchored in the scrollable editor; numeric offsets recorded.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 318,
+          "scrollWidth": 588,
+          "scrollTop": 244,
+          "rect": {
+            "x": 0,
+            "y": 32,
+            "width": 320,
+            "height": 576,
+            "top": 32,
+            "right": 320,
+            "bottom": 608,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 1,
+            "y": 210,
+            "width": 257.015625,
+            "height": 36,
+            "top": 210,
+            "right": 258.015625,
+            "bottom": 246,
+            "left": 1
+          },
+          "value": "3",
+          "usableWidth": 231,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-lower",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/builder-lower-320-after.png",
+      "sha256": "8cbed5858a4f6e710a6062917fefb01b2976b00ac43ef5c7a4bb98f0fa125fbc",
+      "fullContext": [],
+      "scrollState": "Coach notes anchored in the scrollable editor; numeric offsets recorded.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 318,
+          "scrollWidth": 318,
+          "scrollTop": 596,
+          "rect": {
+            "x": 0,
+            "y": 32,
+            "width": 320,
+            "height": 576,
+            "top": 32,
+            "right": 320,
+            "bottom": 608,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 30,
+            "y": 6,
+            "width": 122,
+            "height": 44,
+            "top": 6,
+            "right": 152,
+            "bottom": 50,
+            "left": 30
+          },
+          "value": "3",
+          "usableWidth": 96,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [
+            "Sets"
+          ],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-targets",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/builder-targets-320-before.png",
+      "sha256": "f8e7758c9e92178b6556651aab32a3ef8f132c9e4c5e73d18c656e9f17c01baa",
+      "fullContext": [],
+      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 318,
+          "scrollWidth": 588,
+          "scrollTop": 361,
+          "rect": {
+            "x": 0,
+            "y": 32,
+            "width": 320,
+            "height": 576,
+            "top": 32,
+            "right": 320,
+            "bottom": 608,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 1,
+            "y": 277,
+            "width": 257.015625,
+            "height": 36,
+            "top": 277,
+            "right": 258.015625,
+            "bottom": 313,
+            "left": 1
+          },
+          "value": "3",
+          "usableWidth": 231,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-targets",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/builder-targets-320-after.png",
+      "sha256": "08671fa8083ec6bf46a3842a0a539549e973a7e92e06d3f158bbee0538a7f7e8",
+      "fullContext": [],
+      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 318,
+          "scrollWidth": 318,
+          "scrollTop": 485,
+          "rect": {
+            "x": 0,
+            "y": 32,
+            "width": 320,
+            "height": 576,
+            "top": 32,
+            "right": 320,
+            "bottom": 608,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 30,
+            "y": 317,
+            "width": 122,
+            "height": 44,
+            "top": 317,
+            "right": 152,
+            "bottom": 361,
+            "left": 30
+          },
+          "value": "3",
+          "usableWidth": 96,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [
+            "Sets"
+          ],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-clear",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/rest-clear-320-before.png",
+      "sha256": "e2bacab7a6e35ecbc28635195faaddb7456214f21946732694ce0bca0ea9425b",
+      "fullContext": [],
+      "scrollState": "First Same as last time requested top 298px, first superset round completed, frozen 60s rest. Actual top, scroll offsets and reserved-region boundary clamping disclosed below.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 431,
+        "documentWidth": 352,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "requestedControlTop": 298,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 246,
+              "width": 100.046875,
+              "height": 44,
+              "top": 246,
+              "right": 155.046875,
+              "bottom": 290,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 55,
+              "y": 298,
+              "width": 156.34375,
+              "height": 44,
+              "top": 298,
+              "right": 211.34375,
+              "bottom": 342,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 298,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 470,
+            "width": 288,
+            "height": 90,
+            "top": 470,
+            "right": 304,
+            "bottom": 560,
+            "left": 16
+          },
+          "position": "sticky"
+        },
+        "timer": {
+          "rect": {
+            "x": 192,
+            "y": 424,
+            "width": 112,
+            "height": 56,
+            "top": 424,
+            "right": 304,
+            "bottom": 480,
+            "left": 192
+          },
+          "text": "1:00",
+          "insideDock": false
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-clear",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/rest-clear-320-after.png",
+      "sha256": "2087b2f7bc122927efefc6f5f8a662314bcb76caa20c602edc7bbba3722eb248",
+      "fullContext": [],
+      "scrollState": "First Same as last time requested top 298px, first superset round completed, frozen 60s rest. Actual top, scroll offsets and reserved-region boundary clamping disclosed below.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "requestedControlTop": 298,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 246,
+              "width": 100.046875,
+              "height": 44,
+              "top": 246,
+              "right": 155.046875,
+              "bottom": 290,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 55,
+              "y": 298,
+              "width": 156.34375,
+              "height": 44,
+              "top": 298,
+              "right": 211.34375,
+              "bottom": 342,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 298,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 376,
+            "width": 288,
+            "height": 168,
+            "top": 376,
+            "right": 304,
+            "bottom": 544,
+            "left": 16
+          },
+          "position": "static"
+        },
+        "timer": {
+          "rect": {
+            "x": 156,
+            "y": 387,
+            "width": 112,
+            "height": 56,
+            "top": 387,
+            "right": 268,
+            "bottom": 443,
+            "left": 156
+          },
+          "text": "1:00",
+          "insideDock": true
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 16,
+            "y": 85,
+            "width": 288,
+            "height": 279,
+            "top": 85,
+            "right": 304,
+            "bottom": 364,
+            "left": 16
+          },
+          "scrollTop": 719,
+          "scrollHeight": 3580,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-overlay",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/rest-overlay-320-before.png",
+      "sha256": "37560e4a95cc81cc1adcf13c0ed500f8eab1aa640da07c7c893ca5d06de08b06",
+      "fullContext": [],
+      "scrollState": "First Same as last time requested top 446px, first superset round completed, frozen 60s rest. Actual top, scroll offsets and reserved-region boundary clamping disclosed below.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 283,
+        "documentWidth": 352,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "requestedControlTop": 446,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 394,
+              "width": 100.046875,
+              "height": 44,
+              "top": 394,
+              "right": 155.046875,
+              "bottom": 438,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": false
+          },
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 55,
+              "y": 446,
+              "width": 156.34375,
+              "height": 44,
+              "top": 446,
+              "right": 211.34375,
+              "bottom": 490,
+              "left": 55
+            },
+            "hit": false,
+            "allNinePointsHit": false
+          }
+        ],
+        "actualControlTop": 446,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 470,
+            "width": 288,
+            "height": 90,
+            "top": 470,
+            "right": 304,
+            "bottom": 560,
+            "left": 16
+          },
+          "position": "sticky"
+        },
+        "timer": {
+          "rect": {
+            "x": 192,
+            "y": 424,
+            "width": 112,
+            "height": 56,
+            "top": 424,
+            "right": 304,
+            "bottom": 480,
+            "left": 192
+          },
+          "text": "1:00",
+          "insideDock": false
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-overlay",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/rest-overlay-320-after.png",
+      "sha256": "70a165a3cb2aa9959244f6108fd7591115f15e94b3a42b89df69fe0884058ef3",
+      "fullContext": [],
+      "scrollState": "First Same as last time requested top 446px, first superset round completed, frozen 60s rest. Actual top, scroll offsets and reserved-region boundary clamping disclosed below.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "requestedControlTop": 446,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 260,
+              "width": 100.046875,
+              "height": 44,
+              "top": 260,
+              "right": 155.046875,
+              "bottom": 304,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 55,
+              "y": 312,
+              "width": 156.34375,
+              "height": 44,
+              "top": 312,
+              "right": 211.34375,
+              "bottom": 356,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 312,
+        "alignmentDifference": "Requested 446px; actual 312px because the document or reserved entry-region boundary limits the anchor.",
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 376,
+            "width": 288,
+            "height": 168,
+            "top": 376,
+            "right": 304,
+            "bottom": 544,
+            "left": 16
+          },
+          "position": "static"
+        },
+        "timer": {
+          "rect": {
+            "x": 156,
+            "y": 387,
+            "width": 112,
+            "height": 56,
+            "top": 387,
+            "right": 268,
+            "bottom": 443,
+            "left": 156
+          },
+          "text": "1:00",
+          "insideDock": true
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 16,
+            "y": 85,
+            "width": 288,
+            "height": 279,
+            "top": 85,
+            "right": 304,
+            "bottom": 364,
+            "left": 16
+          },
+          "scrollTop": 705,
+          "scrollHeight": 3580,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-controls",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/rest-controls-320-before.png",
+      "sha256": "4842bf1b440e0d0554c56decbd3f9217a4193b30fc394ac434d409948253c017",
+      "fullContext": [
+        "screenshots/rest-controls-320-before-full.png"
+      ],
+      "scrollState": "Workout content bottom: running rest controls and finish actions, frozen 60s rest, first superset round completed. After controls occupy a separate reserved footer.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 2359,
+        "documentWidth": 352,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "controls": [
+          {
+            "name": "Subtract 15 seconds of rest",
+            "rect": {
+              "x": 88,
+              "y": 430,
+              "width": 44,
+              "height": 44,
+              "top": 430,
+              "right": 132,
+              "bottom": 474,
+              "left": 88
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Add 15 seconds of rest",
+            "rect": {
+              "x": 140,
+              "y": 430,
+              "width": 44,
+              "height": 44,
+              "top": 430,
+              "right": 184,
+              "bottom": 474,
+              "left": 140
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Rest timer 1:00, tap to stop",
+            "rect": {
+              "x": 192,
+              "y": 424,
+              "width": 112,
+              "height": 56,
+              "top": 424,
+              "right": 304,
+              "bottom": 480,
+              "left": 192
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Complete all remaining",
+            "rect": {
+              "x": 27,
+              "y": 489,
+              "width": 187.1875,
+              "height": 44,
+              "top": 489,
+              "right": 214.1875,
+              "bottom": 533,
+              "left": 27
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Finish workout",
+            "rect": {
+              "x": 222.1875,
+              "y": 489,
+              "width": 130.046875,
+              "height": 44,
+              "top": 489,
+              "right": 352.234375,
+              "bottom": 533,
+              "left": 222.1875
+            },
+            "hit": true,
+            "allNinePointsHit": false
+          }
+        ],
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 454,
+            "width": 288,
+            "height": 90,
+            "top": 454,
+            "right": 304,
+            "bottom": 544,
+            "left": 16
+          },
+          "position": "sticky"
+        },
+        "timer": {
+          "rect": {
+            "x": 192,
+            "y": 424,
+            "width": 112,
+            "height": 56,
+            "top": 424,
+            "right": 304,
+            "bottom": 480,
+            "left": 192
+          },
+          "text": "1:00",
+          "insideDock": false
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-controls",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/rest-controls-320-after.png",
+      "sha256": "28ce79892d2ab7f5cdf9d0732ad3cb4ff0b1c8058914787257406c64b195d88a",
+      "fullContext": [
+        "screenshots/rest-controls-320-after-full.png"
+      ],
+      "scrollState": "Workout content bottom: running rest controls and finish actions, frozen 60s rest, first superset round completed. After controls occupy a separate reserved footer.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "controls": [
+          {
+            "name": "Subtract 15 seconds of rest",
+            "rect": {
+              "x": 52,
+              "y": 393,
+              "width": 44,
+              "height": 44,
+              "top": 393,
+              "right": 96,
+              "bottom": 437,
+              "left": 52
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Add 15 seconds of rest",
+            "rect": {
+              "x": 104,
+              "y": 393,
+              "width": 44,
+              "height": 44,
+              "top": 393,
+              "right": 148,
+              "bottom": 437,
+              "left": 104
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Rest timer 1:00, tap to stop",
+            "rect": {
+              "x": 156,
+              "y": 387,
+              "width": 112,
+              "height": 56,
+              "top": 387,
+              "right": 268,
+              "bottom": 443,
+              "left": 156
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Complete all remaining",
+            "rect": {
+              "x": 27,
+              "y": 475,
+              "width": 130,
+              "height": 58,
+              "top": 475,
+              "right": 157,
+              "bottom": 533,
+              "left": 27
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Finish workout",
+            "rect": {
+              "x": 165,
+              "y": 475,
+              "width": 128,
+              "height": 58,
+              "top": 475,
+              "right": 293,
+              "bottom": 533,
+              "left": 165
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 376,
+            "width": 288,
+            "height": 168,
+            "top": 376,
+            "right": 304,
+            "bottom": 544,
+            "left": 16
+          },
+          "position": "static"
+        },
+        "timer": {
+          "rect": {
+            "x": 156,
+            "y": 387,
+            "width": 112,
+            "height": 56,
+            "top": 387,
+            "right": 268,
+            "bottom": 443,
+            "left": 156
+          },
+          "text": "1:00",
+          "insideDock": true
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 16,
+            "y": 85,
+            "width": 288,
+            "height": 279,
+            "top": 85,
+            "right": 304,
+            "bottom": 364,
+            "left": 16
+          },
+          "scrollTop": 3301,
+          "scrollHeight": 3580,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "validation",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/validation-320-before.png",
+      "sha256": "b29ef97dc317b32d0914082bc0e25c06f57c3c44e177bb6cc2735b8322f164d7",
+      "fullContext": [],
+      "scrollState": "Same invalid RPE 11 blurred; RPE top anchored at 260px.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 239,
+        "documentWidth": 352,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "rpe": {
+          "rect": {
+            "x": 243,
+            "y": 260,
+            "width": 56,
+            "height": 44,
+            "top": 260,
+            "right": 299,
+            "bottom": 304,
+            "left": 243
+          },
+          "value": "11",
+          "usableWidth": 38,
+          "textWidth": 11.388671875,
+          "font": "14px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        },
+        "error": null,
+        "writes": [],
+        "feedback": null
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "validation",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/validation-320-after.png",
+      "sha256": "02739555e615a41f87c1bb438c908ab7c0bc7a0a87298302bf84b2ad07afb6cc",
+      "fullContext": [],
+      "scrollState": "Same invalid RPE 11 blurred; RPE top anchored at 260px.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "rpe": {
+          "rect": {
+            "x": 161,
+            "y": 260,
+            "width": 66,
+            "height": 44,
+            "top": 260,
+            "right": 227,
+            "bottom": 304,
+            "left": 161
+          },
+          "value": "11",
+          "usableWidth": 48,
+          "textWidth": 11.388671875,
+          "font": "14px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": "true",
+          "describedBy": "set-ex-a-set-1-actual_rpe-error"
+        },
+        "error": "Use RPE 1\u201310 in 0.5 steps, or leave blank.",
+        "writes": [],
+        "feedback": {
+          "role": "status",
+          "informationIcons": 1,
+          "foreground": "rgb(236, 231, 223)",
+          "backgrounds": [
+            "rgba(0, 0, 0, 0)",
+            "rgba(94, 196, 212, 0.15)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgb(15, 13, 10)",
+            "rgb(15, 13, 10)"
+          ],
+          "cssCompositeContrast": 12.3
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 16,
+            "y": 85,
+            "width": 288,
+            "height": 343,
+            "top": 85,
+            "right": 304,
+            "bottom": 428,
+            "left": 16
+          },
+          "scrollTop": 325,
+          "scrollHeight": 3624,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "touch-targets",
+      "width": 320,
+      "height": 640,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/touch-targets-320-before.png",
+      "sha256": "369acd8e1a678a71c3421a03098be14ddb33f1c2b3f9c2b413643a52453734af",
+      "fullContext": [
+        "screenshots/touch-targets-320-before-full.png"
+      ],
+      "scrollState": "Top of Other assigned workouts; no start/download action performed.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "title": {
+          "rect": {
+            "x": 33,
+            "y": 273,
+            "width": 102.921875,
+            "height": 48,
+            "top": 273,
+            "right": 135.921875,
+            "bottom": 321,
+            "left": 33
+          },
+          "lineCount": 2
+        },
+        "start-standalone-workout": {
+          "x": 235.359375,
+          "y": 273,
+          "width": 51.640625,
+          "height": 32,
+          "top": 273,
+          "right": 287,
+          "bottom": 305,
+          "left": 235.359375
+        },
+        "download-workout-pdf": {
+          "x": 147.921875,
+          "y": 273,
+          "width": 79.4375,
+          "height": 32,
+          "top": 273,
+          "right": 227.359375,
+          "bottom": 305,
+          "left": 147.921875
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "touch-targets",
+      "width": 320,
+      "height": 640,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/touch-targets-320-after.png",
+      "sha256": "0a37b6afb7384ae265aa9c9a8ff346c3b0159fcf23f6097cc3e0d3b15e092473",
+      "fullContext": [
+        "screenshots/touch-targets-320-after-full.png"
+      ],
+      "scrollState": "Top of Other assigned workouts; no start/download action performed.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 320,
+        "viewportWidth": 320,
+        "viewportHeight": 640,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "title": {
+          "rect": {
+            "x": 33,
+            "y": 273,
+            "width": 102.921875,
+            "height": 48,
+            "top": 273,
+            "right": 135.921875,
+            "bottom": 321,
+            "left": 33
+          },
+          "lineCount": 2
+        },
+        "start-standalone-workout": {
+          "x": 235.359375,
+          "y": 273,
+          "width": 51.640625,
+          "height": 44,
+          "top": 273,
+          "right": 287,
+          "bottom": 317,
+          "left": 235.359375
+        },
+        "download-workout-pdf": {
+          "x": 147.921875,
+          "y": 273,
+          "width": 79.4375,
+          "height": 44,
+          "top": 273,
+          "right": 227.359375,
+          "bottom": 317,
+          "left": 147.921875
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "weight",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/weight-390-before.png",
+      "sha256": "01aeedd03d47a85845bb4b6d50ef8b4c842c561129f290393606cf4bed6dd259",
+      "fullContext": [
+        "screenshots/weight-390-before-full.png"
+      ],
+      "scrollState": "First exercise, set 1 weight top anchored at 260px.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 193,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "weight": {
+          "rect": {
+            "x": 91,
+            "y": 260,
+            "width": 28,
+            "height": 48,
+            "top": 260,
+            "right": 119,
+            "bottom": 308,
+            "left": 91
+          },
+          "value": "135.5",
+          "usableWidth": 10,
+          "textWidth": 38.26185607910156,
+          "font": "600 18px Oswald, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "weight",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/weight-390-after.png",
+      "sha256": "7dc75c76ea40b13c0cbf9e58ceee79450e522c842ebfdd32dde60a00fabbe5aa",
+      "fullContext": [
+        "screenshots/weight-390-after-full.png"
+      ],
+      "scrollState": "First exercise, set 1 weight top anchored at 260px.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "weight": {
+          "rect": {
+            "x": 91,
+            "y": 260,
+            "width": 194,
+            "height": 48,
+            "top": 260,
+            "right": 285,
+            "bottom": 308,
+            "left": 91
+          },
+          "value": "135.5",
+          "usableWidth": 176,
+          "textWidth": 38.26185607910156,
+          "font": "600 18px Oswald, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 16,
+            "y": 85,
+            "width": 358,
+            "height": 547,
+            "top": 85,
+            "right": 374,
+            "bottom": 632,
+            "left": 16
+          },
+          "scrollTop": 205,
+          "scrollHeight": 3380,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-top",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/builder-top-390-before.png",
+      "sha256": "17dc2e2518924ed289fcfaeb13b9a6c455129e2b76a5d9327621f6684900c932",
+      "fullContext": [],
+      "scrollState": "Top of editor, expanded first exercise.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 388,
+          "scrollWidth": 588,
+          "scrollTop": 0,
+          "rect": {
+            "x": 0,
+            "y": 42.203125,
+            "width": 390,
+            "height": 759.59375,
+            "top": 42.203125,
+            "right": 390,
+            "bottom": 801.796875,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 30,
+            "y": 464.203125,
+            "width": 257.015625,
+            "height": 36,
+            "top": 464.203125,
+            "right": 287.015625,
+            "bottom": 500.203125,
+            "left": 30
+          },
+          "value": "3",
+          "usableWidth": 231,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-top",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/builder-top-390-after.png",
+      "sha256": "9dc982b8ed679073126eb7add54d1b09667bf1c18665c71419b39eb07e62df40",
+      "fullContext": [],
+      "scrollState": "Top of editor, expanded first exercise.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 388,
+          "scrollWidth": 388,
+          "scrollTop": 0,
+          "rect": {
+            "x": 0,
+            "y": 42.203125,
+            "width": 390,
+            "height": 759.59375,
+            "top": 42.203125,
+            "right": 390,
+            "bottom": 801.796875,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 30,
+            "y": 612.203125,
+            "width": 157,
+            "height": 44,
+            "top": 612.203125,
+            "right": 187,
+            "bottom": 656.203125,
+            "left": 30
+          },
+          "value": "3",
+          "usableWidth": 131,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [
+            "Sets"
+          ],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-lower",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/builder-lower-390-before.png",
+      "sha256": "d2c6e6a4adf5873150644e72e7368353730f697596955b62324622cb50944efa",
+      "fullContext": [],
+      "scrollState": "Coach notes anchored in the scrollable editor; numeric offsets recorded.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 388,
+          "scrollWidth": 588,
+          "scrollTop": 60,
+          "rect": {
+            "x": 0,
+            "y": 42.203125,
+            "width": 390,
+            "height": 759.59375,
+            "top": 42.203125,
+            "right": 390,
+            "bottom": 801.796875,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 1,
+            "y": 404.203125,
+            "width": 257.015625,
+            "height": 36,
+            "top": 404.203125,
+            "right": 258.015625,
+            "bottom": 440.203125,
+            "left": 1
+          },
+          "value": "3",
+          "usableWidth": 231,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-lower",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/builder-lower-390-after.png",
+      "sha256": "cf7f254ac570f98beb453e54a92aa06fcd15876235861350523569aed4597f48",
+      "fullContext": [],
+      "scrollState": "Coach notes anchored in the scrollable editor; numeric offsets recorded.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 388,
+          "scrollWidth": 388,
+          "scrollTop": 392,
+          "rect": {
+            "x": 0,
+            "y": 42.203125,
+            "width": 390,
+            "height": 759.59375,
+            "top": 42.203125,
+            "right": 390,
+            "bottom": 801.796875,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 30,
+            "y": 220.203125,
+            "width": 157,
+            "height": 44,
+            "top": 220.203125,
+            "right": 187,
+            "bottom": 264.203125,
+            "left": 30
+          },
+          "value": "3",
+          "usableWidth": 131,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [
+            "Sets"
+          ],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-targets",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/builder-targets-390-before.png",
+      "sha256": "7ed1e8e64f0591c8a1383888cbc6d889f64eae3ee826541306f061c6ba9713bc",
+      "fullContext": [],
+      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 388,
+          "scrollWidth": 588,
+          "scrollTop": 244,
+          "rect": {
+            "x": 0,
+            "y": 42.203125,
+            "width": 390,
+            "height": 759.59375,
+            "top": 42.203125,
+            "right": 390,
+            "bottom": 801.796875,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 1,
+            "y": 404.203125,
+            "width": 257.015625,
+            "height": 36,
+            "top": 404.203125,
+            "right": 258.015625,
+            "bottom": 440.203125,
+            "left": 1
+          },
+          "value": "3",
+          "usableWidth": 231,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-targets",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/builder-targets-390-after.png",
+      "sha256": "ea7476e47f946b67197f32312e4d920c649a7eb94dc430ac8924f808493a470d",
+      "fullContext": [],
+      "scrollState": "Duration + distance selected, target 20 min / 3 km; tracking selector at common scroll anchor.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 388,
+          "scrollWidth": 388,
+          "scrollTop": 485,
+          "rect": {
+            "x": 0,
+            "y": 42.203125,
+            "width": 390,
+            "height": 759.59375,
+            "top": 42.203125,
+            "right": 390,
+            "bottom": 801.796875,
+            "left": 0
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 30,
+            "y": 327.203125,
+            "width": 157,
+            "height": 44,
+            "top": 327.203125,
+            "right": 187,
+            "bottom": 371.203125,
+            "left": 30
+          },
+          "value": "3",
+          "usableWidth": 131,
+          "textWidth": 9.8828125,
+          "font": "16px Inter, ui-sans-serif, system-ui",
+          "labels": [
+            "Sets"
+          ],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-clear",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/rest-clear-390-before.png",
+      "sha256": "6c370182afed50cf2a7df7417e6c18bdb72d8017de30085843eb92fa596d87be",
+      "fullContext": [],
+      "scrollState": "First Same as last time requested top 400px, first superset round completed, frozen 60s rest. Actual top, scroll offsets and reserved-region boundary clamping disclosed below.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 233,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "requestedControlTop": 400,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 400,
+              "width": 100.046875,
+              "height": 44,
+              "top": 400,
+              "right": 155.046875,
+              "bottom": 444,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 163.046875,
+              "y": 400,
+              "width": 156.34375,
+              "height": 44,
+              "top": 400,
+              "right": 319.390625,
+              "bottom": 444,
+              "left": 163.046875
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 400,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 674,
+            "width": 358,
+            "height": 90,
+            "top": 674,
+            "right": 374,
+            "bottom": 764,
+            "left": 16
+          },
+          "position": "sticky"
+        },
+        "timer": {
+          "rect": {
+            "x": 262,
+            "y": 628,
+            "width": 112,
+            "height": 56,
+            "top": 628,
+            "right": 374,
+            "bottom": 684,
+            "left": 262
+          },
+          "text": "1:00",
+          "insideDock": false
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-clear",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/rest-clear-390-after.png",
+      "sha256": "c12c492869d39ee79e228d89948e0793c58c5750c07a0a933e0c47313080938a",
+      "fullContext": [],
+      "scrollState": "First Same as last time requested top 400px, first superset round completed, frozen 60s rest. Actual top, scroll offsets and reserved-region boundary clamping disclosed below.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "requestedControlTop": 400,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 400,
+              "width": 100.046875,
+              "height": 44,
+              "top": 400,
+              "right": 155.046875,
+              "bottom": 444,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 163.046875,
+              "y": 400,
+              "width": 156.34375,
+              "height": 44,
+              "top": 400,
+              "right": 319.390625,
+              "bottom": 444,
+              "left": 163.046875
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 400,
+        "alignmentDifference": null,
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 580,
+            "width": 358,
+            "height": 168,
+            "top": 580,
+            "right": 374,
+            "bottom": 748,
+            "left": 16
+          },
+          "position": "static"
+        },
+        "timer": {
+          "rect": {
+            "x": 191,
+            "y": 591,
+            "width": 112,
+            "height": 56,
+            "top": 591,
+            "right": 303,
+            "bottom": 647,
+            "left": 191
+          },
+          "text": "1:00",
+          "insideDock": true
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 16,
+            "y": 85,
+            "width": 358,
+            "height": 483,
+            "top": 85,
+            "right": 374,
+            "bottom": 568,
+            "left": 16
+          },
+          "scrollTop": 521,
+          "scrollHeight": 3380,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-overlay",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/rest-overlay-390-before.png",
+      "sha256": "5d99d212566abc6cc6d0967a99f3887be0f91c6e0bd29bd907f2cfd1b6483ef5",
+      "fullContext": [],
+      "scrollState": "First Same as last time requested top 650px, first superset round completed, frozen 60s rest. Actual top, scroll offsets and reserved-region boundary clamping disclosed below.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "requestedControlTop": 650,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 633,
+              "width": 100.046875,
+              "height": 44,
+              "top": 633,
+              "right": 155.046875,
+              "bottom": 677,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 163.046875,
+              "y": 633,
+              "width": 156.34375,
+              "height": 44,
+              "top": 633,
+              "right": 319.390625,
+              "bottom": 677,
+              "left": 163.046875
+            },
+            "hit": false,
+            "allNinePointsHit": false
+          }
+        ],
+        "actualControlTop": 633,
+        "alignmentDifference": "Requested 650px; actual 633px because the document or reserved entry-region boundary limits the anchor.",
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 674,
+            "width": 358,
+            "height": 90,
+            "top": 674,
+            "right": 374,
+            "bottom": 764,
+            "left": 16
+          },
+          "position": "sticky"
+        },
+        "timer": {
+          "rect": {
+            "x": 262,
+            "y": 628,
+            "width": 112,
+            "height": 56,
+            "top": 628,
+            "right": 374,
+            "bottom": 684,
+            "left": 262
+          },
+          "text": "1:00",
+          "insideDock": false
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-overlay",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/rest-overlay-390-after.png",
+      "sha256": "ec8d3e1d1d7fc029fcac5b178b9a52e966c0e0b57db094cd82724e7e28d7b6a7",
+      "fullContext": [],
+      "scrollState": "First Same as last time requested top 650px, first superset round completed, frozen 60s rest. Actual top, scroll offsets and reserved-region boundary clamping disclosed below.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "requestedControlTop": 650,
+        "controls": [
+          {
+            "name": "Add set",
+            "rect": {
+              "x": 55,
+              "y": 516,
+              "width": 100.046875,
+              "height": 44,
+              "top": 516,
+              "right": 155.046875,
+              "bottom": 560,
+              "left": 55
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Same as last time",
+            "rect": {
+              "x": 163.046875,
+              "y": 516,
+              "width": 156.34375,
+              "height": 44,
+              "top": 516,
+              "right": 319.390625,
+              "bottom": 560,
+              "left": 163.046875
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "actualControlTop": 516,
+        "alignmentDifference": "Requested 650px; actual 516px because the document or reserved entry-region boundary limits the anchor.",
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 580,
+            "width": 358,
+            "height": 168,
+            "top": 580,
+            "right": 374,
+            "bottom": 748,
+            "left": 16
+          },
+          "position": "static"
+        },
+        "timer": {
+          "rect": {
+            "x": 191,
+            "y": 591,
+            "width": 112,
+            "height": 56,
+            "top": 591,
+            "right": 303,
+            "bottom": 647,
+            "left": 191
+          },
+          "text": "1:00",
+          "insideDock": true
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 16,
+            "y": 85,
+            "width": 358,
+            "height": 483,
+            "top": 85,
+            "right": 374,
+            "bottom": 568,
+            "left": 16
+          },
+          "scrollTop": 405,
+          "scrollHeight": 3380,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-controls",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/rest-controls-390-before.png",
+      "sha256": "a59db453c321a78fbfff3fe5aa59c74b4e841add6ed1c3f50002c4faa60fd041",
+      "fullContext": [
+        "screenshots/rest-controls-390-before-full.png"
+      ],
+      "scrollState": "Workout content bottom: running rest controls and finish actions, frozen 60s rest, first superset round completed. After controls occupy a separate reserved footer.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 1955,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "controls": [
+          {
+            "name": "Subtract 15 seconds of rest",
+            "rect": {
+              "x": 158,
+              "y": 634,
+              "width": 44,
+              "height": 44,
+              "top": 634,
+              "right": 202,
+              "bottom": 678,
+              "left": 158
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Add 15 seconds of rest",
+            "rect": {
+              "x": 210,
+              "y": 634,
+              "width": 44,
+              "height": 44,
+              "top": 634,
+              "right": 254,
+              "bottom": 678,
+              "left": 210
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Rest timer 1:00, tap to stop",
+            "rect": {
+              "x": 262,
+              "y": 628,
+              "width": 112,
+              "height": 56,
+              "top": 628,
+              "right": 374,
+              "bottom": 684,
+              "left": 262
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Complete all remaining",
+            "rect": {
+              "x": 27,
+              "y": 693,
+              "width": 187.1875,
+              "height": 44,
+              "top": 693,
+              "right": 214.1875,
+              "bottom": 737,
+              "left": 27
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Finish workout",
+            "rect": {
+              "x": 222.1875,
+              "y": 693,
+              "width": 140.8125,
+              "height": 44,
+              "top": 693,
+              "right": 363,
+              "bottom": 737,
+              "left": 222.1875
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 658,
+            "width": 358,
+            "height": 90,
+            "top": 658,
+            "right": 374,
+            "bottom": 748,
+            "left": 16
+          },
+          "position": "sticky"
+        },
+        "timer": {
+          "rect": {
+            "x": 262,
+            "y": 628,
+            "width": 112,
+            "height": 56,
+            "top": 628,
+            "right": 374,
+            "bottom": 684,
+            "left": 262
+          },
+          "text": "1:00",
+          "insideDock": false
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "rest-controls",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/rest-controls-390-after.png",
+      "sha256": "d3e7e5d47415a2a0e8e6b6f612aea279f13d552952ce4c12e295d67ec9bc73c0",
+      "fullContext": [
+        "screenshots/rest-controls-390-after-full.png"
+      ],
+      "scrollState": "Workout content bottom: running rest controls and finish actions, frozen 60s rest, first superset round completed. After controls occupy a separate reserved footer.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "controls": [
+          {
+            "name": "Subtract 15 seconds of rest",
+            "rect": {
+              "x": 87,
+              "y": 597,
+              "width": 44,
+              "height": 44,
+              "top": 597,
+              "right": 131,
+              "bottom": 641,
+              "left": 87
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Add 15 seconds of rest",
+            "rect": {
+              "x": 139,
+              "y": 597,
+              "width": 44,
+              "height": 44,
+              "top": 597,
+              "right": 183,
+              "bottom": 641,
+              "left": 139
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Rest timer 1:00, tap to stop",
+            "rect": {
+              "x": 191,
+              "y": 591,
+              "width": 112,
+              "height": 56,
+              "top": 591,
+              "right": 303,
+              "bottom": 647,
+              "left": 191
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Complete all remaining",
+            "rect": {
+              "x": 27,
+              "y": 679,
+              "width": 165,
+              "height": 58,
+              "top": 679,
+              "right": 192,
+              "bottom": 737,
+              "left": 27
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          },
+          {
+            "name": "Finish workout",
+            "rect": {
+              "x": 200,
+              "y": 679,
+              "width": 163,
+              "height": 58,
+              "top": 679,
+              "right": 363,
+              "bottom": 737,
+              "left": 200
+            },
+            "hit": true,
+            "allNinePointsHit": true
+          }
+        ],
+        "dock": {
+          "rect": {
+            "x": 16,
+            "y": 580,
+            "width": 358,
+            "height": 168,
+            "top": 580,
+            "right": 374,
+            "bottom": 748,
+            "left": 16
+          },
+          "position": "static"
+        },
+        "timer": {
+          "rect": {
+            "x": 191,
+            "y": 591,
+            "width": 112,
+            "height": 56,
+            "top": 591,
+            "right": 303,
+            "bottom": 647,
+            "left": 191
+          },
+          "text": "1:00",
+          "insideDock": true
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 16,
+            "y": 85,
+            "width": 358,
+            "height": 483,
+            "top": 85,
+            "right": 374,
+            "bottom": 568,
+            "left": 16
+          },
+          "scrollTop": 2897,
+          "scrollHeight": 3380,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "validation",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/validation-390-before.png",
+      "sha256": "7b7f8230ce81182933ca249f6c12b1f6f7cc26b6f69e75dc4c9eaf59cecfc43c",
+      "fullContext": [],
+      "scrollState": "Same invalid RPE 11 blurred; RPE top anchored at 260px.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 195,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "rpe": {
+          "rect": {
+            "x": 243,
+            "y": 260,
+            "width": 56,
+            "height": 44,
+            "top": 260,
+            "right": 299,
+            "bottom": 304,
+            "left": 243
+          },
+          "value": "11",
+          "usableWidth": 38,
+          "textWidth": 11.388671875,
+          "font": "14px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        },
+        "error": null,
+        "writes": [],
+        "feedback": null
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "validation",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/validation-390-after.png",
+      "sha256": "45f3f46829659b3c52a591b306f59c0ddde24fef506cf054680ff5c583fbd9e4",
+      "fullContext": [],
+      "scrollState": "Same invalid RPE 11 blurred; RPE top anchored at 260px.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "rpe": {
+          "rect": {
+            "x": 196,
+            "y": 260,
+            "width": 101,
+            "height": 44,
+            "top": 260,
+            "right": 297,
+            "bottom": 304,
+            "left": 196
+          },
+          "value": "11",
+          "usableWidth": 83,
+          "textWidth": 11.388671875,
+          "font": "14px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": "true",
+          "describedBy": "set-ex-a-set-1-actual_rpe-error"
+        },
+        "error": "Use RPE 1\u201310 in 0.5 steps, or leave blank.",
+        "writes": [],
+        "feedback": {
+          "role": "status",
+          "informationIcons": 1,
+          "foreground": "rgb(236, 231, 223)",
+          "backgrounds": [
+            "rgba(0, 0, 0, 0)",
+            "rgba(94, 196, 212, 0.15)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)",
+            "rgb(15, 13, 10)",
+            "rgb(15, 13, 10)"
+          ],
+          "cssCompositeContrast": 12.3
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 16,
+            "y": 85,
+            "width": 358,
+            "height": 547,
+            "top": 85,
+            "right": 374,
+            "bottom": 632,
+            "left": 16
+          },
+          "scrollTop": 281,
+          "scrollHeight": 3424,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "touch-targets",
+      "width": 390,
+      "height": 844,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/touch-targets-390-before.png",
+      "sha256": "a971bcb368f381ad68f957aed8a5458454a7635549cd8ccc994ca5c4bd3a3322",
+      "fullContext": [
+        "screenshots/touch-targets-390-before-full.png"
+      ],
+      "scrollState": "Top of Other assigned workouts; no start/download action performed.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "title": {
+          "rect": {
+            "x": 33,
+            "y": 273,
+            "width": 151.265625,
+            "height": 24,
+            "top": 273,
+            "right": 184.265625,
+            "bottom": 297,
+            "left": 33
+          },
+          "lineCount": 1
+        },
+        "start-standalone-workout": {
+          "x": 305.359375,
+          "y": 273,
+          "width": 51.640625,
+          "height": 32,
+          "top": 273,
+          "right": 357,
+          "bottom": 305,
+          "left": 305.359375
+        },
+        "download-workout-pdf": {
+          "x": 217.921875,
+          "y": 273,
+          "width": 79.4375,
+          "height": 32,
+          "top": 273,
+          "right": 297.359375,
+          "bottom": 305,
+          "left": 217.921875
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "touch-targets",
+      "width": 390,
+      "height": 844,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/touch-targets-390-after.png",
+      "sha256": "bf9e86b69ba7b4dbaa913e5ef2aed55dddc0ff0e97093a5f9e36fa520cc10be8",
+      "fullContext": [
+        "screenshots/touch-targets-390-after-full.png"
+      ],
+      "scrollState": "Top of Other assigned workouts; no start/download action performed.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "title": {
+          "rect": {
+            "x": 33,
+            "y": 273,
+            "width": 151.265625,
+            "height": 24,
+            "top": 273,
+            "right": 184.265625,
+            "bottom": 297,
+            "left": 33
+          },
+          "lineCount": 1
+        },
+        "start-standalone-workout": {
+          "x": 305.359375,
+          "y": 273,
+          "width": 51.640625,
+          "height": 44,
+          "top": 273,
+          "right": 357,
+          "bottom": 317,
+          "left": 305.359375
+        },
+        "download-workout-pdf": {
+          "x": 217.921875,
+          "y": 273,
+          "width": 79.4375,
+          "height": 44,
+          "top": 273,
+          "right": 297.359375,
+          "bottom": 317,
+          "left": 217.921875
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "weight",
+      "width": 1440,
+      "height": 900,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/weight-1440-before.png",
+      "sha256": "32dedb03cf0374730f9650c532fae9d420c314bf64173947e58b250dc6d18027",
+      "fullContext": [
+        "screenshots/weight-1440-before-full.png"
+      ],
+      "scrollState": "First exercise, set 1 weight top anchored at 260px.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 40,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "viewportHeight": 900,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "weight": {
+          "rect": {
+            "x": 440,
+            "y": 260,
+            "width": 628,
+            "height": 48,
+            "top": 260,
+            "right": 1068,
+            "bottom": 308,
+            "left": 440
+          },
+          "value": "135.5",
+          "usableWidth": 610,
+          "textWidth": 29.759185791015625,
+          "font": "600 14px Oswald, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "weight",
+      "width": 1440,
+      "height": 900,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/weight-1440-after.png",
+      "sha256": "8ea1826ebb323c50d96e338023df259a1522bfc22967a702c6c37ef0a54e4614",
+      "fullContext": [
+        "screenshots/weight-1440-after-full.png"
+      ],
+      "scrollState": "First exercise, set 1 weight top anchored at 260px.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "viewportHeight": 900,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "weight": {
+          "rect": {
+            "x": 440,
+            "y": 260,
+            "width": 340,
+            "height": 48,
+            "top": 260,
+            "right": 780,
+            "bottom": 308,
+            "left": 440
+          },
+          "value": "135.5",
+          "usableWidth": 322,
+          "textWidth": 29.759185791015625,
+          "font": "600 14px Oswald, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        },
+        "scrollRegion": {
+          "rect": {
+            "x": 365,
+            "y": 32,
+            "width": 960,
+            "height": 726,
+            "top": 32,
+            "right": 1325,
+            "bottom": 758,
+            "left": 365
+          },
+          "scrollTop": 44,
+          "scrollHeight": 2158,
+          "overflow": "auto"
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-top",
+      "width": 1440,
+      "height": 900,
+      "version": "before",
+      "sourceSHA": "cda1beae5857bb1ce98b44b596ada6def085edce",
+      "file": "screenshots/builder-top-1440-before.png",
+      "sha256": "1511076f4339f1fe8f9affdc8139e7f59a0ec6b7c073412092281d4a055b09e6",
+      "fullContext": [],
+      "scrollState": "Top of editor, expanded first exercise.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "viewportHeight": 900,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 634,
+          "scrollWidth": 634,
+          "scrollTop": 0,
+          "rect": {
+            "x": 689,
+            "y": 221,
+            "width": 636,
+            "height": 580,
+            "top": 221,
+            "right": 1325,
+            "bottom": 801,
+            "left": 689
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 715,
+            "y": 619,
+            "width": 138,
+            "height": 36,
+            "top": 619,
+            "right": 853,
+            "bottom": 655,
+            "left": 715
+          },
+          "value": "3",
+          "usableWidth": 112,
+          "textWidth": 8.6474609375,
+          "font": "14px Inter, ui-sans-serif, system-ui",
+          "labels": [],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    },
+    {
+      "scene": "builder-top",
+      "width": 1440,
+      "height": 900,
+      "version": "after",
+      "sourceSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+      "file": "screenshots/builder-top-1440-after.png",
+      "sha256": "ce01195bf27ef0bd819de048b849e67d53a44191017299415acd17a79c73963f",
+      "fullContext": [],
+      "scrollState": "Top of editor, expanded first exercise.",
+      "screen": {
+        "scrollX": 0,
+        "scrollY": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "viewportHeight": 900,
+        "theme": "dark",
+        "bodyColor": "rgb(15, 13, 10)"
+      },
+      "detail": {
+        "editor": {
+          "clientWidth": 634,
+          "scrollWidth": 634,
+          "scrollTop": 0,
+          "rect": {
+            "x": 689,
+            "y": 221,
+            "width": 636,
+            "height": 580,
+            "top": 221,
+            "right": 1325,
+            "bottom": 801,
+            "left": 689
+          }
+        },
+        "sets": {
+          "rect": {
+            "x": 715,
+            "y": 729,
+            "width": 138,
+            "height": 44,
+            "top": 729,
+            "right": 853,
+            "bottom": 773,
+            "left": 715
+          },
+          "value": "3",
+          "usableWidth": 112,
+          "textWidth": 8.6474609375,
+          "font": "14px Inter, ui-sans-serif, system-ui",
+          "labels": [
+            "Sets"
+          ],
+          "invalid": null,
+          "describedBy": null
+        }
+      },
+      "pageErrors": [],
+      "unexpectedApi": []
+    }
+  ],
+  "allScreenshotHashes": {
+    "screenshots/builder-lower-320-after.png": "8cbed5858a4f6e710a6062917fefb01b2976b00ac43ef5c7a4bb98f0fa125fbc",
+    "screenshots/builder-lower-320-before.png": "1cb12faa2ac029d956d19f61d6e85dcbe64a5a5c16adcd54b959aed6e00140fd",
+    "screenshots/builder-lower-390-after.png": "cf7f254ac570f98beb453e54a92aa06fcd15876235861350523569aed4597f48",
+    "screenshots/builder-lower-390-before.png": "d2c6e6a4adf5873150644e72e7368353730f697596955b62324622cb50944efa",
+    "screenshots/builder-targets-320-after.png": "08671fa8083ec6bf46a3842a0a539549e973a7e92e06d3f158bbee0538a7f7e8",
+    "screenshots/builder-targets-320-before.png": "f8e7758c9e92178b6556651aab32a3ef8f132c9e4c5e73d18c656e9f17c01baa",
+    "screenshots/builder-targets-390-after.png": "ea7476e47f946b67197f32312e4d920c649a7eb94dc430ac8924f808493a470d",
+    "screenshots/builder-targets-390-before.png": "7ed1e8e64f0591c8a1383888cbc6d889f64eae3ee826541306f061c6ba9713bc",
+    "screenshots/builder-top-1440-after.png": "ce01195bf27ef0bd819de048b849e67d53a44191017299415acd17a79c73963f",
+    "screenshots/builder-top-1440-before.png": "1511076f4339f1fe8f9affdc8139e7f59a0ec6b7c073412092281d4a055b09e6",
+    "screenshots/builder-top-320-after.png": "a38949920a63b731fdf677bdf546453543350b710415100498692e9910806487",
+    "screenshots/builder-top-320-before.png": "823d9d3c54825b15cac39818c301ecf3e906be2b9198ef64a26ac22d99cafa65",
+    "screenshots/builder-top-390-after.png": "9dc982b8ed679073126eb7add54d1b09667bf1c18665c71419b39eb07e62df40",
+    "screenshots/builder-top-390-before.png": "17dc2e2518924ed289fcfaeb13b9a6c455129e2b76a5d9327621f6684900c932",
+    "screenshots/rest-clear-320-after.png": "2087b2f7bc122927efefc6f5f8a662314bcb76caa20c602edc7bbba3722eb248",
+    "screenshots/rest-clear-320-before.png": "e2bacab7a6e35ecbc28635195faaddb7456214f21946732694ce0bca0ea9425b",
+    "screenshots/rest-clear-390-after.png": "c12c492869d39ee79e228d89948e0793c58c5750c07a0a933e0c47313080938a",
+    "screenshots/rest-clear-390-before.png": "6c370182afed50cf2a7df7417e6c18bdb72d8017de30085843eb92fa596d87be",
+    "screenshots/rest-controls-320-after-full.png": "28ce79892d2ab7f5cdf9d0732ad3cb4ff0b1c8058914787257406c64b195d88a",
+    "screenshots/rest-controls-320-after.png": "28ce79892d2ab7f5cdf9d0732ad3cb4ff0b1c8058914787257406c64b195d88a",
+    "screenshots/rest-controls-320-before-full.png": "06717b80e95dc3c0133ab2de408e89dc661d3ea6562bf9bb5a2bc1fee33b4d00",
+    "screenshots/rest-controls-320-before.png": "4842bf1b440e0d0554c56decbd3f9217a4193b30fc394ac434d409948253c017",
+    "screenshots/rest-controls-390-after-full.png": "d3e7e5d47415a2a0e8e6b6f612aea279f13d552952ce4c12e295d67ec9bc73c0",
+    "screenshots/rest-controls-390-after.png": "d3e7e5d47415a2a0e8e6b6f612aea279f13d552952ce4c12e295d67ec9bc73c0",
+    "screenshots/rest-controls-390-before-full.png": "6a15e72eee2657756e1c943f87b1ea0374053fb7fda8d6e0640b6034661ec567",
+    "screenshots/rest-controls-390-before.png": "a59db453c321a78fbfff3fe5aa59c74b4e841add6ed1c3f50002c4faa60fd041",
+    "screenshots/rest-overlay-320-after.png": "70a165a3cb2aa9959244f6108fd7591115f15e94b3a42b89df69fe0884058ef3",
+    "screenshots/rest-overlay-320-before.png": "37560e4a95cc81cc1adcf13c0ed500f8eab1aa640da07c7c893ca5d06de08b06",
+    "screenshots/rest-overlay-390-after.png": "ec8d3e1d1d7fc029fcac5b178b9a52e966c0e0b57db094cd82724e7e28d7b6a7",
+    "screenshots/rest-overlay-390-before.png": "5d99d212566abc6cc6d0967a99f3887be0f91c6e0bd29bd907f2cfd1b6483ef5",
+    "screenshots/touch-targets-320-after-full.png": "0a37b6afb7384ae265aa9c9a8ff346c3b0159fcf23f6097cc3e0d3b15e092473",
+    "screenshots/touch-targets-320-after.png": "0a37b6afb7384ae265aa9c9a8ff346c3b0159fcf23f6097cc3e0d3b15e092473",
+    "screenshots/touch-targets-320-before-full.png": "369acd8e1a678a71c3421a03098be14ddb33f1c2b3f9c2b413643a52453734af",
+    "screenshots/touch-targets-320-before.png": "369acd8e1a678a71c3421a03098be14ddb33f1c2b3f9c2b413643a52453734af",
+    "screenshots/touch-targets-390-after-full.png": "bf9e86b69ba7b4dbaa913e5ef2aed55dddc0ff0e97093a5f9e36fa520cc10be8",
+    "screenshots/touch-targets-390-after.png": "bf9e86b69ba7b4dbaa913e5ef2aed55dddc0ff0e97093a5f9e36fa520cc10be8",
+    "screenshots/touch-targets-390-before-full.png": "a971bcb368f381ad68f957aed8a5458454a7635549cd8ccc994ca5c4bd3a3322",
+    "screenshots/touch-targets-390-before.png": "a971bcb368f381ad68f957aed8a5458454a7635549cd8ccc994ca5c4bd3a3322",
+    "screenshots/validation-320-after.png": "02739555e615a41f87c1bb438c908ab7c0bc7a0a87298302bf84b2ad07afb6cc",
+    "screenshots/validation-320-before.png": "b29ef97dc317b32d0914082bc0e25c06f57c3c44e177bb6cc2735b8322f164d7",
+    "screenshots/validation-390-after.png": "45f3f46829659b3c52a591b306f59c0ddde24fef506cf054680ff5c583fbd9e4",
+    "screenshots/validation-390-before.png": "7b7f8230ce81182933ca249f6c12b1f6f7cc26b6f69e75dc4c9eaf59cecfc43c",
+    "screenshots/weight-1440-after-full.png": "c7e3c889217340c411339d2e6635a51e8ef0a8e00037621183cf04218cd69ba4",
+    "screenshots/weight-1440-after.png": "8ea1826ebb323c50d96e338023df259a1522bfc22967a702c6c37ef0a54e4614",
+    "screenshots/weight-1440-before-full.png": "529389e5ef94d4c09629e6225b589e0141158d4cf1813997e03a9b6e0cca090f",
+    "screenshots/weight-1440-before.png": "32dedb03cf0374730f9650c532fae9d420c314bf64173947e58b250dc6d18027",
+    "screenshots/weight-320-after-full.png": "430e736fcd17f01a3552afe797a2fe1a008f2b175720e3602722c7ffd0f00907",
+    "screenshots/weight-320-after.png": "430e736fcd17f01a3552afe797a2fe1a008f2b175720e3602722c7ffd0f00907",
+    "screenshots/weight-320-before-full.png": "2278fa7a03089b8af3e668adc2fd7584e79c10d44fbd4094c79e2fab97ed6f1e",
+    "screenshots/weight-320-before.png": "7e08215c76dcd6af48d52afec93b9ba687fdef20aea0e62f52c1fddcd3c388d8",
+    "screenshots/weight-390-after-full.png": "fcfd15c1355a526aea9a66a6c673d1d0832e225b64b3e4484e36b342e3d45475",
+    "screenshots/weight-390-after.png": "7dc75c76ea40b13c0cbf9e58ceee79450e522c842ebfdd32dde60a00fabbe5aa",
+    "screenshots/weight-390-before-full.png": "d72f7c278cc13740cf7e99727fd15fca1226804b36a5619d935b41a392bb2e9e",
+    "screenshots/weight-390-before.png": "01aeedd03d47a85845bb4b6d50ef8b4c842c561129f290393606cf4bed6dd259"
+  },
+  "reviewedAppSHA": "770e7139c8442983d7189be33f328cd4bae84521",
+  "appSourceChangedAfterFinalReview": false
+}

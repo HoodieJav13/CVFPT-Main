@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { errMsg } from '@/lib/api';
 import { postAuthPath } from '@/lib/authRedirect';
+import { LoadingScreen } from '@/components/common';
 import { BrandBackdrop } from '@/components/BrandBackdrop';
 import { AuthEntrance } from '@/components/Choreography';
 
@@ -23,7 +24,8 @@ export default function Signup() {
   const [error, setError] = useState('');
   const [logoBroken, setLogoBroken] = useState(false);
 
-  if (!loading && user) return <Navigate to={postAuthPath(user, location.state?.from)} replace />;
+  if (loading) return <LoadingScreen />;
+  if (user) return <Navigate to={postAuthPath(user, location.state?.from)} replace />;
 
   const submit = async (e) => {
     e.preventDefault();

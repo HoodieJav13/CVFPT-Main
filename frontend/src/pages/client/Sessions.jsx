@@ -147,7 +147,6 @@ export default function ClientSessions() {
     <div>
       <PageHeader
         title="Sessions"
-        subtitle="Your time on the CVF floor"
         action={
           <Button className="rounded-xl" onClick={() => setDrawerOpen(true)} data-testid="booking-request-button">
             <Plus className="h-4 w-4 mr-1.5" /> Request
@@ -243,7 +242,7 @@ export default function ClientSessions() {
 
       <SectionLabel className="mb-2 mt-6">Past</SectionLabel>
       {past.length === 0 ? (
-        <EmptyState icon={CalendarDays} title="No past sessions yet" subtitle="Completed sessions will collect here." testId="past-empty-state" />
+        <EmptyState icon={CalendarDays} title="No past sessions yet" testId="past-empty-state" />
       ) : (
         <div className="space-y-2">
           {past.map((s) => (
@@ -432,7 +431,7 @@ function RequestDrawer({ open, onOpenChange, onSaved }) {
                   onChange={(requested_time) => setForm({ ...form, requested_time })}
                   data-testid="booking-datetime-input"
                 />
-                <p className="text-xs text-muted-foreground">Your coach hasn't published open times yet, so pick what works and they'll confirm.</p>
+                <p className="text-xs text-muted-foreground">No open times published — pick a time and your coach will confirm.</p>
               </div>
             )}
             <div className="space-y-1.5">

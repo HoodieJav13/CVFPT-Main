@@ -127,10 +127,7 @@ export function InstallCard() {
       <div className="mb-4 rounded-2xl border border-border bg-secondary/40 px-4 py-3.5" data-testid="install-card">
         <div className="flex items-start gap-3">
           <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold">Get CVF PT on your home screen</p>
-            <p className="text-xs text-muted-foreground">One tap to open it next time, like a regular app.</p>
-          </div>
+          <p className="min-w-0 text-sm font-semibold">Add CVF PT to your home screen</p>
         </div>
         <div className="mt-3 flex gap-2 pl-8">
           <Button size="sm" variant="outline" className="min-h-11 rounded-xl" onClick={start} data-testid="install-card-show-how">Show me how</Button>

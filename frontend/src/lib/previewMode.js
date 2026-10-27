@@ -1,5 +1,15 @@
+import {createPreviewInvites} from './previewInvites.js';
+import {
+  MEDIA_SCENARIO_KEY, PREVIEW_MEDIA_READ_LIKE_POSTS, PREVIEW_MEDIA_SAVE_ROUTES, createPreviewExerciseMedia,
+} from './previewExerciseMedia.js';
+import { actualMetrics, normalizeTracking, trackingType } from './workoutMetrics.js';
 import draftTools from '@/lib/programDraft.js';
 import { parseRestSeconds } from '@/lib/rest';
+import { resolveExerciseDemo, resolvedVideoUrl } from '@/lib/exerciseDemo';
+import { normalizeSupersets } from '@/lib/supersets';
+import {
+  checkSlots, expandSeriesRule, parseRule, pastError, slotHorizonError, todayInDenver,
+} from './previewSeries.js';
 
 const {
   csvTemplate,
@@ -13,6 +23,142 @@ const {
 const PREVIEW_ROLE_KEY = 'cvf_preview_role';
 const PREVIEW_CLIENT_KEY = 'cvf_preview_client_id';
 const CHANGE_EVENT = 'cvf-preview-change';
+// Fixed prefix read by the Playwright fixture in e2e/preview-test.mjs.
+const MISSING_MOCK_MARKER = 'cvf-preview/missing-mock';
+
+// Routes preview deliberately does not mock. Every entry needs a reason.
+// Anything not handled and not listed here is a missing mock and fails the
+// preview browser suite.
+const PREVIEW_UNSUPPORTED = [];
+
+// Every mocked route that changes fixture data: [method, pattern], in the
+// order the handler chain serves them, each pattern copied from its branch.
+// "Fail next save" consults this BEFORE the handler runs, so a simulated
+// failure never changes data, never emits a handler's events, and never hides
+// a missing mock. Add a route here when you add a save handler: a save the
+// chain serves that is missing from this table logs
+// cvf-preview/unlisted-save, which fails the preview browser suite.
+const PREVIEW_SAVE_ROUTES = [
+  ['post', /^\/workout-logs\/start$/],
+  ['post', /^\/workout-logs\/quick-complete$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/sets\/([^/]+)\/archive$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/sets\/([^/]+)$/],
+  ['post', /^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/sets$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/notes$/],
+  ['post', /^\/workout-logs\/([^/]+)\/complete-all$/],
+  ['post', /^\/workout-logs\/([^/]+)\/abandon$/],
+  ['patch', /^\/workout-logs\/([^/]+)\/coach-feedback\/read$/],
+  ['put', /^\/workout-logs\/([^/]+)\/coach-response$/],
+  ['post', /^\/workout-logs\/([^/]+)\/complete$/],
+  ['post', /^\/announcements$/],
+  ['patch', /^\/announcements\/([^/]+)\/read$/],
+  ['patch', /^\/announcements\/([^/]+)\/archive$/],
+  ['patch', /^\/notifications\/read-all$/],
+  ['patch', /^\/notifications\/([^/]+)\/read$/],
+  ['post', /^\/clients$/],
+  ['post', /^\/resource-categories$/],
+  ['post', /^\/resources$/],
+  ['patch', /^\/resources\/([^/]+)$/],
+  ['post', /^\/resources\/([^/]+)\/assign$/],
+  ['patch', /^\/resources\/([^/]+)\/assignments\/([^/]+)$/],
+  ['put', /^\/clients\/([^/]+)$/],
+  ['patch', /^\/clients\/([^/]+)\/invite$/],
+  ['post', /^\/clients\/([^/]+)\/invite\/resend$/],
+  ['patch', /^\/clients\/([^/]+)\/archive$/],
+  ['post', /^\/clients\/([^/]+)\/coach-notes$/],
+  ['put', /^\/clients\/([^/]+)\/coach-notes\/([^/]+)$/],
+  ['post', /^\/admin\/coaches$/],
+  ['patch', /^\/admin\/clients\/([^/]+)\/reassign$/],
+  ['post', /^\/sessions\/series$/],
+  ['patch', /^\/sessions\/series\/([^/]+)\/cancel$/],
+  ['post', /^\/sessions$/],
+  ['put', /^\/sessions\/([^/]+)$/],
+  ['patch', /^\/sessions\/([^/]+)\/complete$/],
+  ['patch', /^\/sessions\/([^/]+)\/cancel$/],
+  ['post', /^\/sessions\/([^/]+)\/notes$/],
+  ['put', /^\/sessions\/notes\/([^/]+)$/],
+  ['patch', /^\/availability\/auto-book$/],
+  ['put', /^\/availability\/windows$/],
+  ['post', /^\/availability\/overrides$/],
+  ['delete', /^\/availability\/overrides\/([^/]+)$/],
+  ['post', /^\/availability\/time-off$/],
+  ['delete', /^\/availability\/time-off\/([^/]+)$/],
+  ['post', /^\/bookings$/],
+  ['patch', /^\/bookings\/([^/]+)\/(approve|decline)$/],
+  ['post', /^\/progress\/clients\/([^/]+)\/metrics$/],
+  ['patch', /^\/progress\/metrics\/([^/]+)$/],
+  ['post', /^\/progress\/metrics\/([^/]+)\/entries$/],
+  ['put', /^\/progress\/entries\/([^/]+)$/],
+  ['patch', /^\/progress\/metrics\/([^/]+)\/archive$/],
+  ['post', /^\/check-ins\/mine$/],
+  ['post', /^\/check-ins\/clients\/([^/]+)$/],
+  ['put', /^\/check-ins\/([^/]+)$/],
+  ['post', /^\/programs\/exercise-library$/],
+  ['post', /^\/programs\/exercise-library\/import$/],
+  ['put', /^\/programs\/exercise-library\/([^/]+)$/],
+  ['patch', /^\/programs\/exercise-library\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/workouts$/],
+  ['put', /^\/programs\/workouts\/([^/]+)$/],
+  ['patch', /^\/programs\/workouts\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/workout-assignments$/],
+  ['post', /^\/programs\/quick-sessions$/],
+  ['post', /^\/programs\/quick-sessions\/([^/]+)\/save-to-library$/],
+  ['put', /^\/programs\/workout-assignments\/([^/]+)\/loads$/],
+  ['patch', /^\/programs\/workout-assignments\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/import\/commit$/],
+  ['post', /^\/programs$/],
+  ['put', /^\/programs\/([^/]+)$/],
+  ['patch', /^\/programs\/([^/]+)\/archive$/],
+  ['post', /^\/programs\/([^/]+)\/assign$/],
+  ['put', /^\/programs\/assignments\/([^/]+)\/loads$/],
+  ['patch', /^\/programs\/assignments\/([^/]+)\/archive$/],
+  ['post', /^\/messages\/mine$/],
+  ['patch', /^\/messages\/availability$/],
+  ['patch', /^\/sessions\/([^/]+)\/ask-cancel$/],
+  ['post', /^\/messages\/with\/([^/]+)$/],
+  ['post', /^\/waivers\/versions$/],
+  ['post', /^\/waivers\/sign$/],
+  ['post', /^\/waivers\/client\/([^/]+)\/sign-paper$/],
+  // Exercise media demo scenario (previewExerciseMedia.js), only while it is on.
+  ...PREVIEW_MEDIA_SAVE_ROUTES,
+];
+
+// Reads that change fixture data as a side effect: loading a conversation
+// marks its messages read. "Fail loads" fails these BEFORE the handler runs,
+// so a load that failed leaves the unread state alone. Every other read is
+// checked each time it runs: one that changes fixture data without being
+// listed here logs cvf-preview/mutating-read, which fails the preview
+// browser suite.
+const READS_THAT_CHANGE_DATA = [
+  ['get', /^\/messages\/mine$/],
+  ['get', /^\/messages\/with\/([^/]+)$/],
+  // Status polls advance the simulated media processing.
+  ['get', /^\/exercise-media\/revisions\/([^/]+)$/],
+];
+
+const PREVIEW_LATENCY_KEY = 'cvf_preview_latency';
+const PREVIEW_FAIL_KEY = 'cvf_preview_fail';
+// Not CHANGE_EVENT: AuthContext answers that one by replacing the user
+// object, which would re-run user-dependent effects mid-save.
+const SWITCH_EVENT = 'cvf-preview-switch-change';
+const UNLISTED_SAVE_MARKER = 'cvf-preview/unlisted-save';
+const MUTATING_READ_MARKER = 'cvf-preview/mutating-read';
+const SPEED_MS = { slow: 1500, 'very-slow': 4000 };
+const FAIL_MODES = ['write-once', 'reads'];
+// Every key Reset removes. Anything not matched here is left alone, because a
+// local dev origin is shared with real-auth sessions.
+const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure', MEDIA_SCENARIO_KEY];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// POSTs that change no fixture data. Without this, previewing dates — or the
+// background telemetry ping every page sends — would consume "fail next
+// save" before anything is saved.
+const READ_LIKE_POSTS = [
+  /^\/telemetry\/events$/,
+  /^\/sessions\/series\/preview$/,
+  /^\/sessions\/series\/check$/,
+  /^\/programs\/import\/parse-(csv|paste|pdf)$/,
+  ...PREVIEW_MEDIA_READ_LIKE_POSTS,
+];
 
 // The gate lives in previewFlag.js so consumers can check it without
 // pulling this whole fixture module into the production bundle.
@@ -29,6 +175,7 @@ const iso = (days = 0, hours = 9) => {
 const dateOnly = (days = 0) => iso(days).slice(0, 10);
 const id = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 
+const inviteFixtures=createPreviewInvites({outcome:()=>{try{return localStorage.getItem('cvf_preview_invite_outcome')||'accepted';}catch{return 'accepted';}}});
 const state = {
   coaches: [
     { id: 'coach_marcus', auth_user_id: 'auth_marcus', name: 'Marcus Rivera', email: 'marcus@corevaluefitness.com', phone: '505-555-0101', is_admin: true, archived: false, created_at: iso(-300) },
@@ -38,6 +185,10 @@ const state = {
   clients: [
     { id: 'client_sarah', coach_id: 'coach_marcus', name: 'Sarah Martinez', email: 'client.demo@corevaluefitness.com', phone: '505-555-0201', goals: 'Build strength and run a 10k in spring', health_notes: 'Mild left knee tendinitis', invited: true, auth_user_id: 'auth_sarah', archived: false, created_at: iso(-120), updated_at: iso(-1) },
     { id: 'client_david', coach_id: 'coach_marcus', name: 'David Chen', email: 'david.chen@example.com', phone: '505-555-0202', goals: 'Lose 20 lbs, improve energy', health_notes: 'Hypertension, cleared by physician', invited: true, auth_user_id: null, archived: false, created_at: iso(-90), updated_at: iso(-4) },
+    // Quick-session scenario (separate from Sarah's stable baseline): one quick session due
+    // today, one completed (hidden from active cards, labeled in history), one already
+    // started (abandoned) to show the pre-start edit rule.
+    { id: 'client_riley', coach_id: 'coach_marcus', name: 'Riley Ortega', email: 'riley.ortega@example.com', phone: '505-555-0204', goals: 'Keep training while traveling for work', health_notes: null, invited: true, auth_user_id: 'auth_riley', archived: false, created_at: iso(-30), updated_at: iso(-1) },
     { id: 'client_emily', coach_id: 'coach_jordan', name: 'Emily Romero', email: 'emily.romero@example.com', phone: '505-555-0203', goals: 'Postpartum strength rebuild', health_notes: 'Core progressions only', invited: false, auth_user_id: null, archived: false, created_at: iso(-60), updated_at: iso(-6) },
   ],
   announcements: [
@@ -64,6 +215,30 @@ const state = {
     // Jordan's client — renders as a masked busy block on Marcus's
     // studio calendar (roadmap-v3 D1).
     { id: 'session_emily', client_id: 'client_emily', coach_id: 'coach_jordan', scheduled_at: iso(1, 9), duration_minutes: 60, location: 'CVF Studio', status: 'scheduled', credit_deducted: false, archived: false, created_at: iso(-8), updated_at: iso(-1) },
+    // A seeded weekly series (David with Marcus): two past, four upcoming, so
+    // the badge and "this and all future" cancel are reviewable without
+    // creating one. 12:00 sits outside Marcus's availability windows and clear
+    // of session_david and the seeded time off. Not on Sarah.
+    ...[-10, -3, 4, 11, 18, 25].map((days, index) => ({
+      id: `session_david_series_${index + 1}`, client_id: 'client_david', coach_id: 'coach_marcus',
+      scheduled_at: iso(days, 12), duration_minutes: 45, location: 'CVF Studio',
+      status: days < 0 ? 'completed' : 'scheduled', credit_deducted: false,
+      series_id: 'series_david', series_ordinal: index + 1,
+      archived: false, created_at: iso(-12), updated_at: iso(-12),
+    })),
+  ],
+  sessionSeries: [
+    {
+      id: 'series_david', request_id: 'seed_series_david', request_fingerprint: 'seed', client_id: 'client_david', coach_id: 'coach_marcus',
+      rule: { start_date: dateOnly(-10), time: '12:00', weekdays: [new Date(iso(-10, 12)).getDay()], interval_weeks: 1, end: { count: 6 } },
+      created_count: 6, receipt: { slots: [] }, created_at: iso(-12),
+    },
+  ],
+  // Coach Notes: private to the client's coaches; fictional. Jordan's note
+  // predates a reassignment, so the current coach can read but not edit it.
+  clientCoachNotes: [
+    { id: 'coach_note_sarah_1', client_id: 'client_sarah', author_coach_id: 'coach_marcus', author_name_snapshot: 'Marcus Rivera', content: 'Prefers morning sessions. Keep lunges shallow until the knee settles.', archived: false, created_at: iso(-6, 9), updated_at: iso(-2, 17) },
+    { id: 'coach_note_sarah_2', client_id: 'client_sarah', author_coach_id: 'coach_jordan', author_name_snapshot: 'Jordan Banks', content: 'Covered two sessions in September; responds well to short rest timers.', archived: false, created_at: iso(-30, 14), updated_at: iso(-30, 14) },
   ],
   sessionNotes: [
     { id: 'note_1', session_id: 'session_done', coach_id: 'coach_marcus', content: 'Great pacing today. Keep squats controlled and pain-free.', shared_with_client: true, archived: false, created_at: iso(-3, 11), updated_at: iso(-3, 11) },
@@ -107,11 +282,22 @@ const state = {
     { id: 'lib_world_stretch', name: 'World Greatest Stretch', category: 'Mobility', equipment: 'Bodyweight', primary_muscle: 'Hips', secondary_muscles: 'Thoracic spine, Hamstrings', video_url: 'https://www.youtube.com/watch?v=aiN-2yAIkec', notes: 'Move slowly and breathe.', archived: false, created_at: iso(-50), updated_at: iso(-50) },
   ],
   workouts: [
+    { id: 'workout_metrics', coach_id: 'coach_marcus', name: 'Duration & distance practice', is_template: true, hidden: false, archived: false, created_at: iso(-1), updated_at: iso(-1) },
     { id: 'workout_lower_a', coach_id: 'coach_marcus', name: 'Lower Strength A', description: 'Squat pattern, hinge, and core support.', goal: 'Lower body strength', archived: false, created_at: iso(-45), updated_at: iso(-45) },
     { id: 'workout_upper_a', coach_id: 'coach_marcus', name: 'Upper Strength A', description: 'Horizontal push/pull with clean volume.', goal: 'Upper body strength', archived: false, created_at: iso(-44), updated_at: iso(-44) },
     { id: 'workout_mobility_run', coach_id: 'coach_marcus', name: 'Run Prep Mobility', description: 'Hips, ankles, and trunk prep for running days.', goal: 'Mobility', archived: false, created_at: iso(-40), updated_at: iso(-40) },
+    // Client-specific copy, shown both as a program day and a standalone assignment.
+    { id: 'workout_quick_riley_today', coach_id: 'coach_marcus', name: 'Hotel gym circuit', description: null, goal: null, is_template: false, client_id: 'client_riley', hidden: false, archived: false, created_at: iso(-1), updated_at: iso(-1) },
+    { id: 'workout_quick_riley_done', coach_id: 'coach_marcus', name: `Quick session · ${dateOnly(-1)}`, description: null, goal: null, is_template: false, client_id: 'client_riley', hidden: false, archived: false, created_at: iso(-2), updated_at: iso(-2) },
+    { id: 'workout_quick_riley_started', coach_id: 'coach_marcus', name: 'Mobility reset', description: null, goal: null, is_template: false, client_id: 'client_riley', hidden: false, archived: false, created_at: iso(-3), updated_at: iso(-3) },
+    { id: 'workout_sarah_mobility', coach_id: 'coach_marcus', name: 'Run Prep Mobility — Sarah', description: 'Sarah’s recovery-day copy.', goal: 'Mobility', is_template: false, client_id: 'client_sarah', source_workout_id: 'workout_mobility_run', hidden: false, archived: false, created_at: iso(-7), updated_at: iso(-7) },
   ],
   workoutExercises: [
+    ...[
+      { custom_name: 'Timed hold', tracking_type: 'duration', duration_value: 45, duration_unit: 's' },
+      { custom_name: 'Carry', tracking_type: 'distance', distance_value: 100, distance_unit: 'yd' },
+      { custom_name: 'Run', tracking_type: 'duration_distance', duration_value: 12.5, duration_unit: 'min', distance_value: 1.25, distance_unit: 'mi' },
+    ].map((exercise, index) => ({ id: `wex_metrics_${index}`, workout_id: 'workout_metrics', exercise_library_id: null, sets: '1', reps: null, default_load_value: null, default_load_unit: null, rest: null, position: index, archived: false, ...exercise })),
     { id: 'wex_1', workout_id: 'workout_lower_a', exercise_library_id: 'lib_goblet_squat', custom_name: null, sets: '3', reps: '8-10', target_rpe: '7', rest: '90s', rest_seconds: 90, tempo: '3-1-1', default_load_value: 30, default_load_unit: 'lb', notes: 'Slow lower, tall chest.', video_url: null, position: 0, archived: false, created_at: iso(-45) },
     { id: 'wex_2', workout_id: 'workout_lower_a', exercise_library_id: 'lib_rdl', custom_name: null, sets: '3', reps: '8', target_rpe: '7-8', rest: '90s', rest_seconds: 90, tempo: '3-0-1', default_load_value: 40, default_load_unit: 'lb', notes: 'Stop when hamstrings limit range.', video_url: null, position: 1, archived: false, created_at: iso(-45) },
     { id: 'wex_3', workout_id: 'workout_lower_a', exercise_library_id: null, custom_name: 'Half-kneeling Pallof Press', sets: '3', reps: '10/side', target_rpe: '7', rest: '45s', rest_seconds: 45, tempo: '', default_load_value: 15, default_load_unit: 'lb', notes: 'No torso rotation.', video_url: 'https://www.youtube.com/watch?v=ma2OjgP5XDc', position: 2, archived: false, created_at: iso(-45) },
@@ -119,10 +305,17 @@ const state = {
     { id: 'wex_5', workout_id: 'workout_upper_a', exercise_library_id: 'lib_cable_row', custom_name: null, sets: '3', reps: '10-12', target_rpe: '8', rest: '75s', rest_seconds: 75, tempo: '', default_load_value: 35, default_load_unit: 'lb', notes: 'Squeeze shoulder blades.', video_url: null, position: 1, archived: false, created_at: iso(-44) },
     { id: 'wex_6', workout_id: 'workout_mobility_run', exercise_library_id: 'lib_world_stretch', custom_name: null, sets: '2', reps: '5/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Move slowly.', video_url: null, position: 0, archived: false, created_at: iso(-40) },
     { id: 'wex_7', workout_id: 'workout_mobility_run', exercise_library_id: null, custom_name: 'Ankle Rocker', sets: '2', reps: '8/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Keep heel heavy.', video_url: '', position: 1, archived: false, created_at: iso(-40) },
+    { id: 'wex_quick_today_1', workout_id: 'workout_quick_riley_today', exercise_library_id: 'lib_goblet_squat', custom_name: 'Goblet Squat', sets: '3', reps: '12', target_rpe: '7', rest: '60s', rest_seconds: 60, tempo: '', default_load_value: 35, default_load_unit: 'lb', notes: 'Hotel dumbbells are fine.', client_notes: 'Hotel dumbbells are fine.', video_url: null, position: 0, archived: false, created_at: iso(-1) },
+    { id: 'wex_quick_today_2', workout_id: 'workout_quick_riley_today', exercise_library_id: null, custom_name: 'Plank', sets: '3', reps: null, target_rpe: null, rest: '45s', rest_seconds: 45, tempo: '', default_load_value: null, default_load_unit: null, notes: null, client_notes: null, video_url: null, position: 1, archived: false, created_at: iso(-1), tracking_type: 'duration', duration_value: 45, duration_unit: 's' },
+    { id: 'wex_quick_done_1', workout_id: 'workout_quick_riley_done', exercise_library_id: 'lib_cable_row', custom_name: 'Cable Row', sets: '3', reps: '10', target_rpe: '7', rest: '60s', rest_seconds: 60, tempo: '', default_load_value: 40, default_load_unit: 'lb', notes: null, client_notes: null, video_url: null, position: 0, archived: false, created_at: iso(-2) },
+    { id: 'wex_quick_started_1', workout_id: 'workout_quick_riley_started', exercise_library_id: 'lib_world_stretch', custom_name: 'World Greatest Stretch', sets: '2', reps: '5/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: null, client_notes: null, video_url: null, position: 0, archived: false, created_at: iso(-3) },
+    { id: 'wex_sarah_1', workout_id: 'workout_sarah_mobility', exercise_library_id: 'lib_world_stretch', custom_name: null, sets: '2', reps: '5/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Move slowly.', video_url: null, position: 0, archived: false, created_at: iso(-7) },
+    { id: 'wex_sarah_2', workout_id: 'workout_sarah_mobility', exercise_library_id: null, custom_name: 'Ankle Rocker', sets: '2', reps: '8/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Keep heel heavy.', video_url: '', position: 1, archived: false, created_at: iso(-7) },
   ],
   programs: [
     { id: 'program_foundation', coach_id: 'coach_marcus', name: 'Foundation Strength - Phase 1', description: 'Three days per week focused on clean mechanics and steady volume.', frequency_days: 3, archived: false, created_at: iso(-35), updated_at: iso(-35) },
     { id: 'program_hybrid', coach_id: 'coach_marcus', name: 'Hybrid Strength - Phase 2', description: 'Four weekly touchpoints for strength, mobility, and run prep.', frequency_days: 4, archived: false, created_at: iso(-20), updated_at: iso(-20) },
+    { id: 'program_sarah_mobility', coach_id: 'coach_marcus', name: 'Sarah Mobility Plan', description: 'A recovery-day client program.', frequency_days: 1, is_template: false, client_id: 'client_sarah', source_program_id: 'program_foundation', hidden: false, archived: false, created_at: iso(-7), updated_at: iso(-7) },
   ],
   programDays: [
     { id: 'day_foundation_1', program_id: 'program_foundation', day_number: 1, workout_id: 'workout_lower_a', notes: 'Keep RPE around 7.', archived: false, created_at: iso(-35) },
@@ -132,13 +325,20 @@ const state = {
     { id: 'day_hybrid_2', program_id: 'program_hybrid', day_number: 2, workout_id: 'workout_upper_a', notes: '', archived: false, created_at: iso(-20) },
     { id: 'day_hybrid_3', program_id: 'program_hybrid', day_number: 3, workout_id: 'workout_mobility_run', notes: '', archived: false, created_at: iso(-20) },
     { id: 'day_hybrid_4', program_id: 'program_hybrid', day_number: 4, workout_id: 'workout_lower_a', notes: 'Lighter load than Day 1.', archived: false, created_at: iso(-20) },
+    { id: 'day_sarah_mobility', program_id: 'program_sarah_mobility', day_number: 1, workout_id: 'workout_sarah_mobility', notes: '', archived: false, created_at: iso(-7) },
   ],
   programAssignments: [
     { id: 'assign_sarah', program_id: 'program_foundation', client_id: 'client_sarah', notes: 'Complete twice before next session.', archived: false, created_at: iso(-18), client: { id: 'client_sarah', name: 'Sarah Martinez' } },
+    { id: 'assign_sarah_mobility', program_id: 'program_sarah_mobility', client_id: 'client_sarah', notes: 'Use on recovery days.', archived: false, created_at: iso(-7), client: { id: 'client_sarah', name: 'Sarah Martinez' } },
   ],
   workoutAssignments: [
+    { id: 'work_assign_david_metrics', client_id: 'client_david', workout_id: 'workout_metrics', assignment_mode: 'active', assigned_for: null, notes: 'Explicit typed logging scenario.', archived: false, created_at: iso(-1) },
     { id: 'work_assign_sarah_active', client_id: 'client_sarah', workout_id: 'workout_mobility_run', assignment_mode: 'active', assigned_for: null, notes: 'Use this on recovery days.', archived: false, created_at: iso(-8) },
     { id: 'work_assign_sarah_dated', client_id: 'client_sarah', workout_id: 'workout_upper_a', assignment_mode: 'dated', assigned_for: dateOnly(2), notes: 'Optional if shoulder feels good.', archived: false, created_at: iso(-2) },
+    { id: 'quick_assign_riley_today', client_id: 'client_riley', workout_id: 'workout_quick_riley_today', assignment_mode: 'dated', assigned_for: dateOnly(0), notes: 'Short on time this week.', archived: false, created_at: iso(-1), kind: 'quick', created_by_coach_id: 'coach_marcus', create_request_id: '5a1e0000-0000-4000-8000-000000000001', create_request_hash: 'preview-seeded-today', library_template_id: null },
+    { id: 'quick_assign_riley_done', client_id: 'client_riley', workout_id: 'workout_quick_riley_done', assignment_mode: 'dated', assigned_for: dateOnly(-1), notes: null, archived: false, created_at: iso(-2), kind: 'quick', created_by_coach_id: 'coach_marcus', create_request_id: '5a1e0000-0000-4000-8000-000000000002', create_request_hash: 'preview-seeded-done', library_template_id: null },
+    { id: 'quick_assign_riley_started', client_id: 'client_riley', workout_id: 'workout_quick_riley_started', assignment_mode: 'dated', assigned_for: dateOnly(-2), notes: null, archived: false, created_at: iso(-3), kind: 'quick', created_by_coach_id: 'coach_marcus', create_request_id: '5a1e0000-0000-4000-8000-000000000003', create_request_hash: 'preview-seeded-started', library_template_id: null },
+    { id: 'work_assign_sarah_copy', client_id: 'client_sarah', workout_id: 'workout_sarah_mobility', assignment_mode: 'active', assigned_for: null, notes: 'Client-specific recovery workout.', archived: false, created_at: iso(-7) },
   ],
   programAssignmentExerciseLoads: [
     { id: 'paload_squat', program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_1', workout_exercise_id: 'wex_1', load_value: 35, load_unit: 'lb', archived: false, created_at: iso(-18), updated_at: iso(-18) },
@@ -151,6 +351,8 @@ const state = {
     // session_id links this finished workout to today's scheduled session so
     // the coach surfaces show the "Workout done" chip and confirm flow.
     { id: 'log_preview_complete', client_id: 'client_sarah', program_assignment_id: 'assign_sarah', program_day_id: 'day_foundation_2', workout_assignment_id: null, dated_workout_assignment_id: null, session_id: 'session_today', workout_name: 'Upper Strength A', status: 'completed', notes: 'Shoulder felt strong today.', feedback: 'Good session. The last rows were challenging.', started_at: iso(-2, 17), completed_at: iso(-2, 18), archived: false, created_at: iso(-2, 17), updated_at: iso(-2, 18) },
+    { id: 'log_quick_riley_done', client_id: 'client_riley', program_assignment_id: null, program_day_id: null, workout_assignment_id: 'quick_assign_riley_done', dated_workout_assignment_id: 'quick_assign_riley_done', workout_name: `Quick session · ${dateOnly(-1)}`, status: 'completed', quick_completed: false, notes: null, feedback: null, started_at: iso(-1, 17), completed_at: iso(-1, 18), archived: false, created_at: iso(-1, 17), updated_at: iso(-1, 18) },
+    { id: 'log_quick_riley_started', client_id: 'client_riley', program_assignment_id: null, program_day_id: null, workout_assignment_id: 'quick_assign_riley_started', dated_workout_assignment_id: 'quick_assign_riley_started', workout_name: 'Mobility reset', status: 'abandoned', quick_completed: false, notes: null, feedback: null, started_at: iso(-2, 7), completed_at: null, archived: false, created_at: iso(-2, 7), updated_at: iso(-2, 7) },
     ...Array.from({ length: 12 }, (_, index) => ({
       id: `log_history_squat_${index + 1}`, client_id: 'client_sarah', program_assignment_id: 'assign_sarah',
       program_day_id: 'day_foundation_1', workout_assignment_id: null, dated_workout_assignment_id: null,
@@ -164,6 +366,7 @@ const state = {
     { id: 'coach_response_jordan', workout_log_id: 'log_preview_complete', client_id: 'client_sarah', author_coach_id: 'coach_jordan', author_name_snapshot: 'Jordan Banks', content: 'Nice consistency across the working sets. Keep building from here.', read_at: null, archived: false, created_at: iso(-2, 20), edited_at: iso(-1, 11), updated_at: iso(-1, 11) },
   ],
   workoutLogExercises: [
+    { id: 'logex_quick_riley_row', workout_log_id: 'log_quick_riley_done', source_workout_exercise_id: 'wex_quick_done_1', exercise_library_id: 'lib_cable_row', exercise_name: 'Cable Row', prescribed_sets: '3', prescribed_reps: '10', prescribed_rpe: '7', prescribed_rest: '60s', prescribed_tempo: null, prescribed_notes: null, client_notes: null, prescribed_load_value: 40, prescribed_load_unit: 'lb', position: 0, archived: false },
     { id: 'logex_preview_bench', workout_log_id: 'log_preview_complete', source_workout_exercise_id: 'wex_4', exercise_library_id: 'lib_db_bench', exercise_name: 'DB Bench Press', prescribed_sets: '3', prescribed_reps: '8', prescribed_rpe: '8', prescribed_rest: '90s', prescribed_tempo: '2-1-1', prescribed_notes: 'Pause at bottom.', client_notes: 'Kept the pause consistent.', prescribed_load_value: 20, prescribed_load_unit: 'lb', position: 0, archived: false },
     { id: 'logex_preview_row', workout_log_id: 'log_preview_complete', source_workout_exercise_id: 'wex_5', exercise_library_id: 'lib_cable_row', exercise_name: 'Cable Row', prescribed_sets: '3', prescribed_reps: '10-12', prescribed_rpe: '8', prescribed_rest: '75s', prescribed_tempo: null, prescribed_notes: 'Squeeze shoulder blades.', client_notes: null, prescribed_load_value: 35, prescribed_load_unit: 'lb', position: 1, archived: false },
     ...Array.from({ length: 12 }, (_, index) => ({
@@ -176,6 +379,7 @@ const state = {
     })),
   ],
   workoutLogSets: [
+    ...[1, 2, 3].map((setNumber) => ({ id: `logset_quick_riley_${setNumber}`, workout_log_id: 'log_quick_riley_done', workout_log_exercise_id: 'logex_quick_riley_row', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: 40, actual_load_unit: 'lb', actual_reps: 10, client_operation_id: null, archived: false })),
     ...[1, 2, 3].map((setNumber) => ({ id: `logset_preview_bench_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_bench', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: setNumber === 3 ? 22.5 : 20, actual_load_unit: 'lb', actual_reps: 8, client_operation_id: null, entered_by: 'coach', entered_by_coach_id: 'coach_marcus', archived: false })),
     ...[1, 2].map((setNumber) => ({ id: `logset_preview_row_${setNumber}`, workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_row', set_number: setNumber, set_origin: 'prescribed', status: 'completed', actual_load_value: 35, actual_load_unit: 'lb', client_operation_id: null, archived: false })),
     { id: 'logset_preview_row_3', workout_log_id: 'log_preview_complete', workout_log_exercise_id: 'logex_preview_row', set_number: 3, set_origin: 'prescribed', status: 'skipped', actual_load_value: 35, actual_load_unit: 'lb', client_operation_id: null, archived: false },
@@ -213,6 +417,74 @@ function emitChange() {
 export function onPreviewChange(cb) {
   window.addEventListener(CHANGE_EVENT, cb);
   return () => window.removeEventListener(CHANGE_EVENT, cb);
+}
+
+function emitSwitchChange() {
+  window.dispatchEvent(new CustomEvent(SWITCH_EVENT));
+}
+
+export function onPreviewSwitchChange(cb) {
+  window.addEventListener(SWITCH_EVENT, cb);
+  return () => window.removeEventListener(SWITCH_EVENT, cb);
+}
+
+export function getPreviewSpeed() {
+  try {
+    const rules = JSON.parse(localStorage.getItem(PREVIEW_LATENCY_KEY) || '[]');
+    if (!Array.isArray(rules) || rules.length !== 1 || rules[0].path !== '.*') return 'normal';
+    return Object.keys(SPEED_MS).find((name) => SPEED_MS[name] === rules[0].ms) || 'normal';
+  } catch {
+    return 'normal';
+  }
+}
+
+export function setPreviewSpeed(speed) {
+  try {
+    if (SPEED_MS[speed]) localStorage.setItem(PREVIEW_LATENCY_KEY, JSON.stringify([{ path: '.*', ms: SPEED_MS[speed] }]));
+    else localStorage.removeItem(PREVIEW_LATENCY_KEY);
+  } catch { /* storage unavailable: the switch simply does not stick */ }
+  emitSwitchChange();
+}
+
+export function getPreviewFailMode() {
+  try {
+    const mode = localStorage.getItem(PREVIEW_FAIL_KEY);
+    return FAIL_MODES.includes(mode) ? mode : 'off';
+  } catch {
+    return 'off';
+  }
+}
+
+export function setPreviewFailMode(mode) {
+  try {
+    if (FAIL_MODES.includes(mode)) localStorage.setItem(PREVIEW_FAIL_KEY, mode);
+    else localStorage.removeItem(PREVIEW_FAIL_KEY);
+  } catch { /* storage unavailable: the switch simply does not stick */ }
+  emitSwitchChange();
+}
+
+function isPreviewOwnedKey(key) {
+  if (PREVIEW_SWITCH_KEYS.includes(key)) return true;
+  // Pending recurring saves are keyed cvf_series_pending:<user.profile.id>:<client id>.
+  if (state.coaches.some((coach) => key.startsWith(`cvf_series_pending:${coach.id}:`))) return true;
+  // Quick-session routing records issued under the preview environment scope.
+  if (key.startsWith('cvf_quick_session_pending:v1:preview:')) return true;
+  // Offline queue and rest timer for workouts the mock issued (real log ids are UUIDs).
+  const log = key.match(/^cvf_(?:workout_outbox|rest_timer)_(.+)$/);
+  return Boolean(log) && !UUID_RE.test(log[1]);
+}
+
+// Removes preview-owned storage only. The caller hard-loads the page, which
+// rebuilds the in-memory fixtures.
+export function resetPreview() {
+  try {
+    const owned = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && isPreviewOwnedKey(key)) owned.push(key);
+    }
+    owned.forEach((key) => localStorage.removeItem(key));
+  } catch { /* storage unavailable: the reload still rebuilds the fixtures */ }
 }
 
 export function getPreviewRole() {
@@ -264,6 +536,51 @@ function coachById(coachId) {
   return state.coaches.find((c) => c.id === coachId) || state.coaches[0];
 }
 
+// Mirrors canAccessClient (backend/src/security/access.js): an admin reaches
+// every client, a coach only the clients they coach.
+function previewCanAccessClient(role, target) {
+  if (!target) return false;
+  return role === 'admin' || (role === 'coach' && target.coach_id === currentCoach().id);
+}
+
+// Mirrors actorStamp: attribution comes from the acting role, never the body.
+function previewActorStamp(role) {
+  return role === 'client'
+    ? { entered_by: 'client', entered_by_coach_id: null }
+    : { entered_by: 'coach', entered_by_coach_id: currentCoach().id };
+}
+
+// ----- Quick sessions (mirrors /api/programs/quick-sessions; UI behavior only) -----
+// The preview fingerprint is a stable JSON of the resolved body; the real server hashes
+// its own normalized v1 contract. Receipts live on the in-memory assignments, so a page
+// reload resets them like every other fixture.
+function previewQuickFingerprint(body) {
+  const sorted = (value) => (Array.isArray(value) ? value.map(sorted)
+    : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, sorted(value[key])])) : value);
+  const { request_id: _request, ...rest } = body || {};
+  return JSON.stringify(sorted(rest));
+}
+
+function previewQuickCompleted(assignmentId) {
+  return state.workoutLogs.some((log) => log.workout_assignment_id === assignmentId && log.status === 'completed' && !log.archived);
+}
+
+function previewQuickStarted(workoutId) {
+  const assignment = state.workoutAssignments.find((row) => row.workout_id === workoutId && row.kind === 'quick');
+  return Boolean(assignment) && state.workoutLogs.some((log) => log.workout_assignment_id === assignment.id);
+}
+
+function previewQuickReceiptAccessible(role, assignment) {
+  if (!assignment || assignment.archived) return false;
+  const target = state.clients.find((row) => row.id === assignment.client_id && !row.archived);
+  const workout = state.workouts.find((row) => row.id === assignment.workout_id && !row.archived);
+  return Boolean(workout) && previewCanAccessClient(role, target);
+}
+
+function previewQuickStartedConflict(config) {
+  return Promise.reject({ response: { data: { error: 'This quick session has already been started, so its prescription can no longer change.', code: 'quick_session_started' }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
+}
+
 function resourceCategoryById(categoryId) {
   return state.resourceCategories.find((category) => category.id === categoryId) || null;
 }
@@ -303,7 +620,7 @@ function previewClientCanAccessResource(resource, clientId) {
 }
 
 function shapeClient(client) {
-  return { ...client, coach: coachById(client.coach_id) };
+  return { ...client, coach: coachById(client.coach_id), invite:inviteFixtures.latest(client) };
 }
 
 function activeClientsForCoach() {
@@ -359,20 +676,40 @@ function workoutDetails(workoutId) {
   const exercises = state.workoutExercises
     .filter((e) => e.workout_id === workout.id && !e.archived)
     .sort((a, b) => a.position - b.position)
-    .map((exercise) => ({ ...exercise, library_exercise: exercise.exercise_library_id ? libraryById(exercise.exercise_library_id) : null }));
+    .map((exercise) => {
+      const library = exercise.exercise_library_id ? libraryById(exercise.exercise_library_id) : null;
+      // Mirrors the API: the current demo resolves live from the row's reference mode.
+      return { ...exercise, library_exercise: library, demo: resolveExerciseDemo({ workoutExercise: exercise, libraryExercise: library }) };
+    });
   return { ...workout, exercises, exercise_count: exercises.length };
+}
+
+// Mirrors the shared SQL writer's demo reference handling: a present
+// video_link_mode is an explicit choice ('inherit' stores no URL); an old
+// request shape keeps a still-consistent stored mode, otherwise legacy NULL.
+function previewDemoReference(row, exercise) {
+  const url = exercise.video_url || null;
+  if (Object.prototype.hasOwnProperty.call(exercise, 'video_link_mode')) {
+    const mode = exercise.video_link_mode ?? null;
+    return { video_link_mode: mode, video_url: mode === 'inherit' ? null : url };
+  }
+  if (row?.video_link_mode === 'inherit' && !url) return { video_link_mode: 'inherit', video_url: null };
+  if (row?.video_link_mode === 'override' && url && url.trim()) return { video_link_mode: 'override', video_url: url };
+  return { video_link_mode: null, video_url: url };
 }
 
 function replaceWorkoutExercises(workoutId, exercises = []) {
   const existing = state.workoutExercises.filter((e) => e.workout_id === workoutId);
   const retained = new Set();
-  exercises
-    .filter((exercise) => exercise.exercise_library_id || String(exercise.custom_name || '').trim())
+  // Like the API: drop blank rows, then normalize superset labels over the
+  // kept rows (contiguous runs of 2+ get letters, singletons null).
+  normalizeSupersets(exercises.filter((exercise) => exercise.exercise_library_id || String(exercise.custom_name || '').trim()))
     .forEach((exercise, index) => {
       const row = existing.find((candidate) => candidate.id === exercise.id
         && candidate.exercise_library_id === (exercise.exercise_library_id || null)
         && candidate.custom_name === (exercise.exercise_library_id ? null : (exercise.custom_name || null)));
       const values = {
+        ...normalizeTracking({ ...row, ...exercise }),
         workout_id: workoutId,
         exercise_library_id: exercise.exercise_library_id || null,
         custom_name: exercise.exercise_library_id ? null : (exercise.custom_name || null),
@@ -387,7 +724,8 @@ function replaceWorkoutExercises(workoutId, exercises = []) {
         notes: exercise.client_notes || exercise.notes || null,
         client_notes: exercise.client_notes || exercise.notes || null,
         coach_notes: exercise.coach_notes || null,
-        video_url: exercise.video_url || null,
+        ...previewDemoReference(row, exercise),
+        superset_group: exercise.superset_group || null,
         position: index,
         archived: false,
       };
@@ -531,8 +869,10 @@ function programDetails(programId) {
 }
 
 function workoutAssignmentDetails(assignment) {
+  const { create_request_hash: _hash, create_request_id: _request, ...row } = assignment;
   return {
-    ...assignment,
+    ...row,
+    ...(assignment.kind === 'quick' ? { quick_session_completed: previewQuickCompleted(assignment.id) } : {}),
     workout: workoutDetails(assignment.workout_id),
     client: { id: assignment.client_id, name: clientById(assignment.client_id)?.name },
     exercise_loads: state.workoutAssignmentExerciseLoads.filter((load) => load.workout_assignment_id === assignment.id && !load.archived),
@@ -548,18 +888,64 @@ function prescribedSetCount(value) {
   return Math.max(1, match ? Number(match[0]) : 1);
 }
 
+// Mirrors the API: the source row's reference mode decides live (inherit ->
+// library, override -> the row, legacy NULL -> nonempty row link, then library).
+function previewExerciseDemoReference(logExercise) {
+  const source = state.workoutExercises.find((row) => row.id === logExercise.source_workout_exercise_id) || null;
+  const libraryId = logExercise.exercise_library_id || source?.exercise_library_id;
+  return { workoutExercise: source, libraryExercise: libraryById(libraryId) };
+}
+
+// Mirrors GET /workout-logs/mine and /client/:id: an array by default, or
+// { logs, next_cursor } pages (newest first, id tie-break) with ?paged=1.
+function previewCompletedLogs(clientId, config, search) {
+  const param = (name) => config.params?.[name] ?? search.get(name);
+  const rows = state.workoutLogs
+    .filter((row) => row.client_id === clientId && row.status === 'completed' && !row.archived)
+    .sort((a, b) => (new Date(b.completed_at) - new Date(a.completed_at)) || b.id.localeCompare(a.id));
+  if (String(param('paged')) !== '1') return ok(rows.slice(0, 50).map((row) => workoutLogDetails(row.id)), config);
+  let start = 0;
+  const cursor = param('cursor');
+  if (cursor) {
+    let after;
+    try {
+      after = JSON.parse(atob(cursor));
+    } catch {
+      return fail(config, 400, 'Invalid history cursor');
+    }
+    start = rows.findIndex((row) => row.id === after?.id) + 1;
+    if (start === 0) return fail(config, 400, 'Invalid history cursor');
+  }
+  const requested = Number(param('limit'));
+  const limit = Number.isInteger(requested) && requested >= 1 ? Math.min(requested, 50) : 20;
+  const page = rows.slice(start, start + limit);
+  const last = page[page.length - 1];
+  return ok({
+    logs: page.map((row) => workoutLogDetails(row.id)),
+    next_cursor: start + limit < rows.length && last ? btoa(JSON.stringify({ completed_at: last.completed_at, id: last.id })) : null,
+  }, config);
+}
+
+function previewLogAssignmentKind(log) {
+  if (!log.workout_assignment_id) return null;
+  const assignment = state.workoutAssignments.find((row) => row.id === log.workout_assignment_id);
+  return assignment ? (assignment.kind === 'quick' ? 'quick' : 'assigned') : null;
+}
+
 function workoutLogDetails(logId) {
   const log = state.workoutLogs.find((row) => row.id === logId && !row.archived);
   if (!log) return null;
-  const exercises = state.workoutLogExercises
+  const exercises = previewMedia().hydrate(state.workoutLogExercises
     .filter((row) => row.workout_log_id === log.id && !row.archived)
     .sort((a, b) => a.position - b.position)
     .map((exercise) => ({
       ...exercise,
+      video_url: resolvedVideoUrl(previewExerciseDemoReference(exercise)),
+      demo: resolveExerciseDemo(previewExerciseDemoReference(exercise)),
       sets: state.workoutLogSets
         .filter((set) => set.workout_log_exercise_id === exercise.id && !set.archived)
         .sort((a, b) => a.set_number - b.set_number),
-    }));
+    })), (exercise) => exercise.exercise_library_id || state.workoutExercises.find((row) => row.id === exercise.source_workout_exercise_id)?.exercise_library_id);
   const coachResponses = state.coachResponses
     .filter((row) => row.workout_log_id === log.id && !row.archived)
     .sort((a, b) => {
@@ -575,7 +961,7 @@ function workoutLogDetails(logId) {
   const attribution = enteredBy.size === 0
     ? (log.started_by === 'coach' ? 'coach' : 'client')
     : (enteredBy.size === 1 ? enteredBy.values().next().value : 'mixed');
-  return { ...log, client: clientById(log.client_id), coach_responses: coachResponses, exercises, attribution };
+  return { ...log, workout_assignment_kind: previewLogAssignmentKind(log), client: clientById(log.client_id), coach_responses: coachResponses, exercises, attribution };
 }
 
 // PR-F: mirrors schedule_session's conflict semantics (S1-S4) so conflict
@@ -661,6 +1047,94 @@ function previewCancelRequested(sessionId) {
   return (state.cancelRequestedSessions || []).includes(sessionId);
 }
 
+// Conflict-checks slots the way check_session_slots does for the UI: sessions
+// already on the calendar (coach before client), then rows of the same request.
+function previewSeriesRows(target, slots, durationMinutes) {
+  return checkSlots({
+    slots,
+    durationMinutes,
+    findExisting: (scheduledAt) => previewScheduleConflict({
+      clientId: target.id, coachId: target.coach_id, scheduledAt, durationMinutes,
+    }),
+  });
+}
+
+function withSeries(row) {
+  const series = row.series_id ? state.sessionSeries.find((item) => item.id === row.series_id) : null;
+  return series ? { ...row, series: { id: series.id, rule: series.rule, created_count: series.created_count } } : row;
+}
+
+// Mirrors schedule_session_series step 4e and assign_program_clone
+// (supabase/migrations/20260929120000_shared_training_library.sql): skip when
+// the client already has the program or a copy sourced from it; otherwise
+// assign a private client copy. Like the real function: the source must be an
+// unhidden template, the copy keeps the template's name, the copy and its
+// workouts belong to the CLIENT'S coach, and every program day gets its OWN
+// workout copy even when two days share one template workout — so editing one
+// day never changes another.
+function previewAssignProgramClone(programId, clientId) {
+  const alreadyAssigned = state.programAssignments.some((assignment) => {
+    if (assignment.archived || assignment.client_id !== clientId) return false;
+    const program = state.programs.find((item) => item.id === assignment.program_id);
+    return Boolean(program) && !program.archived && (program.id === programId || program.source_program_id === programId);
+  });
+  if (alreadyAssigned) return null;
+  // Template fixtures omit is_template; client copies carry is_template: false.
+  const source = state.programs.find((item) => item.id === programId && !item.archived && item.is_template !== false && !item.hidden);
+  const client = clientById(clientId);
+  if (!source || !client || client.archived || !client.coach_id) return null;
+
+  const stamp = new Date().toISOString();
+  const copy = {
+    id: id('program'), coach_id: client.coach_id, name: source.name, description: source.description,
+    frequency_days: source.frequency_days, is_template: false, client_id: client.id, source_program_id: source.id,
+    hidden: false, archived: false, created_at: stamp, updated_at: stamp,
+  };
+  state.programs.push(copy);
+
+  state.programDays
+    .filter((day) => day.program_id === source.id && !day.archived)
+    .sort((first, second) => first.day_number - second.day_number)
+    .forEach((day) => {
+      const workout = state.workouts.find((item) => item.id === day.workout_id);
+      let workoutCopyId = null;
+      if (workout) {
+        workoutCopyId = id('workout');
+        state.workouts.push({
+          ...workout, id: workoutCopyId, coach_id: client.coach_id, is_template: false, client_id: client.id,
+          source_workout_id: workout.id, hidden: false, archived: false, created_at: stamp, updated_at: stamp,
+        });
+        state.workoutExercises
+          .filter((exercise) => exercise.workout_id === workout.id && !exercise.archived)
+          .forEach((exercise) => state.workoutExercises.push({ ...exercise, id: id('wex'), workout_id: workoutCopyId, created_at: stamp }));
+      }
+      state.programDays.push({
+        id: id('day'), program_id: copy.id, day_number: day.day_number, workout_id: workoutCopyId,
+        notes: day.notes, archived: false, created_at: stamp,
+      });
+    });
+
+  const assignment = {
+    id: id('assign'), program_id: copy.id, client_id: client.id, notes: null, archived: false, created_at: stamp,
+    client: { id: client.id, name: client.name },
+  };
+  state.programAssignments.push(assignment);
+  return assignment;
+}
+
+// Fixtures rebuild on every load, so a pending recurring save from an earlier
+// load refers to a demo that no longer exists. Clear it before the app renders.
+function clearPreviewPendingSeries() {
+  try {
+    const stale = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && state.coaches.some((coach) => key.startsWith(`cvf_series_pending:${coach.id}:`))) stale.push(key);
+    }
+    stale.forEach((key) => localStorage.removeItem(key));
+  } catch { /* storage unavailable: nothing was persisted either */ }
+}
+
 function scheduleConflictReject(config, conflict, { approving = false } = {}) {
   const when = new Date(conflict.session.scheduled_at).toLocaleString('en-US', { timeZone: 'America/Denver' });
   const base = conflict.scope === 'client'
@@ -704,7 +1178,7 @@ function replacePreviewLoads(collection, ownerKey, ownerId, loads = []) {
   });
 }
 
-function startPreviewWorkout(clientId, payload) {
+function startPreviewWorkout(clientId, payload, stamp = previewActorStamp('client')) {
   const active = state.workoutLogs.find((row) => row.client_id === clientId && row.status === 'active' && !row.archived);
   const sameSource = active && (
     (payload.program_assignment_id && active.program_assignment_id === payload.program_assignment_id && active.program_day_id === payload.program_day_id)
@@ -740,6 +1214,7 @@ function startPreviewWorkout(clientId, payload) {
     workout_assignment_id: workoutAssignment?.id || null,
     dated_workout_assignment_id: workoutAssignment?.assignment_mode === 'dated' ? workoutAssignment.id : null,
     workout_name: workout.name,
+    started_by: stamp.entered_by, started_by_coach_id: stamp.entered_by_coach_id,
     status: 'active', notes: null, feedback: null, started_at: createdAt, completed_at: null,
     archived: false, created_at: createdAt, updated_at: createdAt,
   };
@@ -754,13 +1229,17 @@ function startPreviewWorkout(clientId, payload) {
     const logExercise = {
       id: id('workout_log_exercise'), workout_log_id: log.id, source_workout_exercise_id: exercise.id,
       exercise_library_id: exercise.exercise_library_id,
+      tracking_type: trackingType(exercise),
+      prescribed_duration_value: exercise.duration_value ?? null, prescribed_duration_unit: exercise.duration_unit ?? null,
+      prescribed_distance_value: exercise.distance_value ?? null, prescribed_distance_unit: exercise.distance_unit ?? null,
       exercise_name: exerciseName(exercise), prescribed_sets: exercise.sets, prescribed_reps: exercise.reps,
       prescribed_rpe: exercise.target_rpe, prescribed_rest: exercise.rest, prescribed_tempo: exercise.tempo,
       prescribed_rest_seconds: exercise.rest_seconds ?? parseRestSeconds(exercise.rest || ''),
       prescribed_notes: exercise.notes, client_notes: null,
       prescribed_load_value: resolved?.load_value ?? null,
       prescribed_load_unit: resolved?.load_value == null ? null : (resolved.load_unit || 'lb'),
-      position: exercise.position, archived: false, created_at: createdAt, updated_at: createdAt,
+      position: exercise.position, superset_group: exercise.superset_group || null,
+      archived: false, created_at: createdAt, updated_at: createdAt,
     };
     state.workoutLogExercises.push(logExercise);
     for (let setNumber = 1; setNumber <= prescribedSetCount(exercise.sets); setNumber += 1) {
@@ -768,6 +1247,7 @@ function startPreviewWorkout(clientId, payload) {
         id: id('workout_log_set'), workout_log_id: log.id, workout_log_exercise_id: logExercise.id,
         set_number: setNumber, set_origin: 'prescribed', status: 'pending',
         actual_load_value: logExercise.prescribed_load_value, actual_load_unit: logExercise.prescribed_load_unit,
+        actual_duration_value: null, actual_duration_unit: null, actual_distance_value: null, actual_distance_unit: null,
         actual_reps: null, actual_rpe: null,
         client_operation_id: null, completed_at: null, archived: false, created_at: createdAt, updated_at: createdAt,
       });
@@ -837,12 +1317,79 @@ function dashboardCoach() {
   };
 }
 
+// Responses are copies, like a real HTTP body: handing out live fixture
+// objects let later preview writes mutate what the UI already held, which
+// masked offline-sync and stale-state bugs.
 function ok(data, config, status = 200) {
-  return Promise.resolve({ data, status, statusText: 'OK', headers: {}, config });
+  const copy = data === undefined ? data : JSON.parse(JSON.stringify(data));
+  return Promise.resolve({ data: copy, status, statusText: 'OK', headers: {}, config });
 }
 
 function fail(config, status, message) {
   return Promise.reject({ response: { data: { error: message }, status, statusText: 'Error', headers: {}, config }, config });
+}
+
+// The toolbar that shows notices is lazy-loaded, and a page's first requests
+// usually finish before it mounts. Notices raised with nobody listening wait
+// here and are delivered to the first subscriber.
+const noticeSubscribers = new Set();
+const queuedNotices = [];
+
+function previewNotice(detail) {
+  if (!noticeSubscribers.size) {
+    queuedNotices.push(detail);
+    return;
+  }
+  noticeSubscribers.forEach((cb) => cb(detail));
+}
+
+// cb receives { kind: 'unsupported' | 'missing', method, path, reason? }.
+export function onPreviewNotice(cb) {
+  noticeSubscribers.add(cb);
+  queuedNotices.splice(0).forEach((detail) => cb(detail));
+  return () => noticeSubscribers.delete(cb);
+}
+
+// 422, not 5xx: retry-safe forms treat >= 500 as "outcome unknown" and lock.
+function rejectUnsupported(config, method, path, entry) {
+  previewNotice({ kind: 'unsupported', method, path, reason: entry.reason });
+  return Promise.reject({
+    response: {
+      data: { error: 'Not available in preview', code: 'preview_unsupported', reason: entry.reason },
+      status: 422, statusText: 'Unprocessable Entity', headers: {}, config,
+    },
+    config,
+  });
+}
+
+function rejectMissingMock(config, method, path) {
+  const label = `${method.toUpperCase()} ${path}`;
+  console.error(`${MISSING_MOCK_MARKER} ${label}`);
+  previewNotice({ kind: 'missing', method, path });
+  return Promise.reject({
+    response: {
+      data: { error: `Preview route not mocked: ${label}`, code: 'preview_missing_mock' },
+      status: 404, statusText: 'Error', headers: {}, config,
+    },
+    config,
+  });
+}
+
+function isPreviewRead(method, path) {
+  return method === 'get' || (method === 'post' && READ_LIKE_POSTS.some((pattern) => pattern.test(path)));
+}
+
+function isKnownSave(method, path) {
+  return PREVIEW_SAVE_ROUTES.some(([saveMethod, pattern]) => saveMethod === method && pattern.test(path));
+}
+
+function readChangesData(method, path) {
+  return READS_THAT_CHANGE_DATA.some(([readMethod, pattern]) => readMethod === method && pattern.test(path));
+}
+
+function isPreviewGap(error) {
+  const code = error?.response?.data?.code;
+  return code === 'preview_missing_mock' || code === 'preview_unsupported';
 }
 
 function body(config) {
@@ -901,24 +1448,60 @@ function saveCheckIn(clientId, payload, actorRole) {
   return existing;
 }
 
+function previewLatencyFor(path) {
+  try {
+    const rules = JSON.parse(localStorage.getItem(PREVIEW_LATENCY_KEY) || '[]');
+    const rule = rules.find((candidate) => new RegExp(candidate.path).test(path));
+    return Math.max(0, Math.min(10_000, Number(rule?.ms) || 0));
+  } catch {
+    return 0;
+  }
+}
+
+let previewMediaScenario = null;
+function previewMedia() {
+  previewMediaScenario ||= createPreviewExerciseMedia({ state, iso, ok, fail, currentCoachId: () => currentCoach()?.id });
+  return previewMediaScenario;
+}
+
 export function installPreviewApi(api) {
   if (!isPreviewMode) return;
-  api.defaults.adapter = async (config) => {
-    await new Promise((resolve) => setTimeout(resolve, 80));
+  clearPreviewPendingSeries();
+  previewMedia(); // seeds the separate media scenario rows when it is switched on
+  const route = async (config) => {
     const method = String(config.method || 'get').toLowerCase();
     const { path, search } = pathFromConfig(config);
     const payload = body(config);
     const role = getPreviewRole();
     const client = currentClient();
 
+    const unsupported = PREVIEW_UNSUPPORTED.find((entry) => entry.method === method && entry.pattern.test(path));
+    if (unsupported) return rejectUnsupported(config, method, path, unsupported);
+
     if (path === '/auth/me' || path === '/auth/login' || path === '/auth/signup') return ok({ access_token: 'preview', refresh_token: 'preview', ...getPreviewUser() }, config);
+
+    if (path.startsWith('/exercise-media/')) {
+      const media = await previewMedia().handle(config, method, path, payload);
+      if (media !== undefined) return media;
+    }
+
+    // Product telemetry is fire-and-forget from ordinary page loads. Preview
+    // accepts and discards it (the real route answers 202 the same way).
+    if (path === '/telemetry/events' && method === 'post') return ok({ accepted: true, duplicate: false }, config, 202);
 
     if (path === '/dashboard/client') return ok(dashboardClient(), config);
     if (path === '/dashboard/coach') return ok(dashboardCoach(), config);
 
     if (path === '/workout-logs/start' && method === 'post') {
-      if (role !== 'client') return fail(config, 403, 'Client access required');
-      const result = startPreviewWorkout(client.id, payload);
+      // Mirrors the API: a client always starts their own workout; a
+      // coach/admin names a client they can access.
+      let startClient = client;
+      if (role !== 'client') {
+        if (typeof payload.client_id !== 'string' || !payload.client_id) return fail(config, 400, 'Choose a client');
+        startClient = state.clients.find((row) => row.id === payload.client_id && !row.archived);
+        if (!previewCanAccessClient(role, startClient)) return fail(config, 404, 'Client not found');
+      }
+      const result = startPreviewWorkout(startClient.id, payload, previewActorStamp(role));
       if (!result) return fail(config, 404, 'Assigned workout not found');
       if (result.outcome === 'conflict') return Promise.reject({ response: { data: { error: 'Finish or abandon your active workout first', active_workout: result.workout_log }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
       if (result.outcome === 'already_completed') return Promise.reject({ response: { data: { error: 'This dated workout has already been completed', workout_log: result.workout_log }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
@@ -972,8 +1555,7 @@ export function installPreviewApi(api) {
       return ok(active ? workoutLogDetails(active.id) : null, config);
     }
     if (path === '/workout-logs/mine' && method === 'get') {
-      return ok(state.workoutLogs.filter((row) => row.client_id === client.id && row.status === 'completed' && !row.archived)
-        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map((row) => workoutLogDetails(row.id)), config);
+      return previewCompletedLogs(client.id, config, search);
     }
     if (path === '/workout-logs/mine/completed-dates' && method === 'get') {
       return ok({
@@ -992,8 +1574,7 @@ export function installPreviewApi(api) {
       if (role === 'client') return fail(config, 404, 'Client not found');
       const target = clientById(clientWorkoutHistory[1]);
       if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
-      return ok(state.workoutLogs.filter((row) => row.client_id === target.id && row.status === 'completed' && !row.archived)
-        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)).map((row) => workoutLogDetails(row.id)), config);
+      return previewCompletedLogs(target.id, config, search);
     }
     const exerciseHistory = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/history$/);
     if (exerciseHistory && method === 'get') {
@@ -1029,22 +1610,24 @@ export function installPreviewApi(api) {
           ? row.exercise_library_id === exercise.exercise_library_id
           : !row.exercise_library_id && row.source_workout_exercise_id === exercise.source_workout_exercise_id
       ));
-      const matchByLog = new Map(matchingExercises.map((row) => [row.workout_log_id, row]));
-      const matches = state.workoutLogs.filter((row) => row.client_id === log.client_id && row.status === 'completed' && !row.archived && matchByLog.has(row.id))
+      const matchingLogIds = new Set(matchingExercises.map((row) => row.workout_log_id));
+      const matches = state.workoutLogs.filter((row) => row.client_id === log.client_id && row.status === 'completed' && !row.archived && matchingLogIds.has(row.id))
         .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at) || b.id.localeCompare(a.id))
         .filter((row) => !before || row.completed_at < before.completed_at || (row.completed_at === before.completed_at && row.id < before.id));
       const page = matches.slice(0, 10);
-      const occurrences = page.map((row) => {
-        const matchedExercise = matchByLog.get(row.id);
+      const occurrences = page.flatMap((row) => matchingExercises.filter((entry) => entry.workout_log_id === row.id).sort((a, b) => b.id.localeCompare(a.id)).map((matchedExercise) => {
         return {
-          workout_log_id: row.id, completed_at: row.completed_at, exercise_name: matchedExercise.exercise_name,
+          occurrence_id: `${row.id}:${matchedExercise.id}`, workout_log_exercise_id: matchedExercise.id,
+          workout_log_id: row.id, completed_at: row.completed_at, exercise_name: matchedExercise.exercise_name, tracking_type: trackingType(matchedExercise),
           sets: state.workoutLogSets.filter((set) => set.workout_log_exercise_id === matchedExercise.id && set.status === 'completed' && !set.archived)
             .sort((a, b) => a.set_number - b.set_number).map((set) => ({
               set_number: set.set_number, actual_load_value: set.actual_load_value, actual_load_unit: set.actual_load_unit,
+              actual_duration_value: set.actual_duration_value ?? null, actual_duration_unit: set.actual_duration_unit ?? null,
+              actual_distance_value: set.actual_distance_value ?? null, actual_distance_unit: set.actual_distance_unit ?? null,
               actual_reps: set.actual_reps ?? null, actual_rpe: set.actual_rpe ?? null,
             })),
         };
-      }).filter((row) => row.sets.length);
+      })).filter((row) => row.sets.length);
       const last = page[page.length - 1];
       return ok({ occurrences, next_cursor: matches.length > 10 && last ? btoa(JSON.stringify({ completed_at: last.completed_at, id: last.id })) : null }, config);
     }
@@ -1062,11 +1645,16 @@ export function installPreviewApi(api) {
       const log = state.workoutLogs.find((row) => row.id === workoutSetUpdate[1] && row.client_id === client.id && row.status === 'active' && !row.archived);
       const set = state.workoutLogSets.find((row) => row.id === workoutSetUpdate[2] && row.workout_log_id === log?.id && !row.archived);
       if (!set) return fail(config, 404, 'Workout set not found');
+      const exercise = state.workoutLogExercises.find((row) => row.id === set.workout_log_exercise_id);
+      let metrics;
+      try { metrics = actualMetrics(payload, set, exercise); } catch (error) { return fail(config, 400, error.message); }
+      if (trackingType(exercise) !== 'reps_weight' && payload.actual_reps != null) return fail(config, 400, 'Reps do not match the exercise tracking type');
       const validReps = payload.actual_reps == null || (typeof payload.actual_reps === 'number' && Number.isInteger(payload.actual_reps) && payload.actual_reps >= 0);
       const validRpe = payload.actual_rpe == null || (typeof payload.actual_rpe === 'number' && payload.actual_rpe >= 1 && payload.actual_rpe <= 10 && Number.isInteger(payload.actual_rpe * 2));
       if (!validReps) return fail(config, 400, 'Reps must be a nonnegative whole number or null');
       if (!validRpe) return fail(config, 400, 'RPE must be 1 through 10 in 0.5 increments or null');
       Object.assign(set, {
+        ...metrics,
         status: payload.status === 'completed' ? 'completed' : 'pending',
         actual_load_value: payload.actual_load_value === '' || payload.actual_load_value == null ? null : Number(payload.actual_load_value),
         actual_load_unit: payload.actual_load_value === '' || payload.actual_load_value == null ? null : (payload.actual_load_unit || 'lb'),
@@ -1090,6 +1678,7 @@ export function installPreviewApi(api) {
         set_number: Math.max(0, ...exerciseSets.map((set) => set.set_number)) + 1,
         set_origin: 'extra', status: 'pending', actual_load_value: exercise.prescribed_load_value,
         actual_load_unit: exercise.prescribed_load_unit, client_operation_id: payload.client_operation_id,
+        actual_duration_value: null, actual_duration_unit: null, actual_distance_value: null, actual_distance_unit: null,
         actual_reps: null, actual_rpe: null,
         completed_at: null, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       };
@@ -1267,7 +1856,19 @@ export function installPreviewApi(api) {
       const includeArchived = search.get('include_archived') === 'true';
       return ok(state.clients.filter((c) => includeArchived || !c.archived).filter((c) => role === 'admin' || c.coach_id === currentCoach().id).map(shapeClient), config);
     }
+    const canInviteAccess=c=>role!=='client'&&(role==='admin'||c.coach_id===currentCoach().id);
+    const fixtureResponse=r=>r.status>=400?Promise.reject({response:{...r,config}}):ok(r.data,config,r.status);
+    const recoverMatch=path.match(/^\/clients\/create-requests\/([^/]+)$/);
+    if(recoverMatch&&method==='get') {
+      if(role==='client')return fail(config,403,'Coach access required');
+      return fixtureResponse(inviteFixtures.recover(currentCoach().id,recoverMatch[1],state.clients,canInviteAccess));
+    }
     if (path === '/clients' && method === 'post') {
+      if(payload.request_id!==undefined){
+        const target=role==='admin'?(payload.coach_id||currentCoach().id):currentCoach().id;
+        if(role==='client'||!state.coaches.some(c=>c.id===target&&!c.archived))return fail(config,403,'Coach access required');
+        return fixtureResponse(inviteFixtures.create(currentCoach().id,payload,state.clients,target,canInviteAccess));
+      }
       const row = { id: id('client'), coach_id: payload.coach_id || currentCoach().id, name: payload.name, email: payload.email || null, phone: payload.phone || null, goals: payload.goals || null, health_notes: payload.health_notes || null, invited: false, auth_user_id: null, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       state.clients.push(row);
       return ok(row, config, 201);
@@ -1359,20 +1960,53 @@ export function installPreviewApi(api) {
       }
       return ok(assignment, config);
     }
+    // Coach Notes (mirrors /api/clients/:id/coach-notes): coaches and admins
+    // only, by the client-record access rule; only a note's author may edit.
+    const coachNotesMatch = path.match(/^\/clients\/([^/]+)\/coach-notes(?:\/([^/]+))?$/);
+    if (coachNotesMatch) {
+      if (!['coach', 'admin'].includes(role)) return fail(config, 403, 'Coach access required');
+      const target = state.clients.find((c) => c.id === coachNotesMatch[1]);
+      const readArchived = method === 'get' && search.get('include_archived') === 'true';
+      if (!previewCanAccessClient(role, target) || (target.archived && !readArchived)) return fail(config, 404, 'Client not found');
+      const shape = ({ archived: _archived, ...note }) => note;
+      if (!coachNotesMatch[2] && method === 'get') {
+        return ok({ notes: state.clientCoachNotes.filter((n) => n.client_id === target.id && !n.archived)
+          .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id)).map(shape) }, config);
+      }
+      const content = typeof payload.content === 'string' ? payload.content.trim() : '';
+      if (!content || content.length > 4000) return fail(config, 400, 'A note needs 1 to 4,000 characters');
+      if (!coachNotesMatch[2] && method === 'post') {
+        const at = new Date().toISOString();
+        const row = { id: id('coach_note'), client_id: target.id, author_coach_id: currentCoach().id, author_name_snapshot: currentCoach().name, content, archived: false, created_at: at, updated_at: at };
+        state.clientCoachNotes.push(row);
+        return ok(shape(row), config, 201);
+      }
+      if (coachNotesMatch[2] && method === 'put') {
+        const row = state.clientCoachNotes.find((n) => n.id === coachNotesMatch[2] && n.client_id === target.id && !n.archived);
+        if (!row) return fail(config, 404, 'Note not found');
+        if (row.author_coach_id !== currentCoach().id) return fail(config, 403, "Only the note's author can edit it");
+        if (row.updated_at !== payload.expected_updated_at) {
+          return Promise.reject({ response: { data: { error: 'This note changed since you opened it. Your text is kept; review the latest version before saving again.', note: shape(row) }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
+        }
+        Object.assign(row, { content, updated_at: new Date().toISOString() });
+        return ok(shape(row), config);
+      }
+    }
     const clientMatch = path.match(/^\/clients\/([^/]+)$/);
     if (clientMatch) {
       const row = clientById(clientMatch[1]);
-      if (method === 'get') return ok(row, config);
+      if (method === 'get') return ok({...row,invite:inviteFixtures.latest(row)}, config);
       if (method === 'put') {
         Object.assign(row, payload, { updated_at: new Date().toISOString() });
         return ok(row, config);
       }
     }
-    const inviteMatch = path.match(/^\/clients\/([^/]+)\/invite$/);
-    if (inviteMatch && method === 'patch') {
-      const row = clientById(inviteMatch[1]);
-      row.invited = Boolean(payload.invited);
-      return ok(row, config);
+    const inviteMatch = path.match(/^\/clients\/([^/]+)\/invite(\/resend)?$/);
+    if (inviteMatch && ((method === 'patch'&&!inviteMatch[2])||(method==='post'&&inviteMatch[2]))) {
+      const row=state.clients.find(c=>c.id===inviteMatch[1]);
+      if(!row||!canInviteAccess(row))return fail(config,404,'Client not found');
+      const kind=inviteMatch[2]?'resend':payload.invited?'switch_on':'switch_off';
+      return fixtureResponse(inviteFixtures.action(currentCoach().id,row,payload,kind));
     }
     const archiveClientMatch = path.match(/^\/clients\/([^/]+)\/archive$/);
     if (archiveClientMatch && method === 'patch') {
@@ -1515,6 +2149,115 @@ export function installPreviewApi(api) {
       }, config);
     }
 
+    // Recurring sessions. Shapes mirror backend/src/routes/sessionSeries.js;
+    // rule and suggestion logic is the port in previewSeries.js.
+    if (path.startsWith('/sessions/series') && role === 'client') return fail(config, 403, 'Coach access required');
+
+    if (path === '/sessions/series/preview' && method === 'post') {
+      const target = clientById(payload.client_id);
+      if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
+      const parsed = parseRule(payload, { today: todayInDenver() });
+      if (!parsed.ok) return fail(config, 400, parsed.error);
+      const expanded = expandSeriesRule(parsed.value);
+      if (expanded.exceededMax) return fail(config, 400, 'A series can have at most 52 sessions');
+      if (expanded.exceededHorizon) {
+        return fail(config, 400, 'That schedule runs past one year from the start date — reduce the count or choose an end date');
+      }
+      const rows = previewSeriesRows(target, expanded.slots, parsed.value.duration_minutes);
+      const past = pastError(rows, Date.now());
+      if (past) return fail(config, 400, past);
+      return ok({ slots: rows }, config);
+    }
+
+    if (path === '/sessions/series/check' && method === 'post') {
+      const target = clientById(payload.client_id);
+      if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
+      const horizon = slotHorizonError(payload.slots || [], payload.start_date, todayInDenver());
+      if (horizon) return fail(config, 400, horizon);
+      const rows = previewSeriesRows(target, payload.slots || [], payload.duration_minutes);
+      const past = pastError(rows, Date.now());
+      if (past) return fail(config, 400, past);
+      return ok({ seq: payload.seq, slots: rows }, config);
+    }
+
+    if (path === '/sessions/series' && method === 'post') {
+      const target = clientById(payload.client_id);
+      if (!target || (role !== 'admin' && target.coach_id !== currentCoach().id)) return fail(config, 404, 'Client not found');
+      const fingerprint = JSON.stringify(payload);
+      const existing = state.sessionSeries.find((item) => item.request_id === payload.request_id && item.client_id === target.id);
+      const publicSeries = ({ request_fingerprint, ...series }) => series;
+      if (existing) {
+        if (existing.request_fingerprint !== fingerprint) {
+          return Promise.reject({
+            response: {
+              data: { error: 'This save was already used with different content — nothing was changed.', code: 'request_mismatch' },
+              status: 409, statusText: 'Conflict', headers: {}, config,
+            },
+            config,
+          });
+        }
+        return ok({ series: publicSeries(existing), receipt: existing.receipt, replayed: true }, config, 200);
+      }
+      const horizon = slotHorizonError(payload.slots || [], payload.rule?.start_date, todayInDenver());
+      if (horizon) return fail(config, 400, horizon);
+      const rows = previewSeriesRows(target, payload.slots || [], payload.duration_minutes);
+      const past = pastError(rows, Date.now());
+      if (past) return fail(config, 400, past);
+      const conflicts = rows.filter((row) => row.conflict).map((row) => ({ key: row.key, ...row.conflict }));
+      if (conflicts.length) {
+        return Promise.reject({
+          response: {
+            data: { error: 'Some dates are no longer available', conflicts },
+            status: 409, statusText: 'Conflict', headers: {}, config,
+          },
+          config,
+        });
+      }
+      const stamp = new Date().toISOString();
+      const seriesId = id('series');
+      const workoutByKey = new Map((payload.slots || []).map((slot) => [slot.key, slot.workout_id || null]));
+      const receiptSlots = rows
+        .slice()
+        .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
+        .map((row, index) => {
+          // Workouts are stored exactly as sent; the server never remaps them.
+          const session = {
+            id: id('session'), client_id: target.id, coach_id: target.coach_id, scheduled_at: row.scheduled_at,
+            duration_minutes: payload.duration_minutes, location: payload.location || null, status: 'scheduled',
+            credit_deducted: false, workout_id: workoutByKey.get(row.key), series_id: seriesId, series_ordinal: index + 1,
+            archived: false, created_at: stamp, updated_at: stamp,
+          };
+          state.sessions.push(session);
+          return { key: row.key, session_id: session.id, scheduled_at: row.scheduled_at, workout_id: session.workout_id, ordinal: index + 1 };
+        });
+      const series = {
+        id: seriesId, request_id: payload.request_id, request_fingerprint: fingerprint, client_id: target.id,
+        coach_id: target.coach_id, rule: payload.rule, created_count: receiptSlots.length,
+        receipt: { slots: receiptSlots }, created_at: stamp,
+      };
+      state.sessionSeries.push(series);
+      if (payload.assign_program && payload.program_id) previewAssignProgramClone(payload.program_id, target.id);
+      // notify is accepted and ignored: preview sends nothing.
+      return ok({ series: publicSeries(series), receipt: series.receipt, replayed: false }, config, 201);
+    }
+
+    const seriesCancel = path.match(/^\/sessions\/series\/([^/]+)\/cancel$/);
+    if (seriesCancel && method === 'patch') {
+      const series = state.sessionSeries.find((item) => item.id === seriesCancel[1]);
+      if (!series || (role !== 'admin' && series.coach_id !== currentCoach().id)) return fail(config, 404, 'Series not found');
+      const anchor = state.sessions.find((row) => row.id === payload.from_session_id
+        && row.series_id === series.id && row.client_id === series.client_id);
+      if (!anchor) return fail(config, 404, 'Session not found in this series');
+      const anchorStart = new Date(anchor.scheduled_at).getTime();
+      const changed = state.sessions.filter((row) => row.series_id === series.id && row.status === 'scheduled'
+        && !row.archived && new Date(row.scheduled_at).getTime() >= anchorStart);
+      changed.forEach((row) => { row.status = 'cancelled'; row.updated_at = new Date().toISOString(); });
+      const cancelled = changed
+        .map((row) => ({ id: row.id, scheduled_at: row.scheduled_at }))
+        .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+      return ok({ cancelled }, config);
+    }
+
     // Mirrors GET /api/sessions/studio: every coach's schedule with
     // roadmap-v3 D1 masking — foreign clients arrive as anonymous busy
     // blocks; the name never reaches the page. Deliberate divergence:
@@ -1551,7 +2294,7 @@ export function installPreviewApi(api) {
       if (search.get('client_id')) rows = rows.filter((s) => s.client_id === search.get('client_id'));
       if (search.get('status')) rows = rows.filter((s) => s.status === search.get('status'));
       rows = rows.map((s) => ({
-        ...s,
+        ...withSeries(s),
         client: { id: s.client_id, name: clientById(s.client_id).name },
         coach: coachById(s.coach_id),
         workout: s.workout_id ? (state.workouts.find((w) => w.id === s.workout_id) || null) : null,
@@ -1566,7 +2309,7 @@ export function installPreviewApi(api) {
         scheduledAt: payload.scheduled_at, durationMinutes: payload.duration_minutes || 60,
       });
       if (conflict) return scheduleConflictReject(config, conflict);
-      const row = { id: id('session'), client_id: target.id, coach_id: target.coach_id, scheduled_at: payload.scheduled_at, duration_minutes: payload.duration_minutes || 60, location: payload.location || null, status: 'scheduled', credit_deducted: false, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), client: { id: target.id, name: target.name } };
+      const row = { id: id('session'), client_id: target.id, coach_id: target.coach_id, scheduled_at: payload.scheduled_at, duration_minutes: payload.duration_minutes || 60, location: payload.location || null, workout_id: payload.workout_id || null, status: 'scheduled', credit_deducted: false, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), client: { id: target.id, name: target.name } };
       state.sessions.push(row);
       return ok({ ...row, location_overlaps: previewLocationOverlaps(row) }, config, 201);
     }
@@ -1585,7 +2328,7 @@ export function installPreviewApi(api) {
         .map((exercise) => ({
           id: exercise.id,
           name: state.exerciseLibrary.find((lib) => lib.id === exercise.exercise_library_id)?.name || exercise.custom_name || 'Exercise',
-          sets: exercise.sets, reps: exercise.reps, rest: exercise.rest, client_notes: exercise.notes || null,
+          sets: exercise.sets, reps: exercise.reps, ...normalizeTracking(exercise), rest: exercise.rest, client_notes: exercise.notes || null,
         })) : [];
       return ok({
         ...row,
@@ -1608,7 +2351,7 @@ export function installPreviewApi(api) {
         .map((exercise) => ({
           id: exercise.id,
           name: state.exerciseLibrary.find((lib) => lib.id === exercise.exercise_library_id)?.name || exercise.custom_name || 'Exercise',
-          sets: exercise.sets, reps: exercise.reps, rest: exercise.rest, client_notes: exercise.notes || null,
+          sets: exercise.sets, reps: exercise.reps, ...normalizeTracking(exercise), rest: exercise.rest, client_notes: exercise.notes || null,
         })) : [];
       const linkedLogs = state.workoutLogs
         .filter((log) => log.session_id === row.id && !log.archived && ['active', 'completed'].includes(log.status))
@@ -1619,7 +2362,7 @@ export function installPreviewApi(api) {
           quick_completed: Boolean(log.quick_completed),
         }));
       return ok({
-        ...row,
+        ...withSeries(row),
         client: { id: row.client_id, name: clientById(row.client_id).name },
         coach: coachById(row.coach_id),
         notes: state.sessionNotes.filter((n) => n.session_id === row.id && !n.archived),
@@ -1888,6 +2631,9 @@ export function installPreviewApi(api) {
     }
 
     if (path === '/programs/workouts' && method === 'get') return ok(state.workouts.filter((w) => !w.archived).map((w) => workoutDetails(w.id)), config);
+    if ((path === '/programs/workouts' && method === 'post') || (/^\/programs\/workouts\/[^/]+$/.test(path) && method === 'put')) {
+      try { (payload.exercises || []).forEach((exercise) => normalizeTracking(exercise)); } catch (error) { return fail(config, 400, error.message); }
+    }
     if (path === '/programs/workouts' && method === 'post') {
       const workout = { id: id('workout'), coach_id: currentCoach().id, name: payload.name, description: payload.description || null, goal: payload.goal || null, archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       state.workouts.push(workout);
@@ -1899,6 +2645,7 @@ export function installPreviewApi(api) {
     if (workoutId && method === 'put') {
       const workout = state.workouts.find((w) => w.id === workoutId[1]);
       if (!workout) return fail(config, 404, 'Workout not found');
+      if (previewQuickStarted(workout.id)) return previewQuickStartedConflict(config);
       Object.assign(workout, { name: payload.name, description: payload.description || null, goal: payload.goal || null, updated_at: new Date().toISOString() });
       replaceWorkoutExercises(workout.id, payload.exercises || []);
       return ok(workoutDetails(workout.id), config);
@@ -1910,6 +2657,73 @@ export function installPreviewApi(api) {
       workout.archived = true;
       workout.updated_at = new Date().toISOString();
       return ok(workout, config);
+    }
+
+    if (path === '/programs/quick-sessions' && method === 'post') {
+      if (role === 'client') return fail(config, 403, 'Coach access required');
+      if (typeof payload.request_id !== 'string' || !UUID_RE.test(payload.request_id)) return fail(config, 400, 'A quick session request id is required');
+      if ((payload.exercises || []).some((exercise) => exercise && Object.prototype.hasOwnProperty.call(exercise, 'video_link_mode'))) {
+        return fail(config, 400, 'Unsupported exercise field "video_link_mode"');
+      }
+      const kept = (payload.exercises || []).filter((exercise) => exercise.exercise_library_id || String(exercise.custom_name || '').trim());
+      if (!kept.length) return fail(config, 400, 'Add at least one exercise');
+      try { kept.forEach((exercise) => normalizeTracking(exercise)); } catch (error) { return fail(config, 400, error.message); }
+      const actorId = currentCoach().id;
+      const requestId = payload.request_id.toLowerCase();
+      const fingerprint = previewQuickFingerprint({ ...payload, exercises: kept });
+      const receipt = state.workoutAssignments.find((row) => row.created_by_coach_id === actorId && row.create_request_id === requestId);
+      const notFound = () => Promise.reject({ response: { data: { state: 'not_found' }, status: 404, statusText: 'Not Found', headers: {}, config }, config });
+      if (receipt) {
+        if (!previewQuickReceiptAccessible(role, receipt) || !previewCanAccessClient(role, state.clients.find((row) => row.id === payload.client_id && !row.archived))) return notFound();
+        if (receipt.create_request_hash !== fingerprint || receipt.client_id !== payload.client_id) {
+          return Promise.reject({ response: { data: { state: 'request_mismatch' }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
+        }
+        return ok({ state: 'replayed', assignment: workoutAssignmentDetails(receipt) }, config, 200);
+      }
+      const target = state.clients.find((row) => row.id === payload.client_id && !row.archived);
+      if (!previewCanAccessClient(role, target)) return notFound();
+      const hidden = kept.map((exercise) => libraryById(exercise.exercise_library_id)).filter((row) => row?.hidden);
+      if (hidden.length) return fail(config, 422, `Hidden exercises cannot be added: ${hidden.map((row) => row.name).join(', ')}`);
+      const createdAt = new Date().toISOString();
+      const workout = { id: id('workout_quick'), coach_id: target.coach_id, name: payload.name, description: null, goal: null, is_template: false, client_id: target.id, hidden: false, archived: false, created_at: createdAt, updated_at: createdAt };
+      state.workouts.push(workout);
+      replaceWorkoutExercises(workout.id, kept);
+      // Fresh rows only, from the hashed v1 facts (as create_quick_session does).
+      state.workoutExercises.filter((exercise) => exercise.workout_id === workout.id).forEach((exercise) => {
+        const url = String(exercise.video_url || '').trim();
+        exercise.video_link_mode = url ? 'override' : (exercise.exercise_library_id && !exercise.video_url ? 'inherit' : null);
+      });
+      const row = {
+        id: id('quick_assign'), client_id: target.id, workout_id: workout.id, assignment_mode: 'dated', assigned_for: payload.assigned_for,
+        notes: payload.notes || null, archived: false, created_at: createdAt, kind: 'quick', created_by_coach_id: actorId,
+        create_request_id: requestId, create_request_hash: fingerprint, library_template_id: null,
+      };
+      state.workoutAssignments.push(row);
+      return ok({ state: 'created', assignment: workoutAssignmentDetails(row) }, config, 201);
+    }
+    const quickStatus = path.match(/^\/programs\/quick-sessions\/requests\/([^/]+)$/);
+    if (quickStatus && method === 'get') {
+      if (role === 'client') return fail(config, 403, 'Coach access required');
+      const requestId = quickStatus[1].toLowerCase();
+      if (!UUID_RE.test(requestId)) return fail(config, 400, 'Invalid request id');
+      const receipt = state.workoutAssignments.find((row) => row.created_by_coach_id === currentCoach().id && row.create_request_id === requestId);
+      if (!previewQuickReceiptAccessible(role, receipt)) return Promise.reject({ response: { data: { state: 'not_found' }, status: 404, statusText: 'Not Found', headers: {}, config }, config });
+      return ok({ state: 'committed', assignment: workoutAssignmentDetails(receipt) }, config);
+    }
+    const quickLibrary = path.match(/^\/programs\/quick-sessions\/([^/]+)\/save-to-library$/);
+    if (quickLibrary && method === 'post') {
+      if (role === 'client') return fail(config, 403, 'Coach access required');
+      const row = state.workoutAssignments.find((assignment) => assignment.id === quickLibrary[1] && assignment.kind === 'quick');
+      if (!previewQuickReceiptAccessible(role, row)) return Promise.reject({ response: { data: { state: 'not_found' }, status: 404, statusText: 'Not Found', headers: {}, config }, config });
+      if (row.library_template_id) return ok({ state: 'replayed', template_id: row.library_template_id }, config, 200);
+      const source = workoutDetails(row.workout_id);
+      const createdAt = new Date().toISOString();
+      const template = { id: id('workout'), coach_id: currentCoach().id, created_by: currentCoach().id, name: source.name, description: source.description || null, goal: source.goal || null, is_template: true, hidden: true, client_id: null, source_workout_id: source.id, archived: false, created_at: createdAt, updated_at: createdAt };
+      state.workouts.push(template);
+      // Client-specific loads and coach notes are stripped, as in the API.
+      replaceWorkoutExercises(template.id, source.exercises.map(({ id: _id, coach_notes: _coach, default_load_value: _load, default_load_unit: _unit, ...exercise }) => exercise));
+      row.library_template_id = template.id;
+      return ok({ state: 'saved', template_id: template.id }, config, 201);
     }
 
     const workoutAssignmentsClient = path.match(/^\/programs\/workout-assignments\/client\/([^/]+)$/);
@@ -1926,6 +2740,7 @@ export function installPreviewApi(api) {
     if (workoutAssignmentLoads && method === 'put') {
       const row = state.workoutAssignments.find((assignment) => assignment.id === workoutAssignmentLoads[1] && !assignment.archived);
       if (!row) return fail(config, 404, 'Assignment not found');
+      if (row.kind === 'quick' && previewQuickStarted(row.workout_id)) return previewQuickStartedConflict(config);
       replacePreviewLoads(state.workoutAssignmentExerciseLoads, 'workout_assignment_id', row.id, payload.exercise_loads || []);
       return ok(workoutAssignmentDetails(row), config);
     }
@@ -2003,13 +2818,23 @@ export function installPreviewApi(api) {
         })), config);
     }
     if (path === '/programs/client/assigned') {
+      // Client allowlist: the demo DTO is included, the internal reference mode is not.
+      const withMedia = (workout) => (workout ? {
+        ...workout,
+        exercises: previewMedia().hydrate((workout.exercises || []).map(({ video_link_mode: _mode, ...row }) => row), (row) => row.exercise_library_id),
+      } : workout);
       return ok({
-        programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => ({
-          ...a,
-          exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === a.id && !load.archived),
-          program: programDetails(a.program_id),
-        })),
-        workouts: state.workoutAssignments.filter((a) => a.client_id === client.id && !a.archived).map(workoutAssignmentDetails),
+        programs: state.programAssignments.filter((a) => a.client_id === client.id && !a.archived).map((a) => {
+          const program = programDetails(a.program_id);
+          return {
+            ...a,
+            exercise_loads: state.programAssignmentExerciseLoads.filter((load) => load.program_assignment_id === a.id && !load.archived),
+            program: program && { ...program, days: (program.days || []).map((day) => ({ ...day, workout: withMedia(day.workout) })) },
+          };
+        }),
+        // Client allowlist: quick sessions add only kind and the completion flag.
+        workouts: state.workoutAssignments.filter((a) => a.client_id === client.id && !a.archived).map(workoutAssignmentDetails)
+          .map(({ created_by_coach_id: _actor, library_template_id: _pointer, ...row }) => ({ ...row, workout: withMedia(row.workout) })),
       }, config);
     }
     const programExport = path.match(/^\/programs\/([^/]+)\/export\.pdf$/);
@@ -2133,6 +2958,68 @@ export function installPreviewApi(api) {
       return ok(row, config, 201);
     }
 
-    return fail(config, 404, `Preview route not mocked: ${method.toUpperCase()} ${path}`);
+    return rejectMissingMock(config, method, path);
+  };
+
+  api.defaults.adapter = async (config) => {
+    const method = String(config.method || 'get').toLowerCase();
+    const { path } = pathFromConfig(config);
+    // Latency: browser specs set cvf_preview_latency to
+    // [{ "path": "<regex>", "ms": 1500 }] to reproduce slow-network races on
+    // chosen routes; the toolbar writes one catch-all rule.
+    await new Promise((resolve) => setTimeout(resolve, 80 + previewLatencyFor(path)));
+    if (path.startsWith('/auth/')) return route(config);
+
+    const read = isPreviewRead(method, path);
+    const knownSave = !read && isKnownSave(method, path);
+    const mode = getPreviewFailMode();
+
+    // Fail next save: decided from the route table, BEFORE the handler runs,
+    // so nothing is changed and nothing is emitted. Reading and clearing the
+    // switch is synchronous, so concurrent saves cannot both consume it.
+    if (mode === 'write-once' && knownSave) {
+      setPreviewFailMode('off');
+      return fail(config, 503, 'Simulated failure (preview)');
+    }
+
+    // A read handler runs to completion inside the route() call (none of them
+    // awaits), so comparing fixture data just before and just after cannot be
+    // disturbed by another request. This keeps READS_THAT_CHANGE_DATA honest.
+    const runCheckedRead = () => {
+      const before = JSON.stringify(state);
+      const pending = route(config);
+      if (JSON.stringify(state) !== before) console.error(`${MUTATING_READ_MARKER} ${method.toUpperCase()} ${path}`);
+      return pending;
+    };
+
+    if (read) {
+      const changesData = readChangesData(method, path);
+      if (mode !== 'reads') return changesData ? route(config) : runCheckedRead();
+      // Fail loads. A read that changes data is failed without running its
+      // handler; it is a known route by being listed. Any other read runs
+      // first, purely so a missing or unsupported route passes through.
+      if (!changesData) {
+        try {
+          await runCheckedRead();
+        } catch (error) {
+          if (isPreviewGap(error)) throw error;
+        }
+      }
+      return fail(config, 503, 'Simulated failure (preview)');
+    }
+
+    if (knownSave) return route(config);
+
+    // A save that is not in PREVIEW_SAVE_ROUTES: fine when it is a missing or
+    // unsupported route, a bug in the table when the chain actually served it.
+    const flagUnlisted = () => console.error(`${UNLISTED_SAVE_MARKER} ${method.toUpperCase()} ${path}`);
+    try {
+      const response = await route(config);
+      flagUnlisted();
+      return response;
+    } catch (error) {
+      if (!isPreviewGap(error)) flagUnlisted();
+      throw error;
+    }
   };
 }

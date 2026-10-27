@@ -5,6 +5,7 @@ const express = require('express');
 // ---- In-memory Supabase fake (just enough surface for the programs router) ----
 const EMBEDS = {
   client: ['clients', 'client_id'],
+  client_owner: ['clients', 'client_id'],
   program: ['programs', 'program_id'],
   workout: ['workouts', 'workout_id'],
   library_exercise: ['exercise_library', 'exercise_library_id'],
@@ -15,7 +16,7 @@ function makeDb(seed) {
 
   function embed(row, selectStr) {
     const out = { ...row };
-    for (const match of String(selectStr || '').matchAll(/(\w+):(\w+)(?:!inner)?\(/g)) {
+    for (const match of String(selectStr || '').matchAll(/(\w+):(\w+)(?:!\w+)?\(/g)) {
       const [, alias] = match;
       const spec = EMBEDS[alias];
       if (!spec) continue;
@@ -468,5 +469,58 @@ test('client assigned view exposes no attribution, provenance, coach notes, or o
     assert.equal(exercise.sets, '3');
     // Coach-only routes stay closed to clients
     assert.equal((await call('GET', '/workouts')).status, 403);
+  });
+});
+
+test('client copies follow an admin reassignment: the former coach is masked, the new coach takes over', async (t) => {
+  await withServer(t, async (call) => {
+    setup('coachA');
+    // Admin reassigned client A to coach B; the copies still carry coach A from when they were cloned.
+    db.tables.clients.find((c) => c.id === CLI_A).coach_id = B;
+    assert.equal((await call('GET', `/workouts/${uuid(3)}`)).status, 404, 'former coach cannot read the workout copy');
+    assert.equal((await call('GET', `/${uuid(13)}`)).status, 404, 'former coach cannot read the program copy');
+    assert.equal((await call('GET', `/${uuid(13)}/export.pdf`)).status, 404, 'former coach cannot export the program copy');
+    assert.equal((await call('PUT', `/workouts/${uuid(3)}`, { name: 'Changed' })).status, 404);
+    assert.equal((await call('PUT', `/${uuid(13)}`, { name: 'Changed' })).status, 404);
+    assert.equal((await call('PATCH', `/workouts/${uuid(3)}/archive`)).status, 404);
+    assert.equal((await call('PATCH', `/${uuid(13)}/archive`)).status, 404);
+    assert.equal((await call('POST', `/workouts/${uuid(3)}/save-as-template`, {})).status, 404);
+    assert.equal((await call('POST', `/${uuid(13)}/save-as-template`, {})).status, 404);
+    assert.deepEqual(db.rpcCalls, [], 'no write RPC ran for the former coach');
+    assert.deepEqual(db.updates, [], 'no row changed for the former coach');
+
+    currentUser = users.coachB;
+    db.rpcResults.save_workout = { data: uuid(3), error: null };
+    db.rpcResults.save_program = { data: uuid(13), error: null };
+    assert.equal((await call('GET', `/workouts/${uuid(3)}`)).status, 200, 'new coach reads the workout copy');
+    assert.equal((await call('GET', `/${uuid(13)}`)).status, 200, 'new coach reads the program copy');
+    assert.equal((await call('PUT', `/workouts/${uuid(3)}`, { name: 'Changed' })).status, 200, 'new coach edits the workout copy');
+    assert.equal((await call('PUT', `/${uuid(13)}`, { name: 'Changed' })).status, 200, 'new coach edits the program copy');
+  });
+});
+
+test('F2 generic save-as-template routes a quick private source through the common-lock RPC with normal ownership masking', async (t) => {
+  await withServer(t, async (call) => {
+    setup('coachA');
+    const source = db.tables.workouts.find((w) => w.id === uuid(3));
+    source.source_workout_id = null;
+    source.name = 'Quick private source';
+    db.tables.workout_assignments.push({ id: uuid(99), workout_id: source.id, client_id: CLI_A, kind: 'quick', archived: false });
+    db.rpcResults.save_workout_as_template = { data: uuid(6), error: null };
+    const res = await call('POST', `/workouts/${source.id}/save-as-template`, {});
+    assert.equal(res.status, 201);
+    assert.deepEqual(db.rpcCalls, [{ name: 'save_workout_as_template', args: {
+      p_workout_id: source.id, p_coach_id: A, p_name: null, p_variation_of: null,
+    } }], 'no header name from the pre-RPC read overrides the coherent clone');
+    db.rpcCalls.length = 0;
+    currentUser = users.coachB;
+    assert.equal((await call('POST', `/workouts/${source.id}/save-as-template`, {})).status, 404);
+    assert.equal(db.rpcCalls.length, 0, 'foreign coach never invokes the service RPC');
+    currentUser = users.clientA;
+    assert.equal((await call('POST', `/workouts/${source.id}/save-as-template`, {})).status, 403);
+    currentUser = users.admin;
+    assert.equal((await call('POST', `/workouts/${source.id}/save-as-template`, { name: 'Explicit name' })).status, 201);
+    assert.equal(db.rpcCalls[0].args.p_coach_id, ADMIN);
+    assert.equal(db.rpcCalls[0].args.p_name, 'Explicit name');
   });
 });

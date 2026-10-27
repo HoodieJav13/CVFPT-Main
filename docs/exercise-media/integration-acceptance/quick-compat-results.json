@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "media publishes in the combined tree (photo-only)",
+      "status": "PASS",
+      "ms": 2143
+    },
+    {
+      "name": "Quick create, replay and recovery are unchanged by media",
+      "status": "PASS",
+      "ms": 119
+    },
+    {
+      "name": "client starts the Quick session: provenance and current media coexist",
+      "status": "PASS",
+      "ms": 146
+    },
+    {
+      "name": "started Quick prescription stays frozen while media stays live",
+      "status": "PASS",
+      "ms": 1915
+    },
+    {
+      "name": "save-to-library and ordinary assignments keep working; media follows the canonical exercise",
+      "status": "PASS",
+      "ms": 115
+    }
+  ],
+  "started_at": "2026-10-16T12:22:36.029Z",
+  "tested_source": {
+    "head": "98a839b5d848838b1fb4d001d7c3d0fa40ed31ca",
+    "tree": "0e3f281f82e6de98b208ef9cb1477dd55db07d48"
+  },
+  "passed": 5
+}

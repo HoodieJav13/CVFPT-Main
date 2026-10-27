@@ -125,7 +125,7 @@ hour of post-release watching.
 "Missing Description or aria-describedby for DialogContent". It is not a runtime error and
 its source was not isolated. It was not changed.
 
-**Still untested:** live private-program assignment (covered by local and hosted
+**Still untested as of 2026-10-01:** live private-program assignment (covered by local and hosted
 rollback-only probes only); notification delivery (a deliberate Notify-on test with a
 confirmed recipient has not been run, and delivery is best-effort); the real-auth browser
 suite (credentials unavailable). Leaked-password protection is a separate security task.

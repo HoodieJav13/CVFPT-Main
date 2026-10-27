@@ -5,7 +5,7 @@ const { requireCoach, canAccessClient } = require('../middleware/auth');
 const { validateUuid, validateNotifyFlag } = require('../validation/business');
 const { parseCreateRequest } = require('../lib/sessionSeries/createRequest');
 const { validateWorkoutIds } = require('../lib/sessionWorkouts');
-const { canAccessProgram, canAssignTemplate } = require('../security/access');
+const { canAccessProgram, canAssignTemplate, isTemplate } = require('../security/access');
 const { dispatchEmail, notifySeriesScheduled, notifySeriesCancelled } = require('../services/email');
 const { dispatchPush, sendToClient } = require('../services/push');
 const {
@@ -213,17 +213,22 @@ router.post('/', requireCoach, async (req, res) => {
     if (past) return res.status(400).json({ error: past });
 
     if (request.program_id) {
-      const { data: program, error: programError } = await supabaseAdmin.from('programs').select('id, coach_id, archived, is_template, hidden')
+      const { data: program, error: programError } = await supabaseAdmin.from('programs')
+        .select('id, coach_id, archived, is_template, hidden, client_id, client_owner:clients!client_id(coach_id)')
         .eq('id', request.program_id).eq('archived', false).maybeSingle();
       if (programError) throw programError;
-      if (!program || !canAccessProgram(req.user, program)) {
+      // A client's private program is usable only for that same client's series.
+      if (!program || !canAccessProgram(req.user, program)
+        || (!isTemplate(program) && program.client_id !== resolved.clientRow.id)) {
         return res.status(404).json({ error: 'Program not found' });
       }
       if (request.assign_program && !canAssignTemplate(program)) {
         return res.status(409).json({ error: 'This program cannot be assigned. Choose an unhidden template.' });
       }
     }
-    const workouts = await validateWorkoutIds(request.slots.map((slot) => slot.workout_id), coachId);
+    const workouts = await validateWorkoutIds(request.slots.map((slot) => slot.workout_id), {
+      user: req.user, coachId, clientId: resolved.clientRow.id,
+    });
     if (!workouts.ok) return res.status(400).json({ error: workouts.error });
 
     const { data, error } = await supabaseAdmin.rpc('schedule_session_series', {

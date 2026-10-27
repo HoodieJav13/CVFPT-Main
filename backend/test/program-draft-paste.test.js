@@ -27,10 +27,7 @@ let frontendDraftToolsPromise;
 
 function frontendDraftTools() {
   if (!frontendDraftToolsPromise) {
-    frontendDraftToolsPromise = fs.readFile(
-      path.join(__dirname, '../../frontend/src/lib/programDraft.js'),
-      'utf8',
-    ).then((source) => import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`));
+    frontendDraftToolsPromise = import(require('node:url').pathToFileURL(path.join(__dirname, '../../frontend/src/lib/programDraft.js')));
   }
   return frontendDraftToolsPromise;
 }

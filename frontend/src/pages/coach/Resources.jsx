@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
@@ -85,7 +85,6 @@ export default function CoachResources() {
     <div>
       <PageHeader
         title="Resources"
-        subtitle="Upload PDF handouts and control client access"
         action={<UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} categories={categories} setCategories={setCategories} onSaved={load} />}
       />
 
@@ -216,11 +215,10 @@ function UploadDialog({ open, onOpenChange, categories, setCategories, onSaved }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild><Button size="touch" className="rounded-xl" data-testid="resource-upload-open"><Plus className="mr-1.5 h-4 w-4" /> Upload PDF</Button></DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent aria-describedby={undefined} className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Upload resource</DialogTitle>
-          <DialogDescription>Upload a PDF handout, choose its category, and control who can access it.</DialogDescription>
-        </DialogHeader>
+                  </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5"><Label>Title *</Label><Input size="touch" required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} data-testid="resource-title-input" /></div>
           <div className="space-y-1.5"><Label>Description</Label><Textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} data-testid="resource-description-input" /></div>
@@ -262,11 +260,10 @@ function EditDialog({ resource, categories, onClose, onSaved }) {
   };
   return (
     <Dialog open onOpenChange={(value) => { if (!value) onClose(); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent aria-describedby={undefined} className="max-w-md">
         <DialogHeader>
           <DialogTitle>Edit resource</DialogTitle>
-          <DialogDescription>Update this resource&apos;s title, category, and public visibility.</DialogDescription>
-        </DialogHeader>
+                  </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5"><Label>Title *</Label><Input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} data-testid="resource-edit-title" /></div>
           <div className="space-y-1.5"><Label>Description</Label><Textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
@@ -306,11 +303,10 @@ function AssignDialog({ resource, clients, onClose, onSaved }) {
   };
   return (
     <Dialog open onOpenChange={(value) => { if (!value) onClose(); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent aria-describedby={undefined} className="max-w-md">
         <DialogHeader>
           <DialogTitle>Assign {resource.title}</DialogTitle>
-          <DialogDescription>Choose which clients can access this resource.</DialogDescription>
-        </DialogHeader>
+                  </DialogHeader>
         <div className="max-h-72 space-y-2 overflow-y-auto" data-testid="resource-client-list">
           {clients.map((client) => (
             <label key={client.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-border p-3 text-sm">

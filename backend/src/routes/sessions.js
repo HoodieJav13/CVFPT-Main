@@ -11,7 +11,7 @@ const {
   validateTimestamp,
   validateUuid,
 } = require('../validation/business');
-const { validateWorkoutAttachment } = require('../lib/sessionWorkouts');
+const { WORKOUT_OWNER_COLUMNS, validateWorkoutAttachment, visibleAttachedWorkout } = require('../lib/sessionWorkouts');
 const {
   dispatchEmail, notifySessionCancelRequested, notifySessionCancelled,
   notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
@@ -23,6 +23,16 @@ const { dateInTz, todayDateInTz } = require('../utils/time');
 
 // D1b (2026-08-06): clients may self-cancel up to this long before start.
 const CLIENT_CANCEL_CUTOFF_MS = 24 * 60 * 60 * 1000;
+
+// Session reads embed the attached workout with its ownership columns, then
+// drop it per viewer: a client's private copy is shown only to that client,
+// their current coach, or an admin (see lib/sessionWorkouts.js).
+const SESSION_WORKOUT = `workout:workouts(id, name, ${WORKOUT_OWNER_COLUMNS})`;
+const SESSION_WORKOUT_DETAIL = `workout:workouts(id, name, description, goal, ${WORKOUT_OWNER_COLUMNS})`;
+
+function withVisibleWorkout(user, session) {
+  return { ...session, workout: visibleAttachedWorkout(user, session.workout) };
+}
 
 async function attachWorkout(sessionId, workoutId) {
   const { error } = await supabaseAdmin.from('sessions')
@@ -58,13 +68,16 @@ async function attachLinkedLogs(sessions) {
 async function workoutPlanExercises(workoutId) {
   if (!workoutId) return [];
   const { data: exercises } = await supabaseAdmin.from('workout_exercises')
-    .select('id, custom_name, sets, reps, rest, client_notes, position, library_exercise:exercise_library(name)')
+    .select('id, custom_name, sets, reps, tracking_type, duration_value, duration_unit, distance_value, distance_unit, rest, client_notes, position, library_exercise:exercise_library(name)')
     .eq('workout_id', workoutId).eq('archived', false).order('position');
   return (exercises || []).map((exercise) => ({
     id: exercise.id,
     name: exercise.library_exercise?.name || exercise.custom_name || 'Exercise',
     sets: exercise.sets,
     reps: exercise.reps,
+    tracking_type: exercise.tracking_type ?? 'reps_weight',
+    duration_value: exercise.duration_value ?? null, duration_unit: exercise.duration_unit ?? null,
+    distance_value: exercise.distance_value ?? null, distance_unit: exercise.distance_unit ?? null,
     rest: exercise.rest,
     client_notes: exercise.client_notes,
   }));
@@ -118,7 +131,7 @@ router.get('/', requireCoach, async (req, res) => {
     const validation = validateSessionListQuery(req.query);
     if (!validation.ok) return res.status(400).json({ error: validation.error });
     let q = supabaseAdmin.from('sessions')
-      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name), series:session_series(id, rule, created_count)')
+      .select(`*, client:clients(id, name), coach:coaches(id, name), ${SESSION_WORKOUT}, series:session_series(id, rule, created_count)`)
       .eq('archived', false)
       .order('scheduled_at', { ascending: true });
     if (req.user.role !== 'admin') q = q.eq('coach_id', req.user.coach.id);
@@ -128,7 +141,7 @@ router.get('/', requireCoach, async (req, res) => {
     if (validation.value.to) q = q.lt('scheduled_at', validation.value.to);
     const { data, error } = await q;
     if (error) throw error;
-    return res.json(await attachLinkedLogs(data));
+    return res.json(await attachLinkedLogs((data || []).map((session) => withVisibleWorkout(req.user, session))));
   } catch (e) {
     logError('list sessions error', e);
     return res.status(500).json({ error: 'Failed to load sessions' });
@@ -200,7 +213,7 @@ router.post('/', requireCoach, async (req, res) => {
     const coachId = req.user.role === 'admin' ? clientRow.coach_id : req.user.coach.id;
     let workoutToAttach = null;
     if (Object.hasOwn(req.body || {}, 'workout_id') && req.body.workout_id !== null) {
-      const attachment = await validateWorkoutAttachment(req.body.workout_id, coachId);
+      const attachment = await validateWorkoutAttachment(req.body.workout_id, { user: req.user, coachId, clientId: clientRow.id });
       if (!attachment.ok) return res.status(400).json({ error: attachment.error });
       workoutToAttach = attachment.value;
     }
@@ -216,9 +229,10 @@ router.post('/', requireCoach, async (req, res) => {
     if (error) throw error;
     if (data.outcome !== 'scheduled') return res.status(409).json(conflictResponse(data));
     if (workoutToAttach) await attachWorkout(data.session.id, workoutToAttach);
-    const { data: created, error: readError } = await supabaseAdmin.from('sessions')
-      .select('*, client:clients(id, name), workout:workouts(id, name)').eq('id', data.session.id).single();
+    const { data: createdRow, error: readError } = await supabaseAdmin.from('sessions')
+      .select(`*, client:clients(id, name), ${SESSION_WORKOUT}`).eq('id', data.session.id).single();
     if (readError) throw readError;
+    const created = withVisibleWorkout(req.user, createdRow);
     await dispatchEmail(() => notifySessionScheduled(created));
     dispatchPush(() => sendToClient(created.client_id, {
       title: 'New session scheduled',
@@ -246,10 +260,14 @@ router.put('/:id', requireCoach, async (req, res) => {
       updates.location = locationValidation.value;
     }
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide a session field to update' });
-    const hasWorkoutField = Object.hasOwn(req.body || {}, 'workout_id');
+    // The editor always resends the stored attachment; keeping it as is needs
+    // no check, and only a change is validated, so a copy is never newly attached.
+    const changesWorkout = Object.hasOwn(req.body || {}, 'workout_id') && req.body.workout_id !== session.workout_id;
     let workoutToAttach = null;
-    if (hasWorkoutField) {
-      const attachment = await validateWorkoutAttachment(req.body.workout_id, session.coach_id);
+    if (changesWorkout) {
+      const attachment = await validateWorkoutAttachment(req.body.workout_id, {
+        user: req.user, coachId: session.coach_id, clientId: session.client_id,
+      });
       if (!attachment.ok) return res.status(400).json({ error: attachment.error });
       workoutToAttach = attachment.value;
     }
@@ -264,10 +282,11 @@ router.put('/:id', requireCoach, async (req, res) => {
     });
     if (error) throw error;
     if (data.outcome !== 'scheduled') return res.status(409).json(conflictResponse(data));
-    if (hasWorkoutField) await attachWorkout(session.id, workoutToAttach);
-    const { data: updated, error: readError } = await supabaseAdmin.from('sessions')
-      .select('*, client:clients(id, name), workout:workouts(id, name)').eq('id', session.id).single();
+    if (changesWorkout) await attachWorkout(session.id, workoutToAttach);
+    const { data: updatedRow, error: readError } = await supabaseAdmin.from('sessions')
+      .select(`*, client:clients(id, name), ${SESSION_WORKOUT}`).eq('id', session.id).single();
     if (readError) throw readError;
+    const updated = withVisibleWorkout(req.user, updatedRow);
     // Only a real change to when/how-long/where warrants an email — a
     // no-op resave must not tell the client their session moved.
     const meaningfullyChanged = new Date(updated.scheduled_at).getTime() !== new Date(session.scheduled_at).getTime()
@@ -520,7 +539,7 @@ router.get('/:id/coach-detail', requireCoach, async (req, res) => {
     const idValidation = validateUuid(req.params.id, 'Session ID');
     if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
     const { data: session } = await supabaseAdmin.from('sessions')
-      .select('*, client:clients(id, name), coach:coaches(id, name), workout:workouts(id, name, description, goal), series:session_series(id, rule, created_count)')
+      .select(`*, client:clients(id, name), coach:coaches(id, name), ${SESSION_WORKOUT_DETAIL}, series:session_series(id, rule, created_count)`)
       .eq('id', idValidation.value).eq('archived', false).maybeSingle();
     if (!session || (req.user.role !== 'admin' && session.coach_id !== req.user.coach.id)) {
       return res.status(404).json({ error: 'Session not found' });
@@ -534,12 +553,12 @@ router.get('/:id/coach-detail', requireCoach, async (req, res) => {
       .in('status', ['active', 'completed'])
       .order('started_at', { ascending: false });
     if (logsError) throw logsError;
-    const workoutExercises = await workoutPlanExercises(session.workout_id);
+    const workout = visibleAttachedWorkout(req.user, session.workout);
     return res.json({
       ...session,
       notes: notes || [],
       linked_workout_logs: logs || [],
-      workout: session.workout ? { ...session.workout, exercises: workoutExercises } : null,
+      workout: workout ? { ...workout, exercises: await workoutPlanExercises(session.workout_id) } : null,
     });
   } catch (e) {
     logError('coach session detail error', e);
@@ -556,20 +575,20 @@ router.get('/:id/client-detail', requireClient, async (req, res) => {
     const idValidation = validateUuid(req.params.id, 'Session ID');
     if (!idValidation.ok) return res.status(400).json({ error: idValidation.error });
     const { data: session } = await supabaseAdmin.from('sessions')
-      .select('*, coach:coaches(id, name), workout:workouts(id, name, description, goal)')
+      .select(`*, coach:coaches(id, name), ${SESSION_WORKOUT_DETAIL}`)
       .eq('id', idValidation.value).eq('client_id', req.user.client.id)
       .eq('archived', false).maybeSingle();
     if (!session) return res.status(404).json({ error: 'Session not found' });
     const { data: notes } = await supabaseAdmin.from('session_notes').select('*')
       .eq('session_id', session.id).eq('shared_with_client', true).eq('archived', false)
       .order('created_at');
-    const workoutExercises = await workoutPlanExercises(session.workout_id);
+    const workout = visibleAttachedWorkout(req.user, session.workout);
     const asked = await cancelRequestedSessionIds([session.id]);
     return res.json({
       ...session,
       shared_notes: notes || [],
       cancel_requested: asked.has(session.id),
-      workout: session.workout ? { ...session.workout, exercises: workoutExercises } : null,
+      workout: workout ? { ...workout, exercises: await workoutPlanExercises(session.workout_id) } : null,
     });
   } catch (e) {
     logError('client session detail error', e);
@@ -582,7 +601,7 @@ router.get('/client/mine', requireClient, async (req, res) => {
   try {
     const clientId = req.user.client.id;
     const { data: sessions, error } = await supabaseAdmin.from('sessions')
-      .select('*, coach:coaches(id, name), workout:workouts(id, name)')
+      .select(`*, coach:coaches(id, name), ${SESSION_WORKOUT}`)
       .eq('client_id', clientId).eq('archived', false)
       .order('scheduled_at', { ascending: false });
     if (error) throw error;
@@ -600,7 +619,7 @@ router.get('/client/mine', requireClient, async (req, res) => {
       (sessions || []).filter((s) => s.status === 'scheduled').map((s) => s.id),
     );
     return res.json((sessions || []).map((s) => ({
-      ...s, shared_notes: notesBySession[s.id] || [], cancel_requested: asked.has(s.id),
+      ...withVisibleWorkout(req.user, s), shared_notes: notesBySession[s.id] || [], cancel_requested: asked.has(s.id),
     })));
   } catch (e) {
     logError('client sessions error', e);

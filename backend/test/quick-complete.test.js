@@ -107,17 +107,17 @@ async function post(path, body) {
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
-test('quick-complete starts, completes-all with null values, flags quick_completed, finishes', async () => {
+test('quick-complete starts then delegates untracked completion to one atomic RPC', async () => {
   resetState();
   currentUser = { role: 'client', client: { id: CLIENT_ID, coach_id: COACH_ID } };
   const { status } = await post('/api/workout-logs/quick-complete', { workout_assignment_id: '11111111-1111-1111-1111-111111111111' });
   assert.equal(status, 201);
   const rpcNames = state.rpcCalls.map((c) => c.name);
-  assert.deepEqual(rpcNames, ['start_workout_log_v2', 'complete_all_workout_sets_v2', 'complete_workout_log_v2']);
-  // complete-all is called with no actual-value arguments — values stay null.
-  const allArgs = state.rpcCalls.find((c) => c.name === 'complete_all_workout_sets_v2').args;
-  assert.deepEqual(Object.keys(allArgs).sort(), ['p_client_id', 'p_entered_by', 'p_entered_by_coach_id', 'p_workout_log_id'].sort());
-  assert.ok(state.workoutUpdates.some((u) => u.quick_completed === true));
+  assert.deepEqual(rpcNames, ['start_workout_log_v2', 'quick_complete_workout_log_v2']);
+  // The atomic RPC clears only untouched defaults and delegates completion.
+  const completeArgs = state.rpcCalls.find((c) => c.name === 'quick_complete_workout_log_v2').args;
+  assert.deepEqual(completeArgs, { p_client_id: CLIENT_ID, p_workout_log_id: LOG_ID });
+  assert.equal(state.workoutUpdates.length, 0);
 });
 
 test('quick-complete emits a completed signal but no started twin', async () => {
@@ -127,9 +127,9 @@ test('quick-complete emits a completed signal but no started twin', async () => 
   // Started notification is never inserted on the quick path...
   const startedUpserts = state.notificationUpserts.flat().filter((n) => n.event_type === 'workout_started');
   assert.equal(startedUpserts.length, 0);
-  // ...and complete_workout_log_v2 (which inserts the completed notification
-  // via its own RPC body) ran exactly once.
-  assert.equal(state.rpcCalls.filter((c) => c.name === 'complete_workout_log_v2').length, 1);
+  // The atomic RPC delegates the existing completed notification once.
+  // Its real notification behavior is verified in the synthetic SQL suite.
+  assert.equal(state.rpcCalls.filter((c) => c.name === 'quick_complete_workout_log_v2').length, 1);
 });
 
 test('tracked client start notifies coaches with a started event', async () => {
