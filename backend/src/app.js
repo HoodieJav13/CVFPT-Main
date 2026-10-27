@@ -56,6 +56,8 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'cvf-pt-api' });
 });
 
+app.get('/api/preview-target', require('./routes/previewTarget').createPreviewTargetHandler());
+
 // Cron authentication lives inside this router. It must be mounted before
 // authenticated or parameterized application routes.
 app.use('/api/internal', require('./routes/internal').router);
