@@ -1,3 +1,4 @@
+import RescuePreviewEntry from '@/components/training/RescuePreviewEntry';
 import { setPrescription, trackingTargets } from '@/lib/workoutMetrics';
 import { trackingType } from '@/lib/workoutMetrics';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -76,6 +77,7 @@ export default function ClientPrograms() {
       } else {
         toast.error(errMsg(error));
       }
+      if (source.rescue) throw error;
     } finally {
       setStarting(null);
     }
@@ -133,7 +135,7 @@ export default function ClientPrograms() {
             <h2 className="font-display text-lg font-semibold">Current program</h2>
             {programAssignments.length === 0
               ? <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No current program assigned.</div>
-              : programAssignments.map((assignment) => <ProgramAssignmentCard key={assignment.id} assignment={assignment} starting={starting} onStart={startWorkout} />)}
+              : programAssignments.map((assignment) => <ProgramAssignmentCard key={assignment.id} assignment={assignment} starting={starting} onStart={startWorkout} hasActive={Boolean(activeLog)} />)}
           </section>
         )}
 
@@ -158,7 +160,7 @@ export default function ClientPrograms() {
   );
 }
 
-function ProgramAssignmentCard({ assignment, starting, onStart }) {
+function ProgramAssignmentCard({ assignment, starting, onStart, hasActive }) {
   const program = assignment.program || {};
   const frequency = program.frequency_days || program.days?.length || 0;
   return (
@@ -177,7 +179,8 @@ function ProgramAssignmentCard({ assignment, starting, onStart }) {
         <Accordion type="multiple" defaultValue={(program.days || []).length ? [`day-${program.days[0].day_number}`] : []} className="w-full">
           {(program.days || []).map((day) => (
             <WorkoutDay
-              key={day.id || day.day_number} day={day} assignmentId={assignment.id}
+              key={day.id || day.day_number} day={day} assignmentId={assignment.id} programId={program.id} hasActive={hasActive}
+              onRescue={(rescue) => onStart(`${assignment.id}-${day.id}`, { program_assignment_id: assignment.id, program_day_id: day.id, rescue })}
               loads={(assignment.exercise_loads || []).filter((load) => load.program_day_id === day.id)}
               loading={starting === `${assignment.id}-${day.id}`}
               onStart={() => onStart(`${assignment.id}-${day.id}`, { program_assignment_id: assignment.id, program_day_id: day.id })}
@@ -222,7 +225,7 @@ function WorkoutAssignmentCard({ assignment, starting, onStart }) {
   );
 }
 
-function WorkoutDay({ day, assignmentId, loads, loading, onStart }) {
+function WorkoutDay({ day, assignmentId, programId, hasActive, onRescue, loads, loading, onStart }) {
   return (
     <AccordionItem value={`day-${day.day_number}`} className="last:border-b-0">
       <AccordionTrigger className="min-h-11 py-3 hover:no-underline">
@@ -234,6 +237,7 @@ function WorkoutDay({ day, assignmentId, loads, loading, onStart }) {
       <AccordionContent className="space-y-3 pb-3">
         {day.notes && <p className="text-xs text-muted-foreground">{day.notes}</p>}
         <ExerciseList exercises={day.workout?.exercises || []} loads={loads} assignmentId={assignmentId} dayId={day.id} />
+        <RescuePreviewEntry programId={programId} dayId={day.id} dayNumber={day.day_number} assignmentId={assignmentId} onStart={onRescue} disabled={loading || hasActive} />
         <Button size="touch" disabled={loading} onClick={onStart} data-testid="start-program-workout">
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Start workout'}
         </Button>

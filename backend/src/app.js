@@ -70,6 +70,7 @@ const conductorRoutes = require('./routes/conductor');
 app.use('/api/programs', conductorRoutes.programSub);
 app.use('/api/coach-notices', conductorRoutes.notices);
 app.use('/api/group-sessions', conductorRoutes.groups);
+app.use('/api/programs', require('./routes/workoutRescue').createWorkoutRescueRouter());
 app.use('/api/programs', require('./routes/programs'));
 app.use('/api/resources', require('./routes/resources'));
 app.use('/api/resource-categories', require('./routes/resourceCategories'));

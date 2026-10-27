@@ -24,6 +24,7 @@ function resetState() {
   state.notificationUpserts = [];
   state.notificationUpdates = [];
   state.startOutcome = 'started';
+  state.startError = null;
 }
 
 const logRow = {
@@ -65,7 +66,8 @@ require.cache[supabasePath] = {
       },
       rpc(name, args) {
         state.rpcCalls.push({ name, args });
-        if (name === 'start_workout_log_v2') return Promise.resolve({ data: { outcome: state.startOutcome, workout_log_id: LOG_ID }, error: null });
+        if (name === 'start_workout_log_with_cues' && state.startError) return Promise.resolve({data:null,error:state.startError});
+        if (name === 'start_workout_log_with_cues') return Promise.resolve({ data: { outcome: state.startOutcome, workout_log_id: LOG_ID }, error: null });
         return Promise.resolve({ data: LOG_ID, error: null });
       },
     },
@@ -113,7 +115,7 @@ test('quick-complete starts then delegates untracked completion to one atomic RP
   const { status } = await post('/api/workout-logs/quick-complete', { workout_assignment_id: '11111111-1111-1111-1111-111111111111' });
   assert.equal(status, 201);
   const rpcNames = state.rpcCalls.map((c) => c.name);
-  assert.deepEqual(rpcNames, ['start_workout_log_v2', 'quick_complete_workout_log_v2']);
+  assert.deepEqual(rpcNames, ['start_workout_log_with_cues', 'quick_complete_workout_log_v2']);
   // The atomic RPC clears only untouched defaults and delegates completion.
   const completeArgs = state.rpcCalls.find((c) => c.name === 'quick_complete_workout_log_v2').args;
   assert.deepEqual(completeArgs, { p_client_id: CLIENT_ID, p_workout_log_id: LOG_ID });
@@ -170,3 +172,11 @@ test('migration widens the notification event type and adds quick_completed', ()
   assert.match(migration, /event_type in \('workout_completed', 'workout_started'\)/);
   assert.match(migration, /add column if not exists quick_completed boolean not null default false/);
 });
+
+ test('quick-complete missing cue migration is unavailable without exposing SQL details', async () => {
+  resetState(); currentUser={role:'client',authUserId:'verified-test-auth',client:{id:CLIENT_ID,coach_id:COACH_ID}};
+  state.startError={code:'42883',message:'SQL function signature should stay internal'};
+  const result=await post('/api/workout-logs/quick-complete',{workout_assignment_id:'11111111-1111-1111-1111-111111111111'});
+  assert.equal(result.status,503);assert.equal(result.body.error,'Workout start is currently unavailable.');
+  assert.equal(state.rpcCalls[0].args.p_auth_user_id,'verified-test-auth');
+ });

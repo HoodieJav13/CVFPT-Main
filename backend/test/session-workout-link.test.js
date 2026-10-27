@@ -87,7 +87,7 @@ require.cache[supabasePath] = {
       },
       rpc(name, args) {
         state.rpcCalls.push({ name, args });
-        if (name === 'start_workout_log_v2') return Promise.resolve({ data: { outcome: 'started', workout_log_id: LOG_ID }, error: null });
+        if (name === 'start_workout_log_with_cues') return Promise.resolve({ data: { outcome: 'started', workout_log_id: LOG_ID }, error: null });
         return Promise.resolve({ data: LOG_ID, error: null });
       },
     },
@@ -127,7 +127,7 @@ async function post(path, body) {
 }
 
 function startArgs() {
-  return state.rpcCalls.find((call) => call.name === 'start_workout_log_v2').args;
+  return state.rpcCalls.find((call) => call.name === 'start_workout_log_with_cues').args;
 }
 
 const clientUser = { role: 'client', client: { id: CLIENT_ID, coach_id: COACH_ID } };

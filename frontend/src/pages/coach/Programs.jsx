@@ -1,3 +1,5 @@
+import RescuePreviewEntry from '@/components/training/RescuePreviewEntry';
+import { ProgramHistoryButton } from '@/components/training/ProgramHistory';
 import { exerciseSummary } from '@/lib/builderMetrics';
 import { ExerciseRemovalNotice, useExerciseRemoval } from '@/components/training/ExerciseRemoval';
 import { ExerciseCatalogAction, useBuilderCatalog } from '@/components/training/ExerciseCatalogAction';
@@ -875,6 +877,7 @@ function StructuredProgramsTab({ programs, workouts, library, reload, onCatalogC
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="font-display font-semibold">{program.name}</p>
+                  <RescuePreviewEntry programId={program.id} dayId={program.days?.[0]?.id} programName={program.name} />
                   <p className="text-xs text-muted-foreground mt-1">{frequencyLabel(program.frequency_days)} - {program.exercise_count} total exercises</p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"><AuthorByline author={program.author} className="whitespace-nowrap" />{program.hidden && <HiddenBadge />}</div>
                   <Accordion
@@ -909,6 +912,7 @@ function StructuredProgramsTab({ programs, workouts, library, reload, onCatalogC
                   </Accordion>
                 </div>
                 <div className="flex flex-wrap gap-1.5 sm:shrink-0 sm:justify-end">
+                  <ProgramHistoryButton programId={program.id} programName={program.name} clientName={program.is_template === false ? 'Client program' : null} />
                   <IconButton label={`Save a variation of ${program.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => duplicate(program)} data-testid="program-duplicate-button"><Copy className="h-3.5 w-3.5" /></IconButton>
                   <IconButton label={program.hidden ? `Unhide ${program.name}` : `Hide ${program.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(program)} data-testid="program-hide-button">{program.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</IconButton>
                   <IconButton label={`Export ${program.name} as PDF`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => exportPdf(program)} data-testid="program-export-pdf-button"><Download className="h-3.5 w-3.5" /></IconButton>

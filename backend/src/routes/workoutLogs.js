@@ -1,3 +1,5 @@
+const { normalizeRescueStart, rescueErrorStatus, UUID: RESCUE_UUID } = require('../lib/workoutRescue');
+const { registerCueRetryRoutes, cueErrorStatus } = require('./cueRetry');
 const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
@@ -14,6 +16,7 @@ const { registerSessionRoutes, sessionExtras, setEventEnvelope } = require('./wo
 
 const router = express.Router();
 router.use(requireAuth);
+registerCueRetryRoutes(router, { db: supabaseAdmin });
 
 function validLoad(value, unit) {
   if (value === null || value === undefined || value === '') return unit === null || unit === undefined || unit === '';
@@ -143,6 +146,7 @@ async function updateSetAtHandlerBoundary({ body, set, exercise, mutate, now }) 
 }
 
 function workoutRpcStatus(error) {
+  if (error?.code?.startsWith('P04') || ['42883', 'PGRST202'].includes(error?.code)) return cueErrorStatus(error);
   const message = error?.message || '';
   if (/not found|Assigned workout/i.test(message)) return 404;
   if (/not active|cannot be changed|logged changes/i.test(message)) return 409;
@@ -573,6 +577,8 @@ router.post('/start', async (req, res) => {
       || (!programSource && !workoutAssignmentId)) {
       return res.status(400).json({ error: 'Choose one assigned workout' });
     }
+    const rescue = body.rescue == null ? null : normalizeRescueStart(body.rescue);
+    if (rescue && (!RESCUE_UUID.test(programAssignmentId || '') || !RESCUE_UUID.test(programDayId || '') || workoutAssignmentId)) return res.status(400).json({ error: 'Invalid Rescue assignment' });
     const explicitSessionId = body.session_id || null;
     if (explicitSessionId !== null && (typeof explicitSessionId !== 'string' || !UUID_RE.test(explicitSessionId))) {
       return res.status(400).json({ error: 'Invalid session' });
@@ -600,11 +606,14 @@ router.post('/start', async (req, res) => {
       ?? await resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId });
 
     const stamp = actorStamp(req.user);
-    const { data, error } = await supabaseAdmin.rpc('start_workout_log_v2', {
+    const { data, error } = await supabaseAdmin.rpc(rescue ? 'start_workout_rescue_with_cues' : 'start_workout_log_with_cues', rescue ? {
+      p_auth_id: req.user.authUserId, p_client_id: clientId, p_assignment_id: programAssignmentId, p_day_id: programDayId, p_request: rescue, p_session_id: sessionId,
+    } : {
       p_client_id: clientId,
       p_program_assignment_id: programAssignmentId,
       p_program_day_id: programDayId,
       p_workout_assignment_id: workoutAssignmentId,
+      p_auth_user_id: req.user.authUserId,
       p_started_by: stamp.entered_by,
       p_started_by_coach_id: stamp.entered_by_coach_id,
       p_session_id: sessionId,
@@ -626,8 +635,8 @@ router.post('/start', async (req, res) => {
     return res.status(data.outcome === 'started' ? 201 : 200).json({ outcome: data.outcome, workout_log: log });
   } catch (error) {
     logError('start workout log error', error);
-    const status = workoutRpcStatus(error);
-    return res.status(status).json({ error: status === 500 ? 'Failed to start workout' : error.message });
+    const status = req.body?.rescue != null ? rescueErrorStatus(error) : workoutRpcStatus(error);
+    return res.status(status).json({ error: status === 503 ? 'Workout start is currently unavailable.' : status === 500 ? 'Failed to start workout' : error.message });
   }
 });
 
@@ -943,11 +952,12 @@ router.post('/quick-complete', requireClient, async (req, res) => {
     }
     const clientId = req.user.client.id;
 
-    const { data: started, error: startErr } = await supabaseAdmin.rpc('start_workout_log_v2', {
+    const { data: started, error: startErr } = await supabaseAdmin.rpc('start_workout_log_with_cues', {
       p_client_id: clientId,
       p_program_assignment_id: programAssignmentId,
       p_program_day_id: programDayId,
       p_workout_assignment_id: workoutAssignmentId,
+      p_auth_user_id: req.user.authUserId,
       p_started_by: 'client',
       p_started_by_coach_id: null,
       p_session_id: await resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId }),
@@ -975,7 +985,7 @@ router.post('/quick-complete', requireClient, async (req, res) => {
   } catch (error) {
     logError('quick complete workout error', error);
     const status = workoutRpcStatus(error);
-    return res.status(status).json({ error: status === 500 ? 'Could not mark the workout done' : error.message });
+    return res.status(status).json({ error: status === 503 ? 'Workout start is currently unavailable.' : status === 500 ? 'Could not mark the workout done' : error.message });
   }
 });
 

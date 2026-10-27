@@ -1,3 +1,4 @@
+import { CueRetryEntry } from '@/components/training/CueRetryEntry';
 import { workoutEntryErrorMessage, workoutEntryErrors } from '@/lib/workoutEntryErrors';
 import { performedSet, trackingType, tracks } from '@/lib/workoutMetrics';
 import { WorkoutViewport } from '@/components/training/WorkoutViewport';
@@ -942,6 +943,7 @@ export default function WorkoutTracker() {
               />
             </CardHeader>
             <CardContent className="space-y-3">
+              <CueRetryEntry log={log} exercise={exercise} />
               <LastTimeLine
                 state={lastTimeState[exercise.id]}
                 occurrence={lastTimeCache.current[exercise.id]}

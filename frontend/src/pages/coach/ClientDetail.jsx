@@ -1,3 +1,5 @@
+import RescuePreviewEntry from '@/components/training/RescuePreviewEntry';
+import { ProgramHistoryButton } from '@/components/training/ProgramHistory';
 import { useFormChanges } from '@/context/UnsavedChangesContext';
 import ClientInviteCard from '@/components/ClientInviteCard';
 import CoachNotes from '@/components/CoachNotes';
@@ -219,7 +221,7 @@ export default function ClientDetail() {
           <SessionsTab clientId={client.id} />
         </TabsContent>
         <TabsContent value="programs">
-          <ProgramsTab clientId={client.id} sessionContextId={sessionContextId} />
+          <ProgramsTab clientName={client.name} clientId={client.id} sessionContextId={sessionContextId} />
         </TabsContent>
       </Tabs>
         </div>
@@ -872,7 +874,7 @@ function SessionsTab({ clientId }) {
   );
 }
 
-function ProgramsTab({ clientId, sessionContextId = null }) {
+function ProgramsTab({ clientId, clientName, sessionContextId = null }) {
   const navigate = useNavigate();
   const { user, sessionEpoch } = useAuth();
   const [starting, setStarting] = useState(null);
@@ -1293,9 +1295,11 @@ function ProgramsTab({ clientId, sessionContextId = null }) {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
               <div className="min-w-0">
                 <p className="font-display font-semibold">{p.name}</p>
+                <RescuePreviewEntry programId={p.id} dayId={p.days?.find((day) => day.day_number === 1)?.id} programName={p.name} />
                 <p className="text-xs text-muted-foreground mt-0.5">{p.frequency_days} {p.frequency_days === 1 ? 'day' : 'days'}/week - {p.exercise_count} exercises</p>
               </div>
               <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
+                <ProgramHistoryButton programId={p.id} programName={p.name} clientName={clientName} />
                 <ExistingLoadEditor type="program" assignment={assignment} selection={p} onSaved={load} />
                 <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => setTemplateTarget({ kind: 'program', id: p.id, name: `${p.name} (variation)`, parent: programTemplateParent(p), label: 'program' })} data-testid="save-program-template-button">Save as template</Button>
                 <Button size="sm" variant="ghost" className="min-h-11 rounded-lg text-muted-foreground sm:min-h-0" onClick={() => unassign(p)} data-testid="unassign-program-button">Unassign</Button>

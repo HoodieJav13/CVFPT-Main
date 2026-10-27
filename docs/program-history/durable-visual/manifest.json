@@ -1,0 +1,18 @@
+[
+  {
+    "file": "after-restart-390.png",
+    "width": 390,
+    "height": 844,
+    "source": "c336b494ddb8cf75d99d3e1331bac5a50fa930d9",
+    "sha256": "f2688aad03434e858e78d9abbe3189087ecfde9f681288fcca68cf3808dbb557",
+    "state": "After real local Express program PUT and API process restart; dialog reads persisted PostgreSQL/WASM revisions; fictional surrounding app shell with explicit test-only request binding"
+  },
+  {
+    "file": "after-restart-1440.png",
+    "width": 1440,
+    "height": 950,
+    "source": "c336b494ddb8cf75d99d3e1331bac5a50fa930d9",
+    "sha256": "a6f728ff4b84f8b69764c0d5c09a6e47616577999d91aa25c5eeb8af4b325bc4",
+    "state": "After real local Express program PUT and API process restart; dialog reads persisted PostgreSQL/WASM revisions; fictional surrounding app shell with explicit test-only request binding"
+  }
+]

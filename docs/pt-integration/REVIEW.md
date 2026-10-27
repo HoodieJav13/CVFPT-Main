@@ -1,0 +1,14 @@
+# Bounded integration self-review
+
+This is an author self-review, permitted by the task's no-extra-agent/no-model-service constraint. It is not an independent third-party review. Reopened actual source diffs, migrations and raw test output; did not rely only on the implementation narrative.
+
+| Finding | Evidence and resolution |
+|---|---|
+| Critical combined start omission | Input Rescue did not call cue binding. Real trigger failure regression initially reported “Missing expected rejection.” New service-only combined entry binds after final omissions/prescriptions and before receipt. Injected cue and receipt failures roll back new log/children/links/receipts. |
+| Lock inversion at new interfaces | Reviewed actual History/global/client locks and canonical Quick order. Combined new paths share the history lock first; ordinary/cue/history-wrapped-edit Quick paths take Quick lock before client/assignment/source locks. Supported assignment/load writers are fenced by assignment share locks. Native races remain untested, explicitly gated. |
+| Missing integration migration could silently use old Rescue behavior | Backend now names the new combined function. Temporarily renaming that function in the synthetic store produces actual HTTP503 and zero new log rows, then restoring it lets the full flow pass. No fallback. |
+| Coach cannot approve private assigned-program choices from template list | Normal list correctly returns only templates. A real browser assertion on the private client card failed before the scoped two-line component mount. Normal assigned-card author/save/restart/client-start proof now passes. No approval propagation. |
+| Adapter missing program embed | The normal client assignment path initially returned no programs because the test SQL adapter omitted `program:programs(*)`. Added that test-only embed plus direct response assertion, preserving the actual application handler/query. No product authorization weakened. |
+| Stale plan reapproval | Browser initially tried Save on intentionally disabled stale options. Harness now uses actual Start fresh/Add option controls and explicitly reauthors omitted sources/equipment. No application bypass. |
+
+Checked: service-only table/RPC ACLs, invoker/empty search_path, RLS/no browser policies, append-only revisions/receipts, exact actor/client separation, supported history author/name and unknown observations, no completed-record writes or fixture journaling, exact assignment/day/source matching, stale loads/source/plan, replay vs fresh-start behavior, failure transaction boundaries, normal-mode gates, root deployment boundaries and dependency/migration byte preservation. No unresolved introduced source finding remains in the local proof. Source review cannot establish native scheduling, real provider auth or hosted schema-cache behavior; release gates remain in RELEASE-PACKET.md.

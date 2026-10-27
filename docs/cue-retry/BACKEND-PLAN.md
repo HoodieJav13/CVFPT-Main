@@ -1,0 +1,7 @@
+# Authorized backend continuation
+
+Use the existing service-role Express boundary and current database actor/ownership checks. Add separate cue and append-only request-receipt tables, plus invoker RPCs. A new start wrapper authorizes and locks the current client, delegates existing v2 workout creation and binds exact-source waiting cues in that transaction. It does not replace existing program writers or mutate completed workout records. Preserve text/source/link immutability, revision fencing, source/retry freshness, soft cancellation and explicit coach verdicts.
+
+The normal frontend uses the same cue panel and endpoint; the opt-in IndexedDB demo stays explicitly local. Test actual migration chain and mounted Express lifecycle on a disposable disk-backed PGlite store, including another process reopening it, rollback faults, request replay, stale plans, current ownership, wrong client, browser-role grants and completed-history immutability. PGlite/Supabase transport and fictional provider auth adapters are test-only and disclosed. No hosted operation or publication. No merge with parallel branches.
+
+Program History c5590a2 uses separate program/workout edit wrappers and migration20261027190000. Cue Retry must keep its ledger separate and need not modify those writers. Rescue's later transactional start integration must call the exposed cue binding helper inside its own authorized start transaction; preserve exact retained source ids.

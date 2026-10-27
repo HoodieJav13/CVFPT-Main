@@ -28,6 +28,7 @@ function reset() {
   rpcCalls = [];
   rpcHandlers = {
     save_workout: () => ({ data: WORKOUT, error: null }),
+    save_workout_with_program_history: () => ({ data: WORKOUT, error: null }),
   };
   tables = {
     clients: [{ id: CLIENT, coach_id: COACH, name: 'Synthetic Client', archived: false }],
@@ -108,7 +109,7 @@ async function call(method, path, body) {
   const res = await fetch(`${base}/api/programs${path}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   return { status: res.status, body: await res.json() };
 }
-const savedExercises = () => rpcCalls.find((c) => c.name === 'save_workout')?.args.p_exercises;
+const savedExercises = () => rpcCalls.find((c) => ['save_workout','save_workout_with_program_history'].includes(c.name))?.args.p_exercises;
 const newWorkout = (exercises) => ({ name: 'Synthetic template', exercises });
 
 test('new inherit writes store no copied URL and send an explicit mode to the writer', async () => {

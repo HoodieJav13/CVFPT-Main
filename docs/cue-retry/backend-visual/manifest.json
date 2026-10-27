@@ -1,0 +1,19 @@
+{
+  "source": "Exact head in task HANDOFF.md; file hashes below",
+  "scope": "Normal-mode UI, real Express/requireAuth and service-role PostgreSQL/WASM SQL. Fictional provider verifier/SQL transport and empty shell counters are test adapters. API process restarted before these captures. No preview API/IndexedDB adapter.",
+  "viewports": [
+    "390x844",
+    "1440x1000"
+  ],
+  "source_sha256": {
+    "backend/src/routes/cueRetry.js": "841eda9bf227b29fe0a628e30bee704d2cd78db29fd4826fd3742c66643f777d",
+    "backend/src/routes/workoutLogs.js": "20486978696e98561841198457e11976fa09d064ff971b0a5826f95f57a90652",
+    "frontend/src/components/training/CueRetryEntry.jsx": "841fe21623905d1d8ee572f40647442fdeea31e3ffe4f8220987189bae28d8af",
+    "frontend/src/components/training/LocalCueRetry.jsx": "411acfda17b1215524b1682951089d4c6816ce856174d56f87634f62f3cf35fd",
+    "supabase/migrations/20261027203000_exercise_cue_retry.sql": "bcfb33d911b6a59f7bb66d9e663cd61dc2f6e2ee3d14bedb82d75bed5584f864"
+  },
+  "images": {
+    "backend-normal-390.png": "53bbad47b6d29528f15740b1642b5ffb3a94faf1ea71a29049270e52332ffab4",
+    "backend-normal-1440.png": "5568bf59a88dae564e4b64cd9ae65307df7e788c433c6ab87ddb8d4111eda62e"
+  }
+}

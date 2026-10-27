@@ -1,0 +1,3 @@
+import {defineConfig} from '../../../frontend/node_modules/@playwright/test/index.mjs';
+import {fileURLToPath} from 'node:url';
+export default defineConfig({testDir:'.',testMatch:'browser-check.spec.mjs',workers:1,retries:0,reporter:'line',timeout:120000,outputDir:'../../../../evidence/normal-browser',use:{baseURL:'http://127.0.0.1:58433',serviceWorkers:'block',actionTimeout:10000},webServer:{command:'node node_modules/vite/bin/vite.js --config ../supabase/tests/pt_integration/vite.config.mjs',cwd:fileURLToPath(new URL('../../../frontend',import.meta.url)),url:'http://127.0.0.1:58433',reuseExistingServer:false,env:{REACT_APP_PREVIEW_MODE:'false',REACT_APP_BACKEND_URL:''}}});
