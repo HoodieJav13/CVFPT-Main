@@ -30,7 +30,7 @@ try{
  insert into public.programs(id,coach_id,client_id,is_template,name,frequency_days) values('${id(6)}','${id(1)}','${id(11)}',false,'Cue Program',2);
  insert into public.program_days(id,program_id,day_number,workout_id) values('${id(71)}','${id(6)}',1,'${id(5)}'),('${id(72)}','${id(6)}',2,'${id(5)}');
  insert into public.program_assignments(id,program_id,client_id) values('${id(7)}','${id(6)}','${id(11)}');`);
- 
+
  await db.exec(`insert into public.workout_exercises(id,workout_id,exercise_library_id,custom_name,sets,reps,position) values('${id(62)}','${id(5)}','${id(51)}','Same library, different source','2','8',1),('${id(63)}','${id(5)}',null,'Dropped core','1','10',2);`);
  const start=()=>rpc('start_workout_log_with_cues',[id(11),id(7),id(71),null,'client',null,null,id(111)]);
  const finish=async log=>{await rpc('complete_all_workout_sets_v2',[log,id(11),'client',null]);await rpc('complete_workout_log_v2',[log,id(11),null,null,null]);};
