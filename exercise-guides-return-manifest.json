@@ -1,0 +1,1355 @@
+{
+  "schema_version": 1,
+  "kind": "cvfpt-exercise-guides-return",
+  "completion_state": "COMPLETE-LOCAL",
+  "protocol_version": "v1.1",
+  "branch": "claude/youtube-exercise-guides-20261016",
+  "upstream": null,
+  "push_url": "DISABLED-LOCAL-ONLY",
+  "baseline": {
+    "commit": "f3c063c4997b1ad49a1e7ceca5107ee6aae3c1dd",
+    "tree": "90df1beaabf6222874075844b482635972f35a74"
+  },
+  "head": {
+    "commit": "40c2a20840529a268fb20fd12976a582af242527",
+    "tree": "1a42cc388f86ff85d462244e5d000f30d32fc5b6"
+  },
+  "commits": [
+    {
+      "sha": "65fa80ce762d275fae9a55908f22bb975faa7a53",
+      "subject": "Add explicit inherit/override demo references and strict YouTube parsing"
+    },
+    {
+      "sha": "81d7f909a03d7226e5bf5e22632888dd3cd8dac4",
+      "subject": "Add the photo pipeline without a video worker: image processor, upload transport, inline leased processing"
+    },
+    {
+      "sha": "0aaff11ecf50610b267124847f0d7cbc6c638216",
+      "subject": "Add click-to-load YouTube demos and optional local still selection"
+    },
+    {
+      "sha": "afca7f8e6594180ae371d155b5fdc9efc182096c",
+      "subject": "Move focus to the demo player region after Play"
+    },
+    {
+      "sha": "24906c8b72c02411a8f262bed1f02712d22376ae",
+      "subject": "Refine guide actions and the still option at phone widths"
+    },
+    {
+      "sha": "485f4721d2f9c3fc7b22bee67663074652b8ca18",
+      "subject": "Fall back to the exercise name when a demo dialog photo fails"
+    },
+    {
+      "sha": "0aa35f3a23f1765221e25467c803d388fc9fed99",
+      "subject": "Calm the demo player failure states and fit short windows"
+    },
+    {
+      "sha": "e80d0c985784ec092ca6511285765360657f3e7b",
+      "subject": "Point the still confirmation to the upload above it"
+    },
+    {
+      "sha": "fb5d06e34a2ecc30e9411f28d74d24294ae9bcdc",
+      "subject": "Record paired before/after captures for exercise guides"
+    },
+    {
+      "sha": "6b2118c56166e82aeb3be21f19cb28f020acb8a4",
+      "subject": "Document Photo + YouTube guides: design, runbook, gates, test matrix"
+    },
+    {
+      "sha": "11b372ef7d184ea17c2c49dc31a4bed04c4b48d8",
+      "subject": "Keep duplicated legacy-link rows saveable with the same demo"
+    },
+    {
+      "sha": "d7b65fc1065d841fb15e0c21ab97074741f203b4",
+      "subject": "Drop a still export that finishes after its clip or selector is gone"
+    },
+    {
+      "sha": "49d30a64c4548e113a1eeb595055740af1dbd36e",
+      "subject": "Resolve every saveable external link; keep strictness for embeds"
+    },
+    {
+      "sha": "88b2d7afa5658ef6ffea4f83a57a5d6718fb1f36",
+      "subject": "Correct guides docs after the independent review"
+    },
+    {
+      "sha": "f6b89eb8ccbc97231e13c678045b9823d00609d9",
+      "subject": "Refresh guides captures at the final code head; settle card framing"
+    },
+    {
+      "sha": "40c2a20840529a268fb20fd12976a582af242527",
+      "subject": "Record the independent review, fix pass and final verification"
+    }
+  ],
+  "footprint": {
+    "shortstat": "171 files changed, 11719 insertions(+), 166 deletions(-)",
+    "files": [
+      {
+        "path": ".gitignore",
+        "added": "4",
+        "deleted": "0"
+      },
+      {
+        "path": "CLAUDE.md",
+        "added": "4",
+        "deleted": "1"
+      },
+      {
+        "path": "backend/integration/exercise-guides-local.cjs",
+        "added": "397",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/integration/exercise-media-dev.cjs",
+        "added": "60",
+        "deleted": "12"
+      },
+      {
+        "path": "backend/integration/exercise-media-harness.cjs",
+        "added": "5",
+        "deleted": "1"
+      },
+      {
+        "path": "backend/package-lock.json",
+        "added": "630",
+        "deleted": "1"
+      },
+      {
+        "path": "backend/package.json",
+        "added": "4",
+        "deleted": "1"
+      },
+      {
+        "path": "backend/scripts/exercise-media-worker.cjs",
+        "added": "6",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/scripts/generate-exercise-media-fixtures.cjs",
+        "added": "11",
+        "deleted": "7"
+      },
+      {
+        "path": "backend/src/lib/exerciseDemo.js",
+        "added": "106",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/src/lib/exerciseMedia/config.js",
+        "added": "13",
+        "deleted": "2"
+      },
+      {
+        "path": "backend/src/lib/exerciseMedia/repository.js",
+        "added": "7",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/src/lib/exerciseMedia/runtime.js",
+        "added": "30",
+        "deleted": "11"
+      },
+      {
+        "path": "backend/src/lib/exerciseMedia/service.js",
+        "added": "126",
+        "deleted": "1"
+      },
+      {
+        "path": "backend/src/lib/exerciseMedia/validation.js",
+        "added": "5",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/src/lib/externalVideo.js",
+        "added": "52",
+        "deleted": "2"
+      },
+      {
+        "path": "backend/src/lib/programDraft.cjs",
+        "added": "20",
+        "deleted": "2"
+      },
+      {
+        "path": "backend/src/lib/trainingLibrary.js",
+        "added": "3",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/src/routes/exerciseMedia.js",
+        "added": "56",
+        "deleted": "6"
+      },
+      {
+        "path": "backend/src/routes/programs.js",
+        "added": "16",
+        "deleted": "6"
+      },
+      {
+        "path": "backend/src/routes/workoutLogs.js",
+        "added": "12",
+        "deleted": "18"
+      },
+      {
+        "path": "backend/src/services/exerciseMedia/imageProcessor.js",
+        "added": "198",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/src/services/exerciseMedia/localStore.js",
+        "added": "126",
+        "deleted": "5"
+      },
+      {
+        "path": "backend/src/services/exerciseMedia/photoJob.js",
+        "added": "51",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/src/services/exerciseMedia/supabaseImageStore.js",
+        "added": "152",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/test/exercise-demo.test.js",
+        "added": "205",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/test/exercise-guide-references.test.js",
+        "added": "382",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/test/exercise-media-config.test.js",
+        "added": "45",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/test/exercise-media-content-stream.test.js",
+        "added": "86",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/test/exercise-media-image-processor.test.js",
+        "added": "217",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/test/exercise-media-photo-routes.test.js",
+        "added": "102",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/test/exercise-media-photo-store.test.js",
+        "added": "189",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/test/exercise-media-photo-uploads.test.js",
+        "added": "350",
+        "deleted": "0"
+      },
+      {
+        "path": "backend/test/tracker-exercise-videos.test.js",
+        "added": "7",
+        "deleted": "3"
+      },
+      {
+        "path": "docs/exercise-guides/INDEPENDENT-REVIEW.md",
+        "added": "128",
+        "deleted": "0"
+      },
+      {
+        "path": "docs/exercise-guides/TEST-MATRIX.md",
+        "added": "135",
+        "deleted": "0"
+      },
+      {
+        "path": "docs/exercise-guides/design.md",
+        "added": "294",
+        "deleted": "0"
+      },
+      {
+        "path": "docs/exercise-guides/hosted-gates.md",
+        "added": "151",
+        "deleted": "0"
+      },
+      {
+        "path": "docs/exercise-guides/local-runbook.md",
+        "added": "153",
+        "deleted": "0"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/client-programs-baseline-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/client-programs-baseline-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/client-programs-baseline-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/client-programs-dialog-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/client-programs-dialog-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/client-programs-dialog-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/client-programs-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/client-programs-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/client-programs-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-media-photos-baseline-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-media-photos-baseline-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-media-photos-baseline-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-media-photos-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-media-photos-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-media-photos-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-quick-demo-baseline-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-quick-demo-baseline-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-quick-demo-baseline-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-quick-demo-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-quick-demo-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-quick-demo-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-still-confirmed-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-still-confirmed-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-still-confirmed-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-custom-demo-baseline-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-custom-demo-baseline-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-custom-demo-baseline-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-custom-demo-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-custom-demo-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-custom-demo-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-legacy-demo-baseline-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-legacy-demo-baseline-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-legacy-demo-baseline-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-legacy-demo-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-legacy-demo-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-legacy-demo-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-library-demo-baseline-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-library-demo-baseline-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-library-demo-baseline-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-library-demo-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-library-demo-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/coach-workout-library-demo-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/demo-dialog-error-150-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/demo-dialog-facade-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/demo-dialog-facade-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/demo-dialog-facade-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/demo-dialog-limited-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/demo-dialog-loading-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/demo-dialog-photo-unavailable-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/demo-dialog-player-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/demo-dialog-player-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/demo-dialog-player-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/history-demo-dialog-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/history-demo-dialog-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/history-demo-dialog-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/history-detail-baseline-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/history-detail-baseline-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/history-detail-baseline-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/history-detail-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/history-detail-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/history-detail-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/refine-keyboard-short-proposed-390x420.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/refine-zoom200-player-proposed-640x450.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-demo-focus-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-demo-focus-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-demo-focus-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-external-card-baseline-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-external-card-baseline-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-external-card-baseline-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-external-card-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-external-card-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-external-card-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-long-name-baseline-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-long-name-baseline-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-long-name-baseline-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-long-name-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-long-name-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-long-name-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-top-baseline-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-top-baseline-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-top-baseline-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-top-proposed-1440x900.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-top-proposed-320x740.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/images/tracker-top-proposed-390x844.png",
+        "added": "-",
+        "deleted": "-"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/index.html",
+        "added": "71",
+        "deleted": "0"
+      },
+      {
+        "path": "docs/exercise-guides/visual-review/manifest.json",
+        "added": "2631",
+        "deleted": "0"
+      },
+      {
+        "path": "docs/exercise-media/integration-release-gates.md",
+        "added": "4",
+        "deleted": "0"
+      },
+      {
+        "path": "docs/exercise-media/integration-return-f3c063c/RETURN.md",
+        "added": "83",
+        "deleted": "0"
+      },
+      {
+        "path": "docs/exercise-media/integration-return-f3c063c/exercise-media-return-manifest.json",
+        "added": "185",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/e2e/exercise-guides-editor.spec.mjs",
+        "added": "89",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/e2e/exercise-guides-local.spec.mjs",
+        "added": "139",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/e2e/exercise-guides-player.spec.mjs",
+        "added": "341",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/e2e/exercise-guides-still.spec.mjs",
+        "added": "210",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/e2e/exercise-guides-visual.capture.mjs",
+        "added": "391",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/e2e/exercise-media-preview.spec.mjs",
+        "added": "22",
+        "deleted": "1"
+      },
+      {
+        "path": "frontend/e2e/harness/youtube-proof.html",
+        "added": "17",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/e2e/harness/youtube-proof.js",
+        "added": "19",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/e2e/preview-critical.spec.mjs",
+        "added": "20",
+        "deleted": "8"
+      },
+      {
+        "path": "frontend/e2e/youtube-provider-proof.spec.mjs",
+        "added": "48",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/package.json",
+        "added": "5",
+        "deleted": "1"
+      },
+      {
+        "path": "frontend/playwright.config.mjs",
+        "added": "3",
+        "deleted": "1"
+      },
+      {
+        "path": "frontend/playwright.exercise-guides-local.config.mjs",
+        "added": "22",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/playwright.exercise-guides-visual.config.mjs",
+        "added": "26",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/playwright.exercise-guides.config.mjs",
+        "added": "21",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/playwright.exercise-media-local.config.mjs",
+        "added": "1",
+        "deleted": "1"
+      },
+      {
+        "path": "frontend/playwright.youtube-proof.config.mjs",
+        "added": "18",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/src/components/training/DemoLinkField.jsx",
+        "added": "75",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/src/components/training/QuickSessionBuilder.jsx",
+        "added": "20",
+        "deleted": "3"
+      },
+      {
+        "path": "frontend/src/components/training/media/ExerciseDemoDialog.jsx",
+        "added": "153",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/src/components/training/media/ExerciseMediaEditor.jsx",
+        "added": "120",
+        "deleted": "16"
+      },
+      {
+        "path": "frontend/src/components/training/media/LocalStillSelector.jsx",
+        "added": "192",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/src/components/training/media/youtubePlayer.js",
+        "added": "127",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/src/lib/exerciseDemo.js",
+        "added": "117",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/src/lib/exerciseMedia.js",
+        "added": "79",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/src/lib/localStill.js",
+        "added": "74",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/src/lib/previewExerciseMedia.js",
+        "added": "79",
+        "deleted": "11"
+      },
+      {
+        "path": "frontend/src/lib/previewMode.js",
+        "added": "41",
+        "deleted": "8"
+      },
+      {
+        "path": "frontend/src/lib/programDraft.js",
+        "added": "20",
+        "deleted": "2"
+      },
+      {
+        "path": "frontend/src/lib/trainingLibrary.js",
+        "added": "86",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/src/pages/WorkoutLogDetail.jsx",
+        "added": "16",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/src/pages/client/Programs.jsx",
+        "added": "10",
+        "deleted": "3"
+      },
+      {
+        "path": "frontend/src/pages/client/WorkoutTracker.jsx",
+        "added": "24",
+        "deleted": "14"
+      },
+      {
+        "path": "frontend/src/pages/coach/Programs.jsx",
+        "added": "22",
+        "deleted": "16"
+      },
+      {
+        "path": "frontend/tests/unit/exerciseDemoReferences.test.mjs",
+        "added": "95",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/tests/unit/localStill.test.mjs",
+        "added": "47",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/tests/unit/photoUpload.test.mjs",
+        "added": "89",
+        "deleted": "0"
+      },
+      {
+        "path": "frontend/tests/unit/youtubeDemo.test.mjs",
+        "added": "75",
+        "deleted": "0"
+      },
+      {
+        "path": "scripts/exercise-guides/build-visual-review.mjs",
+        "added": "196",
+        "deleted": "0"
+      },
+      {
+        "path": "supabase/migrations/20261016170000_exercise_guides_photo_youtube.sql",
+        "added": "729",
+        "deleted": "0"
+      },
+      {
+        "path": "supabase/tests/exercise_media/04_grants.sql",
+        "added": "2",
+        "deleted": "2"
+      },
+      {
+        "path": "supabase/tests/exercise_media/05_guides.sql",
+        "added": "173",
+        "deleted": "0"
+      },
+      {
+        "path": "supabase/tests/exercise_media/06_photo_uploads.sql",
+        "added": "154",
+        "deleted": "0"
+      }
+    ]
+  },
+  "migrations": {
+    "new_local_unapplied": {
+      "file": "supabase/migrations/20261016170000_exercise_guides_photo_youtube.sql",
+      "sha256": "69ec99a0049d68f05dffff3ec6f37a7d9c6055d78819e83db3d80f15f52ba0ae",
+      "applied": "disposable local test databases only; never hosted"
+    },
+    "accepted_media_unchanged": {
+      "file": "supabase/migrations/20261015213431_exercise_media_library.sql",
+      "sha256": "54028175f398c6367e8cbea18fb40abe56d965c4bc4843db7936d89ba18edc9c",
+      "expected": "54028175f398c6367e8cbea18fb40abe56d965c4bc4843db7936d89ba18edc9c"
+    },
+    "released_count": 43,
+    "released_changed": []
+  },
+  "dependencies": {
+    "added": {
+      "backend": {
+        "sharp": "0.35.5 (exact)",
+        "libvips": "8.18.7"
+      }
+    },
+    "engines": {
+      "backend": {
+        "node": ">=20.9.0"
+      }
+    },
+    "frontend_lockfile_changed": false,
+    "audit": "npm audit (backend): found 0 vulnerabilities (logs/final-dependency-audit.log)",
+    "runtimes_verified": [
+      "host macOS Node v26.7.0",
+      "Linux Node v24.22.0 arm64 (node:24-bookworm-slim)",
+      "Linux Node v24.22.0 amd64 (node:24-bookworm-slim)"
+    ]
+  },
+  "checks": {
+    "final_sweep": {
+      "head": "88b2d7afa5658ef6ffea4f83a57a5d6718fb1f36",
+      "product_code": "49d30a64c4548e113a1eeb595055740af1dbd36e",
+      "results": [
+        {
+          "check": "backend",
+          "exit": 0,
+          "duration": "12s",
+          "tests": 674,
+          "pass": 674,
+          "fail": 0,
+          "skipped": 0,
+          "fail_lines": 0
+        },
+        {
+          "check": "unit",
+          "exit": 0,
+          "duration": "1s",
+          "tests": 162,
+          "pass": 162,
+          "fail": 0,
+          "skipped": 0
+        },
+        {
+          "check": "boundaries-backend",
+          "exit": 0,
+          "duration": "0s",
+          "boundary": "backend/src: no references into frontend/"
+        },
+        {
+          "check": "boundaries-frontend",
+          "exit": 0,
+          "duration": "0s",
+          "boundary": "frontend/src: no references into backend/"
+        },
+        {
+          "check": "build",
+          "exit": 0,
+          "duration": "3s",
+          "build": "built in 2.81s"
+        },
+        {
+          "check": "e2e-guides",
+          "exit": 0,
+          "duration": "22s",
+          "pw_passed": 22
+        },
+        {
+          "check": "e2e-media",
+          "exit": 0,
+          "duration": "24s",
+          "pw_passed": 25
+        },
+        {
+          "check": "e2e-quick",
+          "exit": 0,
+          "duration": "76s",
+          "pw_passed": 30
+        },
+        {
+          "check": "e2e-preview",
+          "exit": 0,
+          "duration": "260s",
+          "pw_passed": 107,
+          "pw_skipped": 8
+        },
+        {
+          "check": "sql-media",
+          "exit": 0,
+          "duration": "51s",
+          "races": 5,
+          "sql_groups": 6
+        },
+        {
+          "check": "sql-quick",
+          "exit": 0,
+          "duration": "106s",
+          "quick_all": "--all"
+        },
+        {
+          "check": "int-guides",
+          "exit": 0,
+          "duration": "45s",
+          "cases": 14,
+          "pass_lines": 14
+        },
+        {
+          "check": "int-media-full",
+          "exit": 0,
+          "duration": "112s",
+          "cases": 22,
+          "pass_lines": 22
+        },
+        {
+          "check": "int-quick-media",
+          "exit": 0,
+          "duration": "44s",
+          "cases": 5,
+          "pass_lines": 5
+        },
+        {
+          "check": "e2e-guides-local",
+          "exit": 0,
+          "duration": "40s",
+          "pw_passed": 3
+        },
+        {
+          "check": "e2e-media-local",
+          "exit": 0,
+          "duration": "63s",
+          "pw_passed": 6
+        },
+        {
+          "check": "yt-proof-sample",
+          "exit": 0,
+          "duration": "2s",
+          "pw_passed": 1
+        },
+        {
+          "check": "yt-proof-missing",
+          "exit": 0,
+          "duration": "3s",
+          "pw_passed": 1
+        }
+      ],
+      "quick_sql_parity": "identical, 26 rows, empty parity.diff",
+      "provider_proof": {
+        "sample": {
+          "schema_version": 1,
+          "sample_video_id": "M7lc1UVf-VE",
+          "sample_source": "Google YouTube IFrame Player API reference example id",
+          "ran_at": "2026-10-16T20:50:18.935Z",
+          "browser": "149.0.7827.55",
+          "headless": true,
+          "requests_before_play": 0,
+          "outcome": {
+            "state": "ready",
+            "code": null,
+            "at": 1792183818928
+          },
+          "iframe_src": "https://www.youtube-nocookie.com/embed/M7lc1UVf-VE?playsinline=1&rel=0&cc_load_policy=1&enablejsapi=1&autoplay=1&origin=http%3A%2F%2F127.0.0.1%3A42767",
+          "iframe_box": {
+            "x": 320,
+            "y": 112,
+            "width": 644,
+            "height": 364
+          },
+          "embed_referer": "http://127.0.0.1:42767/",
+          "hosts_after_play": [
+            "fonts.gstatic.com",
+            "www.google.com",
+            "www.youtube-nocookie.com",
+            "www.youtube.com"
+          ]
+        },
+        "missing_id": {
+          "schema_version": 1,
+          "sample_video_id": "SYNTHdemo01",
+          "sample_source": "Google YouTube IFrame Player API reference example id",
+          "ran_at": "2026-10-16T20:50:21.786Z",
+          "browser": "149.0.7827.55",
+          "headless": true,
+          "requests_before_play": 0,
+          "outcome": {
+            "state": "error",
+            "code": 150,
+            "at": 1792183821757
+          },
+          "iframe_src": "https://www.youtube-nocookie.com/embed/SYNTHdemo01?playsinline=1&rel=0&cc_load_policy=1&enablejsapi=1&autoplay=1&origin=http%3A%2F%2F127.0.0.1%3A42767",
+          "iframe_box": {
+            "x": 320,
+            "y": 112,
+            "width": 644,
+            "height": 364
+          },
+          "embed_referer": "http://127.0.0.1:42767/",
+          "hosts_after_play": [
+            "fonts.gstatic.com",
+            "jnn-pa.googleapis.com",
+            "www.google.com",
+            "www.youtube-nocookie.com",
+            "www.youtube.com"
+          ]
+        }
+      }
+    },
+    "pre_review_sweep": {
+      "head": "fb5d06e34a2ecc30e9411f28d74d24294ae9bcdc",
+      "results": [
+        {
+          "check": "backend",
+          "exit": 0,
+          "duration": "13s",
+          "tests": 673,
+          "pass": 673,
+          "fail": 0,
+          "skipped": 0,
+          "fail_lines": 0
+        },
+        {
+          "check": "unit",
+          "exit": 0,
+          "duration": "0s",
+          "tests": 160,
+          "pass": 160,
+          "fail": 0,
+          "skipped": 0
+        },
+        {
+          "check": "boundaries-backend",
+          "exit": 0,
+          "duration": "0s",
+          "boundary": "backend/src: no references into frontend/"
+        },
+        {
+          "check": "boundaries-frontend",
+          "exit": 0,
+          "duration": "0s",
+          "boundary": "frontend/src: no references into backend/"
+        },
+        {
+          "check": "build",
+          "exit": 0,
+          "duration": "4s",
+          "build": "built in 3.17s"
+        },
+        {
+          "check": "e2e-guides",
+          "exit": 0,
+          "duration": "17s",
+          "pw_passed": 19
+        },
+        {
+          "check": "e2e-media",
+          "exit": 0,
+          "duration": "25s",
+          "pw_passed": 25
+        },
+        {
+          "check": "e2e-quick",
+          "exit": 0,
+          "duration": "75s",
+          "pw_passed": 30
+        },
+        {
+          "check": "e2e-preview",
+          "exit": 0,
+          "duration": "261s",
+          "pw_passed": 107,
+          "pw_skipped": 8
+        },
+        {
+          "check": "sql-media",
+          "exit": 0,
+          "duration": "51s",
+          "races": 5,
+          "sql_groups": 6
+        },
+        {
+          "check": "sql-quick",
+          "exit": 0,
+          "duration": "106s",
+          "quick_all": "--all"
+        },
+        {
+          "check": "int-guides",
+          "exit": 0,
+          "duration": "45s",
+          "cases": 14,
+          "pass_lines": 14
+        },
+        {
+          "check": "int-media-full",
+          "exit": 0,
+          "duration": "110s",
+          "cases": 22,
+          "pass_lines": 22
+        },
+        {
+          "check": "int-quick-media",
+          "exit": 0,
+          "duration": "47s",
+          "cases": 5,
+          "pass_lines": 5
+        },
+        {
+          "check": "e2e-guides-local",
+          "exit": 0,
+          "duration": "41s",
+          "pw_passed": 3
+        },
+        {
+          "check": "e2e-media-local",
+          "exit": 0,
+          "duration": "69s",
+          "pw_passed": 6
+        },
+        {
+          "check": "yt-proof-sample",
+          "exit": 0,
+          "duration": "3s",
+          "pw_passed": 1
+        },
+        {
+          "check": "yt-proof-missing",
+          "exit": 0,
+          "duration": "3s",
+          "pw_passed": 1
+        }
+      ]
+    },
+    "baseline": {
+      "commit": "f3c063c4997b1ad49a1e7ceca5107ee6aae3c1dd",
+      "backend": "611/611",
+      "frontend_units": "140/140"
+    },
+    "linux_node24": {
+      "image": "node:24-bookworm-slim",
+      "arches": [
+        "arm64",
+        "amd64"
+      ],
+      "photo_tests": "30/30 each",
+      "when": "M2 (81d7f90); backend package/lock unchanged since"
+    },
+    "visual": {
+      "images": 84,
+      "run_to_run_identical": "79/84",
+      "tracker_layout_shift_px": 0,
+      "provider_requests_before_play": 0
+    }
+  },
+  "independent_review": {
+    "reviewer": "fresh-context Opus subagent, static read-only",
+    "range": "f3c063c..fb5d06e",
+    "verdict": "With fixes",
+    "critical": 0,
+    "important_fixed": [
+      "duplicated legacy-link row blocked save (11b372e)",
+      "in-flight still export delivered late / blob URL leak (d7b65fc)"
+    ],
+    "regraded_fixed": [
+      "save/read external link agreement (49d30a6)"
+    ],
+    "docs_corrected": [
+      "hosted-gates reads+writes, rolling deploy (88b2d7a)"
+    ],
+    "deferred_minors": 10,
+    "report": "docs/exercise-guides/INDEPENDENT-REVIEW.md"
+  },
+  "visual_evidence": {
+    "manifest": "docs/exercise-guides/visual-review/manifest.json",
+    "manifest_sha256": "943d48e004ded6df25ab148ed851e334543f67ad7b47b47237ab6c8bfe517b1c",
+    "index": "docs/exercise-guides/visual-review/index.html",
+    "images": 84
+  },
+  "external_actions": [
+    "npm registry reads for the sharp install and npm audit",
+    "docker pull node:24-bookworm-slim (Linux Node 24 validation)",
+    "headless Chromium real-provider proof against youtube-nocookie.com/youtube.com with a public documentation sample id and a synthetic missing id; no app data, cookies or tokens"
+  ],
+  "not_done_by_authority": [
+    "push",
+    "PR",
+    "CI",
+    "preview or Production deploy",
+    "merge",
+    "hosted database/storage reads or writes",
+    "Supabase linking/provisioning/configuration",
+    "bucket creation",
+    "credential handling",
+    "YouTube/channel uploads",
+    "real client or health data"
+  ],
+  "gates": "docs/exercise-guides/hosted-gates.md",
+  "real_device_matrix": "docs/exercise-guides/local-runbook.md#real-device-manual-matrix-not-run",
+  "head_note": "head is the commit before the return commit; the return commit adds only RETURN.md and this manifest"
+}

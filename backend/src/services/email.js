@@ -2,10 +2,11 @@ const { Resend } = require('resend');
 const { waitUntil } = require('@vercel/functions');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
-const { dateInTz } = require('../utils/time');
+const { dateInTz, denverTimeOfDay } = require('../utils/time');
 const { fetchAllRows } = require('../lib/supabasePage');
+const brand = require('../lib/emailBrand');
 
-const FROM = 'CVF PT <notifications@corevaluefitness.com>';
+const FROM = 'CVF PT <notifications@corevaluefit.com>';
 const DENVER = 'America/Denver';
 
 function configured(env = process.env) {
@@ -36,12 +37,68 @@ function sessionFacts(session, otherName) {
 }
 
 function renderEmail({ headline, intro, facts = [], actionLabel, actionUrl, footer, footerUrl, footerLabel = 'Manage email settings' }) {
-  const factHtml = facts.map((fact) => `<li style="margin:6px 0">${escapeHtml(fact)}</li>`).join('');
+  const factHtml = facts.map((fact) => `<li style="margin:10px 0">${escapeHtml(fact)}</li>`).join('');
   const text = [headline, intro, ...facts, `${actionLabel}: ${actionUrl}`, footer, footerUrl ? `${footerLabel}: ${footerUrl}` : null].filter(Boolean).join('\n\n');
+  // Every notification already deep-links to its configured app origin. Use
+  // that origin's existing public PNG; never copy an invite/reset query into
+  // the image request. Live wordmark remains useful when images are blocked.
+  let logoUrl;
+  try {
+    const action = new URL(actionUrl);
+    if (action.protocol === 'https:' || action.protocol === 'http:') logoUrl = new URL('/logo.png', action.origin).href;
+  } catch { /* Relative or malformed links keep the live wordmark alone. */ }
+  const logo = logoUrl ? `<td width="88" style="vertical-align:middle;padding-right:16px"><img src="${escapeHtml(logoUrl)}" width="88" height="88" alt="CVF" style="display:block;width:88px;height:88px;border:0;border-radius:4px;background:${brand.logoBacking};color:${brand.ink};font:700 18px Arial,sans-serif"></td>` : '';
+  // Yahoo dark theme recolored these teal-backed text elements independently
+  // of their background. Inline text-fill preserves their intended ink in
+  // supporting clients; color remains the fallback. Keep adaptive body copy
+  // outside this rule. An actual Yahoo retest is still required before release.
+  const footerHtml = footer ? `<p class="email-copy" style="margin:22px 0 0;font-size:14px;line-height:21px;color:${brand.border}">${escapeHtml(footer)}${footerUrl ? ` <a class="email-footer-link" href="${escapeHtml(footerUrl)}" style="color:${brand.ink};text-decoration:underline">${escapeHtml(footerLabel)}</a>` : ''}</p>` : '';
   return {
     text,
-    html: `<!doctype html><html><body style="margin:0;background:#f5f7f7;color:#172323;font-family:Arial,sans-serif"><div style="max-width:560px;margin:0 auto;padding:28px 18px"><div style="background:#173f3d;color:white;border-radius:14px 14px 0 0;padding:18px 22px;font-weight:700;letter-spacing:.04em">CVF PT</div><div style="background:white;border:1px solid #d9e1df;border-top:0;border-radius:0 0 14px 14px;padding:24px 22px"><h1 style="font-size:22px;margin:0 0 10px">${escapeHtml(headline)}</h1><p style="line-height:1.5;color:#52615f">${escapeHtml(intro)}</p>${facts.length ? `<ul style="padding-left:20px;line-height:1.45">${factHtml}</ul>` : ''}<a href="${escapeHtml(actionUrl)}" style="display:inline-block;margin-top:12px;background:#147d76;color:white;text-decoration:none;font-weight:700;border-radius:10px;padding:12px 16px">${escapeHtml(actionLabel)}</a>${footer ? `<p style="margin-top:22px;font-size:12px;color:#71807e">${escapeHtml(footer)}${footerUrl ? ` <a href="${escapeHtml(footerUrl)}" style="color:#147d76">${escapeHtml(footerLabel)}</a>` : ''}</p>` : ''}</div></div></body></html>`,
+    html: `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
+<style>
+  table { border-collapse:separate;border-spacing:0; }
+  a:focus-visible { outline:3px solid ${brand.ink};outline-offset:3px; }
+  @media (max-width:420px) {
+    .email-outer { padding:12px 8px!important; }
+    .email-masthead { padding:18px!important; }
+    .email-content { padding:24px 18px!important; }
+  }
+  @media (prefers-color-scheme:dark) {
+    .email-body,.email-outer,.email-content { background:${brand.graphite}!important; }
+    .email-content,.email-footer-link { color:${brand.paper}!important; }
+    .email-copy { color:${brand.muted}!important; }
+    .email-masthead,.email-action { background:${brand.teal}!important;color:${brand.ink}!important; }
+    a:focus-visible { outline-color:${brand.paper}; }
+  }
+</style></head>
+<body class="email-body" style="margin:0;background:${brand.paper};color:${brand.ink};font-family:Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0"><tr><td class="email-outer" style="padding:24px 12px;background:${brand.paper}">
+<!--[if mso]><table role="presentation" width="560" align="center" cellspacing="0" cellpadding="0"><tr><td><![endif]-->
+<table role="presentation" width="100%" align="center" cellspacing="0" cellpadding="0" style="max-width:560px;margin:0 auto;border:1px solid ${brand.border};border-radius:12px;overflow:hidden;border-collapse:separate;border-spacing:0">
+<tr><td class="email-masthead" bgcolor="${brand.teal}" style="padding:20px 22px;background:${brand.teal};color:${brand.ink};border-bottom:6px solid ${brand.graphite}">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0"><tr>${logo}<td style="vertical-align:middle"><div style="color:${brand.ink};-webkit-text-fill-color:${brand.ink};font-size:22px;line-height:26px;font-weight:700">Core Value<br>Fitness</div><div style="color:${brand.ink};-webkit-text-fill-color:${brand.ink};font-size:13px;line-height:20px;margin-top:7px;letter-spacing:.06em">PERSONAL TRAINING</div></td></tr></table>
+</td></tr>
+<tr><td class="email-content" bgcolor="${brand.paper}" style="padding:26px 24px 28px;background:${brand.paper};color:${brand.ink}">
+<h1 style="font-size:24px;line-height:30px;margin:0 0 14px;font-weight:700">${escapeHtml(headline)}</h1>
+<p class="email-copy" style="font-size:16px;line-height:24px;color:${brand.border};margin:0 0 18px">${escapeHtml(intro)}</p>
+${facts.length ? `<ul style="margin:0 0 22px;padding-left:21px;font-size:16px;line-height:24px">${factHtml}</ul>` : ''}
+<table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0"><tr><td class="email-action" bgcolor="${brand.teal}" style="background:${brand.teal};border-radius:7px;mso-padding-alt:14px 18px"><a class="email-action" href="${escapeHtml(actionUrl)}" style="display:inline-block;padding:14px 18px;min-height:20px;font-size:16px;line-height:20px;font-weight:700;background:${brand.teal};color:${brand.ink};-webkit-text-fill-color:${brand.ink};border-radius:7px;text-decoration:none">${escapeHtml(actionLabel)}</a></td></tr></table>
+${footerHtml}
+</td></tr></table>
+<!--[if mso]></td></tr></table><![endif]-->
+</td></tr></table></body></html>`,
   };
+}
+
+// Resend error messages can echo addresses, so only the rejected field's
+// name survives (e.g. "validation_error.reply_to"); the raw message is never
+// logged. Keeps logError's redacted code field diagnosable.
+function providerErrorCode(error) {
+  const name = String(error?.name || error?.statusCode || 'provider_error');
+  const field = /`([a-z_]{1,32})`/.exec(String(error?.message || ''))?.[1];
+  return field ? `${name}.${field}` : name;
 }
 
 async function sendEmail(message, idempotencyKey, env = process.env) {
@@ -55,7 +112,7 @@ async function sendEmail(message, idempotencyKey, env = process.env) {
   if (error) {
     const sendError = new Error('email provider rejected send');
     sendError.name = 'EmailProviderError';
-    sendError.code = error.name || error.statusCode;
+    sendError.code = providerErrorCode(error);
     sendError.status = error.statusCode;
     throw sendError;
   }
@@ -138,6 +195,49 @@ async function notifySessionScheduled(session, env = process.env) {
     actionUrl: `${env.FRONTEND_URL || ''}/client/sessions`,
   });
   return sendEmail({ to: [client.email], subject: headline, ...rendered }, `session-scheduled/${session.id}/${client.id}`, env);
+}
+
+const pluralize = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+// One summary for a whole recurring series, built from the sessions actually
+// saved (not from the original repeat rule — individual dates may have been
+// adjusted). Best-effort like every other notification.
+async function notifySeriesScheduled({ seriesId, clientId, coachId, dates }, env = process.env) {
+  if (!seriesId || !Array.isArray(dates) || !dates.length) return { skipped: 'missing-series' };
+  const { client, coach } = await loadPeople(clientId, coachId);
+  if (!client?.email || !coach) return { skipped: 'missing-recipient' };
+  const shown = dates.slice(0, 5).map(formatDenver);
+  if (dates.length > 5) shown.push(`…and ${dates.length - 5} more`);
+  const timesVary = new Set(dates.map((date) => denverTimeOfDay(date))).size > 1;
+  const headline = `Your coach scheduled ${pluralize(dates.length, 'session')}`;
+  const rendered = renderEmail({
+    headline,
+    intro: timesVary ? 'Times vary — see your schedule for each session.' : 'These sessions are on your calendar.',
+    facts: [...shown, coach.name ? `With ${String(coach.name).split(' ')[0]}` : null].filter(Boolean),
+    actionLabel: 'View sessions',
+    actionUrl: `${env.FRONTEND_URL || ''}/client/sessions`,
+  });
+  return sendEmail({ to: [client.email], subject: headline, ...rendered }, `series-scheduled/${seriesId}/${client.id}`, env);
+}
+
+// `cancelled` is [{ id, scheduled_at }] — the sessions this operation actually
+// changed. Keyed by the first cancelled session so separate cancellations within
+// one series are distinct events.
+async function notifySeriesCancelled({ seriesId, clientId, coachId, cancelled }, env = process.env) {
+  if (!seriesId || !Array.isArray(cancelled) || !cancelled.length) return { skipped: 'missing-series' };
+  const { client, coach } = await loadPeople(clientId, coachId);
+  if (!client?.email || !coach) return { skipped: 'missing-recipient' };
+  const shown = cancelled.slice(0, 5).map((session) => formatDenver(session.scheduled_at));
+  if (cancelled.length > 5) shown.push(`…and ${cancelled.length - 5} more`);
+  const headline = `Your ${pluralize(cancelled.length, 'session')} ${cancelled.length === 1 ? 'was' : 'were'} cancelled`;
+  const rendered = renderEmail({
+    headline,
+    intro: 'These sessions are no longer on the calendar. Message your coach if you need other times.',
+    facts: [...shown, coach.name ? `With ${String(coach.name).split(' ')[0]}` : null].filter(Boolean),
+    actionLabel: 'View sessions',
+    actionUrl: `${env.FRONTEND_URL || ''}/client/sessions`,
+  });
+  return sendEmail({ to: [client.email], subject: headline, ...rendered }, `series-cancelled/${seriesId}/${cancelled[0].id}/${client.id}`, env);
 }
 
 async function notifySessionRescheduled(session, previous, env = process.env) {
@@ -288,7 +388,9 @@ async function sendDailyDigests(now = new Date(), env = process.env) {
 }
 
 module.exports = {
+  FROM, providerErrorCode,
   configured, dispatchEmail, formatDenver, notifyBookingEvent, notifySessionCancelRequested,
   notifySessionCancelled, notifySessionCancelledByClient, notifySessionRescheduled, notifySessionScheduled,
+  notifySeriesCancelled, notifySeriesScheduled,
   renderEmail, sendDailyDigests, sendEmail, sessionFacts,
 };

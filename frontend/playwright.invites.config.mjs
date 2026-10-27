@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';
+export default defineConfig({outputDir:'./test-results-invites',testDir:'./e2e',testMatch:'client-invites-mocked.spec.mjs',timeout:60000,fullyParallel:false,workers:1,retries:0,reporter:'line',use:{baseURL:'http://127.0.0.1:4186',trace:'retain-on-failure'},webServer:{command:'npm run dev -- --host 127.0.0.1 --port 4186',url:'http://127.0.0.1:4186',env:{...process.env,REACT_APP_BACKEND_URL:'',REACT_APP_PREVIEW_MODE:'false'},reuseExistingServer:false,timeout:120000}});

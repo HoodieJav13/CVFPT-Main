@@ -95,7 +95,13 @@ export default function DateTimePicker({
           <span className="truncate">{triggerLabel(date, time, placeholder)}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto max-w-[95vw] p-0" data-testid={testId ? `${testId}-panel` : undefined}>
+      {/* Constrained to the space Radix has on whichever side it opens, so the calendar scrolls inside the viewport instead of being clipped on short phone screens. */}
+      <PopoverContent
+        align="start"
+        collisionPadding={8}
+        className="max-h-[var(--radix-popover-content-available-height)] w-auto max-w-[95vw] overflow-y-auto p-0"
+        data-testid={testId ? `${testId}-panel` : undefined}
+      >
         <Calendar
           mode="single"
           selected={date || undefined}

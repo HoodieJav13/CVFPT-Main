@@ -1,0 +1,6 @@
+import { chromium } from '../../frontend/node_modules/playwright/index.mjs';
+import { writeFile } from 'node:fs/promises';
+const base=process.argv[2];
+if(!base?.startsWith('/'))throw new Error('Supply absolute output base (without extension)');
+const browser=await chromium.launch();const page=await browser.newPage({viewport:{width:1168,height:930}});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(`file://${base}.html`);await page.evaluate(()=>document.fonts.ready);await page.waitForFunction(()=>[...document.images].every(i=>i.complete&&i.naturalWidth>0));
+await page.locator('.sheet').nth(7).screenshot({path:`${base}.png`});await page.emulateMedia({media:'print'});const sheets=await page.locator('.sheet').evaluateAll(es=>es.map(e=>({height:e.clientHeight,content:e.scrollHeight,width:e.clientWidth,contentWidth:e.scrollWidth})));if(sheets.some(s=>s.content>s.height||s.contentWidth>s.width)||errors.length)throw new Error(JSON.stringify({sheets,errors}));await page.pdf({path:`${base}.pdf`,printBackground:true,preferCSSPageSize:true});await writeFile(`${base}-render-check.json`,JSON.stringify({sheets,errors,imageCount:await page.locator('img').count()},null,2));console.log(JSON.stringify({pages:sheets.length,sheets,errors}));await browser.close();

@@ -11,11 +11,17 @@ folder. See [CLAUDE.md](CLAUDE.md) for the locked deploy-boundary rules.
 
 ## Current environment model
 
-Preview and Production are separate Vercel environment scopes. They currently
-point to the same Supabase project and intentionally share one surviving
-current-format server secret. This is temporary while CVF PT has no real launch
-domain. At launch, Production must receive its own Supabase project and its own
-owner-created key before real users or live data are onboarded.
+Preview and Production are separate Vercel environment scopes backed by
+**separate Supabase projects** (split 2026-09-29 for the alpha launch):
+
+| Supabase project | Ref | Used by |
+|---|---|---|
+| Development (`CVFPT-Main`) | `hhzpzcxcurmhpmfgriqb` | backend Preview scope, local dev, the linked CLI project |
+| `cvfpt-production` | `dacqdoohqqcqgtpacerk` | backend Production scope — real users and live data |
+
+`cvfpt-production` is on the Supabase Free plan (no automatic backups) until the
+owner upgrades after beta; the owner runs a weekly local `pg_dump` backup in the
+meantime. The development seed and test-account scripts must never target it.
 
 Supabase key creation, copying, rotation, and retirement are always manual,
 owner-only dashboard actions. An agent may verify variable names/scopes and test
@@ -28,7 +34,7 @@ Current scope expectations:
 | Vercel scope | Frontend project | Backend project |
 |---|---|---|
 | Preview | `REACT_APP_BACKEND_URL` targets the protected backend Preview alias | Supabase variables plus exact Preview `CORS_ORIGINS` and `FRONTEND_URL` |
-| Production | `cvfpt-frontend.vercel.app` targets the Production backend alias | Supabase variables plus exact `cvfpt-frontend.vercel.app` CORS/redirect origin |
+| Production | `app.corevaluefit.com` (and `cvfpt-frontend.vercel.app`) target the Production backend alias | `cvfpt-production` Supabase variables; `FRONTEND_URL=https://app.corevaluefit.com`; `CORS_ORIGINS` lists both frontend origins |
 
 ## Merge and migration ordering
 
@@ -86,7 +92,7 @@ built from it.
 | Variable | Purpose |
 |---|---|
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Key pair identifying this server to browser push services. Generate once with `npx web-push generate-vapid-keys`; all three rows required or push stays inert |
-| `VAPID_SUBJECT` | Contact URI for push services, e.g. `mailto:owner@corevaluefitness.com` |
+| `VAPID_SUBJECT` | Contact URI for push services, e.g. `mailto:owner@corevaluefit.com` |
 
 iPhones deliver web push only to the installed (Home Screen) PWA; the
 notification-settings dialog explains this to users. Rotating the key pair
@@ -109,10 +115,18 @@ inline-script/style inventory exists — do not add one ad hoc.
 ### Migration guard
 
 `.github/workflows/migration-guard.yml` fails any PR that touches
-`supabase/migrations/` unless it carries the `migration-applied` label —
-add the label only after `supabase db push` has been run against the hosted
-project and `supabase migration list --linked` shows no drift. The label
-must exist in the repository (Settings → Labels → create `migration-applied`).
+`supabase/migrations/` unless it carries **both** labels:
+
+- `migration-applied` — after `supabase db push` against the development
+  project and `supabase migration list --linked` shows no drift.
+- `prod-migration-applied` — after the same migration is pushed to
+  `cvfpt-production` (`supabase db push --db-url <production session-pooler
+  URL>`, then a `--dry-run` reports it up to date).
+
+Both must happen **before** merge: merging auto-deploys the Production backend,
+so code that expects an unapplied migration breaks live users immediately (PR
+#84, 2026-09-29, merged with only the dev label). `main` requires the guard to
+pass before merging.
 
 ### Optional integrations
 
@@ -140,11 +154,12 @@ targets the Production backend alias paired with `cvfpt-frontend.vercel.app`.
 
 ## Database migrations
 
-`supabase/migrations/` is the canonical schema history. It currently contains
-**16 applied versioned migrations**, matching the hosted PostgreSQL 17
-development project through
-`20260720173000_exercise_performance_history.sql`. Every future schema change
-must be a new numbered migration; never edit an applied migration.
+`supabase/migrations/` is the canonical schema history for both hosted
+projects. As of 2026-09-29 `cvfpt-production` has all 35 migrations through
+`20260929120000_shared_training_library.sql`; check the development project
+with `supabase migration list --linked`. Every future schema change must be a
+new numbered migration applied to both projects before merge (see Migration
+guard); never edit an applied migration.
 
 `backend/migration.sql` is frozen historical evidence from before versioning. Do
 not edit it or run it against a database where the versioned migrations have been

@@ -116,8 +116,8 @@ send wrapper, so switching later is cheap.
 
 **Owner-only setup steps** (same rule as Supabase keys — I never handle
 keys):
-1. Create the Resend account and verify `corevaluefitness.com`, sending as
-   `CVF PT <notifications@corevaluefitness.com>`.
+1. Create the Resend account and verify `corevaluefit.com`, sending as
+   `CVF PT <notifications@corevaluefit.com>`.
 2. Add `RESEND_API_KEY` and `CRON_SECRET` env vars to the Vercel backend
    project, plus the monitored studio inbox as `NOTIFY_REPLY_TO`.
 3. Digest cron: **13:00 UTC** — 6:00 AM in Denver during winter, 7:00 AM
@@ -128,6 +128,24 @@ keys):
 - Minimal branded HTML: dark-on-light for email-client compatibility, logo
   header, one clear line per fact, one button deep-linking into the app
   (e.g. `/client/sessions`). Plain-text alternative part included.
+- Owner-selected appearance (2026-10-02): original CVF logo at 88px, live
+  Core Value Fitness wordmark, teal masthead/action, warm off-white reading
+  surface and optional graphite dark-mode styling. Literal colors live in
+  backend-local `emailBrand.js` with app-token parity coverage. Essential
+  presentation-table layout and spacing are inline; media queries enhance
+  narrow/dark displays. The logo URL uses only the existing action's app
+  origin and `/logo.png`; it contains no account/reset query. Live branding
+  remains when the remote image is blocked. Actual mail-client rendering
+  remains a separate release check; browser screenshots are not delivery proof.
+- Yahoo contrast correction (review branch, 2026-10-03): the one received
+  fictional test showed Yahoo's desktop dark theme changing wordmark/action
+  text to `#D5CDC3` while leaving teal `#5EC4D4`, giving 1.29:1 contrast.
+  Only those three text elements now pair inline `-webkit-text-fill-color`
+  with the existing ink `#181511` color fallback (8.94:1 on teal). Body copy
+  still adapts normally. The regression models the observed color rewrite;
+  it does not reproduce Yahoo sanitization or verify delivery. Clients that
+  strip or rewrite text-fill may still show the issue. A real Yahoo retest
+  requires separate send approval; this branch is not a released correction.
 - Session times formatted in **America/Denver** with the day of week
   ("Thu Aug 6, 11:00 AM"), matching the in-app convention.
 - Instant session emails carry date/time, duration, location, and the other
@@ -151,7 +169,7 @@ keys):
 1. Preferences: **Option A** — digest opt-out column migration ⚠ ships
    with the build.
 2. Coach digest **includes** booking requests pending more than 24 h.
-3. Sending domain `corevaluefitness.com`, from
-   `notifications@corevaluefitness.com`; reply-to is the monitored studio
+3. Sending domain `corevaluefit.com`, from
+   `notifications@corevaluefit.com`; reply-to is the monitored studio
    inbox.
 4. Digest cron at **13:00 UTC** (6 AM MST / 7 AM MDT).

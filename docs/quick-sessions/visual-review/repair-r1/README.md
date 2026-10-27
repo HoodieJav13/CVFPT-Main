@@ -1,0 +1,5 @@
+# Frozen Quick prescription repair evidence
+
+Open [index.html](index.html). Twelve actual pairs (24 images) cover saving, uncertain, checking and unrecovered states at320×640,390×844 and1440×900. Baseline runtime is d6fad27a37733bdcc79c355ba81047c3e0eec54f; proposed functional commit is 93a26e83bf82a1664c1441ac4f0ea04edc579733.
+
+The R2 browser case captured these controlled fictional states on working trees whose runtime hashes match those Git objects. Date is fixed2026-10-14T17:00:00Z. The later visual-only commit changes evidence only. Manifest hashes/dimensions and12 DOM observations prove disabled controls, no horizontal overflow and literal60/20 values; original RED failures establish the earlier enabled selector. R1 is covered by actual delayed request/navigation/notification regressions; screenshots do not claim to prove asynchronous fences. Implementer phone/desktop inspection confirms the existing disabled treatment and layout. No new design direction or owner approval is asserted.

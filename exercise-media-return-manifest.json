@@ -1,0 +1,185 @@
+{
+  "schema_version": 2,
+  "kind": "exercise-media-integration-return-manifest",
+  "completion_state": "COMPLETE-LOCAL",
+  "protocol_version": "v1.1",
+  "workspace": "/Users/jav/Documents/Codex/2026-10-15/task-4/exercise-media-integration-20261016T1201/checkout",
+  "branch": "integrate/exercise-media-release-20261016",
+  "upstream": null,
+  "pushed": false,
+  "push_url": "DISABLED-LOCAL-ONLY",
+  "released_baseline": {
+    "commit": "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+    "tree": "bcc0a3c7cb97a386985fd4b2530538b9d58ce541",
+    "final_main_metadata": {
+      "sha": "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+      "subject": "Merge pull request #114 from HoodieJav13/codex/quick-sessions-review-repairs\n\nAdd dated Quick Sessions with retry-safe recovery",
+      "tree": "bcc0a3c7cb97a386985fd4b2530538b9d58ce541"
+    }
+  },
+  "accepted_media": {
+    "commit": "92a54240eab315f884157e8489ad20912463e516",
+    "tree": "0f729990b90f7325267be4af1e8ee398e914aaa3"
+  },
+  "tested_functional_head": {
+    "commit": "98a839b5d848838b1fb4d001d7c3d0fa40ed31ca",
+    "tree": "0e3f281f82e6de98b208ef9cb1477dd55db07d48",
+    "parents": [
+      "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+      "92a54240eab315f884157e8489ad20912463e516"
+    ],
+    "tracked_changes_at_real_api_start": []
+  },
+  "head_at_generation": {
+    "commit": "98a839b5d848838b1fb4d001d7c3d0fa40ed31ca",
+    "note": "The following commit adds only documentation/evidence/return files. Its exact tip is recorded outside Git in ../FINAL-STATE.json to avoid a self-referential hash."
+  },
+  "migration": {
+    "path": "supabase/migrations/20261015213431_exercise_media_library.sql",
+    "sha256": "54028175f398c6367e8cbea18fb40abe56d965c4bc4843db7936d89ba18edc9c",
+    "accepted_bytes_unchanged": true,
+    "released_files_count": 43,
+    "released_files_unchanged": true,
+    "hosted_applied_by_this_task": false
+  },
+  "review": {
+    "path": "docs/exercise-media/integration-acceptance/INDEPENDENT-REVIEW.md",
+    "sha256": "6bb10deb8e73a1b40465db872b22e6c8cc5d8192e2d4bede3045599c792ea3fc",
+    "verdict": "ACCEPTED-LOCAL",
+    "basis": "fresh independent static code/exact-file SQL review; author runtime receipts inspected; no reviewer reruns"
+  },
+  "verification_matrix": "docs/exercise-media/integration-acceptance/TEST-MATRIX.md",
+  "evidence_index": "docs/exercise-media/integration-acceptance/evidence-index.json",
+  "measurements": {
+    "photo_upload_ms": 355,
+    "photo_processing_ms": 423,
+    "photo_poster_bytes": 20028,
+    "video_processing_ms": 2804,
+    "band_row_poster_bytes": 20939,
+    "band_row_preview_bytes": 13367,
+    "band_row_instruction_bytes": 44708,
+    "band_row_captions_bytes": 159,
+    "heavy_1080p_90s": {
+      "source_bytes": 56736783,
+      "instruction_bytes": 5771922,
+      "preview_bytes": 48200
+    },
+    "hydration_queries": {
+      "seven_exercises": 10,
+      "fifty_exercises": 10
+    },
+    "fifty_exercise_log_json_bytes": 75902,
+    "log_bytes_scanned": 3703
+  },
+  "source_invariants": {
+    "protected_sources": [
+      {
+        "file": "frontend/src/lib/quickSessionRequest.js",
+        "compared_to": "433784a",
+        "byte_identical": true,
+        "sha256": "edda2e7019d038e7767f744f63a724fc115d3ce99dc6d70cb6ce66bb8af4b38b"
+      },
+      {
+        "file": "frontend/src/pages/coach/ClientDetail.jsx",
+        "compared_to": "433784a",
+        "byte_identical": true,
+        "sha256": "74cc2a560dbd3380763e78361ad608392ca09e3869a7fd1336ea0b2f1ce7efd6"
+      },
+      {
+        "file": "backend/src/lib/quickSessions.js",
+        "compared_to": "433784a",
+        "byte_identical": true,
+        "sha256": "61037505498a297b0264e5884d29be2f29ea004e5496c095dd1de91cf1b0db0b"
+      },
+      {
+        "file": "backend/src/services/exerciseMedia/localStore.js",
+        "compared_to": "92a54240",
+        "byte_identical": true,
+        "sha256": "6a563dea39e12a360d45bdb157c57f1f1a926ade580ee99906ed62c58dfb9799"
+      },
+      {
+        "file": "backend/src/services/exerciseMedia/worker.js",
+        "compared_to": "92a54240",
+        "byte_identical": true,
+        "sha256": "d7b057dd8d71136d33687c63341d931a42370e72fddbca03dae6cabe7a00a334"
+      },
+      {
+        "file": "backend/src/lib/exerciseMedia/service.js",
+        "compared_to": "92a54240",
+        "byte_identical": true,
+        "sha256": "30e78cf45ef6116c8b800af079612e904d5c17aa03e5c24c9ff78c3ffdf693b1"
+      },
+      {
+        "file": "frontend/src/components/training/media/VideoSelectionEditor.jsx",
+        "compared_to": "92a54240",
+        "byte_identical": true,
+        "sha256": "023f4b57cc78b4a227af22c115ada44c764d4d0a418d8f29a0df1ea7476ac618"
+      }
+    ],
+    "released_migrations_count": 43,
+    "released_migrations_unchanged": true,
+    "media_migration_sha256": "54028175f398c6367e8cbea18fb40abe56d965c4bc4843db7936d89ba18edc9c"
+  },
+  "preserved_checkouts": [
+    {
+      "name": "accepted",
+      "path": "/Users/jav/Documents/Codex/2026-10-15/task-4/cvfpt-exercise-media-build-20261015",
+      "head": "92a54240eab315f884157e8489ad20912463e516",
+      "status": ""
+    },
+    {
+      "name": "primary",
+      "path": "/Users/jav/Projects/cvf/cvfpt",
+      "head": "78f5aa72cd74165b502424d425507e04a60ee338",
+      "status": "D .claude/skills/agent-browser\n?? .claude/settings.local.json\n?? docs/shared-training-library-design.md"
+    },
+    {
+      "name": "prior_composition",
+      "path": "/Users/jav/Documents/Codex/2026-10-15/task-4/compat-pr114-media-r2f-20261016",
+      "head": "990a42b1bd0b51fd08d7408df53eedbb6dba88f6",
+      "status": ""
+    }
+  ],
+  "accepted_packet_archive": [
+    {
+      "path": "docs/exercise-media/accepted-92a54240/RETURN.md",
+      "sha256": "cfc67840340cbc0c8017c2612fb6e77614618d016b84224dbdc4d33516b1afa5"
+    },
+    {
+      "path": "docs/exercise-media/accepted-92a54240/exercise-media-return-manifest.json",
+      "sha256": "60ebcf6fa8d4ab6be62d964734c06b67134f93ccf75d814ccd354eecb0bc6efd"
+    }
+  ],
+  "parallel_quick_p2": {
+    "task": "01a14322-dabc-732d-9fec-8a0e06376021",
+    "repair": "507d23d",
+    "included": false,
+    "overlap": [
+      "backend/src/routes/programs.js"
+    ],
+    "untouched_released_files": [
+      "frontend/src/lib/quickSessionRequest.js",
+      "frontend/src/pages/coach/ClientDetail.jsx",
+      "backend/src/lib/quickSessions.js"
+    ]
+  },
+  "gates": "docs/exercise-media/integration-release-gates.md",
+  "external_actions": {
+    "source_push": false,
+    "pr": false,
+    "ci_dispatch": false,
+    "deployment": false,
+    "hosted_database_or_storage_access": false,
+    "provider_setup": false,
+    "new_costs": false,
+    "credentials": false,
+    "production_or_client_records": false
+  },
+  "known_limits": [
+    "Production/default media deliberately disabled; hosted adapter not implemented",
+    "Hosted SQL application and release authority absent",
+    "Owner visual direction, real instruction/rights/variant/accessibility decisions open",
+    "Inherited media debt and four separately tracked released Quick P2s are not repaired here",
+    "Browser acceptance is Chromium; no Safari/iOS or real hosted auth verification"
+  ]
+}

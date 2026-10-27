@@ -1,0 +1,9 @@
+# Local invite SQL verification
+
+`bash supabase/tests/client_invites/run.sh` copies the canonical migrations to the repository's guarded `cvfpt-series-test` disposable Supabase stack, performs a clean reset, rolls back each `0*.sql` group and runs committed multi-connection races. It never accepts a database URL or project override, starts Docker, or targets the normal/hosted database. Teardown destroys only the fixed owned test stack and fails loudly when ownership cannot be verified. Run serially with the session-series suite because they share this owned test stack.
+
+The race suite covers identical and differing-hash create identities, withdrawal-before-admission, both admission/profile-mutation orders for withdrawal, claim, email, archive and reassignment, conditional claim/withdrawal in both orders, concurrent lease admissions and concurrent same-attempt and new-attempt resends. All email/provider outcomes are fictional SQL values.
+
+If Docker is unavailable, the supplementary `pglite-check.mjs` can compile this draft and exercise ordered SQL groups in a disposable single-connection database. Set `PGLITE_MODULE` to a test-only installation of `@electric-sql/pglite` 0.3.14 outside this repository. It builds the minimum actual baseline coach/client schema plus auth roles and users. This is neither a full Supabase reset nor evidence of multi-connection race behavior or hosted application. PGlite is not a runtime/project dependency.
+
+The draft adds `completed_calls` alongside `admitted_calls` to identify abandoned admissions; successful acceptance is terminal and settles earlier incomplete admissions. Summary reads classify expired unfinished leases as unknown without changing the attempt identity. A newly rendered body must name the locked client's current email; a concurrent email edit instead produces a final stale action for fresh reconfirmation.

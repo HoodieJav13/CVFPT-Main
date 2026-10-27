@@ -134,7 +134,16 @@ function validateSessionNotePayload(body = {}, { partial = false } = {}) {
   return valid(value);
 }
 
+// Optional { notify } on cancel-style actions. Missing means notify (the
+// historical behavior); anything but a boolean is an error.
+function validateNotifyFlag(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || !Object.hasOwn(body, 'notify')) return valid(true);
+  if (typeof body.notify !== 'boolean') return invalid('Notify must be true or false');
+  return valid(body.notify);
+}
+
 module.exports = {
+  validateNotifyFlag,
   validateBookingListQuery,
   validateOptionalText,
   validatePackagePayload,

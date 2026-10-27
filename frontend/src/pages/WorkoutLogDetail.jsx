@@ -1,12 +1,15 @@
+import { tracks, trackingType } from '@/lib/workoutMetrics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { m, useReducedMotion } from 'framer-motion';
-import { ArrowLeft, Check, CircleSlash2, Clock3, MessageSquare, ShieldCheck, TrendingDown, TrendingUp, Users } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, CircleSlash2, Clock3, MessageSquare, ShieldCheck, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { fmtDateTime, initials } from '@/lib/format';
 import { LoadingScreen, LoadErrorState, PageHeader } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
+import { QuickSessionBadge } from '@/components/training/QuickSessionBadge';
+import { isQuickSessionLog } from '@/lib/quickSessions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -15,6 +18,12 @@ import { MOTION_EASINGS, WORKOUT_COMPLETION_MOTION, msToSeconds } from '@/lib/mo
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { useNotifications } from '@/context/NotificationsContext';
 import { hasQueuedCompleteFor, useWorkoutOutbox } from '@/lib/workoutOutbox';
+import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
+import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
+import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
+import { demoForRow } from '@/lib/exerciseDemo';
+import { SetConflictNotice, SwapStatus, UndeliveredEntries } from '@/components/training/SessionCorrections';
+import { CoachConflictActions, CoachSwapActions } from '@/components/group/CoachSessionActions';
 
 // Same identity rule as the exercise-history RPC: match by library exercise
 // when linked, otherwise by the source workout exercise.
@@ -73,6 +82,11 @@ export default function WorkoutLogDetail() {
   const [waitingToSync, setWaitingToSync] = useState(() => hasQueuedCompleteFor(id));
   const [syncError, setSyncError] = useState(null);
   const [previousByExercise, setPreviousByExercise] = useState({});
+  // Today's guide for an exercise, opened on demand (never preloaded here).
+  const [guide, setGuide] = useState(null);
+  // Today's demo for an exercise (live by design), never presented as the
+  // instruction that was shown when this workout happened.
+  const [demoFor, setDemoFor] = useState(null);
   const previousFetchedFor = useRef(null);
   // Drains a completion queued by the tracker before navigation
   // (docs/offline-workout-completion.md). The celebration fires only once
@@ -169,11 +183,18 @@ export default function WorkoutLogDetail() {
       { replace: true, state: null },
     );
   }, [id, isClient, location.hash, location.pathname, location.search, location.state, navigate]);
-  if (!log && loadError) return <LoadErrorState message={loadError} scope="workout-detail" onRetry={load} />;
-  if (!log) return <LoadingScreen />;
+  const waitingBanner = queueStillWaiting && (
+    <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
+      <Clock3 className="h-4 w-4 shrink-0 text-gold" />
+      Finished on this phone — syncing when a connection returns. Your results are safe.
+    </div>
+  );
+  if (!log && loadError) return <div>{waitingBanner}<LoadErrorState message={loadError} scope="workout-detail" onRetry={load} /></div>;
+  if (!log) return <div>{waitingBanner}<LoadingScreen /></div>;
 
   const completed = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'completed').length;
   const skipped = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'skipped').length;
+  const hasGroups = log.exercises.some((exercise) => exercise.superset_group);
   const ownResponse = (log.coach_responses || []).find((response) => response.author_coach_id === user.profile?.id);
   const responseLength = Array.from(responseContent.trim()).length;
 
@@ -220,12 +241,7 @@ export default function WorkoutLogDetail() {
       >
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
-      {queueStillWaiting && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
-          <Clock3 className="h-4 w-4 shrink-0 text-gold" />
-          Finished on this phone — syncing when a connection returns. Your results are safe.
-        </div>
-      )}
+      {waitingBanner}
       {syncError && (
         <div className="mb-4 flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="completion-sync-error">
           <span>{syncError} The workout is active again.</span>
@@ -250,6 +266,7 @@ export default function WorkoutLogDetail() {
         {celebrateCompletion && <div className="sr-only" role="status" aria-live="polite">Workout complete</div>}
         <PageHeader title={log.workout_name} subtitle={log.completed_at ? `Completed ${fmtDateTime(log.completed_at)}` : `Started ${fmtDateTime(log.started_at)}`} />
         <div className="mb-4 flex flex-wrap gap-2">
+          {isQuickSessionLog(log) && <QuickSessionBadge testId="log-detail-quick-session" />}
           <Badge variant="outline" className="bg-success/10 text-success-foreground"><Check className="mr-1 h-3.5 w-3.5" /> {completed} completed</Badge>
           {skipped > 0 && <Badge variant="outline"><CircleSlash2 className="mr-1 h-3.5 w-3.5" /> {skipped} skipped</Badge>}
           <Badge variant="outline"><Clock3 className="mr-1 h-3.5 w-3.5" /> {log.status}</Badge>
@@ -270,9 +287,9 @@ export default function WorkoutLogDetail() {
         </div>
       </m.section>
       <div className="space-y-3">
-        {log.exercises.map((exercise) => {
+        <SupersetGroups exercises={log.exercises}>{(exercise, { marker }) => {
           const hasTarget = exercise.prescribed_sets || exercise.prescribed_load_value != null
-            || exercise.prescribed_reps || exercise.prescribed_rpe || exercise.prescribed_rest || exercise.prescribed_tempo;
+            || exercise.prescribed_duration_value || exercise.prescribed_distance_value || exercise.prescribed_reps || exercise.prescribed_rpe || exercise.prescribed_rest || exercise.prescribed_tempo;
           const totals = completedVolume(exercise);
           const units = Object.keys(totals);
           const previous = previousByExercise[exerciseMatchKey(exercise)];
@@ -288,30 +305,58 @@ export default function WorkoutLogDetail() {
           }
           return (
             <Card key={exercise.id}>
-              <CardHeader className="pb-2"><CardTitle className="font-display text-lg">{exercise.exercise_name}</CardTitle></CardHeader>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex min-w-0 items-center gap-2 font-display text-lg">
+                  {hasGroups && <ExerciseMarker marker={marker} />}
+                  <span className="min-w-0">{exercise.exercise_name}</span>
+                </CardTitle>
+                {log.server_time && <SwapStatus exercise={exercise} log={log} />}
+                {exercise.media && (
+                  <Button
+                    type="button" variant="ghost" size="sm" className="min-h-11 w-fit px-2 text-primary"
+                    onClick={() => setGuide({ media: exercise.media, exerciseName: exercise.exercise_name })}
+                    data-testid="history-current-guide"
+                  >
+                    <BookOpen className="h-4 w-4" aria-hidden /> Current exercise guide
+                  </Button>
+                )}
+                <ExerciseDemoAction demo={demoForRow(exercise)} exerciseName={exercise.exercise_name} variant="history"
+                  onView={() => setDemoFor(exercise)} />
+              </CardHeader>
               <CardContent>
                 {hasTarget && (
                   <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" data-testid="exercise-target-line">
                     <span className="font-medium">Target</span>
                     {exercise.prescribed_sets && <span>Sets {exercise.prescribed_sets}</span>}
                     {exercise.prescribed_load_value != null && <span>Load {exercise.prescribed_load_value} {exercise.prescribed_load_unit}</span>}
-                    {exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
+                    {trackingType(exercise) === 'reps_weight' && exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
+                    {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => exercise[`prescribed_${metric}_value`] != null && <span key={metric}>{metric === 'duration' ? 'Duration' : 'Distance'} {exercise[`prescribed_${metric}_value`]} {exercise[`prescribed_${metric}_unit`]}</span>)}
                     {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
                     {exercise.prescribed_rest && <span>Rest {exercise.prescribed_rest}</span>}
                     {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
                   </div>
                 )}
                 <div className="grid grid-cols-[2rem_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 pb-1 text-xs font-medium text-muted-foreground">
-                  <span>Set</span><span>Weight</span><span>Reps</span><span>RPE</span><span className="sr-only">Status</span>
+                  <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span><span>RPE</span><span className="sr-only">Status</span>
                 </div>
                 <div className="divide-y divide-border/70">
                   {exercise.sets.map((set) => (
                     <div key={set.id} className="grid min-h-11 grid-cols-[2rem_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 py-2 text-sm" data-testid="review-set-row">
                       <span className="tabular-nums text-muted-foreground">{set.set_number}</span>
                       <span className="tabular-nums">{set.actual_load_value === null ? <span aria-label="No weight logged">—</span> : `${set.actual_load_value} ${set.actual_load_unit}`}</span>
-                      <span className="tabular-nums">{set.actual_reps ?? <span aria-label="No reps logged">—</span>}</span>
+                      <span className="tabular-nums">{trackingType(exercise) === 'reps_weight' ? (set.actual_reps ?? <span aria-label="No reps logged">—</span>) : '—'}</span>
                       <span className="tabular-nums">{set.actual_rpe ?? <span aria-label="No RPE logged">—</span>}</span>
-                      <Badge variant={set.status === 'completed' ? 'default' : 'outline'}>{set.status}</Badge>
+                      {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => <span key={metric} className="col-span-full tabular-nums">{metric === 'duration' ? 'Duration' : 'Distance'}: {set[`actual_${metric}_value`] == null ? <span aria-label={`No ${metric} logged`}>—</span> : `${set[`actual_${metric}_value`]} ${set[`actual_${metric}_unit`]}`}</span>)}
+                      <Badge className="col-start-5 row-start-1" variant={set.status === 'completed' ? 'default' : 'outline'}>{set.status}</Badge>
+                      {set.status === 'completed' && Number.isInteger(set.completed_plan_revision) && set.completed_plan_revision < (exercise.plan_revision || 0) && (
+                        <span className="col-span-full text-xs text-muted-foreground" data-testid="earlier-plan-note">Done to the earlier plan (the plan was changed while this was being logged).</span>
+                      )}
+                      {(log.conflicts || []).filter((conflict) => conflict.workout_log_set_id === set.id).map((conflict) => (
+                        <div key={conflict.id} className="col-span-full space-y-2">
+                          <SetConflictNotice conflict={conflict} logId={log.id} viewer={isCoach ? 'coach' : 'client'} onChanged={load} />
+                          {isCoach && <CoachConflictActions conflict={conflict} logId={log.id} onDone={() => load()} />}
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -338,7 +383,7 @@ export default function WorkoutLogDetail() {
               </CardContent>
             </Card>
           );
-        })}
+        }}</SupersetGroups>
       </div>
       {readError && (
         <div className="mt-4 flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="coach-feedback-read-error">
@@ -352,6 +397,23 @@ export default function WorkoutLogDetail() {
           {log.notes && <div><p className="text-xs font-medium uppercase text-muted-foreground">Workout notes</p><p className="mt-1 text-sm">{log.notes}</p></div>}
         </CardContent></Card>
       )}
+      <ExerciseInstructionDialog
+        media={guide?.media}
+        exerciseName={guide?.exerciseName}
+        context={{ type: 'workout_log', id }}
+        open={Boolean(guide)}
+        onOpenChange={(open) => { if (!open) setGuide(null); }}
+        historical
+      />
+      <ExerciseDemoDialog
+        demo={demoFor ? demoForRow(demoFor) : null}
+        exerciseName={demoFor?.exercise_name}
+        media={demoFor?.media || null}
+        context={{ type: 'workout_log', id }}
+        open={Boolean(demoFor)}
+        onOpenChange={(open) => { if (!open) setDemoFor(null); }}
+        historical
+      />
       <Card className="mt-4" data-testid="coach-responses-card">
         <CardHeader className="pb-2"><CardTitle className="font-display text-lg">Coach responses</CardTitle></CardHeader>
         <CardContent className="space-y-4">
@@ -374,6 +436,8 @@ export default function WorkoutLogDetail() {
               <p className="mt-2 whitespace-pre-wrap text-sm">{response.content}</p>
             </article>
           ))}
+          <UndeliveredEntries logId={log.id} log={log} />
+          {isCoach && log.server_time && <CoachSwapActions log={log} onDone={() => load()} />}
           {isCoach && log.status === 'completed' && (
             <form className="space-y-2 border-t border-border pt-4" onSubmit={saveResponse} data-testid="coach-response-form">
               <Label htmlFor="coach-response-content">{ownResponse ? 'Edit your response' : 'Add your response'}</Label>

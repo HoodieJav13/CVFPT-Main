@@ -81,16 +81,14 @@ test('the PWA frame colors (meta theme-color, manifest) stay in the warm band', 
 });
 
 test('PDF export hex literals equal the --primary / --gold tokens', () => {
-  // generateProgramPdf cannot read CSS variables, so its teal/gold are hex
+  // lib/programPdf.js cannot read CSS variables, so its teal/gold are hex
   // literals (CLAUDE.md "Brand system"). This pins them to the tokens: if
   // --primary or --gold moves, the PDF hex must move with it.
-  const programs = fs.readFileSync(path.join(__dirname, '../src/routes/programs.js'), 'utf8');
-  const fnStart = programs.indexOf('function generateProgramPdf(');
-  assert.ok(fnStart >= 0, 'generateProgramPdf not found in routes/programs.js');
-  const body = programs.slice(fnStart);
+  const body = fs.readFileSync(path.join(__dirname, '../src/lib/programPdf.js'), 'utf8');
+  assert.ok(body.includes('function generateProgramPdf('), 'generateProgramPdf not found in lib/programPdf.js');
   const literal = (name) => {
     const m = body.match(new RegExp(`const ${name} = '(#[0-9a-fA-F]{6})'`));
-    assert.ok(m, `const ${name} = '#rrggbb' not found in generateProgramPdf`);
+    assert.ok(m, `const ${name} = '#rrggbb' not found in lib/programPdf.js`);
     return m[1].toUpperCase();
   };
   const hslToHex = ({ h, s, l }) => {

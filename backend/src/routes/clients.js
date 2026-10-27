@@ -2,8 +2,10 @@ const express = require('express');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireAuth, requireCoach, canAccessClient } = require('../middleware/auth');
-const { configured, dispatchEmail } = require('../services/email');
-const { sendInviteEmail, sendPasswordResetEmail } = require('../services/accountRecovery');
+const { configured } = require('../services/email');
+const invites = require('../services/clientInvites');
+const { UUID, normalizeClientCreate, hashClientCreate, clientRecoverySummary } = require('../lib/clientCreateRequest');
+const { sendPasswordResetEmail } = require('../services/accountRecovery');
 const { clientImportLimiter } = require('../middleware/rateLimits');
 
 const router = express.Router();
@@ -28,16 +30,36 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { name, email, phone, goals, health_notes, coach_id } = req.body || {};
-    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Client name is required' });
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Client name is required', ...(Object.hasOwn(req.body || {}, 'request_id') ? { no_write: true } : {}) });
+    const identified = Object.hasOwn(req.body || {}, 'request_id');
+    if (identified && (!UUID.test(req.body.request_id || '') || typeof name !== 'string'
+      || (req.body.invite_now !== undefined && typeof req.body.invite_now !== 'boolean')
+      || ['email', 'phone', 'goals', 'health_notes'].some(k => req.body[k] != null && typeof req.body[k] !== 'string')
+      || (req.body.invite_now === true && !String(email || '').trim()))) {
+      return res.status(400).json({ error: 'Valid request identity and invite email are required', no_write: true });
+    }
+
 
     // Coaches always create under themselves; admin may assign any coach.
     const targetCoachId = req.user.role === 'admin' ? (coach_id || req.user.coach.id) : req.user.coach.id;
     if (req.user.role === 'admin') {
-      const { data: targetCoach } = await supabaseAdmin.from('coaches').select('id')
+      const { data: targetCoach, error: targetError } = await supabaseAdmin.from('coaches').select('id')
         .eq('id', targetCoachId).eq('archived', false).maybeSingle();
+      if (targetError) throw new Error('Coach lookup unavailable');
       if (!targetCoach) return res.status(404).json({ error: 'Coach not found' });
     }
 
+    if (identified) {
+      const normalized = normalizeClientCreate(req.body, targetCoachId);
+      const body = normalized.invite_now ? invites.renderInviteBody({client: normalized, coachName: req.user.coach?.name || 'Your coach'}) : null;
+      const result = await invites.rpc(supabaseAdmin, 'create_client_with_request', {
+        p_actor: req.user.coach.id, p_request_id: req.body.request_id, p_hash: hashClientCreate(normalized), p_client: normalized, p_provider_body: body,
+      });
+      if (result.outcome === 'not_found') return res.status(404).json({error: 'Client not found'});
+      if (result.outcome === 'request_mismatch') return res.status(409).json({code: 'request_mismatch', error: 'This request already created a client', ...(result.client ? {client: clientRecoverySummary(result.client)} : {})});
+      const invite = result.attempt_id ? await invites.deliverInviteAttempt({actorId: req.user.coach.id, attemptId: result.attempt_id}) : null;
+      return res.status(result.replayed ? 200 : 201).json({client: result.client, replayed: result.replayed, invite});
+    }
     const { data, error } = await supabaseAdmin
       .from('clients')
       .insert({
@@ -126,13 +148,24 @@ router.post('/import', clientImportLimiter, async (req, res) => {
 async function loadClientOr404(req, res, { includeArchived = false } = {}) {
   let query = supabaseAdmin.from('clients').select('*').eq('id', req.params.id);
   if (!includeArchived) query = query.eq('archived', false);
-  const { data: clientRow } = await query.maybeSingle();
+  const { data: clientRow, error: lookupError } = await query.maybeSingle();
+  if (lookupError) throw new Error('Client lookup unavailable');
   if (!clientRow || !canAccessClient(req.user, clientRow)) {
     res.status(404).json({ error: 'Client not found' });
     return null;
   }
   return clientRow;
 }
+
+// A successful authorized absence is a 200 discriminant, never an HTTP error.
+router.get('/create-requests/:request_id', async (req, res) => {
+  if (!UUID.test(req.params.request_id)) return res.status(400).json({error: 'Invalid request identity'});
+  try {
+    const result = await invites.lookupCreateRequest({actorId: req.user.coach.id, requestId: req.params.request_id, user: req.user});
+    if (result.status === 'blocked') return res.status(404).json({error: 'Client not found'});
+    return res.json(result);
+  } catch { return res.status(500).json({error: 'Could not recover client save'}); }
+});
 
 // GET /api/clients/:id
 router.get('/:id', async (req, res) => {
@@ -141,7 +174,7 @@ router.get('/:id', async (req, res) => {
       includeArchived: req.query.include_archived === 'true',
     });
     if (!clientRow) return;
-    return res.json(clientRow);
+    return res.json({...clientRow, invite: await invites.latestInvite(clientRow.id)});
   } catch (e) {
     logError('get client error', e);
     return res.status(500).json({ error: 'Failed to load client' });
@@ -187,39 +220,41 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// PATCH /api/clients/:id/invite { invited: boolean }
-router.patch('/:id/invite', async (req, res) => {
-  try {
-    const clientRow = await loadClientOr404(req, res);
-    if (!clientRow) return;
-    if (clientRow.auth_user_id) return res.status(400).json({ error: 'This client has already claimed their account' });
-    if (req.body.invited && !clientRow.email) {
-      return res.status(400).json({ error: 'Add an email to this client profile before inviting them' });
-    }
-    const invited = Boolean(req.body.invited);
-    const { data, error } = await supabaseAdmin
-      .from('clients')
-      .update({ invited, updated_at: new Date().toISOString() })
-      .eq('id', clientRow.id)
-      .select()
-      .single();
-    if (error) throw error;
-    let inviteEmail = null;
-    if (invited && data.email) {
-      if (configured()) {
-        const coachName = req.user.coach?.name || 'Your coach';
-        await dispatchEmail(() => sendInviteEmail({ client: data, coachName }));
-        inviteEmail = 'sent';
-      } else {
-        inviteEmail = 'unconfigured';
-      }
-    }
-    return res.json({ ...data, invite_email: inviteEmail });
-  } catch (e) {
-    logError('invite client error', e);
-    return res.status(500).json({ error: 'Failed to update invite status' });
+// One tracked invite path for create, switch and resend; no background dispatch.
+async function applyInvite(req, res, kind) {
+  const body = req.body || {};
+  if (UUID.test(req.params.id) && kind !== 'resend'
+    && Object.hasOwn(body, 'invited') && Object.keys(body).length === 1
+    && typeof body.invited === 'boolean') {
+    return res.status(409).json({
+      code: 'client_update_required',
+      error: 'Invitation controls have been updated. Reload this page, then try again. No invitation change was made.',
+    });
   }
-});
+  if (!UUID.test(req.params.id) || !UUID.test(body.action_id || '')
+    || (body.supersedes_attempt_id != null && !UUID.test(body.supersedes_attempt_id))
+    || (body.confirm_duplicate_risk !== undefined && typeof body.confirm_duplicate_risk !== 'boolean')
+    || (kind !== 'resend' && typeof body.invited !== 'boolean')) {
+    return res.status(400).json({error: 'Valid invite command identity is required'});
+  }
+  try {
+    const client = await loadClientOr404(req, res);
+    if (!client) return;
+    const result = await invites.rpc(supabaseAdmin, 'apply_invite_action', {
+      p_actor: req.user.coach.id, p_client_id: client.id, p_action_id: body.action_id, p_kind: kind,
+      p_supersedes_attempt_id: body.supersedes_attempt_id || null, p_confirm_duplicate_risk: body.confirm_duplicate_risk === true,
+      p_provider_body: kind === 'switch_off' ? null : invites.renderInviteBody({client, coachName: req.user.coach?.name || 'Your coach'}),
+    });
+    if (result.outcome === 'not_found') return res.status(404).json({error: 'Client not found'});
+    if (result.outcome === 'action_mismatch') return res.status(409).json({error: 'Invite command identity conflicts'});
+    const invite = result.result?.outcome === 'selected' && result.attempt_id
+      ? await invites.deliverInviteAttempt({actorId: req.user.coach.id, attemptId: result.attempt_id})
+      : null;
+    return res.json({action: {action_id: result.action_id, replayed: result.replayed, result: result.result}, invite});
+  } catch { return res.status(500).json({error: 'Could not update invitation'}); }
+}
+router.patch('/:id/invite', (req, res) => applyInvite(req, res, req.body?.invited === true ? 'switch_on' : 'switch_off'));
+router.post('/:id/invite/resend', (req, res) => applyInvite(req, res, 'resend'));
 
 // POST /api/clients/:id/send-password-reset
 // Rescue path for a claimed client who is locked out.
@@ -259,6 +294,94 @@ router.patch('/:id/archive', async (req, res) => {
   } catch (e) {
     logError('archive client error', e);
     return res.status(500).json({ error: 'Failed to archive client' });
+  }
+});
+
+// ----- Coach Notes -----
+// Private to the coaches authorized for the client (its coach and admins), by
+// the same loadClientOr404/canAccessClient check as the client record; this
+// router is coach-only, so client sessions never reach these routes. Any
+// authorized coach may read and add; only a note's author may edit it.
+const COACH_NOTE_FIELDS = 'id, client_id, author_coach_id, author_name_snapshot, content, created_at, updated_at';
+const COACH_NOTE_MAX = 4000;
+
+function coachNoteContent(body) {
+  if (typeof body?.content !== 'string') return null;
+  const content = body.content.trim();
+  return content.length >= 1 && content.length <= COACH_NOTE_MAX ? content : null;
+}
+
+const sameInstant = (a, b) => typeof a === 'string' && typeof b === 'string'
+  && !Number.isNaN(Date.parse(a)) && Date.parse(a) === Date.parse(b);
+
+// GET /api/clients/:id/coach-notes?include_archived=true
+router.get('/:id/coach-notes', async (req, res) => {
+  if (!UUID.test(req.params.id)) return res.status(404).json({ error: 'Client not found' });
+  try {
+    const clientRow = await loadClientOr404(req, res, { includeArchived: req.query.include_archived === 'true' });
+    if (!clientRow) return;
+    const { data, error } = await supabaseAdmin.from('client_coach_notes').select(COACH_NOTE_FIELDS)
+      .eq('client_id', clientRow.id).eq('archived', false)
+      .order('created_at', { ascending: false }).order('id', { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    return res.json({ notes: data || [] });
+  } catch (e) {
+    logError('list coach notes error', e);
+    return res.status(500).json({ error: 'Failed to load coach notes' });
+  }
+});
+
+// POST /api/clients/:id/coach-notes { content }
+router.post('/:id/coach-notes', async (req, res) => {
+  if (!UUID.test(req.params.id)) return res.status(404).json({ error: 'Client not found' });
+  const content = coachNoteContent(req.body);
+  if (!content) return res.status(400).json({ error: `A note needs 1 to ${COACH_NOTE_MAX.toLocaleString('en-US')} characters` });
+  try {
+    const clientRow = await loadClientOr404(req, res);
+    if (!clientRow) return;
+    const { data, error } = await supabaseAdmin.from('client_coach_notes').insert({
+      client_id: clientRow.id,
+      author_coach_id: req.user.coach.id,
+      author_name_snapshot: String(req.user.coach.name || '').trim() || 'Coach',
+      content,
+    }).select(COACH_NOTE_FIELDS).single();
+    if (error) throw error;
+    return res.status(201).json(data);
+  } catch (e) {
+    logError('create coach note error', e);
+    return res.status(500).json({ error: 'Failed to save coach note' });
+  }
+});
+
+// PUT /api/clients/:id/coach-notes/:noteId { content, expected_updated_at }
+// The edit applies only to the version the author last saw.
+router.put('/:id/coach-notes/:noteId', async (req, res) => {
+  if (!UUID.test(req.params.id) || !UUID.test(req.params.noteId)) return res.status(404).json({ error: 'Note not found' });
+  const content = coachNoteContent(req.body);
+  if (!content) return res.status(400).json({ error: `A note needs 1 to ${COACH_NOTE_MAX.toLocaleString('en-US')} characters` });
+  if (typeof req.body.expected_updated_at !== 'string') return res.status(400).json({ error: 'The note version you edited is required' });
+  try {
+    const clientRow = await loadClientOr404(req, res);
+    if (!clientRow) return;
+    const { data: note, error: lookupError } = await supabaseAdmin.from('client_coach_notes').select(COACH_NOTE_FIELDS)
+      .eq('id', req.params.noteId).eq('client_id', clientRow.id).eq('archived', false)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!note) return res.status(404).json({ error: 'Note not found' });
+    if (note.author_coach_id !== req.user.coach.id) return res.status(403).json({ error: "Only the note's author can edit it" });
+    const stale = { error: 'This note changed since you opened it. Your text is kept; review the latest version before saving again.' };
+    if (!sameInstant(note.updated_at, req.body.expected_updated_at)) return res.status(409).json({ ...stale, note });
+    const { data, error } = await supabaseAdmin.from('client_coach_notes')
+      .update({ content, updated_at: new Date().toISOString() })
+      .eq('id', note.id).eq('updated_at', note.updated_at)
+      .select(COACH_NOTE_FIELDS).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(409).json(stale);
+    return res.json(data);
+  } catch (e) {
+    logError('update coach note error', e);
+    return res.status(500).json({ error: 'Failed to save coach note' });
   }
 });
 

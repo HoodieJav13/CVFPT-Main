@@ -1,0 +1,162 @@
+[
+  {
+    "file": "images/end-still-crop-after-1280x900.png",
+    "state": "end-still-crop",
+    "variant": "after",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "sha256": "270ae790ca5f97b82dbfc703d2626acfc64d95ce9782ead35e91807b551ec396",
+    "bytes": 98405,
+    "saved_ms": 3500,
+    "scrub_ms": 1000,
+    "crop_shows": "saved frame",
+    "saved_time_unchanged": true,
+    "source": {
+      "commit": "18985499a804f4be8ea4396bec1f0d1cf85f2c75",
+      "tree": "136956eec2eebaa19686723dcdda70037ba58257",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/end-still-crop-after-390x844.png",
+    "state": "end-still-crop",
+    "variant": "after",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "sha256": "871d67bcff64c593a22615f3bd4c15f5e2f5f59dbcb432e2aee6af78e99dc9b8",
+    "bytes": 58548,
+    "saved_ms": 3500,
+    "scrub_ms": 1000,
+    "crop_shows": "saved frame",
+    "saved_time_unchanged": true,
+    "source": {
+      "commit": "18985499a804f4be8ea4396bec1f0d1cf85f2c75",
+      "tree": "136956eec2eebaa19686723dcdda70037ba58257",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/end-still-crop-before-1280x900.png",
+    "state": "end-still-crop",
+    "variant": "before",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "sha256": "c38518dfedec7003d141a20cd5bdef044fdb6d13a0115c108df634be91c70c7a",
+    "bytes": 96496,
+    "saved_ms": 3500,
+    "scrub_ms": 1000,
+    "crop_shows": "scrub-position frame",
+    "saved_time_unchanged": true,
+    "source": {
+      "commit": "335588ec0c00a8c6ec65a9b13526f3bfd80688bd",
+      "tree": "3a857e68a16461efd11427fad553e20af3123dff",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/end-still-crop-before-390x844.png",
+    "state": "end-still-crop",
+    "variant": "before",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "sha256": "1d1649698f69cf9e1213f1b5a288b5671fbb05b6efccc4a0904297ac8d15c6d9",
+    "bytes": 56816,
+    "saved_ms": 3500,
+    "scrub_ms": 1000,
+    "crop_shows": "scrub-position frame",
+    "saved_time_unchanged": true,
+    "source": {
+      "commit": "335588ec0c00a8c6ec65a9b13526f3bfd80688bd",
+      "tree": "3a857e68a16461efd11427fad553e20af3123dff",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/poster-crop-after-1280x900.png",
+    "state": "poster-crop",
+    "variant": "after",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "sha256": "c845afafba7a9617611a76a79a5a7ed8b4d3f4e77d9506e7f5f27d1cde69ebbf",
+    "bytes": 93570,
+    "saved_ms": 500,
+    "scrub_ms": 3000,
+    "crop_shows": "saved frame",
+    "saved_time_unchanged": true,
+    "source": {
+      "commit": "18985499a804f4be8ea4396bec1f0d1cf85f2c75",
+      "tree": "136956eec2eebaa19686723dcdda70037ba58257",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/poster-crop-after-390x844.png",
+    "state": "poster-crop",
+    "variant": "after",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "sha256": "ccc13c5e741430898b5689f0d00f5065f08506a6109d690a5eed5226313d7805",
+    "bytes": 57932,
+    "saved_ms": 500,
+    "scrub_ms": 3000,
+    "crop_shows": "saved frame",
+    "saved_time_unchanged": true,
+    "source": {
+      "commit": "18985499a804f4be8ea4396bec1f0d1cf85f2c75",
+      "tree": "136956eec2eebaa19686723dcdda70037ba58257",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/poster-crop-before-1280x900.png",
+    "state": "poster-crop",
+    "variant": "before",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "sha256": "e503127aaca61b83a849b27aa299b6696e4bf4922bf2e167b8000d9298f1e0e1",
+    "bytes": 91379,
+    "saved_ms": 500,
+    "scrub_ms": 3000,
+    "crop_shows": "scrub-position frame",
+    "saved_time_unchanged": true,
+    "source": {
+      "commit": "335588ec0c00a8c6ec65a9b13526f3bfd80688bd",
+      "tree": "3a857e68a16461efd11427fad553e20af3123dff",
+      "tracked_changes": []
+    }
+  },
+  {
+    "file": "images/poster-crop-before-390x844.png",
+    "state": "poster-crop",
+    "variant": "before",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "sha256": "aea70e848babd922c438d6a384b1de64b65a8ea59cd95334305d70cdf3fb7e34",
+    "bytes": 55905,
+    "saved_ms": 500,
+    "scrub_ms": 3000,
+    "crop_shows": "scrub-position frame",
+    "saved_time_unchanged": true,
+    "source": {
+      "commit": "335588ec0c00a8c6ec65a9b13526f3bfd80688bd",
+      "tree": "3a857e68a16461efd11427fad553e20af3123dff",
+      "tracked_changes": []
+    }
+  }
+]

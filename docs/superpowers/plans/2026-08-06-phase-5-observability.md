@@ -4,7 +4,7 @@
 
 **Goal:** A production 500, a down backend, or a misconfigured email system becomes visible; deploys can no longer outrun migrations silently; requests fail fast instead of hanging.
 
-**Architecture:** Sentry SDKs wired but inert without a DSN (owner adds accounts at check-in). Error capture hooks into the existing `logError` chokepoint (routes catch their own errors, so an Express error handler alone would see almost nothing). Security headers via `helmet` (backend) and `vercel.json` (frontend static). A separate `migration-guard` workflow enforces the migration-first rule with a `migration-applied` label.
+**Architecture:** Sentry SDKs wired but inert without a DSN (owner adds accounts at check-in). Error capture hooks into the existing `logError` chokepoint (routes catch their own errors, so an Express error handler alone would see almost nothing). Security headers via `helmet` (backend) and `vercel.json` (frontend static). A separate `migration-guard` workflow enforces the migration-first rule with both `migration-applied` (Development) and `prod-migration-applied` (Production) labels.
 
 **Tech Stack:** @sentry/node, @sentry/react, helmet, GitHub Actions, Vercel headers.
 
@@ -14,6 +14,11 @@
 - All new behavior no-ops cleanly when its env var is absent — CI and local dev need no new configuration.
 - No CSP on the SPA yet (needs an inline-script/style inventory first) — deferred, recorded in DEPLOYMENT.md.
 - Commits end with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+
+The 2026-09-24 verification notes below describe the historical source snapshot
+recorded by PR #80 (`100053b`), including its then-valid line numbers. They do
+not certify current provider configuration. The migration guard note is updated
+separately against main `84b4718` on 2026-10-27.
 
 ### Task 1: Backend hardening (`app.js`, `logger.js`, `supabase.js`, `supabaseFetch.js`)
 - [x] `helmet()` + `app.disable('x-powered-by')`; JSON 404 for unknown routes; terminal error middleware mapping body-parse errors to 400/413 JSON and everything else to a masked 500 via `logError`. _Verified 2026-09-24: `backend/src/app.js` (helmet + x-powered-by at lines 41–42, JSON 404 at 86, terminal handler at 92–101)._
@@ -28,7 +33,7 @@
 - [x] `vercel.json` headers: nosniff, X-Frame-Options DENY, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (camera/mic/geolocation off), HSTS. _Verified 2026-09-24: `frontend/vercel.json` `headers` block carries all five._
 
 ### Task 3: Migration guard workflow
-- [x] `.github/workflows/migration-guard.yml` — `pull_request` with `labeled`/`unlabeled` types; fails any PR touching `supabase/migrations/**` unless it carries the `migration-applied` label; passing the label re-runs only this cheap job. _Verified 2026-09-24: `.github/workflows/migration-guard.yml` (types include `labeled`/`unlabeled`; diff on `supabase/migrations/`; label check)._
+- [x] `.github/workflows/migration-guard.yml` — `pull_request` with `labeled`/`unlabeled` types; a PR touching `supabase/migrations/**` requires both `migration-applied` (Development) and `prod-migration-applied` (Production) before merge. Label events re-run the cheap guard workflow. _Verified 2026-10-27 against main `84b4718`: both label checks and the separate migrations-in-flight job are present. Labels record application to both hosted databases; this docs refresh performs no hosted migration._
 
 ### Task 4: Env documentation
 - [x] `backend/.env.example`: add `CRON_SECRET`, `RESEND_API_KEY`, `NOTIFY_REPLY_TO`, `SENTRY_DSN` with comments; `frontend/.env.example`: add `REACT_APP_SENTRY_DSN`. _Verified 2026-09-24: `backend/.env.example` lines 14–22; `frontend/.env.example` line 9._
@@ -38,4 +43,4 @@
 - [x] `backend/test/ops-hardening.test.js`: functional 404-is-JSON and malformed-JSON-is-400 against the mounted app (stubbed supabase); `.env.example` completeness assertions; source asserts for helmet, terminal handler, Sentry-gating, timeout wiring, and the production fail-fast. _Verified 2026-09-24: `backend/test/ops-hardening.test.js` lines 29–86 cover each of these._
 - [ ] Full backend suite + frontend build green; scoped commits; push; PR. **PAUSE for owner.** _Backend suite (319/319) and frontend build re-verified green on 2026-09-24; the owner check-in gate below is not something this repo can verify, so the box stays open._
 
-**⏸ OWNER CHECK-IN (launch-ready gate):** create Sentry (backend + frontend DSNs) and UptimeRobot (monitor `GET /api/health` + frontend URL) accounts; set `SENTRY_DSN`/`REACT_APP_SENTRY_DSN` in Vercel; confirm Supabase backup tier, enable PITR/Pro backups, run one test restore; enable branch protection requiring CI; create the `migration-applied` label in GitHub.
+**⏸ OWNER CHECK-IN (launch-ready gate):** create Sentry (backend + frontend DSNs) and UptimeRobot (monitor `GET /api/health` + frontend URL) accounts; set `SENTRY_DSN`/`REACT_APP_SENTRY_DSN` in Vercel; confirm Supabase backup tier, enable PITR/Pro backups, run one test restore; enable branch protection requiring CI; retain both `migration-applied` (Development) and `prod-migration-applied` (Production) labels in GitHub before merging migration PRs.

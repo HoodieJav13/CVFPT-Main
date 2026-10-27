@@ -69,7 +69,6 @@ export default function CoachNotifications() {
     <div>
       <PageHeader
         title="Notifications"
-        subtitle="Client workout activity"
         action={rows.some((row) => !row.read_at) ? (
           <Button variant="outline" size="sm" onClick={readAll} data-testid="notifications-read-all">
             <CheckCheck className="mr-1.5 h-4 w-4" /> Mark all read

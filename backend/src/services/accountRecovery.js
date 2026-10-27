@@ -21,7 +21,7 @@ async function sendPasswordResetEmail({ email, name }, env = process.env) {
   return sendEmail({ to: [email], subject: headline, ...rendered }, `password-reset/${tokenHash.slice(0, 24)}`, env);
 }
 
-async function sendInviteEmail({ client, coachName }, env = process.env) {
+function renderInviteMessage({ client, coachName }, env = process.env) {
   const signupUrl = `${env.FRONTEND_URL || ''}/signup?email=${encodeURIComponent(client.email)}`;
   const headline = 'Your CVF PT account is ready to claim';
   const rendered = renderEmail({
@@ -31,7 +31,11 @@ async function sendInviteEmail({ client, coachName }, env = process.env) {
     actionUrl: signupUrl,
     footer: 'If you were not expecting this, you can ignore this email.',
   });
-  return sendEmail({ to: [client.email], subject: headline, ...rendered }, `invite/${client.id}/${client.updated_at}`, env);
+  return { to: [client.email], subject: headline, ...rendered };
 }
 
-module.exports = { sendInviteEmail, sendPasswordResetEmail };
+async function sendInviteEmail({ client, coachName }, env = process.env) {
+  return sendEmail(renderInviteMessage({ client, coachName }, env), `invite/${client.id}/${client.updated_at}`, env);
+}
+
+module.exports = { renderInviteMessage, sendInviteEmail, sendPasswordResetEmail };

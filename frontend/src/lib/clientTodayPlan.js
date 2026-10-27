@@ -16,7 +16,7 @@ function firstProgramWorkout(programs = [], history = []) {
         kind: 'program',
         eyebrow: 'Up next',
         title: day.workout?.name || assignment.program?.name || 'Program workout',
-        description: assignment.program?.name ? `From ${assignment.program.name}` : 'Continue your current program.',
+        description: assignment.program?.name || null,
         action: 'Start workout',
         source: { program_assignment_id: assignment.id, program_day_id: day.id },
       };
@@ -25,13 +25,18 @@ function firstProgramWorkout(programs = [], history = []) {
   return null;
 }
 
+// A completed quick session (authoritative server flag) is not a due candidate; every
+// other assignment keeps the existing priority rules. Mirrors lib/quickSessions.
+function candidateWorkouts(assignments) {
+  return (assignments?.workouts || []).filter((assignment) => !(assignment.kind === 'quick' && assignment.quick_session_completed === true));
+}
+
 export function chooseClientTodayPlan({ assignments, activeLog, history, unreadMessages, todayCheckIn, complete = true }) {
   if (activeLog) {
     return {
       kind: 'active',
       eyebrow: 'In progress',
       title: activeLog.workout_name || 'Active workout',
-      description: 'Your saved sets are ready when you are.',
       action: 'Resume workout',
       href: `/client/workouts/${activeLog.id}/track`,
     };
@@ -41,7 +46,7 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
     .filter((log) => log.status === 'completed' && log.dated_workout_assignment_id)
     .map((log) => log.dated_workout_assignment_id));
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
-  const due = (assignments?.workouts || [])
+  const due = candidateWorkouts(assignments)
     .filter((assignment) => assignment.assignment_mode === 'dated'
       && assignment.assigned_for <= today
       && !completedDated.has(assignment.id))
@@ -49,9 +54,10 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
   if (due) {
     return {
       kind: 'dated',
-      eyebrow: due.assigned_for < today ? 'Ready now · overdue' : 'Today’s workout',
+      quickSession: due.kind === 'quick',
+      eyebrow: due.assigned_for < today ? 'Overdue' : 'Today’s workout',
       title: due.workout?.name || 'Assigned workout',
-      description: due.notes || 'Your coach assigned this workout for today.',
+      description: due.notes || null,
       action: 'Start workout',
       source: { workout_assignment_id: due.id },
     };
@@ -60,13 +66,13 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
   const program = firstProgramWorkout(assignments?.programs || [], history || []);
   if (program) return program;
 
-  const activeAssignment = (assignments?.workouts || []).find((assignment) => assignment.assignment_mode === 'active');
+  const activeAssignment = candidateWorkouts(assignments).find((assignment) => assignment.assignment_mode === 'active');
   if (activeAssignment) {
     return {
       kind: 'standalone',
-      eyebrow: 'Available workout',
+      eyebrow: 'Workout',
       title: activeAssignment.workout?.name || 'Assigned workout',
-      description: activeAssignment.notes || 'A workout from your coach is ready.',
+      description: activeAssignment.notes || null,
       action: 'Start workout',
       source: { workout_assignment_id: activeAssignment.id },
     };
@@ -78,7 +84,6 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
       kind: 'feedback',
       eyebrow: 'Coach feedback',
       title: `Review ${feedback.workout_name || 'your workout'}`,
-      description: 'Your coach left new feedback.',
       action: 'Read feedback',
       href: `/client/workouts/${feedback.id}`,
     };
@@ -88,8 +93,7 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
     return {
       kind: 'check_in',
       eyebrow: 'Today’s plan',
-      title: 'Tell your coach how you feel',
-      description: 'A quick check-in keeps your training current.',
+      title: 'Daily check-in',
       action: 'Start check-in',
     };
   }
@@ -99,7 +103,6 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
       kind: 'message',
       eyebrow: 'New from your coach',
       title: `${unreadMessages} unread ${unreadMessages === 1 ? 'message' : 'messages'}`,
-      description: 'Open the conversation to stay in sync.',
       action: 'Read messages',
       href: '/client/messages',
     };
@@ -110,7 +113,7 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
       kind: 'unavailable',
       eyebrow: 'Today’s plan',
       title: 'Training plan unavailable',
-      description: 'Open Programs to retry your assigned training.',
+      description: 'Open Programs to retry.',
       action: 'Open programs',
       href: '/client/programs',
     };
@@ -120,7 +123,6 @@ export function chooseClientTodayPlan({ assignments, activeLog, history, unreadM
     kind: 'clear',
     eyebrow: 'Today’s plan',
     title: 'You’re caught up',
-    description: 'No assigned action is waiting right now.',
     action: 'View programs',
     href: '/client/programs',
   };

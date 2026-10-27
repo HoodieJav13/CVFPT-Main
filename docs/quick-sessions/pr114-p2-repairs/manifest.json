@@ -1,0 +1,123 @@
+{
+  "baseline_commit": "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+  "candidate_commit": "152bc80af4aa5f1c3b4f2edba09c0b277a018922",
+  "runtime_sources": {
+    "backend/src/routes/programs.js": {
+      "baseline_sha256": "9edbf5dfc4f861202b32261be79d30b42e9e754e652946dd7c3639902f43edd3",
+      "candidate_sha256": "8e8bc6df951e8f60beb7c6acb647e8dae101f11bb98d12dbddd9bb5f5b1d6001"
+    },
+    "frontend/src/lib/quickSessionRequest.js": {
+      "baseline_sha256": "edda2e7019d038e7767f744f63a724fc115d3ce99dc6d70cb6ce66bb8af4b38b",
+      "candidate_sha256": "ead139a2ad710304239ab4aeb0fa8126865992918ce43d48700a25cc489fef19"
+    },
+    "frontend/src/pages/coach/ClientDetail.jsx": {
+      "baseline_sha256": "74cc2a560dbd3380763e78361ad608392ca09e3869a7fd1336ea0b2f1ce7efd6",
+      "candidate_sha256": "ba025079b0861271efd9e3fabb814263dce5f94b0dd85d25f115f2ba33fdd80b"
+    }
+  },
+  "captures": [
+    {
+      "file": "after/cross-tab-desktop.png",
+      "width": 1280,
+      "height": 900,
+      "sha256": "b60d9a073ecd758977eb2cbf70a067318c90b2a9df2b296cea0c3d5ae0dfd701",
+      "state": "Client Programs after another tab committed the pending request and removed its storage key",
+      "source": "candidate"
+    },
+    {
+      "file": "after/cross-tab-phone320.png",
+      "width": 320,
+      "height": 800,
+      "sha256": "dadcf1e3dbea13e2cedc3d228d4ebf8227de5d4c89e51eca6bda9c451e182b61",
+      "state": "Client Programs after another tab committed the pending request and removed its storage key",
+      "source": "candidate"
+    },
+    {
+      "file": "after/cross-tab-phone390.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "902ec1a64445c1c940871ce4e1ea8e936d99bcc7277f28682fe951368f4f336b",
+      "state": "Client Programs after another tab committed the pending request and removed its storage key",
+      "source": "candidate"
+    },
+    {
+      "file": "after/library-desktop.png",
+      "width": 1280,
+      "height": 900,
+      "sha256": "833461cd4e129f428fb9163ab884c5f278f472bf52b3e6ffbdeb9eddaf5dbfc9",
+      "state": "Assign training > Quick session > exercise-library request 500",
+      "source": "candidate"
+    },
+    {
+      "file": "after/library-phone320.png",
+      "width": 320,
+      "height": 800,
+      "sha256": "2458ac12120c8274ffeb077536302e1f759ddd1e587a33854d3f1bf596f7e0ee",
+      "state": "Assign training > Quick session > exercise-library request 500",
+      "source": "candidate"
+    },
+    {
+      "file": "after/library-phone390.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "6e89328484b450214b1dc1729a1b197da2e3c6af34b397cc6cf43b91e3514eb2",
+      "state": "Assign training > Quick session > exercise-library request 500",
+      "source": "candidate"
+    },
+    {
+      "file": "before/cross-tab-desktop.png",
+      "width": 1280,
+      "height": 900,
+      "sha256": "5d14bee1bbcee6a24ff736a41f647e20f6a0ee60fd3bc34d04ab187663c2a615",
+      "state": "Client Programs after another tab committed the pending request and removed its storage key",
+      "source": "baseline"
+    },
+    {
+      "file": "before/cross-tab-phone320.png",
+      "width": 320,
+      "height": 800,
+      "sha256": "23cc88cf59020b995d69175212b69240a31b10e2ba7bf62797ae1391de5e0758",
+      "state": "Client Programs after another tab committed the pending request and removed its storage key",
+      "source": "baseline"
+    },
+    {
+      "file": "before/cross-tab-phone390.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "688b36c7b7a7997d1fe6f618c6ac6e4cd868fe402115271e1e4fae8b5b9dfd65",
+      "state": "Client Programs after another tab committed the pending request and removed its storage key",
+      "source": "baseline"
+    },
+    {
+      "file": "before/library-desktop.png",
+      "width": 1280,
+      "height": 900,
+      "sha256": "4ba6c133e6826c1ec5c1d00aa7f1a66d5501870c14b5b44b1954b1d55528e032",
+      "state": "Assign training > Quick session > exercise-library request 500",
+      "source": "baseline"
+    },
+    {
+      "file": "before/library-phone320.png",
+      "width": 320,
+      "height": 800,
+      "sha256": "2ac1fd4b6921680cf0e4f8b5ed30602d7ea75528384a58142a6f10f38367fb3b",
+      "state": "Assign training > Quick session > exercise-library request 500",
+      "source": "baseline"
+    },
+    {
+      "file": "before/library-phone390.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "32293670c539ee416b9043b1c390585f5a840c39dc65362c6b68cf87c6acb3de",
+      "state": "Assign training > Quick session > exercise-library request 500",
+      "source": "baseline"
+    }
+  ],
+  "environment": "Local Vite; Playwright 1.61.1 with /usr/bin/chromium 151.0.7922.173; dark theme; fictional Coach Sam / Casey Client; browser timezone UTC",
+  "limitations": [
+    "Mocked API and auth only; no hosted data or credentials",
+    "Screenshots show browser state, not database transactional behavior",
+    "The baseline retains the reproduced spinner/stale recovery warning",
+    "No release or deployment verification; automatic preview deployment gate remains pending"
+  ]
+}

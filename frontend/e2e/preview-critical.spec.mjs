@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './preview-test.mjs';
 
 test.setTimeout(60_000);
 
@@ -160,6 +160,37 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
 
   await page.getByTestId('sidebar-nav-messages').click();
   await expect(page.getByTestId('message-thread-row').first()).toBeVisible();
+});
+
+test('exercise library filters narrow the list, combine with search, and clear at mobile width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await expect(page.getByTestId('exercise-library-filters')).toBeVisible();
+
+  const cards = page.getByTestId('exercise-library-card');
+  const total = await cards.count();
+  expect(total).toBeGreaterThan(1);
+  await expect(page.getByTestId('exercise-library-count')).toHaveText(`${total} exercises`);
+  await expect(page.getByTestId('exercise-library-clear-filters')).toHaveCount(0);
+
+  await page.getByTestId('exercise-library-filter-category').click();
+  const options = page.getByRole('option');
+  expect(await options.count()).toBeGreaterThan(1);
+  await options.nth(1).click();
+  const narrowed = await cards.count();
+  expect(narrowed).toBeGreaterThan(0);
+  expect(narrowed).toBeLessThanOrEqual(total);
+  await expect(page.getByTestId('exercise-library-count')).toHaveText(`Showing ${narrowed} of ${total} exercises`);
+
+  await page.getByTestId('exercise-library-search-input').fill('zzz-no-such-exercise');
+  await expect(cards).toHaveCount(0);
+  await expect(page.getByText('Nothing matches these filters. Try clearing them.')).toBeVisible();
+
+  await page.getByTestId('exercise-library-clear-filters').click();
+  await expect(cards).toHaveCount(total);
+  await expect(page.getByTestId('exercise-library-count')).toHaveText(`${total} exercises`);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
 });
 
 test('coach session indicators and detail page cover the workout-done confirm flow', async ({ page }) => {
@@ -522,6 +553,7 @@ test('client workout completion creates a coach notification with immutable resu
   await squat.getByRole('combobox', { name: 'Goblet Squat set 1 weight unit', exact: true }).click();
   await page.getByRole('option', { name: 'kg', exact: true }).click();
   await squat.getByRole('button', { name: 'Complete set 1' }).click();
+  await squat.getByTestId('exercise-details-toggle').click(); // P1: history & notes open on demand.
   await squat.getByRole('textbox', { name: 'Exercise notes' }).fill('Offline sequence preserved.');
   await squat.getByRole('textbox', { name: 'Exercise notes' }).blur();
   await squat.getByRole('button', { name: 'Add set' }).click();
@@ -612,6 +644,7 @@ test('exercise history is network-only, paginated, retryable, and independent fr
   const card = page.getByTestId('tracker-exercise-card').first();
   const reps = card.getByRole('spinbutton', { name: 'Goblet Squat set 1 performed reps' });
   const rpe = card.getByRole('spinbutton', { name: 'Goblet Squat set 1 performed RPE' });
+  await card.getByTestId('rpe-toggle').click(); // P1: optional RPE opens on demand.
   await expect(reps).toHaveValue('');
   await expect(rpe).toHaveValue('');
   await reps.fill('8');
@@ -623,15 +656,21 @@ test('exercise history is network-only, paginated, retryable, and independent fr
   await reps.fill('-1');
   await reps.blur();
   await card.getByRole('button', { name: 'Complete set 2' }).click();
-  await expect(page.getByText('Reps must be a nonnegative whole number or null')).toBeVisible();
+  const repsErrorId = await reps.getAttribute('aria-describedby');
+  await expect(card.locator(`[id="${repsErrorId}"]`)).toHaveText('Use a whole number of reps (0 or more), or leave blank.');
   await expect(card.getByRole('button', { name: 'Mark incomplete set 2' })).toBeVisible();
   await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
 
   await page.evaluate(() => localStorage.setItem('cvf_preview_history_failure', 'once'));
+  await card.getByTestId('exercise-details-toggle').click(); // P1: history & notes open on demand.
   const disclosure = card.getByRole('button', { name: /Exercise history/ });
   await disclosure.focus();
   await page.keyboard.press('Space');
-  await expect(card.getByRole('alert')).toContainText('temporarily unavailable');
+  await expect(card.getByTestId('exercise-history').getByRole('alert')).toContainText('temporarily unavailable');
+  await expect(reps).toHaveAttribute('aria-invalid', 'true');
+  await reps.fill('8');
+  await reps.blur();
+  await expect(reps).not.toHaveAttribute('aria-invalid', 'true');
   await expect(card.getByRole('button', { name: 'Complete set 1' })).toBeEnabled();
   await card.getByRole('button', { name: 'Complete set 1' }).click();
   await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
@@ -655,6 +694,7 @@ test('exercise history is network-only, paginated, retryable, and independent fr
 
   await context.setOffline(true);
   const secondCard = page.getByTestId('tracker-exercise-card').nth(1);
+  await secondCard.getByTestId('exercise-details-toggle').click(); // P1: history & notes open on demand.
   await secondCard.getByRole('button', { name: /Exercise history/ }).click();
   await expect(secondCard.getByRole('alert')).toContainText('offline');
   await expect(card.getByRole('button', { name: 'Complete set 2' })).toBeEnabled();
@@ -668,6 +708,11 @@ test('exercise history disclosure stays keyboard-operable without desktop overfl
   await page.getByTestId('start-program-workout').first().click();
 
   const card = page.getByTestId('tracker-exercise-card').first();
+  // P1: history & notes open on demand. Opened by keyboard too.
+  const details = card.getByTestId('exercise-details-toggle');
+  await details.focus();
+  await page.keyboard.press('Enter');
+  await expect(details).toHaveAttribute('aria-expanded', 'true');
   const disclosure = card.getByRole('button', { name: /Exercise history/ });
   await disclosure.focus();
   await page.keyboard.press('Enter');
@@ -736,22 +781,163 @@ test('offline finish queues completion, defers celebration, and syncs on reconne
   expect(outboxes).toBe(0);
 });
 
-test('session conflicts surface inline, clear on relevant edits, and keep refused bookings pending', async ({ page }) => {
+test('offline extra set keeps its edits through sync, and a sealed tracker locks every control', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__cvfOnline = true;
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => window.__cvfOnline });
+    window.__setOnline = (value) => {
+      window.__cvfOnline = value;
+      window.dispatchEvent(new Event(value ? 'online' : 'offline'));
+    };
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  const trackPath = new URL(page.url()).pathname;
+  const spaGo = (path) => page.evaluate((target) => {
+    window.history.pushState({}, '', target);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, path);
+
+  const squat = page.getByTestId('tracker-exercise-card').first();
+  const weight = squat.getByRole('spinbutton', { name: 'Goblet Squat set 4 weight', exact: true });
+  const reps = squat.getByRole('spinbutton', { name: 'Goblet Squat set 4 performed reps', exact: true });
+
+  // Offline: add a set, record 55 x 8, complete it.
+  await page.evaluate(() => window.__setOnline(false));
+  await squat.getByRole('button', { name: 'Add set' }).click();
+  await weight.fill('55');
+  await weight.blur();
+  await reps.fill('8');
+  await reps.blur();
+  await squat.getByRole('button', { name: 'Complete set 4' }).click();
+
+  // Reconnect: the add response must not reset the row to server defaults.
+  await page.evaluate(() => window.__setOnline(true));
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await expect(weight).toHaveValue('55');
+  await expect(reps).toHaveValue('8');
+  await expect(squat.getByRole('button', { name: 'Mark incomplete set 4' })).toBeVisible();
+
+  // And the server copy agrees: re-open the tracker from a fresh fetch.
+  await spaGo('/client/programs');
+  await spaGo(trackPath);
+  await expect(weight).toHaveValue('55');
+  await expect(reps).toHaveValue('8');
+  await expect(squat.getByRole('button', { name: 'Mark incomplete set 4' })).toBeVisible();
+
+  // Finish offline and return: every mutation control is locked.
+  await page.evaluate(() => window.__setOnline(false));
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  await page.getByRole('button', { name: 'Confirm completion' }).click();
+  await expect(page.getByTestId('waiting-to-sync-banner')).toBeVisible();
+  await spaGo(trackPath);
+  await expect(page.getByTestId('finished-locally-banner')).toBeVisible();
+  await expect(weight).toBeDisabled();
+  await expect(reps).toBeDisabled();
+  await expect(squat.getByRole('combobox', { name: 'Goblet Squat set 4 weight unit' })).toBeDisabled();
+  await expect(squat.getByRole('button', { name: 'Remove extra set' })).toBeDisabled();
+  await squat.getByTestId('exercise-details-toggle').click(); // P1: history & notes open on demand.
+  await expect(squat.getByLabel('Exercise notes')).toBeDisabled();
+  await expect(squat.getByRole('button', { name: 'Add set' })).toBeDisabled();
+  await expect(squat.getByTestId('same-as-last-time')).toBeDisabled();
+  // Only the completion is queued behind the sealed banner.
+  const queued = await page.evaluate(() => Object.entries(localStorage)
+    .filter(([key]) => key.startsWith('cvf_workout_outbox_'))
+    .flatMap(([, value]) => JSON.parse(value).map((operation) => operation.kind)));
+  expect(queued).toEqual(['complete']);
+});
+
+test('Same as last time keeps reps typed while history is still loading', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  // Preview data lives in memory: navigate in-app (no reload) so the first
+  // workout's history survives.
+  const startDayOne = async () => {
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/client/programs');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+    await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  };
+  const squat = page.getByTestId('tracker-exercise-card').first();
+  const reps1 = squat.getByRole('spinbutton', { name: 'Goblet Squat set 1 performed reps', exact: true });
+  const rpe1 = squat.getByRole('spinbutton', { name: 'Goblet Squat set 1 performed RPE', exact: true });
+
+  // Last time: 8 reps at RPE 7.
+  await page.goto('/client');
+  await startDayOne();
+  await reps1.fill('8');
+  await reps1.blur();
+  await squat.getByTestId('rpe-toggle').click(); // P1: optional RPE opens on demand.
+  await rpe1.fill('7');
+  await rpe1.blur();
+  await squat.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+  await page.getByRole('button', { name: 'Finish workout' }).click();
+  await page.getByRole('button', { name: 'Confirm completion' }).click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+$/);
+
+  // This time: tap "Same as last time", then type 17 reps while history is
+  // still loading (slowed by the preview test harness).
+  // The completed page consumes its one-shot celebration state with a replace
+  // navigation. Let that finish before the test's synthetic history navigation,
+  // or the pending replace can put us back on the completed workout.
+  await expect.poll(() => page.evaluate(() => window.history.state?.usr?.completedWorkoutId)).toBeUndefined();
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '/exercises/[^/]+/history$', ms: 1500 }])));
+  await startDayOne();
+  const trackPath = new URL(page.url()).pathname;
+  await expect(reps1).toHaveValue('');
+  await squat.getByTestId('rpe-toggle').click(); // P1: optional RPE opens on demand.
+  await expect(rpe1).toHaveValue('');
+  await squat.getByTestId('same-as-last-time').click();
+  await expect(squat.getByTestId('same-as-last-time')).toBeDisabled();
+  await reps1.fill('17');
+  await reps1.blur();
+  await expect(squat.getByTestId('same-as-last-time')).toBeEnabled({ timeout: 5000 });
+
+  // The typed reps survive; only the still-blank RPE comes from last time.
+  await expect(rpe1).toHaveValue('7');
+  await expect(reps1).toHaveValue('17');
+  await expect(page.getByTestId('workout-save-state')).toContainText('Saved');
+
+  // Server copy agrees after a fresh fetch.
+  for (const target of ['/client/programs', trackPath]) {
+    await page.evaluate((path) => {
+      window.history.pushState({}, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, target);
+  }
+  await expect(reps1).toHaveValue('17');
+  await expect(rpe1).toHaveValue('7');
+});
+
+async function runConflictFlow(page) {
   await usePreviewRole(page, 'coach');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/coach/sessions', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('session-create-button')).toBeVisible();
 
+  // Days are computed in the BROWSER (so a fixed browser clock and timezone stay consistent with the
+  // calendar) and chosen by the full date. Selecting by the day NUMBER alone is ambiguous at month
+  // boundaries: on Sept 30 the calendar also shows "Sunday, August 30th" as a leading day, listed first.
   const pickDay = async (offsetDays) => {
     const panel = page.getByTestId('session-datetime-input-panel');
-    const target = new Date();
-    target.setDate(target.getDate() + offsetDays);
-    if (target.getMonth() !== new Date().getMonth()) {
-      await panel.getByRole('button', { name: /next/i }).click();
-    }
-    await panel.getByRole('grid')
-      .getByRole('button', { name: new RegExp(`\\b${target.getDate()}(st|nd|rd|th)?\\b`) })
-      .first().click();
+    const { dateKey, sameMonth } = await page.evaluate((offset) => {
+      const now = new Date();
+      const target = new Date(now);
+      target.setDate(target.getDate() + offset);
+      const pad = (n) => String(n).padStart(2, '0');
+      return {
+        dateKey: `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`,
+        sameMonth: target.getMonth() === now.getMonth(),
+      };
+    }, offsetDays);
+    if (!sameMonth) await panel.getByRole('button', { name: /next/i }).click();
+    await panel.locator(`[data-day="${dateKey}"]`).getByRole('button').click();
   };
 
   // Overlapping the fixture 3:00 PM session as the same coach is a hard
@@ -784,4 +970,694 @@ test('session conflicts surface inline, clear on relevant edits, and keep refuse
   await expect(page.getByTestId('booking-conflict-note')).toBeVisible();
   await expect(page.getByTestId('booking-conflict-note')).toContainText('The request stays pending');
   await expect(page.getByTestId('sessions-booking-row')).toHaveCount(1);
+}
+
+test('session conflicts surface inline, clear on relevant edits, and keep refused bookings pending', async ({ page }) => {
+  await runConflictFlow(page);
+});
+
+// Date-boundary regression: the same flow under fixed browser clocks, including month ends where the
+// calendar shows leading days from the previous month (the reproduced failure was Sept 30).
+test.describe('session conflict flow at month boundaries', () => {
+  test.use({ timezoneId: 'America/Denver' });
+  for (const instant of ['2026-09-30T22:54:00-06:00', '2026-10-01T06:29:00-06:00', '2026-01-31T12:00:00-07:00', '2026-03-31T12:00:00-06:00']) {
+    test(`at ${instant}`, async ({ page }) => {
+      await page.clock.setFixedTime(new Date(instant));
+      await runConflictFlow(page);
+    });
+  }
+});
+
+const IPHONE_SAFARI_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
+const IPHONE_INSTAGRAM_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/22F76 Instagram 389.0.0.28.84 (iPhone15,2; iOS 18_5; en_US)';
+
+test('desktop clients never see the home-screen install card', async ({ page }) => {
+  await usePreviewRole(page, 'client');
+  await page.goto('/client');
+  await expect(page.getByTestId('client-dashboard-header')).toBeVisible();
+  await expect(page.getByTestId('install-card')).toHaveCount(0);
+});
+
+test.describe('home-screen install guide on iPhone Safari', () => {
+  test.use({ userAgent: IPHONE_SAFARI_UA, viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('Home card shows the Safari steps, and "Not now" hides only the card', async ({ page }) => {
+    await usePreviewRole(page, 'client');
+    await page.goto('/client');
+    const card = page.getByTestId('install-card');
+    await expect(card).toBeVisible();
+    await card.getByTestId('install-card-show-how').click();
+    const guide = page.getByTestId('install-guide');
+    await expect(guide).toHaveAttribute('data-install-mode', 'ios-safari');
+    await expect(guide).toContainText('Add to Home Screen');
+    await expect(guide.getByTestId('install-guide-copy-link')).toHaveCount(0);
+    await guide.getByTestId('install-guide-done').click();
+    await expect(guide).toHaveCount(0);
+
+    await card.getByTestId('install-card-dismiss').click();
+    await expect(card).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId('client-dashboard-header')).toBeVisible();
+    await expect(page.getByTestId('install-card')).toHaveCount(0);
+
+    // The menu entry survives "Not now" so the steps stay findable.
+    await page.getByTestId('user-menu-trigger').filter({ visible: true }).click();
+    await page.getByTestId('install-app-item').click();
+    await expect(page.getByTestId('install-guide')).toHaveAttribute('data-install-mode', 'ios-safari');
+  });
+});
+
+test.describe('home-screen install guide inside an iPhone in-app browser', () => {
+  test.use({ userAgent: IPHONE_INSTAGRAM_UA, viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('guide sends the client to Safari with a copyable link', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await usePreviewRole(page, 'client');
+    await page.goto('/client');
+    await page.getByTestId('install-card-show-how').click();
+    const guide = page.getByTestId('install-guide');
+    await expect(guide).toHaveAttribute('data-install-mode', 'ios-other');
+    await expect(guide).toContainText('open CVF PT in Safari first');
+    await guide.getByTestId('install-guide-copy-link').click();
+    await expect(page.getByText('Link copied. Paste it into Safari.')).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${new URL(page.url()).origin}/`);
+  });
+});
+
+test.describe('home-screen install on Android Chrome', () => {
+  test.use({
+    userAgent: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36',
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+  });
+
+  test('uses the native install prompt when Chrome offers one', async ({ page }) => {
+    await usePreviewRole(page, 'client');
+    await page.goto('/client');
+    await expect(page.getByTestId('install-card')).toBeVisible();
+    // Headless Chrome never fires beforeinstallprompt; simulate Chrome's event.
+    await page.evaluate(() => {
+      const event = new Event('beforeinstallprompt', { cancelable: true });
+      event.prompt = () => { window.__installPrompted = true; };
+      event.userChoice = Promise.resolve({ outcome: 'dismissed' });
+      window.dispatchEvent(event);
+    });
+    await page.getByTestId('install-card-show-how').click();
+    await expect.poll(() => page.evaluate(() => window.__installPrompted === true)).toBe(true);
+    await expect(page.getByTestId('install-guide')).toHaveCount(0);
+  });
+});
+
+test('the workout tracker offers each exercise demo, workout link first, then library, with no YouTube traffic before Play', async ({ page }) => {
+  // Exercise guides: YouTube demos are click-to-load dialogs; nothing reaches a
+  // provider until Play (this test never presses it; provider hosts are blocked).
+  const provider = [];
+  await page.route((url) => /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|ytimg\.com|googlevideo\.com)$/.test(url.hostname), (route) => { provider.push(route.request().url()); return route.abort('blockedbyclient'); });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+  const cards = page.getByTestId('tracker-exercise-card');
+  // Goblet Squat: library video. Pallof Press: the workout's own (legacy) link.
+  const squatDemo = cards.nth(0).getByTestId('tracker-exercise-demo');
+  await expect(squatDemo).toHaveText(/View demo/);
+  const box = await squatDemo.boundingBox();
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  await squatDemo.click();
+  const dialog = page.getByTestId('exercise-demo-dialog');
+  await expect(dialog.getByTestId('exercise-demo-external')).toHaveAttribute('href', 'https://www.youtube.com/watch?v=MeIiIdhvXT4');
+  await expect(dialog.getByTestId('exercise-demo-external')).toHaveAttribute('target', '_blank');
+  await expect(dialog.getByTestId('exercise-demo-external')).toHaveAttribute('rel', 'noopener noreferrer');
+  await page.keyboard.press('Escape');
+  await cards.nth(2).getByTestId('tracker-exercise-demo').click();
+  await expect(dialog.getByTestId('exercise-demo-external')).toHaveAttribute('href', 'https://www.youtube.com/watch?v=ma2OjgP5XDc');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('iframe')).toHaveCount(0);
+  expect(provider).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
+
+test('rest can be started manually and adjusted by 15 seconds while it runs', async ({ page }) => {
+  await page.clock.install();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+
+  const timer = page.getByTestId('rest-timer');
+  await expect(timer).toHaveCount(0);
+  // The current exercise (Goblet Squat) prescribes 90s.
+  const start = page.getByTestId('rest-start');
+  await expect(start).toHaveText(/Rest 1:30/);
+  await start.click();
+  await expect(timer).toHaveAttribute('data-rest-state', 'running');
+  await expect(timer).toContainText('1:30');
+  await expect(start).toHaveCount(0);
+
+  await page.getByTestId('rest-plus').click();
+  await expect(timer).toContainText('1:45');
+  await page.getByTestId('rest-minus').click();
+  await page.getByTestId('rest-minus').click();
+  await expect(timer).toContainText('1:15');
+  for (const id of ['rest-minus', 'rest-plus']) {
+    const box = await page.getByTestId(id).boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+
+  await page.clock.fastForward(76_000);
+  await expect(timer).toHaveAttribute('data-rest-state', 'complete');
+  await expect(page.getByTestId('rest-plus')).toHaveCount(0);
+  await timer.click();
+  await expect(timer).toHaveCount(0);
+  await expect(page.getByTestId('rest-start')).toBeVisible();
+});
+
+test('workout history pages in twelves for clients and coaches', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Sarah has 13 completed workouts in the preview fixtures.
+  await page.goto('/client');
+  await page.evaluate(() => {
+    localStorage.setItem('cvf_preview_role', 'client');
+    localStorage.setItem('cvf_preview_client_id', 'client_sarah');
+  });
+  await page.goto('/client/programs?view=history');
+  const history = page.getByTestId('client-workout-history');
+  await expect(history.getByTestId('workout-history-row')).toHaveCount(12);
+  await history.getByTestId('history-show-more').click();
+  await expect(history.getByTestId('workout-history-row')).toHaveCount(13);
+  await expect(history.getByTestId('history-show-more')).toHaveCount(0);
+  const clientIds = await history.getByTestId('workout-history-row').evaluateAll((rows) => rows.map((row) => row.getAttribute('href')));
+  expect(new Set(clientIds).size).toBe(13);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+
+  // Fixtures are static, so a fresh load as the coach is fine here.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_role', 'coach'));
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  await expect(rows).toHaveCount(12);
+  await coachHistory.getByTestId('coach-history-show-more').click();
+  await expect(rows).toHaveCount(13);
+  await expect(coachHistory.getByTestId('coach-history-show-more')).toHaveCount(0);
+  // (Page-width overflow isn't asserted here: the coach client page already
+  // overflows at 390px from the assigned-card action buttons, on main too.)
+});
+
+test('a slow "Show more" that lands after a history refresh is discarded', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  const more = coachHistory.getByTestId('coach-history-show-more');
+  // The fixed preview toolbar overlaps this button at desktop width.
+  const pressMore = async () => { await more.focus(); await page.keyboard.press('Enter'); };
+  await expect(rows).toHaveCount(12);
+
+  // "Show more" is slow (preview test harness; latency is fixed when the
+  // request starts), then an action reloads the page's history quickly.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/workout-logs/client/', ms: 2500 }])));
+  await pressMore();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await page.getByTestId('unassign-workout-button').first().click();
+  await expect(page.getByText('Workout unassigned')).toBeVisible();
+
+  // After the stale page would have landed, the refreshed list is intact:
+  // still its first 12, with its own "Show more".
+  await page.waitForTimeout(3000);
+  await expect(rows).toHaveCount(12);
+  await expect(more).toBeEnabled();
+  await pressMore();
+  await expect(rows).toHaveCount(13);
+  const hrefs = await rows.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  expect(new Set(hrefs).size).toBe(13);
+});
+
+test('"Show more" clicked while a history refresh is loading is discarded once the refresh lands', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  const coachHistory = page.getByTestId('coach-client-workout-history');
+  const rows = coachHistory.locator('a[href^="/coach/workouts/"]');
+  const more = coachHistory.getByTestId('coach-history-show-more');
+  // The fixed preview toolbar overlaps this button at desktop width.
+  const pressMore = async () => { await more.focus(); await page.keyboard.press('Enter'); };
+  const slowHistory = (ms) => page.evaluate((delay) => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/workout-logs/client/', ms: delay }])), ms);
+  await expect(rows).toHaveCount(12);
+
+  // The refresh starts first (1.5s); "Show more" is clicked while it is
+  // still loading and lands after it (3.5s), carrying the old list's cursor.
+  await slowHistory(1500);
+  await page.getByTestId('unassign-workout-button').first().click();
+  // The toast shows as the unassign lands, right when the reload begins.
+  await expect(page.getByText('Workout unassigned')).toBeVisible();
+  await slowHistory(3500);
+  await pressMore();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+
+  // Once both have landed, the refreshed list stands on its own.
+  await page.waitForTimeout(4500);
+  await expect(rows).toHaveCount(12);
+  await expect(more).toBeEnabled();
+  await pressMore();
+  await expect(rows).toHaveCount(13);
+  const hrefs = await rows.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  expect(new Set(hrefs).size).toBe(13);
+});
+
+test('workout builder links supersets and giant sets and reorders exercises at mobile width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  await page.getByTestId('workout-create-button').click();
+
+  const dialog = page.getByRole('dialog');
+  const names = dialog.getByTestId('workout-exercise-name-input');
+  await names.first().fill('Bench Press');
+  for (const name of ['Chest-Supported Row', 'Curl']) {
+    await dialog.getByTestId('workout-exercise-add-button').click();
+    const rows = dialog.getByTestId('workout-exercise-row');
+    await rows.last().locator('h3 button').click(); // expand the new row
+    await names.last().fill(name);
+  }
+  const markers = dialog.getByTestId('workout-exercise-marker');
+  const order = () => names.evaluateAll((inputs) => inputs.map((input) => input.value));
+  await expect(markers).toHaveText(['1', '2', '3']);
+
+  // Bench + Row -> superset; then + Curl -> giant set.
+  await dialog.getByTestId('workout-exercise-link-button').first().click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(markers).toHaveText(['A1', 'A2', 'B']);
+  await dialog.getByTestId('workout-exercise-link-button').click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
+  await expect(markers).toHaveText(['A1', 'A2', 'A3']);
+
+  // Reorder inside the group keeps it intact.
+  await dialog.getByLabel('Move Curl up').click();
+  await expect.poll(order).toEqual(['Bench Press', 'Curl', 'Chest-Supported Row']);
+  await expect(dialog.getByTestId('workout-superset-group')).toHaveCount(1);
+
+  // Split off the last exercise, then move it above the superset as a block.
+  await dialog.getByTestId('workout-exercise-unlink-button').nth(1).click();
+  await expect(markers).toHaveText(['A1', 'A2', 'B']);
+  await dialog.getByTestId('workout-superset-move-down-button').click();
+  await expect.poll(order).toEqual(['Chest-Supported Row', 'Bench Press', 'Curl']);
+  await expect(markers).toHaveText(['A', 'B1', 'B2']);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  if (process.env.CVF_SHOT_DIR) await dialog.screenshot({ path: `${process.env.CVF_SHOT_DIR}/builder-mobile.png` });
+
+  await dialog.getByTestId('workout-superset-ungroup-button').click();
+  await expect(dialog.getByTestId('workout-superset-group')).toHaveCount(0);
+  await expect(markers).toHaveText(['1', '2', '3']);
+
+  // Drag and drop with a pointer: Curl (3rd) dragged onto the top row.
+  const openRows = dialog.locator('[data-testid="workout-exercise-row"] h3 button[data-state="open"]');
+  while (await openRows.count()) await openRows.first().click();
+  const handles = dialog.getByTestId('workout-exercise-drag-handle');
+  const from = await handles.nth(2).boundingBox();
+  const to = await handles.nth(0).boundingBox();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, from.y - 10, { steps: 5 });
+  await page.mouse.move(to.x + to.width / 2, to.y + 4, { steps: 12 });
+  await page.mouse.up();
+  await expect(dialog.getByTestId('workout-exercise-row').locator('h3')).toHaveText([/Curl/, /Chest-Supported Row/, /Bench Press/]);
+
+  // Keyboard dragging: focus the grip, space to lift, arrow down, space to drop.
+  await handles.nth(0).focus();
+  // dnd-kit measures drop positions between keystrokes.
+  for (const key of ['Space', 'ArrowDown', 'Space']) {
+    await page.keyboard.press(key);
+    await page.waitForTimeout(250);
+  }
+  await expect(dialog.getByTestId('workout-exercise-row').locator('h3')).toHaveText([/Chest-Supported Row/, /Curl/, /Bench Press/]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  if (process.env.CVF_SHOT_DIR) await dialog.screenshot({ path: `${process.env.CVF_SHOT_DIR}/builder-drag-mobile.png` });
+});
+
+test('a saved superset survives reopen, reaches the client tracker, and rests once per round', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+
+  // Link RDL + Pallof (rows 2 and 3) and save.
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  // The fixed preview toolbar overlaps the pane's Save at this width; use
+  // the keyboard (a real path) rather than a forced click.
+  await page.getByTestId('workout-save-button').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Workout updated')).toBeVisible();
+
+  // Reopen from the list: the group came back from the saved copy.
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await expect(page.getByTestId('workout-superset-group')).toHaveCount(0);
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+
+  // Same in-memory preview data, now as the client (no reload).
+  await page.getByTestId('preview-role-select').selectOption('client');
+  await expect(page).toHaveURL(/\/client$/);
+  await page.evaluate(() => {
+    window.history.pushState({}, '', '/client/programs');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page.getByTestId('superset-group').first()).toContainText('alternate B1–B2');
+  await page.getByTestId('client-program-card').first().getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track$/);
+
+  const group = page.getByTestId('superset-group');
+  await expect(group).toHaveCount(1);
+  // Rest is the longest in the group: RDL 90s vs Pallof 45s.
+  await expect(group).toContainText('alternate B1–B2, then rest 1:30');
+  const cards = page.getByTestId('tracker-exercise-card');
+  const [squat, rdl, pallof] = [cards.nth(0), cards.nth(1), cards.nth(2)];
+  await expect(rdl.getByTestId('exercise-marker')).toHaveText('B1');
+  await expect(pallof.getByTestId('exercise-marker')).toHaveText('B2');
+  const timer = page.getByTestId('rest-timer');
+
+  // Straight set: its own rest starts. Finish it so the superset is current.
+  await squat.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(timer).toBeVisible();
+  await squat.getByRole('button', { name: 'Complete set 2' }).click();
+  await squat.getByRole('button', { name: 'Complete set 3' }).click();
+  await expect(timer).toBeVisible();
+  // B1 mid-round: no rest, and the running timer is cleared.
+  await rdl.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(timer).toHaveCount(0);
+  // B2 (Pallof, 45s of its own) is now current; a manual rest offers the
+  // group's round rest, like the automatic timer.
+  await expect(page.getByTestId('rest-start')).toHaveText(/Rest 1:30/);
+  // B2 closes the round: one 1:30 rest.
+  await pallof.getByRole('button', { name: 'Complete set 1' }).click();
+  await expect(timer).toBeVisible();
+  await expect(timer).toHaveText(/1:(30|29|28)/);
+  // Next round starts on B1 again: no rest until B2.
+  await rdl.getByRole('button', { name: 'Complete set 2' }).click();
+  await expect(timer).toHaveCount(0);
+});
+
+test.describe('touch device', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('builder rows reorder by touch-dragging the grip inside a scrolling dialog', async ({ page }) => {
+    await usePreviewRole(page, 'coach');
+    await page.goto('/coach/programs');
+    await page.getByTestId('training-builder-tab-workouts').tap();
+    const card = page.locator('[data-testid="workout-edit-button"][aria-label="Edit Lower Strength A"]');
+    await card.tap();
+    const dialog = page.getByRole('dialog');
+    const titles = dialog.getByTestId('workout-exercise-row').locator('h3');
+    await expect(titles).toHaveText([/Goblet Squat/, /Romanian Deadlift/, /Half-kneeling Pallof Press/]);
+    // Leave the first row expanded so the dialog scrolls: a grip that let
+    // the browser treat the gesture as a pan would scroll instead of drag.
+    await dialog.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    expect(await dialog.evaluate((element) => element.scrollHeight > element.clientHeight + 100)).toBeTruthy();
+
+    // Real touch input through Chromium's input pipeline (touch -> pointer
+    // events), not mouse events: drag the Pallof grip up onto the RDL row.
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', {
+      type, touchPoints: type === 'touchEnd' ? [] : [{ x: Math.round(x), y: Math.round(y) }],
+    });
+    const handles = dialog.getByTestId('workout-exercise-drag-handle');
+    const from = await handles.nth(2).boundingBox();
+    const to = await handles.nth(1).boundingBox();
+    const x = from.x + from.width / 2;
+    await touch('touchStart', x, from.y + from.height / 2);
+    const steps = 14;
+    for (let i = 1; i <= steps; i += 1) {
+      const y = from.y + from.height / 2 + ((to.y + 4) - (from.y + from.height / 2)) * (i / steps);
+      await touch('touchMove', x, y);
+      await page.waitForTimeout(16);
+    }
+    await touch('touchEnd');
+
+    // Pallof moved up (dnd-kit may auto-scroll the dialog near its edge, so
+    // the exact slot can vary); the other two keep their order. Without
+    // touch-action: none on the grip, Chromium pans instead and nothing moves.
+    await expect.poll(async () => {
+      const order = (await titles.allTextContents()).map((text) => (/Pallof/.test(text) ? 'P' : /Goblet/.test(text) ? 'G' : 'R'));
+      return order.indexOf('P') < 2 && order.indexOf('G') < order.indexOf('R');
+    }).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  });
+});
+
+test('re-opening a workout while the list reload is slow shows the saved superset, and saving again keeps it', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const reopenLower = async () => {
+    await rail.filter({ hasText: 'Upper Strength A' }).click();
+    await rail.filter({ hasText: 'Lower Strength A' }).click();
+  };
+  const save = async () => {
+    // The fixed preview toolbar overlaps the pane's Save at this width.
+    await page.getByTestId('workout-save-button').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByText('Workout updated').last()).toBeVisible();
+  };
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+
+  // From here on the workout list reload is slow (preview test harness).
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts$', ms: 2500 }])));
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  await save();
+
+  // Switch away and back before the reload lands: the saved group shows.
+  await reopenLower();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+
+  // Saving again from that form keeps the group once everything settles.
+  await save();
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await page.waitForTimeout(3000);
+  await reopenLower();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+});
+
+test('switching workouts while a save is pending never retargets the editor or overwrites the other workout', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const titles = page.getByTestId('workout-exercise-row').locator('h3');
+  const pressSave = async () => {
+    // The fixed preview toolbar overlaps the pane's Save at this width.
+    await page.getByTestId('workout-save-button').focus();
+    await page.keyboard.press('Enter');
+  };
+
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  // Slow the save (PUT /programs/workouts/:id) via the preview test harness.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts/[^/]+$', ms: 2000 }])));
+  await pressSave();
+
+  // Leaving an unsaved editor now explicitly asks the coach to discard.
+  let discardPrompted = false;
+  page.once('dialog', async (dialog) => {
+    discardPrompted = true;
+    expect(dialog.message()).toContain('unsaved');
+    await dialog.accept();
+  });
+  // Open another workout while Lower's save is still in flight.
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await expect(titles).toHaveText([/Bench/, /Row/]);
+  await expect(page.getByText('Workout updated').first()).toBeVisible({ timeout: 6000 });
+
+  expect(discardPrompted).toBe(true);
+  // The response must not retarget the editor: still Upper, with Upper's rows.
+  await expect(page.getByRole('heading', { name: 'Upper Strength A' })).toBeVisible();
+  await expect(titles).toHaveText([/Bench/, /Row/]);
+
+  // Saving now writes Upper, not Lower.
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await pressSave();
+  await expect(page.getByTestId('workout-save-button')).toBeDisabled();
+  await expect(page.getByTestId('workout-save-button')).toBeEnabled({ timeout: 6000 });
+  await page.waitForTimeout(1500); // let the background list reload land
+
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(titles).toHaveText([/Goblet Squat/, /Romanian Deadlift/, /Pallof/]);
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await expect(titles).toHaveText([/Bench/, /Row/]);
+  await expect(page.getByTestId('workout-superset-group')).toHaveCount(0);
+});
+
+test('returning to a workout while its save is still in flight shows the edits being saved', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const pressSave = async () => {
+    // The fixed preview toolbar overlaps the pane's Save at this width.
+    await page.getByTestId('workout-save-button').focus();
+    await page.keyboard.press('Enter');
+  };
+
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await page.getByTestId('workout-exercise-link-button').nth(1).click();
+  // Slow the save (PUT /programs/workouts/:id) via the preview test harness.
+  await page.evaluate(() => localStorage.setItem('cvf_preview_latency', JSON.stringify([{ path: '^/programs/workouts/[^/]+$', ms: 2500 }])));
+  await pressSave();
+
+  // Leaving an unsaved editor now explicitly asks the coach to discard.
+  let discardPrompted = false;
+  page.once('dialog', async (dialog) => {
+    discardPrompted = true;
+    expect(dialog.message()).toContain('unsaved');
+    await dialog.accept();
+  });
+  // Away and straight back while the save is still pending.
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+
+  expect(discardPrompted).toBe(true);
+  // Once it lands, saving again from this form keeps the superset.
+  await expect(page.getByTestId('workout-save-button')).toBeEnabled({ timeout: 6000 });
+  await page.evaluate(() => localStorage.removeItem('cvf_preview_latency'));
+  await pressSave();
+  await expect(page.getByTestId('workout-save-button')).toBeEnabled({ timeout: 6000 });
+  await page.waitForTimeout(1500); // let the background list reload land
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(page.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await expect(page.getByTestId('workout-exercise-marker')).toHaveText(['A', 'B1', 'B2']);
+});
+
+test('duplicating a builder exercise inserts a full copy below it that saves as its own row', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  const rail = page.getByTestId('workout-rail-row');
+  const titles = page.getByTestId('workout-exercise-row').locator('h3');
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(titles).toHaveText([/Goblet Squat/, /Romanian Deadlift/, /Pallof/]);
+
+  // The first row is open by default; duplicate it.
+  await page.getByTestId('workout-exercise-duplicate-button').first().click();
+  await expect(titles).toHaveText([/Goblet Squat.*3 × 8-10/, /Goblet Squat.*3 × 8-10/, /Romanian Deadlift/, /Pallof/]);
+
+  await page.getByTestId('workout-save-button').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Workout updated')).toBeVisible();
+  await page.waitForTimeout(1000);
+  await rail.filter({ hasText: 'Upper Strength A' }).click();
+  await rail.filter({ hasText: 'Lower Strength A' }).click();
+  await expect(titles).toHaveText([/Goblet Squat.*3 × 8-10/, /Goblet Squat.*3 × 8-10/, /Romanian Deadlift/, /Pallof/]);
+  await expect(rail.filter({ hasText: 'Lower Strength A' })).toContainText('4 exercises');
+});
+
+test('duplicate and remove stay full tap targets on phones, and editing a copy leaves the original alone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/programs');
+  await page.getByTestId('training-builder-tab-workouts').click();
+  await page.locator('[data-testid="workout-edit-button"][aria-label="Edit Lower Strength A"]').click();
+  const dialog = page.getByRole('dialog');
+  const rows = dialog.getByTestId('workout-exercise-row');
+  const titles = rows.locator('h3');
+  const openRow = async (index) => {
+    const trigger = rows.nth(index).locator('h3 button');
+    if ((await trigger.getAttribute('data-state')) !== 'open') await trigger.click();
+  };
+  const reps = (index) => rows.nth(index).getByTestId('workout-exercise-reps-input');
+
+  // Phone tap targets: Duplicate and Remove keep 44x44 beside the name field.
+  // Laid-out size (offsetWidth), so the dialog's opening zoom doesn't skew it.
+  for (const id of ['workout-exercise-duplicate-button', 'workout-exercise-remove-button']) {
+    const size = await rows.first().getByTestId(id).evaluate((el) => ({ w: el.offsetWidth, h: el.offsetHeight }));
+    expect(size.w, id).toBeGreaterThanOrEqual(44);
+    expect(size.h, id).toBeGreaterThanOrEqual(44);
+  }
+
+  // A straight set: edit the copy, the original keeps its reps.
+  await rows.first().getByTestId('workout-exercise-duplicate-button').click();
+  await expect(titles).toHaveText([/Goblet Squat/, /Goblet Squat/, /Romanian Deadlift/, /Pallof/]);
+  await openRow(1);
+  await reps(1).fill('15');
+  await expect(reps(0)).toHaveValue('8-10');
+  await expect(reps(1)).toHaveValue('15');
+
+  // Inside a superset: link RDL + Pallof, duplicate RDL, edit the copy.
+  await dialog.getByTestId('workout-exercise-link-button').nth(2).click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Superset · 2 exercises');
+  await openRow(2);
+  await rows.nth(2).getByTestId('workout-exercise-duplicate-button').click();
+  await expect(dialog.getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
+  await openRow(3);
+  await reps(3).fill('6');
+  await expect(reps(2)).toHaveValue('8');
+  await expect(reps(3)).toHaveValue('6');
+
+  // Saved and reopened: every row kept its own values.
+  await dialog.getByTestId('workout-save-button').click();
+  await expect(page.getByText('Workout updated')).toBeVisible();
+  await page.waitForTimeout(1000);
+  await page.locator('[data-testid="workout-edit-button"][aria-label="Edit Lower Strength A"]').click();
+  await expect(titles).toHaveText([/Goblet Squat.*3 × 8-10/, /Goblet Squat.*3 × 15/, /Romanian Deadlift.*3 × 8/, /Romanian Deadlift.*3 × 6/, /Pallof/]);
+  await expect(page.getByRole('dialog').getByTestId('workout-superset-label')).toContainText('Giant set · 3 exercises');
+});
+
+test('the coach client page fits a phone screen with assigned program and workout cards', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await usePreviewRole(page, 'coach');
+  await page.goto('/coach/clients/client_sarah');
+  await page.getByTestId('tab-programs').click();
+  await expect(page.getByTestId('assigned-program-card').first()).toBeVisible();
+  await expect(page.getByTestId('assigned-workout-card').first()).toBeVisible();
+  // A real client copy renders both Edit placements, not just the template actions.
+  const programCopy = page.getByTestId('assigned-program-card').filter({ hasText: 'Sarah Mobility Plan' });
+  const standaloneCopy = page.getByTestId('assigned-workout-card').filter({ hasText: 'Run Prep Mobility — Sarah' });
+  await expect(programCopy.getByTestId('edit-client-workout-button')).toHaveCount(1);
+  await expect(standaloneCopy.getByTestId('edit-client-workout-button')).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  // Every card action stays on screen and tappable.
+  for (const id of ['save-program-template-button', 'unassign-program-button', 'save-workout-template-button', 'unassign-workout-button', 'edit-assigned-loads', 'coach-log-standalone-workout', 'coach-log-program-workout', 'edit-client-workout-button']) {
+    await expect(page.getByTestId(id).first()).toBeVisible();
+    for (const action of await page.getByTestId(id).all()) {
+      const box = await action.boundingBox();
+      expect(box.x, id).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width, id).toBeLessThanOrEqual(390);
+      expect(box.width, id).toBeGreaterThanOrEqual(44);
+      expect(box.height, id).toBeGreaterThanOrEqual(44);
+    }
+  }
+  // Both Edit controls open the client-copy editor and keep its fields intact.
+  for (const card of [programCopy, standaloneCopy]) {
+    await card.getByTestId('edit-client-workout-button').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByTestId('workout-name-input')).toHaveValue('Run Prep Mobility — Sarah');
+    await expect(dialog.getByTestId('workout-exercise-row')).toHaveCount(2);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  for (const action of await page.getByTestId('coach-log-program-workout').all()) {
+    expect(await action.evaluate((el) => el.offsetHeight)).toBe(32);
+  }
 });

@@ -16,7 +16,7 @@ export function buildCoachActionQueue(dashboard = {}, attention = []) {
       key: `stale-${session.id}`,
       kind: 'stale_session',
       priority: 0,
-      title: `${session.client?.name || 'Client'} has a past session still open`,
+      title: `${session.client?.name || 'Client'} · session still open`,
       detail: session,
     });
   }
@@ -27,7 +27,7 @@ export function buildCoachActionQueue(dashboard = {}, attention = []) {
       key: `booking-${booking.id}`,
       kind: 'booking',
       priority: 1,
-      title: `${booking.client?.name || 'Client'} is waiting for a booking decision`,
+      title: `${booking.client?.name || 'Client'} · booking request`,
       detail: booking,
     });
   }
@@ -40,7 +40,7 @@ export function buildCoachActionQueue(dashboard = {}, attention = []) {
       key: `message-${message.client_id}`,
       kind: 'message',
       priority: 2,
-      title: `${message.client?.name || 'Client'} sent a message`,
+      title: `${message.client?.name || 'Client'} · message`,
       detail: message,
       href: `/coach/messages/${message.client_id}`,
       action: 'Reply',
@@ -52,7 +52,7 @@ export function buildCoachActionQueue(dashboard = {}, attention = []) {
       key: `check-in-${checkIn.id}`,
       kind: 'check_in',
       priority: 3,
-      title: `${checkIn.client?.name || 'Client'} has a check-in to review`,
+      title: `${checkIn.client?.name || 'Client'} · check-in`,
       detail: checkIn,
       href: `/coach/clients/${checkIn.client_id}?tab=check-ins`,
       action: 'Review',
@@ -71,7 +71,7 @@ export function buildCoachActionQueue(dashboard = {}, attention = []) {
       key: `attention-${client.client_id}`,
       kind: 'attention',
       priority: 4,
-      title: `${client.client_name} needs attention`,
+      title: client.client_name,
       reasons,
       ...target,
     });

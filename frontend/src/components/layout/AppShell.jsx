@@ -3,8 +3,8 @@ import { Outlet, NavLink, useLocation, useNavigate, Link } from 'react-router';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
-  TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search, BarChart3,
-  Download, Share,
+  TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search, BarChart3, UsersRound,
+  Download,
   Mail, KeyRound, Loader2,
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
@@ -18,7 +18,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
-import { useInstallMode, promptInstall, dismissInstall } from '@/lib/pwa';
+import { useInstallGuide } from '@/components/InstallGuide';
 import { pushSupport, pushPermission, currentSubscription, enablePush, disablePush } from '@/lib/push';
 import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { ATTENTION_FEEDBACK_MOTION } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
+import { coachScreen, listenForCoachErrors, trackCoachScreen } from '@/lib/coachAnalytics';
 
 const COACH_NAV = [
   { to: '/coach', label: 'Home', icon: LayoutDashboard, end: true },
@@ -50,6 +51,7 @@ const CLIENT_NAV = [
 
 const COACH_EXTRA = [
   { to: '/coach/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/coach/group-session', label: 'Small group', icon: UsersRound },
 ];
 
 
@@ -99,7 +101,24 @@ export default function AppShell() {
   const location = useLocation();
   const { unread, unreadInitialized, refresh: refreshNotifications } = useNotifications();
   const isCoach = user.role === 'coach' || user.role === 'admin';
+  const analyticsCoach = user.role === 'coach';
   const [jumpOpen, setJumpOpen] = useState(false);
+  const analyticsPath = useRef(null);
+  // Skip StrictMode effect replays; emit only when the coarse screen changes.
+  const analyticsScreen = useRef(null);
+  useEffect(() => {
+    analyticsPath.current = location.pathname;
+    if (!analyticsCoach) { analyticsScreen.current = null; return; }
+    const screen = coachScreen(location.pathname);
+    if (analyticsScreen.current !== screen) {
+      analyticsScreen.current = screen;
+      trackCoachScreen(location.pathname);
+    }
+  }, [analyticsCoach, location.pathname]);
+  useEffect(() => {
+    if (!analyticsCoach) return undefined;
+    return listenForCoachErrors(window, () => analyticsPath.current);
+  }, [analyticsCoach]);
 
   useEffect(() => {
     if (!isCoach) return undefined;
@@ -152,10 +171,7 @@ export default function AppShell() {
         <aside className="hidden lg:flex lg:flex-col lg:h-dvh lg:sticky lg:top-0 border-r border-border bg-card/40 px-4 py-6 z-10">
           <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2.5 px-2" data-testid="sidebar-brand">
             <BrandLogo />
-            <div>
-              <p className="font-display font-semibold leading-none">CVF PT</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Fitness Done Right</p>
-            </div>
+            <p className="font-display font-semibold leading-none">CVF PT</p>
           </Link>
           <nav className="mt-8 space-y-1 flex-1">
             {sidebarNav.map((item) => (
@@ -216,7 +232,6 @@ export default function AppShell() {
             </Link>
           )}
           <UserMenu user={user} logout={logout} />
-          <p className="mt-3 px-2 text-[11px] text-muted-foreground/70">Core Value Fitness - Albuquerque, NM</p>
         </aside>
 
         <div className="relative z-10">
@@ -306,8 +321,7 @@ function UserMenu({ user, logout, compact }) {
   const navigate = useNavigate();
   const location = useLocation();
   const isClient = user.role === 'client';
-  const installMode = useInstallMode();
-  const [iosHelpOpen, setIosHelpOpen] = useState(false);
+  const { mode: installMode, start: startInstall, dialog: installGuide } = useInstallGuide();
   const [emailHelpOpen, setEmailHelpOpen] = useState(false);
   const [digestOptOut, setDigestOptOut] = useState(false);
   const [emailPreferenceLoading, setEmailPreferenceLoading] = useState(false);
@@ -468,7 +482,7 @@ function UserMenu({ user, logout, compact }) {
         {installMode && (
           <>
             <DropdownMenuItem
-              onClick={() => (installMode === 'prompt' ? promptInstall() : setIosHelpOpen(true))}
+              onClick={startInstall}
               data-testid="install-app-item"
             >
               <Download className="h-4 w-4 mr-2" /> Install app
@@ -489,52 +503,16 @@ function UserMenu({ user, logout, compact }) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-    <Dialog open={iosHelpOpen} onOpenChange={setIosHelpOpen}>
-      <DialogContent className="max-w-sm" data-testid="ios-install-help">
-        <DialogHeader>
-          <DialogTitle className="pr-6">Add CVF PT to your Home Screen</DialogTitle>
-          <DialogDescription>
-            iPhones and iPads install web apps from Safari's share menu.
-          </DialogDescription>
-        </DialogHeader>
-        <ol className="space-y-2 text-sm">
-          <li className="flex items-start gap-2">
-            <span className="font-semibold text-primary">1.</span>
-            <span>Tap the <Share className="inline h-4 w-4 align-text-bottom" aria-label="Share" /> Share button in Safari's toolbar.</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="font-semibold text-primary">2.</span>
-            <span>Scroll down and tap <span className="font-medium">Add to Home Screen</span>.</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="font-semibold text-primary">3.</span>
-            <span>Tap <span className="font-medium">Add</span> — CVF PT opens full-screen from your Home Screen.</span>
-          </li>
-        </ol>
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button
-            variant="ghost"
-            onClick={() => { dismissInstall(); setIosHelpOpen(false); }}
-            data-testid="ios-install-dismiss"
-          >
-            Don't show again
-          </Button>
-          <Button onClick={() => setIosHelpOpen(false)} data-testid="ios-install-done">
-            Got it
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    {installGuide}
     <Dialog open={emailHelpOpen} onOpenChange={setEmailHelpOpen}>
       <DialogContent className="max-w-sm" data-testid="email-preferences-dialog">
         <DialogHeader>
           <DialogTitle>Email notifications</DialogTitle>
-          <DialogDescription>Booking and session emails stay on. You can turn the non-urgent daily summary on or off.</DialogDescription>
+          <DialogDescription>Booking and session emails always send.</DialogDescription>
         </DialogHeader>
         <div className="flex items-center justify-between gap-4 rounded-xl border border-border p-4">
           <div>
             <p className="text-sm font-medium">Turn off daily digest</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Unread messages and new assignments remain visible in the app.</p>
           </div>
           <Switch
             checked={digestOptOut}
@@ -587,10 +565,9 @@ function UserMenu({ user, logout, compact }) {
       </DialogContent>
     </Dialog>
     <Dialog open={passwordOpen} onOpenChange={(open) => { setPasswordOpen(open); if (!open) setPasswordForm({ current: '', next: '', confirm: '' }); }}>
-      <DialogContent className="max-w-sm" data-testid="change-password-dialog">
+      <DialogContent aria-describedby={undefined} className="max-w-sm" data-testid="change-password-dialog">
         <DialogHeader>
           <DialogTitle>Change password</DialogTitle>
-          <DialogDescription>Confirm your current password, then choose a new one.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submitPasswordChange} className="space-y-4">
           <div className="space-y-1.5">

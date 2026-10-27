@@ -1,0 +1,128 @@
+{
+  "baseline_source_sha": "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+  "proposed_source_sha": "67232963dec54f2657b64ccc5f2b9088c154b24d",
+  "proposed_tree_sha": "77ec958a2b2be37532dbb20ae671269b09810640",
+  "capture_script": "frontend/e2e/builder-qol-evidence.spec.mjs",
+  "browser": "Local Chromium 153 via temporary external browser binary; Playwright project dependency unchanged",
+  "images": [
+    {
+      "file": "before/quick-1440.png",
+      "source_sha": "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+      "width": 1440,
+      "height": 1000,
+      "sha256": "4cbc5d2ce47cd301a4dba6828e053d2fa1eeb89668b6c847d55d7a40e54bc1bc",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "before/quick-320.png",
+      "source_sha": "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+      "width": 320,
+      "height": 844,
+      "sha256": "bc92ac9e15779ec3b9c4982f3bab3b2c544e45e46d5bbb150d0e4e82a4a71ff3",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "before/quick-390.png",
+      "source_sha": "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+      "width": 390,
+      "height": 844,
+      "sha256": "a8d097def3f776d8dc07bccc6767b3e255aa365e926ff7230d194747dccf808f",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "before/workout-1440.png",
+      "source_sha": "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+      "width": 1440,
+      "height": 1000,
+      "sha256": "af3ab38e10f1b6cec79156993c657ce55d8d036cc9970423f1c4f00f1a9bd175",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "before/workout-320.png",
+      "source_sha": "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+      "width": 320,
+      "height": 844,
+      "sha256": "4ff8a670c2142912301beb702438b8a66a3bf7060a5e639952762cb88b222169",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "before/workout-390.png",
+      "source_sha": "433784a42287a8d7049b8df5de4fca6a9a00bbad",
+      "width": 390,
+      "height": 844,
+      "sha256": "557247e69d16dfd28595004b414612a5cd16c5982c6ef4f14d71268ab8c9999d",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "after/quick-1440.png",
+      "source_sha": "67232963dec54f2657b64ccc5f2b9088c154b24d",
+      "width": 1440,
+      "height": 1000,
+      "sha256": "c6c24ec96b30672e0b1d4e95319ea656d37927523012daf9613ac57aaae616b1",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "after/quick-320.png",
+      "source_sha": "67232963dec54f2657b64ccc5f2b9088c154b24d",
+      "width": 320,
+      "height": 844,
+      "sha256": "1a2495aa3dee21634f3bdcc09bb07adcf488a3f5e09113e7dbf8eea25ed11171",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "after/quick-390.png",
+      "source_sha": "67232963dec54f2657b64ccc5f2b9088c154b24d",
+      "width": 390,
+      "height": 844,
+      "sha256": "69c5f6a8e0a494d29a95eb590824ae099b44a1d8b1a6e63d749ee340d5dd3bc1",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "after/workout-1440.png",
+      "source_sha": "67232963dec54f2657b64ccc5f2b9088c154b24d",
+      "width": 1440,
+      "height": 1000,
+      "sha256": "aa5de0ab76c0d107afd8d4bd309a9debf90680374a9cb45ada696d12f7f1ce1a",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "after/workout-320.png",
+      "source_sha": "67232963dec54f2657b64ccc5f2b9088c154b24d",
+      "width": 320,
+      "height": 844,
+      "sha256": "180807738b17e88bb4eec3267f51683f203e15477fc3cb2f0825571ea9cad8df",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    },
+    {
+      "file": "after/workout-390.png",
+      "source_sha": "67232963dec54f2657b64ccc5f2b9088c154b24d",
+      "width": 390,
+      "height": 844,
+      "sha256": "882f2383156a97983dad82271e99832b6830f27a6586e0ed7442f5442d003631",
+      "state": "Fictional coach; dark theme; workout: custom hip abduction machine, 3 sets, 30 seconds, 60 seconds rest; quick: same custom name, 3 sets, More closed; exercise name scrolled into view."
+    }
+  ],
+  "source_blobs": {
+    "frontend/e2e/builder-qol-evidence.spec.mjs": "a89b4673183dd476aa639c9adf0010df611bddbf",
+    "frontend/e2e/builder-qol.spec.mjs": "a28ef15275368ee2c7289e2ab4165c4a8df11dec",
+    "frontend/e2e/preview-critical.spec.mjs": "00f9200f993a3eacb85aa1b2daa23f471d3ddeb7",
+    "frontend/src/App.js": "d3b885c0256f83bea27a1528a0988a8071297754",
+    "frontend/src/components/training/ExerciseCatalogAction.jsx": "bc953286e1facf0d865a2a46a89172f05d96c19b",
+    "frontend/src/components/training/ExerciseRemoval.jsx": "80460ef294d4e5707bcf4dcbc4eb60d3dd5326fe",
+    "frontend/src/components/training/ExerciseTrackingFields.jsx": "1a6a9ed57d29eefbbece1835b302bb3452c2f554",
+    "frontend/src/components/training/QuickSessionBuilder.jsx": "6daa9613e374df6001b5238581cea8223ae8f120",
+    "frontend/src/components/training/WorkoutMetricInput.jsx": "c3f6ad286607c1cc834c80e4820bc6dcbb7fe8c4",
+    "frontend/src/context/UnsavedChangesContext.jsx": "69cc50139281ee3a7b0bbafe5b16285db00d827a",
+    "frontend/src/lib/builderMetrics.js": "f34057645a21605c7c44335535c5b3a15a796567",
+    "frontend/src/lib/trainingLibrary.js": "a694e0764430ec03a5898a2ff83463b242fb8af6",
+    "frontend/src/pages/coach/ClientDetail.jsx": "2c21149886f7dfb087bc526b21a1b387e1f0ae44",
+    "frontend/src/pages/coach/Programs.jsx": "93c64d719585b068a60c75918bf16b61c2f66d94",
+    "frontend/tests/unit/builderMetrics.test.mjs": "78addf5de1046a9cf5d080dbee15a42f23c9935e",
+    "frontend/tests/unit/exerciseCatalog.test.mjs": "0fb74f1640097c860a6352e75280d54905b5c5cc"
+  },
+  "limits": [
+    "Fictional preview fixtures only; no real account or hosted authorization checks.",
+    "No physical iPhone, keyboard-overlay or full accessibility compliance claim.",
+    "Logical scroll target is identical; added content changes physical scroll offset."
+  ]
+}

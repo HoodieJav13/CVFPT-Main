@@ -26,14 +26,23 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment details.
 ## Verification
 
 Backend unit/regression checks, the frontend production build, and preview-mode
-browser checks are secret-free. The current results are 319/319 backend checks and
-20/20 preview browser flows:
+browser checks are secret-free. The 2026-09-24 verification recorded 319/319 backend checks
+and 20/20 preview browser flows at `100053b` (PR #80). These are dated results,
+not current suite totals; consult the latest CI run for current results:
 
 ```sh
 cd backend && npm test
 cd frontend && npm run build
 cd frontend && npm run test:e2e:preview
 ```
+
+Optional frontend lint audit: `cd frontend && npm run lint`. It is not a CI
+gate and exits nonzero for findings. On 2026-10-27, the PR #80 audit config
+against main `84b4718` reported 112 errors and 23 warnings across 54 of 305
+scanned files, with no fatal parsing/configuration errors. The unchanged broad
+audit also flags browser-resolved imports and non-React test helpers; these
+counts are an audit backlog, not 112 confirmed application defects. No flagged
+application code was changed. See PR #80 for the rule breakdown and provenance.
 
 The older mutating API integration harness is opt-in and accepts only an explicitly
 allowlisted development or preview target. Copy `backend/integration/.env.example`

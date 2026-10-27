@@ -97,7 +97,7 @@ export function ChatThread({ messages = [], myRole, onSend, sending, className, 
     <div className={cn('flex flex-col h-[calc(100dvh-260px)] lg:h-[calc(100dvh-220px)] lg:max-w-3xl', className)}>
       <div className="flex-1 overflow-y-auto pr-1" data-testid="chat-message-list">
         {messages.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center pt-10">No messages yet. Say hello!</p>
+          <p className="text-sm text-muted-foreground text-center pt-10">No messages yet.</p>
         )}
         {annotated.map((m) => {
           const mine = m.sender_role === myRole;

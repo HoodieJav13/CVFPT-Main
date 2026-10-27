@@ -144,7 +144,7 @@ export default function CoachMessages() {
   ) : (
     <>
       {threads.length === 0 && (
-        <EmptyState icon={MessageSquare} title="No conversations" subtitle="Threads appear here for each of your clients." testId="threads-empty-state" />
+        <EmptyState icon={MessageSquare} title="No conversations" testId="threads-empty-state" />
       )}
       <div className="space-y-2">
         {threads.map((t) => (
@@ -172,7 +172,6 @@ export default function CoachMessages() {
       <div className={cn(clientId && 'hidden lg:block')}>
         <PageHeader
           title="Messages"
-          subtitle="Conversations with your clients"
           action={(
             <Button variant="outline" className="rounded-xl" onClick={() => setAnnouncementsOpen(true)} data-testid="open-announcements-button">
               <Megaphone className="mr-1.5 h-4 w-4" /> Announce
@@ -208,7 +207,7 @@ export default function CoachMessages() {
         >
           {!clientId ? (
             <div className="hidden flex-1 items-center justify-center lg:flex">
-              <EmptyState icon={MessageSquare} title="Select a conversation" subtitle="Choose a client thread to read and reply." testId="conversation-empty-state" />
+              <EmptyState icon={MessageSquare} title="Select a conversation" testId="conversation-empty-state" />
             </div>
           ) : (
             <>
@@ -291,7 +290,7 @@ function AnnouncementsDrawer({ open, onOpenChange }) {
         <div className="mx-auto w-full max-w-md px-4 pb-6">
           <DrawerHeader className="px-0">
             <DrawerTitle>Announcements</DrawerTitle>
-            <DrawerDescription>One-way notes to your clients — they can't reply, only mark them seen. Announcements ride the daily digest, never their own email.</DrawerDescription>
+            <DrawerDescription>Clients can only mark these seen. Sent in the daily digest.</DrawerDescription>
           </DrawerHeader>
           <form onSubmit={post} className="space-y-3">
             <Textarea

@@ -47,7 +47,7 @@ export default function AdminPage() {
 
   return (
     <div>
-      <PageHeader title="Admin" subtitle="Business-wide management" />
+      <PageHeader title="Admin" />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Coaches" value={overview.coaches} icon={ShieldCheck} testId="admin-stat-coaches" />
         <StatTile label="Clients" value={overview.clients} icon={Users} testId="admin-stat-clients" />
@@ -134,11 +134,10 @@ function CoachesTab() {
               <Plus className="h-4 w-4 mr-1.5" /> Add coach
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-sm" data-testid="admin-coach-create-dialog">
+          <DialogContent aria-describedby={undefined} className="max-w-sm" data-testid="admin-coach-create-dialog">
             <DialogHeader>
               <DialogTitle>New coach account</DialogTitle>
-              <DialogDescription>Create an invited coach account and assign its access role.</DialogDescription>
-            </DialogHeader>
+                          </DialogHeader>
             <form onSubmit={create} className="space-y-3.5" data-testid="admin-coach-create-form">
               <div className="space-y-1.5"><Label>Name *</Label>
                 <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="coach-name-input" /></div>
@@ -353,11 +352,10 @@ function WaiversTab() {
       ))}
 
       <Dialog open={Boolean(viewing)} onOpenChange={(o) => !o && setViewing(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent aria-describedby={undefined} className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Waiver version {viewing?.version_number}</DialogTitle>
-            <DialogDescription>Review the full text of this published waiver version.</DialogDescription>
-          </DialogHeader>
+                      </DialogHeader>
           <ScrollArea className="h-80 rounded-lg border border-border bg-background/40 p-4">
             <pre className="whitespace-pre-wrap text-sm leading-6">{viewing?.full_text}</pre>
           </ScrollArea>

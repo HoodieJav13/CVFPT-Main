@@ -136,7 +136,7 @@ function scheduledSession(overrides = {}) {
   };
 }
 
-test('create attaches an owned workout; another coach\'s workout is refused', async () => {
+test('create attaches a shared template from any coach; another coach\'s client copy is refused', async () => {
   resetState();
   currentUser = coachUser;
   state.sessionRow = scheduledSession();
@@ -144,9 +144,19 @@ test('create attaches an owned workout; another coach\'s workout is refused', as
   assert.equal(result.status, 201);
   assert.ok(state.sessionUpdates.some((u) => u.workout_id === WORKOUT_ID));
 
+  // A template authored by another coach is shared, so it attaches.
   resetState();
   currentUser = coachUser;
-  state.workoutRow = { id: WORKOUT_ID, coach_id: 'bbbbbbbb-0000-0000-0000-00000000000b' };
+  state.sessionRow = scheduledSession();
+  state.workoutRow = { id: WORKOUT_ID, coach_id: 'bbbbbbbb-0000-0000-0000-00000000000b', is_template: true };
+  result = await send('/api/sessions', { body: { client_id: CLIENT_ID, scheduled_at: FUTURE, duration_minutes: 60, workout_id: WORKOUT_ID } });
+  assert.equal(result.status, 201);
+  assert.ok(state.sessionUpdates.some((u) => u.workout_id === WORKOUT_ID));
+
+  // A client's private copy belonging to another coach is not attachable.
+  resetState();
+  currentUser = coachUser;
+  state.workoutRow = { id: WORKOUT_ID, coach_id: 'bbbbbbbb-0000-0000-0000-00000000000b', is_template: false };
   result = await send('/api/sessions', { body: { client_id: CLIENT_ID, scheduled_at: FUTURE, duration_minutes: 60, workout_id: WORKOUT_ID } });
   assert.equal(result.status, 400);
   assert.equal(state.sessionUpdates.length, 0);

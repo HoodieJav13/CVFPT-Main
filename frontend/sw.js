@@ -57,13 +57,23 @@ async function cacheFirst(cacheName, request) {
 
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(STATIC_CACHE);
-  const cached = await cache.match(request);
+  const isImage = request.destination === 'image';
+  const usable = (response) => response && (!isImage ||
+    (response.ok && /^image\//i.test(response.headers.get('Content-Type') || '')));
+  let cached = await cache.match(request);
+  // A SPA fallback or auth page can be HTTP 200 at an image URL. Never
+  // reuse that HTML as an image, including entries left by an older worker.
+  if (cached && !usable(cached)) {
+    await cache.delete(request);
+    cached = undefined;
+  }
   const refresh = fetch(request)
     .then((response) => {
+      if (!usable(response)) return cached || Response.error();
       if (response.ok) cache.put(request, response.clone());
       return response;
     })
-    .catch(() => cached);
+    .catch(() => cached || Response.error());
   return cached || refresh;
 }
 

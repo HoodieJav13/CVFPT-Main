@@ -1,8 +1,11 @@
 # Machine enforcement of the migration-first rule from
 # docs/hardening/2026-07-22-pr5-hosted-release.md: merging auto-deploys both
-# Vercel projects, so a PR that adds migrations must not merge until the
-# owner has applied them to hosted Supabase and says so with the
-# `migration-applied` label. Label events re-run only this cheap job.
+# Vercel projects, so a PR that adds migrations must not merge until its
+# migrations are applied to BOTH hosted Supabase projects — development
+# (`migration-applied`) and production (`prod-migration-applied`). PR #84
+# merged with only the dev label and left production behind; the second
+# label exists so that step cannot be skipped. Label events re-run only
+# this cheap job.
 name: Migration guard
 
 on:
@@ -20,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Require migration-applied label on migration PRs
+      - name: Require dev + production migration labels on migration PRs
         env:
           LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
           BASE_REF: ${{ github.base_ref }}
@@ -33,16 +36,19 @@ jobs:
           fi
           echo "Migration files changed:"
           echo "$changed"
-          if echo "$LABELS" | grep -q '"migration-applied"'; then
-            echo "Label present — owner confirmed the hosted database is migrated."
+          missing=""
+          echo "$LABELS" | grep -q '"migration-applied"' || missing="$missing migration-applied"
+          echo "$LABELS" | grep -q '"prod-migration-applied"' || missing="$missing prod-migration-applied"
+          if [ -z "$missing" ]; then
+            echo "Both labels present — owner confirmed dev and production databases are migrated."
             exit 0
           fi
-          echo "::error::This PR changes supabase/migrations/ but does not carry the 'migration-applied' label. Apply the migration to hosted Supabase first (supabase db push, then verify supabase migration list --linked), then add the label to this PR."
+          echo "::error::This PR changes supabase/migrations/ but is missing label(s):$missing. Apply the migration to the development project (label migration-applied) AND to cvfpt-production (label prod-migration-applied) before merging — merging deploys production immediately."
           exit 1
 
   # docs/roadmap.md standing rule: never two unapplied migrations in flight.
-  # Counts every OPEN PR that touches supabase/migrations/ and lacks the
-  # migration-applied label (this PR included); more than one fails.
+  # Counts every OPEN PR that touches supabase/migrations/ and lacks either
+  # applied label (this PR included); more than one fails.
   migrations-in-flight:
     runs-on: ubuntu-latest
     steps:
