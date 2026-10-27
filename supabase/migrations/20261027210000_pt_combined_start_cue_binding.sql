@@ -162,3 +162,25 @@ begin
  end loop;
  return v_id;
 end; $$;
+
+-- now()/started_at is transaction-start time, potentially before a waiting
+-- cue was saved. Fresh-start callers serialize on the client and only invoke
+-- this helper after final snapshots; resumed/replayed starts never invoke it.
+create or replace function public.bind_next_exercise_cues(p_log_id uuid) returns void
+language plpgsql security invoker set search_path='' as $$
+declare l public.workout_logs%rowtype; e public.workout_log_exercises%rowtype; q public.exercise_attempt_cues%rowtype; bind_at timestamptz:=clock_timestamp();
+begin
+ select * into l from public.workout_logs where id=p_log_id and status='active' and not archived;
+ if l.id is null then return; end if;
+ perform 1 from public.clients where id=l.client_id for update;
+ for e in select * from public.workout_log_exercises where workout_log_id=l.id and not archived order by position,id loop
+  for q in select * from public.exercise_attempt_cues c where c.client_id=l.client_id and not c.archived and c.retry_exercise_id is null and c.source_log_id<>l.id
+   and c.created_at<=bind_at and c.source_workout_exercise_id=e.source_workout_exercise_id
+   and c.program_assignment_id is not distinct from l.program_assignment_id and c.program_day_id is not distinct from l.program_day_id
+   and c.workout_assignment_id is not distinct from l.workout_assignment_id for update loop
+   if q.source_version=public.exercise_cue_source_version(q.source_log_id,q.source_exercise_id) then
+    update public.exercise_attempt_cues set retry_log_id=l.id,retry_exercise_id=e.id,retry_version=public.exercise_cue_retry_version(e.id),linked_at=clock_timestamp(),revision=revision+1,updated_at=clock_timestamp() where id=q.id;
+   end if;
+  end loop;
+ end loop;
+end $$;

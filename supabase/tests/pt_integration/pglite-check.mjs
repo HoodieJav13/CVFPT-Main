@@ -113,6 +113,23 @@ try{
  await db.query('insert into public.workouts(id,coach_id,client_id,is_template,name) values($1,$2,$3,false,$4)',[id(88),id(1),id(11),'Synthetic Quick']);
  await db.query("insert into public.workout_exercises(id,workout_id,custom_name,sets,reps,position) values($1,$2,'Quick drill','1','8',0)",[id(89),id(88)]);
  await db.query("insert into public.workout_assignments(id,client_id,workout_id,kind,assignment_mode,assigned_for,created_by_coach_id,create_request_id,create_request_hash) values($1,$2,$3,'quick','dated',current_date,$4,$5,'v1:'||repeat('a',64))",[id(87),id(11),id(88),id(1),id(86)]);
+ // A transaction may begin before a cue is authored, then acquire the start
+ // lock after it. Canonical started_at uses now() (transaction-start time).
+ // The already-persisted waiting cue must still attach at fresh-start binding.
+ await db.query('insert into public.workout_assignments(id,client_id,workout_id) values($1,$2,$3)',[id(91),id(11),id(5)]);
+ const ordinary=()=>rpc('start_workout_log_with_cues',[id(11),null,null,id(91),'client',null,null,id(111)]);
+ const beforeLong=(await ordinary()).workout_log_id;await finish(beforeLong);
+ const beforeLongEx=await scalar('select id from public.workout_log_exercises where workout_log_id=$1 and source_workout_exercise_id=$2',[beforeLong,id(61)]);
+ await db.exec('begin');
+ const longCue=await mutate({action:'create',request_id:id(490),text:'Cue saved after transaction began',source_version:(await read(beforeLongEx,101,beforeLong)).source_version},beforeLongEx,beforeLong);
+ const afterLong=(await ordinary()).workout_log_id;
+ const linkedLong=await scalar('select retry_log_id from public.exercise_attempt_cues where id=$1',[longCue.id]);
+ check(linkedLong,afterLong,'eligible cue must not be excluded by transaction-start timestamp');
+ const lateSource=await scalar('select id from public.workout_log_exercises where workout_log_id=$1 and source_workout_exercise_id=$2',[beforeLong,id(62)]);
+ const late=await mutate({action:'create',request_id:id(491),text:'Saved after active start',source_version:(await read(lateSource,101,beforeLong)).source_version},lateSource,beforeLong);
+ check((await ordinary()).outcome,'resumed');check(await scalar('select retry_log_id from public.exercise_attempt_cues where id=$1',[late.id]),null,'resume never retroactively binds');
+ await db.exec('commit');await finish(afterLong);
+ const afterResume=(await ordinary()).workout_log_id;check(await scalar('select retry_log_id from public.exercise_attempt_cues where id=$1',[late.id]),afterResume);await finish(afterResume);
  const quickRows=(await db.query('select * from public.workout_exercises where workout_id=$1',[id(88)])).rows;
  check(await rpc('save_workout_with_program_history',[id(88),id(1),'Synthetic Quick',null,null,quickRows]),id(88));
  const quickStart=(await rpc('start_workout_log_with_cues',[id(11),null,null,id(87),'client',null,null,id(111)])).workout_log_id;
