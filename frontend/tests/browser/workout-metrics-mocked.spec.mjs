@@ -31,6 +31,8 @@ test('typed outbox survives reload and an ambiguous add response, then completes
     if (path === '/workout-logs/mine') return json([log]);
     // The tracker previews the active exercise's last time (one read per exercise per visit).
     if (path === '/workout-logs/log-1/exercises/ex-1/history' && method === 'GET') return json({ occurrences: [], next_cursor: null });
+    // The durable cue panel adds this read; this metric-only fixture has no cues.
+    if (path === '/workout-logs/log-1/exercises/ex-1/cue-retry' && method === 'GET') return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
     if (path === '/workout-logs/log-1/exercises/ex-1/sets' && method === 'POST') {
       addAttempts += 1;
       let set = log.exercises[0].sets.find((row) => row.client_operation_id === body.client_operation_id);
