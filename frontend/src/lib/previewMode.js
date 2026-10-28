@@ -144,7 +144,7 @@ const SWITCH_EVENT = 'cvf-preview-switch-change';
 const UNLISTED_SAVE_MARKER = 'cvf-preview/unlisted-save';
 const MUTATING_READ_MARKER = 'cvf-preview/mutating-read';
 const SPEED_MS = { slow: 1500, 'very-slow': 4000 };
-const FAIL_MODES = ['write-once', 'reads'];
+const FAIL_MODES = ['write-once', 'reads', 'quick-400-once'];
 // Every key Reset removes. Anything not matched here is left alone, because a
 // local dev origin is shared with real-auth sessions.
 const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure', MEDIA_SCENARIO_KEY];
@@ -2973,6 +2973,15 @@ export function installPreviewApi(api) {
     const read = isPreviewRead(method, path);
     const knownSave = !read && isKnownSave(method, path);
     const mode = getPreviewFailMode();
+
+    // Test instrumentation inside the fixture-only adapter: reject exactly
+    // one Quick create before its handler can mutate fixtures or a receipt.
+    // Synchronous consumption also fences concurrent creates. Other saves,
+    // reads, auth, and Quick child routes leave this switch armed.
+    if (mode === 'quick-400-once' && method === 'post' && path === '/programs/quick-sessions') {
+      setPreviewFailMode('off');
+      return fail(config, 400, 'Simulated Quick validation rejection (preview)');
+    }
 
     // Fail next save: decided from the route table, BEFORE the handler runs,
     // so nothing is changed and nothing is emitted. Reading and clearing the
