@@ -256,7 +256,11 @@ identified below.
 
 ## Per-endpoint test evidence
 
-Evidence codes:
+Evidence codes below retain the original PR #5 release scope (2026-07-22).
+They are historical evidence identifiers, not current suite totals. The later
+2026-09-24 verification at `100053b` (PR #80) recorded 319 backend checks and
+20 preview browser flows; those aggregate counts do not re-verify every
+route/actor mapping in this inventory. Consult current CI for current totals.
 
 - **U94** — 94 backend regressions under `backend/test`, including access,
   archived-boundary, validation, CORS, rate-limit, Stripe-mode, claim-race,
@@ -295,7 +299,7 @@ handler. External/gated exceptions are called out explicitly.
 | Booking requests — all five endpoints | **L88**, **B7**, **U94**, **PG** |
 | Waiver reads/status | **L88**, **B7**, **U94**, **PG** |
 | Waiver version/sign/paper mutations | Uniqueness/grants/transaction boundaries: **U94**, **PG**; successful UI signing/paper-sign verification explicitly deferred by the owner on 2026-07-11 pending approved legal text |
-| Workout tracking, coach feedback, and notifications — all 20 endpoints | Baseline workout/notification flows: **B7**; current deterministic and backend coverage: **P16**, **U94**, **PG**. PR #5 hosted grants and rollback-only behavior probes are recorded in the release evidence; its dedicated real-auth suite was not rerun. |
+| Workout tracking, coach feedback, and notifications — all 20 endpoints | Baseline workout/notification flows: **B7**; PR #5 deterministic and backend coverage: **P16**, **U94**, **PG**. PR #5 hosted grants and rollback-only behavior probes are recorded in the release evidence; its dedicated real-auth suite was not rerun. |
 | Retired package/payment routes | Production `404` checks; dormant source-level historical evidence remains **L88**, **B7**, **U94**, **PG** |
 | Admin — all four endpoints | **L88**, **B7**, **H19** |
 | Coach/client dashboards | **L88**, **B7**, **P16**, **H19** |

@@ -25,25 +25,35 @@ references without copying their product layout or palette.
 
 Selected visual targets:
 
-- `/private/tmp/cvfpt-visual-revalidation-2026-07-19/bold-probes/login-poster-mobile-390x844.png`
-- `/private/tmp/cvfpt-visual-revalidation-2026-07-19/bold-probes/coach-dashboard-poster-mobile-390x844.png`
-- `/private/tmp/cvfpt-visual-revalidation-2026-07-19/bold-probes/progress-medal-mobile-peak-390x844.png`
-- `/Users/javienchavez/Downloads/906084C3-6494-423C-845A-8ADD8CBA055B.jpg`
-- `/Users/javienchavez/Downloads/AD6D8427-ED24-4C41-BDA3-A0F3106F13B3.jpg`
-- `/Users/javienchavez/Downloads/C979A182-F4F1-499F-A0EE-F0DC6579E30F.jpg`
+- Bold-probe capture: Login Poster, mobile 390×844
+- Bold-probe capture: coach dashboard Poster, mobile 390×844
+- Bold-probe capture: Progress Medal at PR peak, mobile 390×844
+- Three owner-supplied pattern reference photos (glass/dock treatment), held
+  locally by the owner and not committed to the repo
+
+The bold-probe captures and reference photos were reviewed from the owner's
+local machine during the 2026-07-19 session and are not stored in this
+repository. The in-repo record of the selected direction is
+`docs/design-principles.md`; regression evidence is the preview Playwright
+suite in `frontend/e2e/preview-critical.spec.mjs`.
 
 ## Implementation evidence
 
-- Login Poster, settled: `/private/tmp/cvfpt-implementation-qa/login-poster-desktop-1440x1000.png`
-  and `/private/tmp/cvfpt-implementation-qa/login-poster-mobile-390x844.png`
-- Signup Poster, settled: `/private/tmp/cvfpt-implementation-qa/signup-poster-mobile-390x844.png`
-- Coach dashboard Poster, settled: `/private/tmp/cvfpt-implementation-qa/coach-dashboard-desktop-1440x1000.png`
-  and `/private/tmp/cvfpt-implementation-qa/coach-dashboard-mobile-390x844.png`
-- Client dashboard Poster, settled: `/private/tmp/cvfpt-implementation-qa/client-dashboard-mobile-390x844.png`
-- Progress Medal, live PR peak/settled: `/private/tmp/cvfpt-implementation-qa/progress-medal-desktop-1440x1000.png`
-  and `/private/tmp/cvfpt-implementation-qa/progress-medal-mobile-settled-390x844.png`
-- Active-workout dock and rest timer: `/private/tmp/cvfpt-implementation-qa/workout-dock-mobile-390x844.png`
-- Workout completion glass dialog, settled: `/private/tmp/cvfpt-implementation-qa/workout-completion-dialog-mobile-settled-390x844.png`
+Implementation captures were taken from the local preview build on the owner's
+machine and are not committed. Each was reviewed at the sizes listed:
+
+- Login Poster, settled: desktop 1440×1000 and mobile 390×844
+- Signup Poster, settled: mobile 390×844
+- Coach dashboard Poster, settled: desktop 1440×1000 and mobile 390×844
+- Client dashboard Poster, settled: mobile 390×844
+- Progress Medal, live PR peak/settled: desktop 1440×1000 and mobile 390×844
+- Active-workout dock and rest timer: mobile 390×844
+- Workout completion glass dialog, settled: mobile 390×844
+
+The surfaces themselves live in `frontend/src/pages/` (Login, Signup, coach
+and client Dashboards, Progress, the active workout tracker) and the shared
+`BrandBackdrop` component; re-capture them with `npm run dev:preview` from
+`frontend/` when re-auditing.
 
 ## Comparison and findings history
 
