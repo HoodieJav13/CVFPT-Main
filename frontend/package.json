@@ -80,7 +80,8 @@
     "test:e2e:guides:local": "playwright test --config playwright.exercise-guides-local.config.mjs",
     "test:e2e:youtube-proof": "playwright test --config playwright.youtube-proof.config.mjs",
     "capture:media-visual": "playwright test --config playwright.exercise-media-visual.config.mjs",
-    "capture:guides-visual": "playwright test --config playwright.exercise-guides-visual.config.mjs"
+    "capture:guides-visual": "playwright test --config playwright.exercise-guides-visual.config.mjs",
+    "lint": "eslint ."
   },
   "browserslist": {
     "production": [
@@ -113,6 +114,5 @@
     "tailwindcss": "3.4.17",
     "tailwindcss-animate": "1.0.7",
     "vite": "^6.3.5"
-  },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  }
 }
