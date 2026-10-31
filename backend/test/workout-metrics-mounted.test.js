@@ -14,7 +14,7 @@ function reset() {
 }
 const dbPath = require.resolve('../src/supabase');
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { supabaseAdmin: {
-  rpc(name, args) { rpcCalls.push({name,args}); return Promise.resolve({data: name === 'start_workout_log_v2' ? { outcome: startOutcome, workout_log_id: 'log-a' } : 'w-a', error: null}); },
+  rpc(name, args) { rpcCalls.push({name,args}); return Promise.resolve({data: name === 'start_workout_log_with_cues' ? { outcome: startOutcome, workout_log_id: 'log-a' } : 'w-a', error: null}); },
   from(table) {
     const filters = []; let payload;
     const rows = () => (table === 'workout_logs' ? [log] : table === 'workout_log_exercises' ? [exercise] : table === 'workout_log_sets' ? [set] : table === 'workouts' ? [workout] : table === 'workout_exercises' ? [{ id: 'we-a', workout_id: 'w-a', custom_name: 'Run', tracking_type: 'duration_distance', duration_value: 20, duration_unit: 'min', distance_value: 2, distance_unit: 'mi', archived: false }] : []).filter((row) => filters.every(([key, value]) => row[key] === value));
@@ -50,12 +50,12 @@ test('quick completion refuses resumed logs and uses one atomic fresh-log comple
   reset(); startOutcome = 'resumed'; Object.assign(set, values); log.notes = 'Existing note';
   let response = await fetch(`${base}/api/workout-logs/quick-complete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workout_assignment_id: 'assignment-a' }) });
   assert.equal(response.status, 409);
-  assert.deepEqual(rpcCalls.map((call) => call.name), ['start_workout_log_v2']);
+  assert.deepEqual(rpcCalls.map((call) => call.name), ['start_workout_log_with_cues']);
   assert.equal(set.actual_duration_value, 12.5); assert.equal(log.notes, 'Existing note'); assert.equal(writes.length, 0);
   reset();
   response = await fetch(`${base}/api/workout-logs/quick-complete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workout_assignment_id: 'assignment-a' }) });
   assert.equal(response.status, 201);
-  assert.deepEqual(rpcCalls.map((call) => call.name), ['start_workout_log_v2', 'quick_complete_workout_log_v2']);
+  assert.deepEqual(rpcCalls.map((call) => call.name), ['start_workout_log_with_cues', 'quick_complete_workout_log_v2']);
 });
 test('mounted foreign/archived/completed metric writes are masked before mutation',async()=>{
   for (const user of [{role:'client',client:{id:'client-b'}},{role:'coach',coach:{id:'coach-b'}}]) {reset();actor=user;assert.equal((await patch(values)).status,404);assert.equal(writes.length,0);}

@@ -338,7 +338,7 @@ test('legacy 409 guard: templates with live-linked assignments cannot be edited 
     assert.equal(res.status, 409);
     res = await call('PATCH', `/workouts/${uuid(5)}/archive`);
     assert.equal(res.status, 409);
-    assert.ok(!db.rpcCalls.some((c) => ['save_workout', 'save_program'].includes(c.name)), 'nothing was written');
+    assert.ok(!db.rpcCalls.some((c) => ['save_workout', 'save_program', 'save_workout_with_program_history', 'save_program_with_history'].includes(c.name)), 'nothing was written');
     assert.ok(!db.updates.some((u) => u.table === 'programs' || u.table === 'workouts'));
   });
 });
@@ -346,17 +346,17 @@ test('legacy 409 guard: templates with live-linked assignments cannot be edited 
 test('the legacy guard does not block templates without live links, or client copies', async (t) => {
   await withServer(t, async (call) => {
     setup('coachB');
-    db.rpcResults.save_workout = { data: uuid(2), error: null };
+    db.rpcResults.save_workout_with_program_history = { data: uuid(2), error: null };
     let res = await call('PUT', `/workouts/${uuid(2)}`, { name: 'B template renamed' });
     assert.equal(res.status, 200, 'unassigned template edits freely');
-    assert.equal(db.rpcCalls.find((c) => c.name === 'save_workout').args.p_workout_id, uuid(2));
+    assert.equal(db.rpcCalls.find((c) => c.name === 'save_workout_with_program_history').args.p_workout_id, uuid(2));
     // Archive of an unlinked template works
     res = await call('PATCH', `/workouts/${uuid(2)}/archive`);
     assert.equal(res.status, 200);
     // A client copy (is_template false) is never guarded, even though it has assignments
     setup('coachA');
     db.tables.workout_assignments.push({ id: uuid(60), client_id: CLI_A, workout_id: uuid(3), archived: false });
-    db.rpcResults.save_workout = { data: uuid(3), error: null };
+    db.rpcResults.save_workout_with_program_history = { data: uuid(3), error: null };
     res = await call('PUT', `/workouts/${uuid(3)}`, { name: 'tuned for this client' });
     assert.equal(res.status, 200);
     // ...but another coach cannot touch it
@@ -490,8 +490,8 @@ test('client copies follow an admin reassignment: the former coach is masked, th
     assert.deepEqual(db.updates, [], 'no row changed for the former coach');
 
     currentUser = users.coachB;
-    db.rpcResults.save_workout = { data: uuid(3), error: null };
-    db.rpcResults.save_program = { data: uuid(13), error: null };
+    db.rpcResults.save_workout_with_program_history = { data: uuid(3), error: null };
+    db.rpcResults.save_program_with_history = { data: uuid(13), error: null };
     assert.equal((await call('GET', `/workouts/${uuid(3)}`)).status, 200, 'new coach reads the workout copy');
     assert.equal((await call('GET', `/${uuid(13)}`)).status, 200, 'new coach reads the program copy');
     assert.equal((await call('PUT', `/workouts/${uuid(3)}`, { name: 'Changed' })).status, 200, 'new coach edits the workout copy');

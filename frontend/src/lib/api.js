@@ -12,7 +12,7 @@ export const api = axios.create({ baseURL: `${BACKEND_URL}/api`, timeout: 60000 
 // previewReady in preview mode, so no request can escape to the network
 // before the mock adapter is installed.
 export const previewReady = isPreviewMode
-  ? import('@/lib/previewMode').then((mod) => { mod.installPreviewApi(api); return mod; })
+  ? import('@/lib/previewMode').then(async (mod) => { await mod.installPreviewApi(api); return mod; })
   : Promise.resolve(null);
 
 const TOKEN_KEY = 'cvf_access_token';

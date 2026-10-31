@@ -27,6 +27,8 @@ async function setupTracker(page) {
     if (path === '/workout-logs/mine') return json([log]);
     // The tracker may read the active exercise's last occurrence on its own.
     if (path === '/workout-logs/log-r/exercises/ex-1/history' && method === 'GET') return json({ occurrences: [], next_cursor: null });
+    // The durable cue panel adds this read; this outbox-only fixture has no cues.
+    if (path === '/workout-logs/log-r/exercises/ex-1/cue-retry' && method === 'GET') return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
     if (path === '/workout-logs/log-r/sets/set-1' && method === 'PATCH') {
       if (state.failWrites) return route.abort('failed');
       Object.assign(set, request.postDataJSON());

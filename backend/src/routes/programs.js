@@ -49,6 +49,8 @@ const {
   safeFilename,
 } = require('../lib/programPdf');
 
+const { historyHandler } = require('../lib/programHistory');
+
 const router = express.Router();
 router.use(requireAuth);
 
@@ -558,15 +560,16 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
       : workout.exercises;
     const hiddenPicked = await newHiddenLibraryExercises(rows, workout);
     if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
-    const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
+    const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout_with_program_history', {
       p_workout_id: workout.id,
-      p_coach_id: workout.coach_id,
+      p_actor_coach_id: req.user.coach.id,
       p_name: name,
       p_description: 'description' in body ? body.description || null : workout.description,
       p_goal: 'goal' in body ? body.goal || null : workout.goal,
       p_exercises: trackingExercises(rows, workout.exercises),
     });
     if (error && isQuickSessionStarted(error)) return sendQuickSessionStarted(res);
+    if (error?.message === 'Workout not found') return res.status(404).json({ error: 'Workout not found' });
     if (error) throw error;
     if (!workoutId) return res.status(404).json({ error: 'Workout not found' });
     return res.json(await workoutWithDetails(workoutId));
@@ -800,6 +803,24 @@ router.get('/:id/export.pdf', requireCoach, pdfExportLimiter, async (req, res) =
   }
 });
 
+router.get('/:id/history', requireCoach, historyHandler(async (id) => {
+  // Authorize with the same current-client ownership embed as normal reads,
+  // without hydrating workouts, assignments or any completed client records.
+  const { data, error } = await supabaseAdmin.from('programs').select(OWNED_ROW)
+    .eq('id', id).eq('archived', false).maybeSingle();
+  if (error) throw error;
+  return data;
+}, async (id) => {
+  const { data, error } = await supabaseAdmin.from('program_change_revisions')
+    .select('id,snapshot,author_coach_id,author_name_snapshot,recorded_at,source')
+    .eq('program_id', id).order('id', { ascending: false }).limit(201);
+  if (error) {
+    if (['42P01', 'PGRST205'].includes(error.code)) return null;
+    throw error;
+  }
+  return { revisions: (data || []).slice(0, 200).reverse(), has_earlier: (data || []).length > 200 };
+}));
+
 router.get('/:id', requireCoach, async (req, res) => {
   try {
     const program = await programWithDetails(req.params.id, req.user);
@@ -830,15 +851,15 @@ router.put('/:id', requireCoach, async (req, res) => {
     if (!await programDaysAreAccessible(req.user, validDays, { instanceClientId: isTemplate(program) ? null : program.client_id })) {
       return res.status(404).json({ error: 'Workout not found' });
     }
-    const { data: programId, error } = await supabaseAdmin.rpc('save_program', {
+    const { data: programId, error } = await supabaseAdmin.rpc('save_program_with_history', {
       p_program_id: program.id,
-      p_coach_id: program.coach_id,
-      p_is_admin: req.user.role === 'admin',
+      p_actor_coach_id: req.user.coach.id,
       p_name: name,
       p_description: 'description' in body ? body.description || null : program.description,
       p_frequency_days: frequency,
       p_days: validDays,
     });
+    if (error?.message === 'Program not found') return res.status(404).json({ error: 'Program not found' });
     if (error) throw error;
     if (!programId) return res.status(404).json({ error: 'Program not found' });
     return res.json(withAuthor(await programWithDetails(programId, req.user), await coachesById()));

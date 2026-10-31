@@ -54,7 +54,8 @@ export async function usePreviewRole(page, role, clientId = 'client_sarah') {
 // adapter is installed on). Resolves for failures too.
 export async function callPreviewApi(page, method, path, body) {
   return page.evaluate(async ({ requestMethod, requestPath, requestBody }) => {
-    const { api } = await import('/src/lib/api.js');
+    const { api, previewReady } = await import('/src/lib/api.js');
+    await previewReady;
     try {
       const response = await api.request({ method: requestMethod, url: requestPath, data: requestBody });
       return { status: response.status, data: response.data };

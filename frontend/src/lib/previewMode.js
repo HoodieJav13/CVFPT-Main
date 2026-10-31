@@ -1,3 +1,7 @@
+import { RESCUE_PROGRAM, RESCUE_DAY, createRescueFixture, rescueVersion, validateRescueBranch, resolveRescue } from './workoutRescue.js';
+import { createPreviewHistory } from './programHistory';
+import { programHistoryFixtures } from './programHistoryFixtures';
+import { createPreviewCueRetry } from './previewCueRetry.js';
 import {createPreviewInvites} from './previewInvites.js';
 import {
   MEDIA_SCENARIO_KEY, PREVIEW_MEDIA_READ_LIKE_POSTS, PREVIEW_MEDIA_SAVE_ROUTES, createPreviewExerciseMedia,
@@ -39,6 +43,8 @@ const PREVIEW_UNSUPPORTED = [];
 // chain serves that is missing from this table logs
 // cvf-preview/unlisted-save, which fails the preview browser suite.
 const PREVIEW_SAVE_ROUTES = [
+  ['put', /^\/programs\/program_foundation\/(?:days\/day_foundation_1\/)?rescue$/],
+  ['post', /^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/cue-retry$/],
   ['post', /^\/workout-logs\/start$/],
   ['post', /^\/workout-logs\/quick-complete$/],
   ['patch', /^\/workout-logs\/([^/]+)\/sets\/([^/]+)\/archive$/],
@@ -172,6 +178,8 @@ const iso = (days = 0, hours = 9) => {
   d.setHours(hours, 0, 0, 0);
   return d.toISOString();
 };
+const historyFixtures = programHistoryFixtures(iso(-1));
+const programHistory = createPreviewHistory(historyFixtures);
 const dateOnly = (days = 0) => iso(days).slice(0, 10);
 const id = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 
@@ -313,6 +321,7 @@ const state = {
     { id: 'wex_sarah_2', workout_id: 'workout_sarah_mobility', exercise_library_id: null, custom_name: 'Ankle Rocker', sets: '2', reps: '8/side', target_rpe: null, rest: '', rest_seconds: null, tempo: '', default_load_value: null, default_load_unit: null, notes: 'Keep heel heavy.', video_url: '', position: 1, archived: false, created_at: iso(-7) },
   ],
   programs: [
+    { id: 'program_history_example', coach_id: 'coach_marcus', name: 'History example', description: 'Fictional revision comparison', frequency_days: 1, is_template: true, archived: false },
     { id: 'program_foundation', coach_id: 'coach_marcus', name: 'Foundation Strength - Phase 1', description: 'Three days per week focused on clean mechanics and steady volume.', frequency_days: 3, archived: false, created_at: iso(-35), updated_at: iso(-35) },
     { id: 'program_hybrid', coach_id: 'coach_marcus', name: 'Hybrid Strength - Phase 2', description: 'Four weekly touchpoints for strength, mobility, and run prep.', frequency_days: 4, archived: false, created_at: iso(-20), updated_at: iso(-20) },
     { id: 'program_sarah_mobility', coach_id: 'coach_marcus', name: 'Sarah Mobility Plan', description: 'A recovery-day client program.', frequency_days: 1, is_template: false, client_id: 'client_sarah', source_program_id: 'program_foundation', hidden: false, archived: false, created_at: iso(-7), updated_at: iso(-7) },
@@ -461,6 +470,16 @@ export function setPreviewFailMode(mode) {
     else localStorage.removeItem(PREVIEW_FAIL_KEY);
   } catch { /* storage unavailable: the switch simply does not stick */ }
   emitSwitchChange();
+}
+
+// The example's current rows come from its literal latest stored revision.
+// This initialization does not touch existing baseline clients/programs.
+const historyExample = historyFixtures.program_history_example.at(-1).snapshot;
+for (const day of historyExample.days) {
+  state.programDays.push({ id:day.id, program_id:historyExample.id, day_number:day.day_number, notes:day.notes, workout_id:day.workout.id, archived:false });
+  const { exercises, ...workout } = day.workout;
+  state.workouts.push({ ...workout, coach_id:'coach_marcus', is_template:true, archived:false });
+  exercises.forEach((exercise, position) => state.workoutExercises.push({ ...exercise, custom_name:exercise.name, workout_id:workout.id, position, archived:false }));
 }
 
 function isPreviewOwnedKey(key) {
@@ -1178,13 +1197,28 @@ function replacePreviewLoads(collection, ownerKey, ownerId, loads = []) {
   });
 }
 
+// Separate, in-memory approval data. Reload resets it; baseline program fixtures stay intact.
+let rescuePlan = null;
+function rescueOriginal() {
+  const program = state.programs.find((row) => row.id === RESCUE_PROGRAM && !row.archived && !row.hidden);
+  const day = state.programDays.find((row) => row.id === RESCUE_DAY && !row.archived);
+  const workout = day && workoutDetails(day.workout_id);
+  if (!program || !day || !workout || workout.archived) return null;
+  return { program_id: program.id, program_name: program.name, program_updated_at: program.updated_at, day_id: day.id, day_notes: day.notes, workout };
+}
+function rescueCanRead(role, client) {
+  const program = state.programs.find((row) => row.id === RESCUE_PROGRAM);
+  return role === 'admin' || (role === 'coach' && program?.coach_id === currentCoach().id)
+    || (role === 'client' && state.programAssignments.some((row) => row.program_id === RESCUE_PROGRAM && row.client_id === client.id && !row.archived));
+}
+
 function startPreviewWorkout(clientId, payload, stamp = previewActorStamp('client')) {
   const active = state.workoutLogs.find((row) => row.client_id === clientId && row.status === 'active' && !row.archived);
   const sameSource = active && (
     (payload.program_assignment_id && active.program_assignment_id === payload.program_assignment_id && active.program_day_id === payload.program_day_id)
     || (payload.workout_assignment_id && active.workout_assignment_id === payload.workout_assignment_id)
   );
-  if (active) return { outcome: sameSource ? 'resumed' : 'conflict', workout_log: workoutLogDetails(active.id) };
+  if (active) return { outcome: sameSource && !payload.rescue ? 'resumed' : 'conflict', workout_log: workoutLogDetails(active.id) };
 
   let workout = null;
   let programAssignment = null;
@@ -1205,6 +1239,12 @@ function startPreviewWorkout(clientId, payload, stamp = previewActorStamp('clien
   }
   if (!workout) return null;
 
+  let rescue = null;
+  if (payload.rescue) {
+    if (programAssignment?.program_id !== RESCUE_PROGRAM || programDay?.id !== RESCUE_DAY) return { error: 'Rescue is only available for the demonstration day.' };
+    rescue = resolveRescue(rescueOriginal(), rescuePlan, payload.rescue);
+    if (rescue.error) return { error: `Rescue unavailable: ${rescue.error}. Review current options before starting.` };
+  }
   const createdAt = new Date().toISOString();
   const log = {
     id: id('workout_log'),
@@ -1213,13 +1253,15 @@ function startPreviewWorkout(clientId, payload, stamp = previewActorStamp('clien
     program_day_id: programDay?.id || null,
     workout_assignment_id: workoutAssignment?.id || null,
     dated_workout_assignment_id: workoutAssignment?.assignment_mode === 'dated' ? workoutAssignment.id : null,
-    workout_name: workout.name,
+    workout_name: rescue ? `${workout.name} · ${rescue.branch.name} (demo)` : workout.name,
+    ...(rescue ? { rescue_snapshot: { branch_id: rescue.branch.id, branch_name: rescue.branch.name, original_version: rescuePlan.version, revision: rescuePlan.revision, intent: rescue.branch.intent, changes: rescue.changes } } : {}),
     started_by: stamp.entered_by, started_by_coach_id: stamp.entered_by_coach_id,
     status: 'active', notes: null, feedback: null, started_at: createdAt, completed_at: null,
     archived: false, created_at: createdAt, updated_at: createdAt,
   };
   state.workoutLogs.push(log);
-  state.workoutExercises.filter((row) => row.workout_id === workout.id && !row.archived).sort((a, b) => a.position - b.position).forEach((exercise) => {
+  const plannedExercises = rescue ? rescue.exercises : state.workoutExercises.filter((row) => row.workout_id === workout.id && !row.archived).sort((a, b) => a.position - b.position);
+  plannedExercises.forEach((exercise) => {
     const resolved = previewLoadForExercise({
       exercise,
       programAssignmentId: programAssignment?.id,
@@ -1464,9 +1506,11 @@ function previewMedia() {
   return previewMediaScenario;
 }
 
-export function installPreviewApi(api) {
+export async function installPreviewApi(api) {
   if (!isPreviewMode) return;
+  const cueRetry = await createPreviewCueRetry(state);
   clearPreviewPendingSeries();
+  rescuePlan = createRescueFixture(rescueOriginal());
   previewMedia(); // seeds the separate media scenario rows when it is switched on
   const route = async (config) => {
     const method = String(config.method || 'get').toLowerCase();
@@ -1478,7 +1522,38 @@ export function installPreviewApi(api) {
     const unsupported = PREVIEW_UNSUPPORTED.find((entry) => entry.method === method && entry.pattern.test(path));
     if (unsupported) return rejectUnsupported(config, method, path, unsupported);
 
+    if (path === `/programs/${RESCUE_PROGRAM}/rescue` || path === `/programs/${RESCUE_PROGRAM}/days/${RESCUE_DAY}/rescue`) {
+      if (!rescueCanRead(role, client)) return fail(config, 404, 'Program not found');
+      const original = rescueOriginal();
+      if (!original) return fail(config, 409, 'Original demonstration program is unavailable.');
+      if (method === 'get') {
+        const visibleOriginal = role !== 'client' ? original : { ...original, workout: { ...original.workout, exercises: original.workout.exercises.map(({ coach_notes: _private, ...exercise }) => exercise) } };
+        return ok({ original: visibleOriginal, plan: rescuePlan, stale: rescuePlan.version !== rescueVersion(original) }, config);
+      }
+      if (method === 'put') {
+        if (!['coach', 'admin'].includes(role)) return fail(config, 403, 'Only the program coach can define options.');
+        if (payload.version !== rescueVersion(original) || payload.revision !== rescuePlan.revision) return fail(config, 409, 'Original or options changed. Reload and review before saving.');
+        if (!Array.isArray(payload.branches) || payload.branches.length > 6) return fail(config, 400, 'Use up to six complete options.');
+        const ids = new Set();
+        for (const branch of payload.branches) {
+          const error = validateRescueBranch(branch, original);
+          if (error || typeof branch.id !== 'string' || ids.has(branch.id)) return fail(config, 400, error || 'Option identifiers must be unique.');
+          ids.add(branch.id);
+        }
+        // Allowlist authored fields: no client can smuggle source prescriptions into the start.
+        rescuePlan = { version: payload.version, revision: rescuePlan.revision + 1, branches: payload.branches.map(({ id, name, minutes, equipment, intent, enabled, items }) => ({ id, name, minutes, equipment, intent, enabled: enabled === true, items: items.map(({ source_id, sets }) => ({ source_id, sets })) })) };
+        return ok({ original, plan: rescuePlan, stale: false }, config);
+      }
+      return fail(config, 405, 'Unsupported demonstration action');
+    }
+
     if (path === '/auth/me' || path === '/auth/login' || path === '/auth/signup') return ok({ access_token: 'preview', refresh_token: 'preview', ...getPreviewUser() }, config);
+
+    if (path.endsWith('/cue-retry')) {
+      const result = cueRetry?.handle(config, method, path, payload, getPreviewUser(), ok, fail);
+      if (result !== undefined) return result;
+      return fail(config, 404, 'Local cue scenario is not enabled');
+    }
 
     if (path.startsWith('/exercise-media/')) {
       const media = await previewMedia().handle(config, method, path, payload);
@@ -1503,8 +1578,10 @@ export function installPreviewApi(api) {
       }
       const result = startPreviewWorkout(startClient.id, payload, previewActorStamp(role));
       if (!result) return fail(config, 404, 'Assigned workout not found');
+      if (result.error) return fail(config, 409, result.error);
       if (result.outcome === 'conflict') return Promise.reject({ response: { data: { error: 'Finish or abandon your active workout first', active_workout: result.workout_log }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
       if (result.outcome === 'already_completed') return Promise.reject({ response: { data: { error: 'This dated workout has already been completed', workout_log: result.workout_log }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
+      if (result.outcome === 'started') cueRetry?.link(result.workout_log.id);
       emitChange();
       return ok(result, config, result.outcome === 'started' ? 201 : 200);
     }
@@ -1544,6 +1621,7 @@ export function installPreviewApi(api) {
       if (existingActive) return Promise.reject({ response: { data: { error: 'Finish or abandon your active workout first', active_workout: workoutLogDetails(existingActive.id) }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
       const result = startPreviewWorkout(client.id, payload);
       if (!result) return fail(config, 404, 'Assigned workout not found');
+      if (result.error) return fail(config, 409, result.error);
       if (result.outcome !== 'started') return fail(config, 409, 'This workout is already done for today');
       const log = state.workoutLogs.find((row) => row.id === result.workout_log.id);
       if (log) { log.status = 'completed'; log.quick_completed = true; log.completed_at = iso(0, 12); }
@@ -2646,8 +2724,12 @@ export function installPreviewApi(api) {
       const workout = state.workouts.find((w) => w.id === workoutId[1]);
       if (!workout) return fail(config, 404, 'Workout not found');
       if (previewQuickStarted(workout.id)) return previewQuickStartedConflict(config);
+      if (!['coach','admin'].includes(role)) return fail(config, 403, 'Coach access required');
+      if (workout.is_template === false && !previewCanAccessClient(role, state.clients.find(c => c.id === workout.client_id && !c.archived))) return fail(config, 404, 'Workout not found');
+      const affected = [...new Set(state.programDays.filter(d => !d.archived && d.workout_id === workout.id).map(d => d.program_id))].map(pid => structuredClone(programDetails(pid)));
       Object.assign(workout, { name: payload.name, description: payload.description || null, goal: payload.goal || null, updated_at: new Date().toISOString() });
       replaceWorkoutExercises(workout.id, payload.exercises || []);
+      affected.forEach(before => programHistory.capture(before, programDetails(before.id), currentCoach(), new Date().toISOString(), 'Preview workout prescription save'));
       return ok(workoutDetails(workout.id), config);
     }
     const workoutArchive = path.match(/^\/programs\/workouts\/([^/]+)\/archive$/);
@@ -2803,6 +2885,7 @@ export function installPreviewApi(api) {
       const program = { id: id('program'), coach_id: currentCoach().id, name: payload.name, description: payload.description || null, frequency_days: Number(payload.frequency_days), archived: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       state.programs.push(program);
       replaceProgramDays(program.id, payload.days || []);
+      programHistory.capture(null, programDetails(program.id), currentCoach(), new Date().toISOString(), 'Preview program creation');
       return ok(programDetails(program.id), config, 201);
     }
     // Contract parity with the real API: a client's active program assignments,
@@ -2851,14 +2934,27 @@ export function installPreviewApi(api) {
         config,
       });
     }
+    const historyMatch = path.match(/^\/programs\/([^/]+)\/history$/);
+    if (historyMatch && method === 'get') {
+      if (!['coach','admin'].includes(role)) return fail(config, 403, 'Coach access required');
+      const program = state.programs.find((p) => p.id === historyMatch[1] && !p.archived);
+      const owner = program?.client_id ? state.clients.find((c) => c.id === program.client_id && !c.archived) : null;
+      if (!program || (program.is_template === false && !previewCanAccessClient(role, owner))) return fail(config, 404, 'Program not found');
+      return ok({ program_id: program.id, availability: programHistory.read(program.id).length ? 'available' : 'unavailable', source: 'Fictional preview snapshots', capture: 'preview_memory', revisions: programHistory.read(program.id) }, config);
+    }
     const programId = path.match(/^\/programs\/([^/]+)$/);
     if (programId && method === 'get') return ok(programDetails(programId[1]), config);
     if (programId && method === 'put') {
       const program = state.programs.find((p) => p.id === programId[1]);
       if (!program) return fail(config, 404, 'Program not found');
+      if (!['coach','admin'].includes(role)) return fail(config, 403, 'Coach access required');
+      if (program.is_template === false && !previewCanAccessClient(role, state.clients.find(c => c.id === program.client_id && !c.archived))) return fail(config, 404, 'Program not found');
+      const before = structuredClone(programDetails(program.id));
       Object.assign(program, { name: payload.name, description: payload.description || null, frequency_days: Number(payload.frequency_days), updated_at: new Date().toISOString() });
       replaceProgramDays(program.id, payload.days || []);
-      return ok(programDetails(program.id), config);
+      const after = programDetails(program.id);
+      programHistory.capture(before, after, currentCoach(), new Date().toISOString(), 'Preview program save');
+      return ok(after, config);
     }
     const programArchive = path.match(/^\/programs\/([^/]+)\/archive$/);
     if (programArchive && method === 'patch') {
@@ -3022,4 +3118,5 @@ export function installPreviewApi(api) {
       throw error;
     }
   };
+  if (cueRetry) api.defaults.adapter = cueRetry.wrap(api.defaults.adapter, fail);
 }

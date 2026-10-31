@@ -1,0 +1,89 @@
+[
+  {
+    "variant": "before",
+    "width": 320,
+    "height": 844,
+    "state": "Sarah Programs tab, mobility card scrolled into view",
+    "source": "84b47186ba8a1adf7559ff96a16eca265a0e4461",
+    "errors": [],
+    "file": "before-320.png",
+    "sha256": "a49760c0720a342683824630aa24c9226507bd1ed56ad06f8360816953c3cd7e"
+  },
+  {
+    "variant": "after",
+    "width": 320,
+    "height": 844,
+    "state": "Sarah Programs tab, mobility card scrolled into view",
+    "source": "113ed4b9d556bba98c25fd733678545ee5b98622",
+    "errors": [],
+    "file": "after-320.png",
+    "sha256": "7cf2c2012721dbb38b3cd551115978ae35592036ef29f971d583bb1a39c5595e"
+  },
+  {
+    "variant": "history",
+    "width": 320,
+    "height": 844,
+    "state": "New surface: fictional stored revision 1 \u2192 2; no equivalent baseline dialog",
+    "source": "113ed4b9d556bba98c25fd733678545ee5b98622",
+    "file": "history-320.png",
+    "sha256": "7ecdb9484fd4e929f5ec7b53bcc7d9c05cbf62af11be638f865f14ea485239f0"
+  },
+  {
+    "variant": "before",
+    "width": 390,
+    "height": 844,
+    "state": "Sarah Programs tab, mobility card scrolled into view",
+    "source": "84b47186ba8a1adf7559ff96a16eca265a0e4461",
+    "errors": [],
+    "file": "before-390.png",
+    "sha256": "0aeb9f67d6a404fe185e9b3967123e20e6a85fe5a90384b35345517aa25d9094"
+  },
+  {
+    "variant": "after",
+    "width": 390,
+    "height": 844,
+    "state": "Sarah Programs tab, mobility card scrolled into view",
+    "source": "113ed4b9d556bba98c25fd733678545ee5b98622",
+    "errors": [],
+    "file": "after-390.png",
+    "sha256": "649e851cad02ee36dd6aa23bf7df5481825d26ebfb12a369818b70dc3da86ecc"
+  },
+  {
+    "variant": "history",
+    "width": 390,
+    "height": 844,
+    "state": "New surface: fictional stored revision 1 \u2192 2; no equivalent baseline dialog",
+    "source": "113ed4b9d556bba98c25fd733678545ee5b98622",
+    "file": "history-390.png",
+    "sha256": "4d90e967e700137df6f99a2db66dff5a27cc20024eea6ac7eded73ec5d005c9e"
+  },
+  {
+    "variant": "before",
+    "width": 1440,
+    "height": 950,
+    "state": "Sarah Programs tab, mobility card scrolled into view",
+    "source": "84b47186ba8a1adf7559ff96a16eca265a0e4461",
+    "errors": [],
+    "file": "before-1440.png",
+    "sha256": "7c0caac03aa48e355f05161f8efa9c8d87a9be2b66359aa4bab38d4898b75a4c"
+  },
+  {
+    "variant": "after",
+    "width": 1440,
+    "height": 950,
+    "state": "Sarah Programs tab, mobility card scrolled into view",
+    "source": "113ed4b9d556bba98c25fd733678545ee5b98622",
+    "errors": [],
+    "file": "after-1440.png",
+    "sha256": "5173afe849796af8d0baa2efa7f3431fc324c5f732165caf35f1280683c4b05a"
+  },
+  {
+    "variant": "history",
+    "width": 1440,
+    "height": 950,
+    "state": "New surface: fictional stored revision 1 \u2192 2; no equivalent baseline dialog",
+    "source": "113ed4b9d556bba98c25fd733678545ee5b98622",
+    "file": "history-1440.png",
+    "sha256": "182f95fbe5c2b2c1b437edd3154b0901dd93d97457870feb1de7c3fe35b27f18"
+  }
+]

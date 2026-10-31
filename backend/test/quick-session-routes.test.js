@@ -255,7 +255,7 @@ test('A6 library save is independent and idempotent; it never re-sends create', 
 });
 
 test('A9 begun quick sessions map to 409 quick_session_started on both existing edit routes', async () => {
-  reset(); rpcHandlers.save_workout = () => ({ data: null, error: { message: 'quick_session_started' } });
+  reset(); rpcHandlers.save_workout_with_program_history = () => ({ data: null, error: { message: 'quick_session_started' } });
   let response = await call('PUT', `/workouts/${WORKOUT}`, { name: 'Late', exercises: [{ custom_name: 'Plank' }] });
   assert.equal(response.status, 409); assert.equal(response.body.code, 'quick_session_started');
   reset(); rpcHandlers.save_workout_assignment_with_loads = () => ({ data: null, error: { message: 'quick_session_started' } });

@@ -1,3 +1,4 @@
+import { CueRetryEntry } from '@/components/training/CueRetryEntry';
 import { tracks, trackingType } from '@/lib/workoutMetrics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
@@ -324,6 +325,7 @@ export default function WorkoutLogDetail() {
                   onView={() => setDemoFor(exercise)} />
               </CardHeader>
               <CardContent>
+                <CueRetryEntry log={log} exercise={exercise} />
                 {hasTarget && (
                   <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" data-testid="exercise-target-line">
                     <span className="font-medium">Target</span>

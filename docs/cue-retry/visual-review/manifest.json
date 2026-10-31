@@ -1,0 +1,79 @@
+{
+  "baseline_sha": "84b47186ba8a1adf7559ff96a16eca265a0e4461",
+  "candidate": "Historical browser-local candidate78851d447be046ce401e37556c0bda15a99aafb8. See DURABLE-BACKEND.md for current server proof.",
+  "state": "Coach source completed attempt; initial cue entry closed, no authored cue; scroll top; dark theme",
+  "fixture": "Baseline is git archive of exact main plus only seedCueScenario(state), copied unmodified from candidate fixture. Same fictional client, assignment, exercise and performed data. No cue UI or persistence changes added to baseline.",
+  "requested_css_viewports": [
+    "320x844",
+    "390x844",
+    "1440x1000"
+  ],
+  "limitations": "IAB JPEG raster omits some scrollbar/chrome pixels; exact raster sizes recorded. E2E PNGs are full-page linked Fixed verdict after reload/reopen. Synthetic Chromium/IAB only; no physical device or cold visibility certification.",
+  "screenshots": [
+    {
+      "file": "after-1440.jpg",
+      "sha256": "37ec281b15ab9864579c64a0073d0de4b04deb421fe21619d3b07060d7e76b6b",
+      "pixel_width": 1432,
+      "pixel_height": 994
+    },
+    {
+      "file": "after-320.jpg",
+      "sha256": "48e084b4a98856c788bc008b0e785b57a44732f672336ff9a41802583da76f64",
+      "pixel_width": 312,
+      "pixel_height": 823
+    },
+    {
+      "file": "after-390.jpg",
+      "sha256": "9cc71520d815a25fed922e7ed90eb4a9146563a234dd0af34ed24933f3d8cb60",
+      "pixel_width": 382,
+      "pixel_height": 827
+    },
+    {
+      "file": "before-1440.jpg",
+      "sha256": "529b05c41870510562778f1b003928af8fb2b36c1b8295f449ad862b49efe3fb",
+      "pixel_width": 1440,
+      "pixel_height": 1000
+    },
+    {
+      "file": "before-320.jpg",
+      "sha256": "5970f36882ea44f45589e0f81d2cc18c96351f0526903970c92dba0f523b6263",
+      "pixel_width": 312,
+      "pixel_height": 823
+    },
+    {
+      "file": "before-390.jpg",
+      "sha256": "3e1218e480129de32697937eba7fcaed7f17fc21f68901fda00a2321c9ea4f94",
+      "pixel_width": 382,
+      "pixel_height": 827
+    },
+    {
+      "file": "cue-lifecycle-1440.png",
+      "sha256": "aace1af30f6603de362f0f4b785ba7efd7939480984964cee9de6ae34b7ec030",
+      "pixel_width": 1440,
+      "pixel_height": 1111
+    },
+    {
+      "file": "cue-lifecycle-320.png",
+      "sha256": "8170e6feff40bee94276715ac3add6eb54ba627bae7fb8c0e40a5a3b1721370e",
+      "pixel_width": 320,
+      "pixel_height": 1374
+    },
+    {
+      "file": "cue-lifecycle-390.png",
+      "sha256": "893d14f4bacfd4969bdcdefb8bbc33ff34f7edd2ba662371f376568bfd5cde09",
+      "pixel_width": 390,
+      "pixel_height": 1308
+    }
+  ],
+  "candidate_source_sha256": {
+    "frontend/src/components/training/LocalCueRetry.jsx": "3ca0c45cc4acb5c04c804a260abad95060241ee03b5399ef29f6ab339bb448dd",
+    "frontend/src/components/training/CueRetryEntry.jsx": "901b1bd405f086c46c1da7ddb33ac905539fcdf29ad974040e84d7ea339d69bd",
+    "frontend/src/lib/cueRetry.js": "dd1202881854e2b4534a730aed0fcb3333017cd41ce17851ed5b05afb22c8c7c",
+    "frontend/src/lib/previewCueRetry.js": "da220543b1ecdd12b98e0074e15a639f02074a32691c050d89e1caa00453ba42",
+    "frontend/src/lib/previewMode.js": "8683407ab8dd7af4fbe5e17f95e71bb2e2171ff92b608be98a1b0bba60235c98",
+    "frontend/src/lib/api.js": "eac0b597ac974bf6f0edfb892f133352a9b29a4c9749c3df05e11a9a8a153fb0",
+    "frontend/src/pages/WorkoutLogDetail.jsx": "afe1871ce0d864816d32c6d0e06ac47f82d5498170837385523edcaab83ab644",
+    "frontend/src/pages/client/WorkoutTracker.jsx": "093120d1e4f843e0a017f7dd36e281553631add16217a0f331e8fbbf941a3a33"
+  },
+  "baseline_fixture_patch_sha256": "a5ca8afabb52b919e789ff83f2c6b5fcdacde0e32560ca52552a5ad0565370d6"
+}
