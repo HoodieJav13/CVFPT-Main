@@ -3,6 +3,7 @@ import { createPreviewHistory } from './programHistory';
 import { programHistoryFixtures } from './programHistoryFixtures';
 import { createPreviewCueRetry } from './previewCueRetry.js';
 import {createPreviewInvites} from './previewInvites.js';
+import { WHOLE_WEEK_SAVE_ROUTES, WHOLE_WEEK_SWITCH_KEYS, createPreviewWholeWeek } from './previewWholeWeek.js';
 import {
   MEDIA_SCENARIO_KEY, PREVIEW_MEDIA_READ_LIKE_POSTS, PREVIEW_MEDIA_SAVE_ROUTES, createPreviewExerciseMedia,
 } from './previewExerciseMedia.js';
@@ -127,6 +128,8 @@ const PREVIEW_SAVE_ROUTES = [
   ['post', /^\/waivers\/client\/([^/]+)\/sign-paper$/],
   // Exercise media demo scenario (previewExerciseMedia.js), only while it is on.
   ...PREVIEW_MEDIA_SAVE_ROUTES,
+  // Whole week: outside-activity ledger and context preferences (previewWholeWeek.js).
+  ...WHOLE_WEEK_SAVE_ROUTES,
 ];
 
 // Reads that change fixture data as a side effect: loading a conversation
@@ -153,7 +156,7 @@ const SPEED_MS = { slow: 1500, 'very-slow': 4000 };
 const FAIL_MODES = ['write-once', 'reads'];
 // Every key Reset removes. Anything not matched here is left alone, because a
 // local dev origin is shared with real-auth sessions.
-const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure', MEDIA_SCENARIO_KEY];
+const PREVIEW_SWITCH_KEYS = [PREVIEW_LATENCY_KEY, PREVIEW_FAIL_KEY, 'cvf_preview_incomplete_analytics', 'cvf_preview_history_failure', MEDIA_SCENARIO_KEY, ...WHOLE_WEEK_SWITCH_KEYS];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // POSTs that change no fixture data. Without this, previewing dates — or the
 // background telemetry ping every page sends — would consume "fail next
@@ -488,6 +491,8 @@ function isPreviewOwnedKey(key) {
   if (state.coaches.some((coach) => key.startsWith(`cvf_series_pending:${coach.id}:`))) return true;
   // Quick-session routing records issued under the preview environment scope.
   if (key.startsWith('cvf_quick_session_pending:v1:preview:')) return true;
+  // Unresolved whole-week saves issued under the preview scope.
+  if (key.startsWith('cvf_outside_activity_pending:v1:preview:') || key.startsWith('cvf_outside_activity_interrupted:v1:preview:')) return true;
   // Offline queue and rest timer for workouts the mock issued (real log ids are UUIDs).
   const log = key.match(/^cvf_(?:workout_outbox|rest_timer)_(.+)$/);
   return Boolean(log) && !UUID_RE.test(log[1]);
@@ -1512,6 +1517,10 @@ export async function installPreviewApi(api) {
   clearPreviewPendingSeries();
   rescuePlan = createRescueFixture(rescueOriginal());
   previewMedia(); // seeds the separate media scenario rows when it is switched on
+  // Seeds the separate whole-week scenario collections; Sarah's rows are untouched.
+  const wholeWeek = createPreviewWholeWeek({
+    state, ok, fail, getRole: getPreviewRole, currentCoach, currentClient, canAccessClient: previewCanAccessClient,
+  });
   const route = async (config) => {
     const method = String(config.method || 'get').toLowerCase();
     const { path, search } = pathFromConfig(config);
@@ -1563,6 +1572,11 @@ export async function installPreviewApi(api) {
     // Product telemetry is fire-and-forget from ordinary page loads. Preview
     // accepts and discards it (the real route answers 202 the same way).
     if (path === '/telemetry/events' && method === 'post') return ok({ accepted: true, duplicate: false }, config, 202);
+
+    if (path.startsWith('/whole-week/') || path.startsWith('/outside-activities/') || path.startsWith('/context-preferences/')) {
+      const handled = wholeWeek.handle(config, method, path, search, payload);
+      if (handled !== undefined) return handled;
+    }
 
     if (path === '/dashboard/client') return ok(dashboardClient(), config);
     if (path === '/dashboard/coach') return ok(dashboardCoach(), config);

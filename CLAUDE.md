@@ -222,3 +222,22 @@ of unreleased features and UI on Vercel preview links, design QA, and the
 
 
 - OIDC browser verification and cleanup (2026-10-24): the owner-approved short-lived Development OIDC path now reaches both exact PT release Previews without owner-cookie transfer, token files/logs or protection changes. Normal fictional coach/client logins, private Notes save/reload and denials/payload privacy, assigned-workout start/resume, suggestion/coach approval/client refresh, preserved prescription and in-app notice pass against the real Development API. A targeted continuation passes actual browser offline entry with unchanged hosted baseline, reconnect flush, Finish to completed history, legacy completed-write refusal and retained late conflict without performance overwrite. Proof spans two labeled synthetic fixtures after correcting test-only null/prefilled-load expectations; no product feature fix was needed. The authentication bridge uses real HTTP with origin-only headers/no redirect forwarding and64 exact backend CORS checks; service workers are blocked in this isolated test, so offline cold-start/cache/device proof is not claimed. Users logged out and contexts closed; own fixture templates/clones/assignments/library/Notes are soft-archived, log/event/conflict history retained. All three temporary branch settings are removed and the Vite fixture gate is restored byte-identical to accepted original. Final cleanup-head CI and paired Preview verification remain required. No Production migration, merge or deployment is authorized.
+
+## Local release preparation — 2026-10-31 (not released)
+
+The isolated candidate combines accepted Workout Authoring Studio and WholeWeek
+with current main 3fe85f0, preserving follow-redirects 1.16.2 and the closed
+Rescue/History/CueRetry boundary. Coach/admin Client → Whole week → Review this
+week reaches the normal protected Weekly review route. It reads only the
+existing authorized WholeWeek endpoint and stores minimized actor/client/week
+local drafts and explicit manual decision receipts. Confirmation never applies
+program changes or sends messages. No fixture fallback exists on this route;
+Production includes it, and access failure hides saved facts.
+
+WholeWeek's existing accepted migration 20261030002155 is retained unchanged,
+not applied here. A later authorized hosted release must apply/verify the
+backward-compatible migration before deploying the backend and then frontend;
+merging to main auto-deploys both projects, so migration-first verification must
+precede that merge or automation must be explicitly paused. Browser receipts
+stay on the current browser and do not synchronize. No new migration,
+dependency, service or AI behavior was added for Weekly review.
