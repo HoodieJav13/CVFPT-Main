@@ -1,6 +1,7 @@
 {
   "git": {
     "deploymentEnabled": {
+      "release/pt-local-20261031": false,
       "codex/email-brand-preview": false,
       "codex/email-yahoo-contrast": false,
       "codex/series-calendar-direction": false,
