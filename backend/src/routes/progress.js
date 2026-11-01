@@ -23,9 +23,10 @@ async function metricsWithEntries(clientId) {
   const ids = (metrics || []).map((m) => m.id);
   let entriesByMetric = {};
   if (ids.length) {
-    const { data: entries } = await supabaseAdmin.from('metric_entries').select('*')
+    const { data: entries, error: entriesError } = await supabaseAdmin.from('metric_entries').select('*')
       .in('metric_id', ids).eq('archived', false)
       .order('recorded_on').order('created_at');
+    if (entriesError) throw entriesError;
     for (const e of entries || []) {
       entriesByMetric[e.metric_id] = entriesByMetric[e.metric_id] || [];
       entriesByMetric[e.metric_id].push(e);

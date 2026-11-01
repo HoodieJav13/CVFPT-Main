@@ -65,6 +65,11 @@ app.use('/api/clients', require('./routes/clients'));
 app.use('/api/sessions', require('./routes/sessions'));
 app.use('/api/progress', require('./routes/progress'));
 app.use('/api/check-ins', require('./routes/checkins'));
+// Whole week: outside-activity ledger + context preferences (service-only RPCs).
+const wholeWeekRoutes = require('./routes/wholeWeek').createWholeWeekRouters();
+app.use('/api/whole-week', wholeWeekRoutes.week);
+app.use('/api/outside-activities', wholeWeekRoutes.activities);
+app.use('/api/context-preferences', wholeWeekRoutes.preferences);
 // pt-session-events/v1 coach-only routes (L12/PT-Sub); unmatched paths fall through.
 const conductorRoutes = require('./routes/conductor');
 app.use('/api/programs', conductorRoutes.programSub);

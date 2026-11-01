@@ -62,6 +62,8 @@ import {
   groupVariations, isLegacyLockError,
 } from '@/lib/trainingLibrary';
 import { DemoLinkField } from '@/components/training/DemoLinkField';
+import { WorkoutAuthoringStudio } from '@/components/training/WorkoutAuthoringStudio';
+import { createHandoff } from '@/lib/workoutAuthoring';
 
 const {
   normalizeDraft,
@@ -453,6 +455,32 @@ function WorkoutsTab({ workouts, library, reload, onSaved, onCatalogCreated }) {
   const formFor = (workout) => inFlightForms.current.get(workout.id) || workoutToForm(workout);
   const changes = useFormChanges(form, `${editing?.id || 'new'}:${open || paneActive}`, open || paneActive);
 
+  // Workout Authoring Studio. An accepted draft opens the builder empty first,
+  // so the builder's unsaved-changes baseline is an empty workout and the draft
+  // counts as unsaved; the next render takes the draft exactly once.
+  const [studioOpen, setStudioOpen] = useState(false);
+  const authoredHandoff = useRef(createHandoff());
+  const [authoredTick, setAuthoredTick] = useState(0);
+  useEffect(() => {
+    const authored = authoredHandoff.current.take();
+    if (!authored) return;
+    selectionSeq.current += 1;
+    setForm(authored);
+  }, [authoredTick]);
+
+  // Returns false (and changes nothing) when the coach keeps unsaved builder work.
+  const acceptAuthored = (authored) => {
+    if (!changes.confirmDiscard()) return false;
+    selectionSeq.current += 1;
+    setEditing(null);
+    setForm(emptyWorkout());
+    authoredHandoff.current.offer(authored);
+    if (window.matchMedia?.('(min-width: 1024px)').matches) setPaneActive(true);
+    else setOpen(true);
+    setAuthoredTick((tick) => tick + 1);
+    return true;
+  };
+
   const openCreate = () => {
     if (!changes.confirmDiscard()) return;
     selectionSeq.current += 1;
@@ -594,7 +622,8 @@ function WorkoutsTab({ workouts, library, reload, onSaved, onCatalogCreated }) {
 
   return (
     <div className="space-y-4 mt-1">
-      <div className="flex justify-end lg:hidden">
+      <div className="flex flex-wrap justify-end gap-2 lg:hidden">
+        <Button size="touch" variant="secondary" className="rounded-xl" onClick={() => setStudioOpen(true)} data-testid="workout-authoring-open-button"><FileText className="h-4 w-4 mr-1.5" /> Draft from text</Button>
         <Button size="touch" className="rounded-xl" onClick={openCreate} data-testid="workout-create-button"><Plus className="h-4 w-4 mr-1.5" /> New workout day</Button>
       </div>
       {workouts.length > 0 && (
@@ -607,6 +636,9 @@ function WorkoutsTab({ workouts, library, reload, onSaved, onCatalogCreated }) {
         <aside className="min-h-0 space-y-2 overflow-y-auto pr-1" data-testid="workout-rail">
           <Button size="touch" className="w-full rounded-xl" onClick={selectCreate} data-testid="workout-rail-create">
             <Plus className="h-4 w-4 mr-1.5" /> New workout day
+          </Button>
+          <Button size="touch" variant="secondary" className="w-full rounded-xl" onClick={() => setStudioOpen(true)} data-testid="workout-rail-authoring-open">
+            <FileText className="h-4 w-4 mr-1.5" /> Draft from text
           </Button>
           {groups.map(({ item, children }) => (
             <div key={item.id} className="space-y-2" data-testid="workout-rail-group">
@@ -700,6 +732,17 @@ function WorkoutsTab({ workouts, library, reload, onSaved, onCatalogCreated }) {
       </div>
       <WorkoutDialog onCatalogCreated={onCatalogCreated} open={open} onOpenChange={setOpen} form={form} setForm={setForm} library={library} saving={saving} onSubmit={save} editing={editing} />
       <LegacyLockDialog open={Boolean(lock)} message={lock?.message} busy={saving} onCancel={() => setLock(null)} onSaveVariation={saveVariationFromLock} />
+      <WorkoutAuthoringStudio
+        open={studioOpen}
+        onOpenChange={setStudioOpen}
+        library={library}
+        makeRow={newExerciseRow}
+        onAccept={acceptAuthored}
+        builderActive={open || paneActive}
+        builderDirty={changes.dirty}
+        builderSaving={saving}
+        editingName={editing?.name}
+      />
     </div>
   );
 }

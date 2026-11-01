@@ -302,30 +302,39 @@ function parseRestDetail(line) {
   return { rest, tempo, cue: cueSegments.join(' ') };
 }
 
-function parsePasteDraft(text) {
-  const normalizedText = String(text || '').replace(/\r\n?/g, '\n').trim();
-  if (!normalizedText) {
-    const error = new Error("Couldn't find any exercises in this text.");
-    error.code = 'NO_EXERCISES_FOUND';
-    error.validation = { no_exercises: true };
-    throw error;
-  }
+function noExercisesError(validation = { no_exercises: true }) {
+  const error = new Error("Couldn't find any exercises in this text.");
+  error.code = 'NO_EXERCISES_FOUND';
+  error.validation = validation;
+  return error;
+}
 
+// Shared by paste import and workout authoring: blank lines split days, a first
+// line that is not an exercise names the day, other unmatched lines become day
+// notes, and a following "Rest ..." line adds rest/tempo/cue to its exercise.
+// matchLine alone decides what an exercise line is.
+function walkPasteBlocks(normalizedText, matchLine) {
   const warnings = [];
+  const annotations = [];
+  const unmatched = [];
+  const headers = [];
   let exerciseCount = 0;
   const blocks = normalizedText.split(/\n(?:[ \t]*\n)+/);
   const days = blocks.map((block, blockIndex) => {
     const lines = block.split('\n').map(cleanString).filter(Boolean);
     const dayNumber = blockIndex + 1;
-    const firstLineIsExercise = Boolean(matchExerciseLine(lines[0]));
+    const firstLineIsExercise = Boolean(matchLine(lines[0]));
     const notes = [];
     const exercises = [];
+    const dayAnnotations = [];
+    const dayUnmatched = [];
     let lineIndex = firstLineIsExercise ? 0 : 1;
 
     while (lineIndex < lines.length) {
-      const exerciseMatch = matchExerciseLine(lines[lineIndex]);
+      const exerciseMatch = matchLine(lines[lineIndex]);
       if (!exerciseMatch) {
         notes.push(lines[lineIndex]);
+        dayUnmatched.push(lines[lineIndex]);
         warnings.push(`Day ${dayNumber}, line ${lineIndex + 1}: kept unmatched text as a day note: "${lines[lineIndex]}"`);
         lineIndex += 1;
         continue;
@@ -335,8 +344,9 @@ function parsePasteDraft(text) {
         name: exerciseMatch.name,
         sets: exerciseMatch.sets,
         reps: exerciseMatch.reps,
-        rest: '',
-        tempo: '',
+        ...exerciseMatch.tracking,
+        rest: exerciseMatch.rest || '',
+        tempo: exerciseMatch.tempo || '',
         client_notes: exerciseMatch.client_notes,
         coach_notes: '',
         video_url: '',
@@ -345,18 +355,22 @@ function parsePasteDraft(text) {
         primary_muscle: '',
       };
       const detailLine = lines[lineIndex + 1];
-      if (detailLine && REST_DETAIL_PATTERN.test(detailLine) && !matchExerciseLine(detailLine)) {
+      if (detailLine && REST_DETAIL_PATTERN.test(detailLine) && !matchLine(detailLine)) {
         const detail = parseRestDetail(detailLine);
-        exercise.rest = detail.rest;
-        exercise.tempo = detail.tempo;
+        exercise.rest = detail.rest || exercise.rest;
+        exercise.tempo = detail.tempo || exercise.tempo;
         exercise.client_notes = [exercise.client_notes, detail.cue].filter(Boolean).join(' ');
         lineIndex += 1;
       }
       exercises.push(exercise);
+      dayAnnotations.push(exerciseMatch.annotation || null);
       exerciseCount += 1;
       lineIndex += 1;
     }
 
+    annotations.push(dayAnnotations);
+    unmatched.push(dayUnmatched);
+    headers.push(firstLineIsExercise ? null : lines[0]);
     return {
       day_number: dayNumber,
       name: firstLineIsExercise ? `Day ${dayNumber}` : lines[0],
@@ -365,13 +379,15 @@ function parsePasteDraft(text) {
       exercises,
     };
   });
+  return { blocks, days, warnings, exerciseCount, annotations, unmatched, headers };
+}
 
-  if (!exerciseCount) {
-    const error = new Error("Couldn't find any exercises in this text.");
-    error.code = 'NO_EXERCISES_FOUND';
-    error.validation = { no_exercises: true };
-    throw error;
-  }
+function parsePasteDraft(text) {
+  const normalizedText = String(text || '').replace(/\r\n?/g, '\n').trim();
+  if (!normalizedText) throw noExercisesError();
+
+  const { blocks, days, warnings, exerciseCount } = walkPasteBlocks(normalizedText, matchExerciseLine);
+  if (!exerciseCount) throw noExercisesError();
 
   return normalizeDraft({
     program: {
@@ -391,6 +407,231 @@ function parsePasteDraft(text) {
       possible_duplicates: [],
     },
   });
+}
+
+// ----- Workout authoring (docs/workout-authoring/first-slice.md) -----
+// Typed, pasted or keyboard-dictated workout text. Uses the paste walker with a
+// line reader that also understands spoken set phrasing and duration/distance
+// units, keeping values and units as written. A prescription it cannot hold
+// (unknown unit, a range for a time/distance target, decimal reps) is returned
+// as an explicit issue with its raw text, never as reps. parsePasteDraft is
+// unchanged.
+const AUTHORING_PARSER_VERSION = 'workout-authoring-v1';
+const AUTHORING_UNIT_WORDS = {
+  reps: ['rep', 'reps', 'repetition', 'repetitions'],
+  sets: ['set', 'sets'],
+  s: ['s', 'sec', 'secs', 'second', 'seconds'],
+  min: ['min', 'mins', 'minute', 'minutes'],
+  m: ['m', 'meter', 'meters', 'metre', 'metres'],
+  km: ['km', 'kms', 'kilometer', 'kilometers', 'kilometre', 'kilometres'],
+  mi: ['mi', 'mile', 'miles'],
+  yd: ['yd', 'yds', 'yard', 'yards'],
+};
+// Units the workout builder cannot store. They are never converted or read as reps.
+const AUTHORING_UNSUPPORTED_UNITS = [
+  'h', 'hr', 'hrs', 'hour', 'hours', 'ms', 'cal', 'cals', 'calorie', 'calories', 'kcal', 'ft', 'feet', 'foot',
+  'inch', 'inches', 'step', 'steps', 'breath', 'breaths', 'lap', 'laps', 'round', 'rounds', 'floor', 'floors',
+  'lb', 'lbs', 'kg', 'kgs',
+];
+const AUTHORING_NUMBER = '(\\d+(?:\\.\\d+)?)';
+const AUTHORING_RANGE = `(?:\\s*(?:-|\\u2013|\\u2014|\\u2212|to)\\s*${AUTHORING_NUMBER})?`;
+// "Name 3x10", "Name 3 x 30 sec", "Name 3 by 10", "Name 3 sets of 8 to 10 reps".
+const AUTHORING_SETS_PATTERN = new RegExp(`^(.+?)\\s+(\\d+)\\s*(?:[xX\\u00d7*]|by\\b|sets?(?:\\s+(?:of|x|\\u00d7))?)\\s*${AUTHORING_NUMBER}${AUTHORING_RANGE}(.*)$`, 'i');
+// "Name 30 sec", "Name 1.5 mi", "Name 10 reps", "Name 3 sets": the first number followed by a unit word.
+const AUTHORING_METRIC_SCAN = new RegExp(`\\s${AUTHORING_NUMBER}${AUTHORING_RANGE}\\s*([a-zA-Z]+)\\b`, 'g');
+const AUTHORING_SECOND_METRIC = /^\s*(?:,|\/|\+|&|and\b|in\b|for\b|@|at\b)?\s*(\d+(?:\.\d+)?)(?:\s*(?:-|–|—|−|to)\s*(\d+(?:\.\d+)?))?\s*([a-zA-Z]+)\b(.*)$/i;
+const AUTHORING_SECOND_TARGET_START = /^\s*(?:,|\/|\+|&|and\b|in\b|for\b|@|at\b)?\s*\d/;
+const AUTHORING_DAY_HEADER = /^(?:day\s*(?:\d+|one|two|three|four|five|six|seven)|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+// Text that looks like it carries a prescription, so it is not quietly kept as a note or a day name.
+const AUTHORING_SIGNAL = /\d|\b(?:sets?|reps?|seconds?|secs?|minutes?|mins?|rounds?|miles?|meters?|metres?|yards?|laps?)\b/i;
+const AUTHORING_REPS_TRACKING = { tracking_type: 'reps_weight', duration_value: null, duration_unit: null, distance_value: null, distance_unit: null };
+
+function authoringUnit(word) {
+  const key = String(word || '').toLowerCase();
+  if (!key) return null;
+  for (const [unit, words] of Object.entries(AUTHORING_UNIT_WORDS)) {
+    if (!words.includes(key)) continue;
+    if (unit === 'reps' || unit === 'sets') return { kind: unit };
+    return { kind: unit === 's' || unit === 'min' ? 'duration' : 'distance', unit };
+  }
+  return AUTHORING_UNSUPPORTED_UNITS.includes(key) ? { kind: 'unsupported', word: key } : null;
+}
+
+// Rest, tempo and cues written after the prescription: ", rest 90s, tempo 3-1-1, chest up".
+function authoringDetails(remainder) {
+  const text = cleanString(remainder).replace(/^(?:[,;:]|-|–|—)+\s*/, '');
+  let rest = '';
+  let tempo = '';
+  const cues = [];
+  text.split(/\s*[,;]\s*|\s+(?:-|–|—|−)\s+/).map(cleanString).filter(Boolean).forEach((segment) => {
+    const restMatch = segment.match(/^rest\b\s*:?\s*(.*)$/i);
+    const tempoMatch = segment.match(/^tempo\b\s*:?\s*(.*)$/i);
+    if (restMatch && !rest) rest = cleanString(restMatch[1]);
+    else if (tempoMatch && !tempo) tempo = cleanString(tempoMatch[1]);
+    else cues.push(segment);
+  });
+  return { rest, tempo, cue: cues.join(', ') };
+}
+
+function authoringPrescription(sourceLine, text, name, { sets, value, upper, unitWord, tail }) {
+  let remainder = tail;
+  let unit = null;
+  let unknownSuffix = '';
+  if (unitWord !== undefined) {
+    unit = authoringUnit(unitWord);
+  } else {
+    const word = tail.match(/^\s*([a-zA-Z]+)\b(.*)$/);
+    unit = word ? authoringUnit(word[1]) : null;
+    if (unit) remainder = word[2];
+    // A bare word immediately after a number could be a unit. Cue/detail
+    // introductions have explicit grammar; other suffixes need the coach's
+    // note/edit choice rather than an ever-growing list of rejected units.
+    else if (word && !/^(?:to|at|rest|tempo)\b/i.test(word[1])) {
+      unknownSuffix = cleanString(tail);
+      remainder = '';
+    }
+  }
+  const kind = unit ? unit.kind : 'reps';
+  const tracking = { ...AUTHORING_REPS_TRACKING };
+  let setsValue = sets;
+  let reps = '';
+  let reason = '';
+
+  if (unknownSuffix) {
+    reason = `The suffix "${unknownSuffix}" could not be classified as a unit or cue.`;
+  } else if (kind === 'unsupported') {
+    reason = `"${unit.word}" is not a unit the workout builder can hold.`;
+  } else if (kind === 'reps') {
+    if (!/^\d+$/.test(value) || (upper && !/^\d+$/.test(upper))) {
+      reason = 'Reps must be whole numbers.';
+    } else {
+      reps = upper ? `${value}-${upper}` : value;
+      const perSide = remainder.match(/^\/([a-zA-Z]+)\b(.*)$/);
+      if (perSide) {
+        reps += `/${perSide[1]}`;
+        remainder = perSide[2];
+      }
+    }
+  } else if (kind === 'sets') {
+    if (sets || upper || !/^\d+$/.test(value)) reason = 'The number of sets is unclear.';
+    else setsValue = value;
+  } else if (upper) {
+    reason = `A range (${value}-${upper} ${unit.unit}) cannot be a single ${kind} target.`;
+  } else {
+    tracking.tracking_type = kind;
+    tracking[`${kind}_value`] = Number(value);
+    tracking[`${kind}_unit`] = unit.unit;
+    const second = remainder.match(AUTHORING_SECOND_METRIC);
+    const other = second ? authoringUnit(second[3]) : null;
+    if (second) {
+      remainder = second[4];
+      if (!other || !['duration', 'distance'].includes(other.kind)) {
+        reason = `The additional target unit "${second[3]}" is not supported here.`;
+      } else if (second[2]) {
+        reason = `A range (${second[1]}-${second[2]} ${other.unit}) cannot be a single ${other.kind} target.`;
+      } else if (other.kind === kind) {
+        reason = `Two ${kind} targets were given.`;
+      } else {
+        tracking.tracking_type = 'duration_distance';
+        tracking[`${other.kind}_value`] = Number(second[1]);
+        tracking[`${other.kind}_unit`] = other.unit;
+      }
+    } else if (AUTHORING_SECOND_TARGET_START.test(remainder)) {
+      reason = 'The additional target could not be read.';
+      remainder = '';
+    }
+    if (!reason) {
+      try { normalizeTracking(tracking); } catch (error) { reason = `${error.message}.`; }
+    }
+  }
+
+  const raw = cleanString(text.slice(name.length, text.length - remainder.length));
+  const details = authoringDetails(remainder);
+  return {
+    name,
+    sets: reason ? sets : setsValue,
+    reps: reason ? '' : reps,
+    tracking: reason ? { ...AUTHORING_REPS_TRACKING } : tracking,
+    rest: details.rest,
+    tempo: details.tempo,
+    client_notes: details.cue,
+    annotation: { source_line: cleanString(sourceLine), prescription_issue: reason ? { raw, reason } : null },
+  };
+}
+
+function matchAuthoringLine(line) {
+  const text = cleanString(line).replace(/^(?:[-*•]|\d+[.)])\s+/, '');
+  if (!text || /^(?:rest|tempo)\b/i.test(text) || AUTHORING_DAY_HEADER.test(text)) return null;
+  const setsMatch = text.match(AUTHORING_SETS_PATTERN);
+  if (setsMatch) {
+    return {
+      ...authoringPrescription(line, text, setsMatch[1], { sets: setsMatch[2], value: setsMatch[3], upper: setsMatch[4], tail: setsMatch[5] }),
+      name: cleanString(setsMatch[1]),
+    };
+  }
+  for (const found of text.matchAll(AUTHORING_METRIC_SCAN)) {
+    const name = cleanString(text.slice(0, found.index));
+    if (!name || !authoringUnit(found[3])) continue;
+    return {
+      ...authoringPrescription(line, text, text.slice(0, found.index), {
+        sets: '', value: found[1], upper: found[2], unitWord: found[3], tail: text.slice(found.index + found[0].length),
+      }),
+      name,
+    };
+  }
+  return null;
+}
+
+// Dictated text rarely has blank lines, so a "Day 2" / "Tuesday" header line also starts a new day.
+function splitAuthoringDays(text) {
+  const lines = [];
+  text.split('\n').forEach((line) => {
+    const clean = cleanString(line);
+    if (lines.length && cleanString(lines[lines.length - 1]) && AUTHORING_DAY_HEADER.test(clean)) lines.push('');
+    lines.push(line);
+  });
+  return lines.join('\n');
+}
+
+function parseAuthoringText(text) {
+  const normalizedText = splitAuthoringDays(String(text || '').replace(/\r\n?/g, '\n')).trim();
+  if (!normalizedText) throw noExercisesError({ no_exercises: true, unrecognized_lines: [] });
+  const walked = walkPasteBlocks(normalizedText, matchAuthoringLine);
+  if (!walked.exerciseCount) {
+    throw noExercisesError({ no_exercises: true, unrecognized_lines: normalizedText.split('\n').map(cleanString).filter(Boolean) });
+  }
+
+  const warnings = [...walked.warnings];
+  const review = { days: [] };
+  const days = walked.days.map((day, index) => {
+    const header = walked.headers[index];
+    // A first line that reads like a prescription is not quietly used as the day name.
+    const demoted = Boolean(header) && AUTHORING_SIGNAL.test(header) && !AUTHORING_DAY_HEADER.test(header);
+    const extraLines = demoted ? [header, ...walked.unmatched[index]] : walked.unmatched[index];
+    if (demoted) warnings.push(`Day ${day.day_number}: "${header}" was not used as the day name because it reads like a prescription.`);
+    review.days.push({
+      exercises: walked.annotations[index],
+      extra_lines: extraLines.map((line) => ({ line, signal: AUTHORING_SIGNAL.test(line) })),
+    });
+    return demoted ? { ...day, name: `Day ${day.day_number}`, notes: extraLines.join('; ') } : day;
+  });
+
+  return {
+    draft: normalizeDraft({
+      program: { name: '', description: '', frequency_days: walked.blocks.length, source: 'authoring' },
+      days,
+      import_meta: {
+        source_type: 'authoring',
+        original_filename: '',
+        parser_version: AUTHORING_PARSER_VERSION,
+        confidence: null,
+        warnings,
+        new_exercises_detected: [],
+        possible_duplicates: [],
+      },
+    }),
+    review,
+  };
 }
 
 function normalizeDraft(input = {}) {
@@ -511,12 +752,14 @@ function draftFromProgram(program) {
 
 const draftTools = {
   PARSER_VERSION,
+  AUTHORING_PARSER_VERSION,
   REQUIRED_CSV_COLUMNS,
   KNOWN_CSV_COLUMNS,
   normalizeName,
   parseCsv,
   parseCsvDraft,
   parsePasteDraft,
+  parseAuthoringText,
   csvTemplate,
   normalizeDraft,
   validateDraft,
@@ -525,12 +768,14 @@ const draftTools = {
 
 export {
   PARSER_VERSION,
+  AUTHORING_PARSER_VERSION,
   REQUIRED_CSV_COLUMNS,
   KNOWN_CSV_COLUMNS,
   normalizeName,
   parseCsv,
   parseCsvDraft,
   parsePasteDraft,
+  parseAuthoringText,
   csvTemplate,
   normalizeDraft,
   validateDraft,
