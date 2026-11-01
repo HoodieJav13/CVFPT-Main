@@ -32,6 +32,107 @@ const quickBody = (requestId, overrides = {}) => ({
   name: 'API quick', notes: null, exercises: [{ custom_name: 'Lunge', sets: '2', reps: '8' }], ...overrides,
 });
 
+for (const transition of ['close', 'type', 'navigation']) {
+  test(`fixture HTTP 400: cancelled ${transition} retains recovery; confirmed discard removes only its record`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: transition === 'close' ? 390 : 1280, height: 900 });
+    if (transition === 'navigation') {
+      await usePreviewRole(page, 'coach');
+      await page.goto('/coach/clients');
+      await page.getByTestId('client-row').filter({ hasText: 'Riley Ortega' }).click();
+      await page.getByTestId('tab-programs').click();
+      await expect(page.getByTestId('assign-program-button')).toBeVisible();
+    } else await openRileyPrograms(page);
+    const title = `Fictional rejected Quick ${transition}`;
+    const unrelatedId = '40000000-0000-4000-8000-000000000010';
+    const unrelated = [
+      [PENDING(unrelatedId), record(unrelatedId, 'client_david')],
+      [PENDING(unrelatedId).replace(':coach_marcus:', ':unrelated_coach:'), record(unrelatedId)],
+      [PENDING(unrelatedId).replace(':preview:', ':other_fixture:'), record(unrelatedId)],
+    ];
+    await page.evaluate(entries => entries.forEach(([key, value]) => localStorage.setItem(key, value)), unrelated);
+    const stored = () => page.evaluate(() => Object.entries(localStorage)
+      .filter(([key]) => key.startsWith('cvf_quick_session_pending:v1:')).sort(([a], [b]) => a.localeCompare(b)));
+    const unrelatedOnly = await stored();
+    const beforeWorkouts = await callPreviewApi(page, 'get', '/programs/workouts');
+    const beforeAssignments = await callPreviewApi(page, 'get', `/programs/workout-assignments/client/${RILEY}`);
+    const phone = transition === 'close';
+    if (phone) await page.getByTestId('preview-toolbar-toggle').click();
+    else await page.getByTestId('preview-test-states-toggle').click();
+    const failureSelect = page.getByTestId('preview-fail-select');
+    // Capture the real before/after control, not an image reconstruction.
+    await page.screenshot({ path: testInfo.outputPath('400-control-before.jpg') });
+    await failureSelect.selectOption({ label: 'Reject next Quick save (400)' });
+    await expect(failureSelect).toHaveValue('quick-400-once');
+    await page.screenshot({ path: testInfo.outputPath('400-control-armed.jpg') });
+    if (phone) await page.getByTestId('preview-toolbar-toggle').click();
+    else await page.getByTestId('preview-test-states-toggle').click();
+    await openQuickBuilder(page);
+    await fillOneExercise(page, 'Fictional rejection movement');
+    await page.getByTestId('quick-session-title-input').fill(title);
+    await page.getByTestId('quick-session-assign-button').click();
+    const rejected = page.getByTestId('quick-session-rejected');
+    await expect(rejected).toContainText('Simulated Quick validation rejection (preview)');
+    await page.screenshot({ path: testInfo.outputPath('400-rejected.jpg') });
+    expect(await page.evaluate(() => localStorage.getItem('cvf_preview_fail'))).toBeNull();
+    expect((await callPreviewApi(page, 'get', '/programs/workouts')).data).toEqual(beforeWorkouts.data);
+    expect((await callPreviewApi(page, 'get', `/programs/workout-assignments/client/${RILEY}`)).data).toEqual(beforeAssignments.data);
+    const withRejected = await stored();
+    const own = withRejected.filter(([key]) => !unrelatedOnly.some(([other]) => other === key));
+    expect(own).toHaveLength(1);
+    const rejectedId = JSON.parse(own[0][1]).request_id;
+    expect((await callPreviewApi(page, 'get', `/programs/quick-sessions/requests/${rejectedId}`)).status).toBe(404);
+
+    // All transitions exercise the released discard callbacks.
+    const leave = async () => {
+      if (transition === 'close') await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+      else if (transition === 'type') {
+        await page.getByTestId('client-assignment-type-select').click();
+        await page.getByRole('option', { name: 'Standalone workout', exact: true }).click();
+      } else {
+        // Browser Back exercises the router guard while the modal is open.
+        await page.goBack();
+      }
+    };
+    let prompts = 0;
+    let accept = false;
+    page.on('dialog', async dialog => {
+      expect(dialog.type()).toBe('confirm');
+      expect(dialog.message()).toContain('Discard them and continue?');
+      prompts += 1;
+      if (accept) await dialog.accept(); else await dialog.dismiss();
+    });
+    await leave();
+    await expect.poll(() => prompts).toBe(1);
+    await expect(rejected).toBeVisible();
+    await expect(page.getByTestId('quick-session-title-input')).toHaveValue(title);
+    expect(await stored()).toEqual(withRejected);
+    accept = true;
+    await leave();
+    await expect.poll(() => prompts).toBe(2);
+    expect(await stored()).toEqual(unrelatedOnly);
+    if (transition === 'navigation') {
+      await expect(page).toHaveURL(/\/coach\/clients$/);
+      await page.getByTestId('client-row').filter({ hasText: 'Riley Ortega' }).click();
+      await page.getByTestId('tab-programs').click();
+      await expect(page.getByTestId('assign-program-button')).toBeVisible();
+      await openQuickBuilder(page);
+    } else if (transition === 'close') await openQuickBuilder(page);
+    else {
+      await page.getByTestId('client-assignment-type-select').click();
+      await page.getByRole('option', { name: 'Quick session', exact: true }).click();
+    }
+    await expect(rejected).toHaveCount(0);
+    await expect(page.getByTestId('quick-session-exercise-name-input').first()).toHaveValue('');
+    await page.reload();
+    await expect(page.getByTestId('assign-program-button')).toBeVisible();
+    await expect(page.getByTestId('quick-session-recovery')).toHaveCount(0);
+    expect(await stored()).toEqual(unrelatedOnly);
+    // Remove only these test-owned keys; leave any other state untouched.
+    await page.evaluate(entries => entries.forEach(([key]) => localStorage.removeItem(key)), unrelated);
+    expect(await stored()).toEqual([]);
+  });
+}
+
 test('coach sees the quick label, completed sessions leave active cards, history and detail keep the label', async ({ page }) => {
   await openRileyPrograms(page);
   const cards = page.getByTestId('assigned-workout-card');
