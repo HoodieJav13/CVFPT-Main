@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Lightbulb } from 'lucide-react';
 import { api } from '@/lib/api';
+import { swapLoadUnit, swapTargetsText } from '@/lib/swapTargets';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,11 +28,6 @@ export function swapOptionsCacheKey(logId) {
 
 export function readCachedSwapOptions(logId) {
   try { return JSON.parse(localStorage.getItem(swapOptionsCacheKey(logId)) || '{}'); } catch { return {}; }
-}
-
-function targetsText(targets = {}) {
-  const parts = [targets.sets && `${targets.sets} sets`, targets.reps && `${targets.reps} reps`, targets.load_value != null && `${targets.load_value} ${targets.load_unit || 'lb'}`].filter(Boolean);
-  return parts.length ? parts.join(' × ') : 'No targets set';
 }
 
 export default function SwapExerciseDialog({ exercise, logId, online, onClose, onConfirm }) {
@@ -99,7 +95,7 @@ export default function SwapExerciseDialog({ exercise, logId, online, onClose, o
               <button key={backup.id} type="button" onClick={() => pick('backup', backup)} data-testid={`swap-backup-${backup.name}`}
                 className={cn('w-full rounded-lg border p-3 text-left', choice?.item === backup ? 'border-primary bg-primary/10' : 'border-border')}>
                 <span className="block font-medium">{backup.name}</span>
-                <span className="block text-xs text-muted-foreground">{targetsText(backup.targets)}</span>
+                <span className="block text-xs text-muted-foreground">{swapTargetsText(backup.targets)}</span>
                 {backup.client_note && <span className="block text-xs">From your coach: {backup.client_note}</span>}
               </button>
             )) : <p className="text-xs text-muted-foreground">Your coach has not planned a backup for this exercise.</p>}
@@ -129,10 +125,15 @@ export default function SwapExerciseDialog({ exercise, logId, online, onClose, o
               <legend className="text-xs font-medium text-muted-foreground">
                 What you will do for {choice.item.name}. {choice.kind === 'backup' ? 'From your coach; change if needed.' : 'Leave blank if unsure; nothing is copied from the original.'}
               </legend>
+              {choice.kind === 'backup' && choice.item.targets?.load_max != null && (
+                <p className="text-xs text-muted-foreground" data-testid="swap-target-range">
+                  Coach range {swapTargetsText({ load_value: choice.item.targets.load_value, load_max: choice.item.targets.load_max, load_unit: choice.item.targets.load_unit, per_side: choice.item.targets.per_side })}. Changing the load makes it one number.
+                </p>
+              )}
               <div className="grid grid-cols-3 gap-2">
                 <Input className="min-h-11" inputMode="numeric" placeholder="Sets" value={targets.sets} onChange={(event) => setTargets((row) => ({ ...row, sets: event.target.value }))} aria-label="Substitute sets" data-testid="swap-target-sets" />
                 <Input className="min-h-11" placeholder="Reps" value={targets.reps} onChange={(event) => setTargets((row) => ({ ...row, reps: event.target.value }))} aria-label="Substitute reps" data-testid="swap-target-reps" />
-                <Input className="min-h-11" inputMode="decimal" placeholder="Load lb" value={targets.load_value} onChange={(event) => setTargets((row) => ({ ...row, load_value: event.target.value }))} aria-label="Substitute load" data-testid="swap-target-load" />
+                <Input className="min-h-11" inputMode="decimal" placeholder={`Load ${swapLoadUnit(choice)}`} value={targets.load_value} onChange={(event) => setTargets((row) => ({ ...row, load_value: event.target.value }))} aria-label={`Substitute load in ${swapLoadUnit(choice)}`} data-testid="swap-target-load" />
               </div>
             </fieldset>
           )}

@@ -163,6 +163,19 @@ export function setEventEnvelope(log, operation, eventId, logId) {
   };
 }
 
+// The server row's last write is exactly this queued set event.
+export function deliveredBy(row, operation) {
+  return operation?.kind === 'set' && Boolean(operation.data?.event_id) && row?.last_event_id === operation.data.event_id;
+}
+
+// A rebuilt set write refused because its event id is bound to the first
+// request it was sent as (apply_workout_set_event_v3; LOOK-A-INTEGRATION-REVIEW
+// case 1). Only a rebuilt write, only once, only for that refusal.
+export function isRebuiltReuse(operation, status, error) {
+  return operation?.kind === 'set' && status === 409 && Boolean(operation.original) && !operation.resentOriginal
+    && error?.response?.data?.error === 'That event id belongs to another set';
+}
+
 // Writes after a released/dropped one for the same set are re-checked against the next reply.
 function markRecheckAfter(queue, operation) {
   const at = queue.findIndex((queued) => queued.id === operation.id);
@@ -230,6 +243,21 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
           // Queued before a replayed reply for its set (F5): re-checked against
           // the server's current row before it is sent, never sent stale.
           const row = knownRows.get(operation.setId);
+          if (row && deliveredBy(row, operation)) {
+            // The server's current row names this very event as its last
+            // write: another tab (or a lost reply) already delivered it. It is
+            // acknowledged as saved and not sent again, so no copy bound
+            // differently can be refused (LOOK-A-INTEGRATION-REVIEW residual
+            // case 1). Its id and its Undo record are the server's, unchanged.
+            persist(queueRef.current.filter((queued) => queued.id !== operation.id));
+            const reply = { ...row, event: { id: operation.data.event_id, outcome: 'replayed', original_outcome: 'applied', conflict_id: null, change: null } };
+            setLog((current) => updateExercise(current, operation.exerciseId, (exercise) => ({
+              ...exercise,
+              sets: exercise.sets.map((set) => (set.id === operation.setId ? ackedSetRow(set, reply) : set)),
+            })));
+            setSavedRef.current?.(operation, reply);
+            continue;
+          }
           const decision = row ? reconcileQueuedSet(operation, row) : null;
           if (!decision || decision.action !== 'send') {
             const parked = { ...operation, parked: true };
@@ -237,7 +265,9 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
             parkedRef.current?.(parked);
             continue;
           }
-          const ready = { ...operation, data: decision.data, recheck: false };
+          // The exact first request is kept: if another tab already delivered
+          // it, the server knows this event id only by that request.
+          const ready = { ...operation, data: decision.data, recheck: false, original: operation.original || operation.data };
           persist(queueRef.current.map((queued) => (queued.id === operation.id ? ready : queued)));
           setLog((current) => applyOptimistic(current, ready));
           operation = ready;
@@ -295,6 +325,17 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
           if (status === 401 || error?.config?.url?.includes('/auth/refresh')) {
             setSaveState('not_saved');
             return false;
+          }
+          if (isRebuiltReuse(operation, status, error)) {
+            // Duplicate drain (two tabs, one saved queue): the server refused
+            // the rebuilt copy because this event id is already bound to the
+            // first request, which another tab delivered. Send that exact
+            // request once; the server answers it "replayed" with the current
+            // row, so nothing is written twice and nothing is dropped. If it
+            // is refused too, the ordinary rejection below applies.
+            persist(queueRef.current.map((queued) => (queued.id === operation.id
+              ? { ...queued, data: operation.original, original: null, resentOriginal: true } : queued)));
+            continue;
           }
           if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
             // Keep the entry on the device BEFORE it leaves the queue, so there
@@ -421,7 +462,7 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
   // Send this write with these (reconciled or explicitly chosen) values; later
   // writes for the set are re-checked against its reply.
   const releaseParked = useCallback((operationId, data) => {
-    const result = replaceQueued(operationId, (operation) => ({ ...operation, data, parked: false, recheck: false }));
+    const result = replaceQueued(operationId, (operation) => ({ ...operation, data, parked: false, recheck: false, original: operation.original || operation.data }));
     if (!result) return;
     persist(markRecheckAfter(queueRef.current, result.next));
     setLog((current) => applyOptimistic(current, result.next));

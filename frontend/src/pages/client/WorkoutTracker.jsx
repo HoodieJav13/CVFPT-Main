@@ -25,6 +25,7 @@ import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import {
   adjustRestEnd, formatRestSeconds, manualRestSeconds, REST_ADJUST_SECONDS,
 } from '@/lib/rest';
+import { swapRequestTargets } from '@/lib/swapTargets';
 import { draftCollisionsIn, freshnessLabel, lastTimeFills, mergeRefresh, noteDraftEdit, reconcileQueuedSet, resolveQueuedChoice } from '@/lib/workoutSync';
 import { SetConflictNotice, SwapStatus, canSwap } from '@/components/training/SessionCorrections';
 import SwapExerciseDialog, { readCachedSwapOptions, swapOptionsCacheKey } from '@/components/training/SwapExerciseDialog';
@@ -978,10 +979,8 @@ export default function WorkoutTracker() {
     const activate = choice.kind === 'backup' || offline || isCoach;
     const swapId = makeId();
     const replacementId = makeId();
-    const targets = {};
-    if (String(choice.targets.sets ?? '').trim()) targets.sets = Number(choice.targets.sets);
-    if (String(choice.targets.reps ?? '').trim()) targets.reps = String(choice.targets.reps).trim();
-    if (String(choice.targets.load_value ?? '').trim()) { targets.load_value = Number(choice.targets.load_value); targets.load_unit = 'lb'; }
+    // Look A: a coach backup keeps its unit, range and per side (swapTargets.js).
+    const targets = swapRequestTargets(choice);
     const source = choice.kind === 'backup' ? 'coach_backup' : 'catalog_suggestion';
     const libraryId = choice.kind === 'backup' ? choice.item.exercise_library_id : choice.item.id;
     outbox.enqueue({
