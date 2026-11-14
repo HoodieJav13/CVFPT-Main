@@ -9,11 +9,22 @@
 // (backend/src/lib/sessionEvents.js backupTargets).
 const filled = (value) => String(value ?? '').trim() !== '';
 
-export function swapRequestTargets(choice) {
+// Owner decision (2026-11-14, handoff c): a coach backup chosen mid-exercise
+// gets its own prescribed set count minus the sets already completed or
+// skipped on the old exercise, minimum 1. Fixed, not typed. The old
+// exercise's rows are never changed.
+export function backupSetCount(savedTargets, oldExercise) {
+  const own = Number(savedTargets?.sets);
+  const touched = (oldExercise?.sets || []).filter((set) => !set.archived && (set.status === 'completed' || set.status === 'skipped')).length;
+  return Math.max(1, (Number.isInteger(own) && own > 0 ? own : 0) - touched);
+}
+
+export function swapRequestTargets(choice, oldExercise) {
   const typed = choice?.targets || {};
   const saved = choice?.kind === 'backup' ? choice.item?.targets || {} : {};
   const out = {};
-  if (filled(typed.sets)) out.sets = Number(typed.sets);
+  if (choice?.kind === 'backup') out.sets = backupSetCount(saved, oldExercise);
+  else if (filled(typed.sets)) out.sets = Number(typed.sets);
   if (filled(typed.reps)) out.reps = String(typed.reps).trim();
   if (filled(typed.load_value)) {
     out.load_value = Number(typed.load_value);

@@ -980,7 +980,7 @@ export default function WorkoutTracker() {
     const swapId = makeId();
     const replacementId = makeId();
     // Look A: a coach backup keeps its unit, range and per side (swapTargets.js).
-    const targets = swapRequestTargets(choice);
+    const targets = swapRequestTargets(choice, exercise);
     const source = choice.kind === 'backup' ? 'coach_backup' : 'catalog_suggestion';
     const libraryId = choice.kind === 'backup' ? choice.item.exercise_library_id : choice.item.id;
     outbox.enqueue({
@@ -988,7 +988,7 @@ export default function WorkoutTracker() {
       method: 'post', url: `/workout-logs/${id}/exercises/${exercise.id}/substitutions`,
       data: {
         id: swapId, replacement_log_exercise_id: replacementId, source, ...(choice.kind === 'backup' ? { backup_id: choice.item.id } : {}),
-        exercise_library_id: libraryId, trigger: choice.trigger, ...(choice.reason?.trim() ? { reason: choice.reason.trim() } : {}),
+        exercise_library_id: libraryId, trigger: choice.trigger || 'other',
         targets, offline, chosen_at: new Date().toISOString(), create_target_sets: false,
       },
       swap: { id: swapId, replacementId, name: choice.item.name, libraryId, targets, activate, source },

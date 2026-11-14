@@ -31,3 +31,17 @@ test('the backup summary shows the saved facts only', () => {
   assert.equal(swapTargetsText({ load_value: 40, load_unit: 'lb' }), '40 lb');
   assert.equal(swapTargetsText({}), 'No targets set');
 });
+
+// Owner decision c (handoff 2026-11-14): fixed backup set count.
+import { backupSetCount } from '../../src/lib/swapTargets.js';
+test('backup set count: own count minus completed or skipped, at least 1', () => {
+  const old = (statuses) => ({ sets: statuses.map((status, i) => ({ id: `o${i}`, status })) });
+  assert.equal(backupSetCount({ sets: 3 }, old(['pending', 'pending'])), 3);
+  assert.equal(backupSetCount({ sets: 3 }, old(['completed', 'skipped', 'pending'])), 1);
+  assert.equal(backupSetCount({ sets: 4 }, old(['completed', 'pending'])), 3);
+  assert.equal(backupSetCount({ sets: 2 }, old(['completed', 'completed', 'completed'])), 1);
+  assert.equal(backupSetCount({ sets: null }, old([])), 1);
+  assert.equal(backupSetCount({ sets: 3 }, { sets: [{ status: 'completed', archived: true }] }), 3, 'archived sets do not count');
+  const backup = { kind: 'backup', item: { targets: { sets: 3, reps: '8' } }, targets: { sets: '9', reps: '8' } };
+  assert.equal(swapRequestTargets(backup, old(['completed'])).sets, 2, 'typed sets are ignored for a backup');
+});
