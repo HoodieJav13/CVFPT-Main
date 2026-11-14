@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { diffProgramRevisions } from '@/lib/programHistory';
 
-const label = (key) => ({ default_load_value:'Load', default_load_unit:'Load unit', target_rpe:'Target RPE', frequency_days:'Days per week', day_number:'Day number', superset_group:'Linked group', recorded_at:'Changed at' }[key] || key.replaceAll('_',' '));
+const label = (key) => ({ default_load_value:'Load', default_load_unit:'Load unit', prescribed_load_max:'Upper load', per_side:'Per side', target_rpe:'Target RPE', frequency_days:'Days per week', day_number:'Day number', superset_group:'Linked group', recorded_at:'Changed at' }[key] || key.replaceAll('_',' '));
 function date(value) {
   if (!value || !Number.isFinite(Date.parse(value))) return 'Date unavailable';
   return new Date(value).toLocaleString(undefined, { dateStyle:'medium', timeStyle:'short' });

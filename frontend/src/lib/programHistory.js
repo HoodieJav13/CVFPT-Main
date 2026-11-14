@@ -2,9 +2,12 @@
 const PROGRAM_FIELDS = ['name', 'description', 'frequency_days'];
 const DAY_FIELDS = ['day_number', 'notes'];
 const WORKOUT_FIELDS = ['name', 'description', 'goal'];
-const EXERCISE_FIELDS = ['name', 'exercise_library_id', 'sets', 'reps', 'rest', 'rest_seconds', 'tempo', 'target_rpe', 'tracking_type', 'duration_value', 'duration_unit', 'distance_value', 'distance_unit', 'default_load_value', 'default_load_unit', 'notes', 'client_notes', 'coach_notes', 'video_url', 'video_link_mode', 'superset_group'];
+const EXERCISE_FIELDS = ['name', 'exercise_library_id', 'sets', 'reps', 'rest', 'rest_seconds', 'tempo', 'target_rpe', 'tracking_type', 'duration_value', 'duration_unit', 'distance_value', 'distance_unit', 'default_load_value', 'default_load_unit', 'prescribed_load_max', 'per_side', 'notes', 'client_notes', 'coach_notes', 'video_url', 'video_link_mode', 'superset_group'];
 const copy = (value) => structuredClone(value);
-const pick = (row, fields) => Object.fromEntries(fields.map((key) => [key, row?.[key] ?? null]));
+// Look A: per side is stored only when on (the SQL snapshot omits false), so
+// off and absent compare equal and older revisions never show a fake change.
+const fieldValue = (row, key) => (key === 'per_side' ? (row?.[key] === true ? true : null) : row?.[key] ?? null);
+const pick = (row, fields) => Object.fromEntries(fields.map((key) => [key, fieldValue(row, key)]));
 export function snapshotProgram(program) {
   if (!program) return null;
   return { id: program.id, ...pick(program, PROGRAM_FIELDS), days: (program.days || []).map((day) => ({
@@ -18,7 +21,7 @@ export function diffProgramRevisions(before, after) {
   if (!before || !after || before.id !== after.id) return null;
   const changes = [];
   const fields = (a, b, keys, path) => keys.forEach((field) => {
-    if (JSON.stringify(a?.[field] ?? null) !== JSON.stringify(b?.[field] ?? null)) changes.push({ kind: 'changed', path, field, before: a?.[field] ?? null, after: b?.[field] ?? null });
+    if (JSON.stringify(fieldValue(a, field)) !== JSON.stringify(fieldValue(b, field))) changes.push({ kind: 'changed', path, field, before: fieldValue(a, field), after: fieldValue(b, field) });
   });
   const rows = (a, b, path, label, compare) => {
     const left = new Map(a.map((row) => [row.id, row]));

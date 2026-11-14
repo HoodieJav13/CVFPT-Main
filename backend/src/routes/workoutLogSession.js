@@ -22,7 +22,7 @@ async function sessionExtras(log) {
     supabaseAdmin.from('workout_log_substitutions').select('*').eq('workout_log_id', log.id).order('created_at'),
     sourceIds.length
       ? supabaseAdmin.from('workout_exercise_backups')
-        .select('id, workout_exercise_id, backup_exercise_library_id, target_sets, target_reps, target_load_value, target_load_unit, client_note, library:exercise_library(id, name, equipment, review_status, hidden, archived)')
+        .select('id, workout_exercise_id, backup_exercise_library_id, target_sets, target_reps, target_load_value, target_load_unit, target_load_max, target_per_side, client_note, library:exercise_library(id, name, equipment, review_status, hidden, archived)')
         .in('workout_exercise_id', sourceIds).eq('archived', false)
       : Promise.resolve({ data: [] }),
   ]);
@@ -33,7 +33,10 @@ async function sessionExtras(log) {
     const list = backupsBySource.get(row.workout_exercise_id) || [];
     list.push({
       id: row.id, exercise_library_id: row.backup_exercise_library_id, name: row.library.name, equipment: row.library.equipment,
-      targets: { sets: row.target_sets, reps: row.target_reps, load_value: row.target_load_value == null ? null : Number(row.target_load_value), load_unit: row.target_load_unit },
+      targets: {
+        sets: row.target_sets, reps: row.target_reps, load_value: row.target_load_value == null ? null : Number(row.target_load_value), load_unit: row.target_load_unit,
+        load_max: row.target_load_max == null ? null : Number(row.target_load_max), per_side: row.target_per_side === true,
+      },
       client_note: row.client_note,
     });
     backupsBySource.set(row.workout_exercise_id, list);

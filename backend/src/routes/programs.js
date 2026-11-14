@@ -718,6 +718,7 @@ router.post('/import/commit', requireCoach, programCommitLimiter, async (req, re
       p_source: source,
       p_draft: validation.draft,
     });
+    if (isLoadRangeError(error)) return res.status(400).json({ error: error.message });
     if (error) {
       logError('commit program import rpc error', error);
       return res.status(500).json({ error: 'Program import could not be saved. Confirm the latest database migration has been applied.' });

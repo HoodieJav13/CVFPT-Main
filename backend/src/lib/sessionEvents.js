@@ -83,6 +83,18 @@ function normalizeTargets(input = {}) {
     out.load_value = load;
     out.load_unit = unit;
   }
+  // Look A: the replacement's own upper load (same unit, above the load) and
+  // per side. Never inferred from the exercise being replaced.
+  if (input.load_max !== undefined && input.load_max !== null && input.load_max !== '') {
+    const max = Number(input.load_max);
+    if (!Number.isFinite(max) || max < 0 || max > 2000) throw invalid('Upper load must be a number');
+    if (out.load_value === undefined || !(max >= out.load_value)) throw invalid('The upper load must be higher than the load it starts from.');
+    if (max > out.load_value) out.load_max = max;
+  }
+  if (input.per_side !== undefined && input.per_side !== null) {
+    if (typeof input.per_side !== 'boolean') throw invalid('Per side must be on or off');
+    if (input.per_side) out.per_side = true;
+  }
   return out;
 }
 

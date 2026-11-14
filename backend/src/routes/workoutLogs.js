@@ -488,7 +488,13 @@ async function requireWritableActiveLog(req, res) {
 
 function createExerciseHistoryHandler({
   findLog = workoutLogWithDetails,
-  runHistory = (args) => supabaseAdmin.rpc('get_workout_exercise_history_v2', args),
+  // Look A: v3 adds the prescription each occurrence was logged against;
+  // before that migration the v2 rows are used and those facts are absent.
+  runHistory = async (args) => {
+    const v3 = await supabaseAdmin.rpc('get_workout_exercise_history_v3', args);
+    if (v3.error && ['PGRST202', '42883'].includes(v3.error.code)) return supabaseAdmin.rpc('get_workout_exercise_history_v2', args);
+    return v3;
+  },
 } = {}) {
   return async function exerciseHistoryHandler(req, res) {
     let cursor;
@@ -533,6 +539,14 @@ function createExerciseHistoryHandler({
           completed_at: row.completed_at,
           exercise_name: row.exercise_name,
           tracking_type: row.tracking_type ?? 'reps_weight',
+          // What this occurrence was prescribed (null when unknown: rows from
+          // before Look A). Shown as context; never substituted for performed values.
+          prescribed: 'per_side' in row ? {
+            load_value: row.prescribed_load_value == null ? null : Number(row.prescribed_load_value),
+            load_unit: row.prescribed_load_unit ?? null,
+            load_max: row.prescribed_load_max == null ? null : Number(row.prescribed_load_max),
+            per_side: row.per_side === true,
+          } : null,
           sets: [],
         });
         grouped.get(occurrenceId).sets.push({
