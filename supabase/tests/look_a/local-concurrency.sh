@@ -281,7 +281,7 @@ SQUAT="00000000-0000-4000-8000-0000000a0001"; PRESS="00000000-0000-4000-8000-000
 B1="00000000-0000-4000-8000-0000000b0001"; B3="00000000-0000-4000-8000-0000000b0003"; B11="00000000-0000-4000-8000-0000000b0011"
 B31="00000000-0000-4000-8000-0000000b0031"; B32="00000000-0000-4000-8000-0000000b0032"
 E() { printf '00000000-0000-4000-8000-0000000e%04d' "$1"; }
-V3FN="public.finish_workout_log_v3(uuid,uuid,uuid,text,uuid,text,text,text,timestamptz)"
+V3FN="public.finish_workout_log_v3(uuid,uuid,uuid,text,uuid,text,text,text,timestamptz,jsonb)"
 HAVE="$(sql vo_template -c "select count(*) from pg_proc where oid = to_regprocedure('$V3FN')")"
 check "template: finish_workout_log_v3 present" "$HAVE" "1"
 finish() { echo "select '$1 ' || coalesce(r->>'outcome','?') || '/' || coalesce(r->>'reason','-') || '/' || coalesce(r->>'quick_completed','-') from (select public.finish_workout_log_v3('$LOG', '$CLIENT', '$(E "$2")', 'client', null, '$3', '', '', null) r) x;"; }
@@ -393,21 +393,24 @@ race L9 la_l9 "$(undo UNDO 900 902)" "" "$RESPONSE"
 check "L9 holder exit" "$HRC" "0"
 check "L9 Undo applied" "$(said "$HOUT" 'UNDO applied/-')" "1"
 check "L9 response waits" "${HS%% *}" "BLOCKED"
-check "L9 response refused by the recheck after the lock" "$(grep -q 'ERROR:  Only completed workouts accept coach responses' "$COUT" && grep -q 'look_a_require_completed_log(uuid,text) line 7 at RAISE' "$COUT" && echo refused-after-lock)" "refused-after-lock"
+check "L9 response refused by the recheck after the lock" "$(grep -q 'ERROR:  Only completed workouts accept coach responses' "$COUT" && grep -q 'look_a_require_completed_log(uuid,text,boolean) line 15 at RAISE' "$COUT" && echo refused-after-lock)" "refused-after-lock"
 check "L9 no response on the reopened workout" "$(cell la_l9 "select count(*) || '/' || (select status from public.workout_logs where id = '$LOG') from public.workout_coach_responses where workout_log_id = '$LOG'")" "0/active"
 fresh la_l9_neg; finished la_l9_neg
 q la_l9_neg "drop trigger look_a_completed_log_guard on public.workout_coach_responses" > /dev/null
 race L9_neg la_l9_neg "$(undo UNDO 900 903)" "" "$RESPONSE"
 check "L9_neg without the recheck a response lands on the reopened workout" "$(cell la_l9_neg "select count(*) || '/' || (select status from public.workout_logs where id = '$LOG') from public.workout_coach_responses where workout_log_id = '$LOG'")" "1/active"
 
-# L10. The same for a cue created from the finished attempt (the cue function's
-# INSERT after its unlocked status read).
+# L10. A cue created from the finished attempt while Undo of Finish holds the
+# reopen. A cue write holds its exercise row, so it never waits for the
+# workout (see L13): it is refused at once with a retryable message, and no
+# cue lands on the reopened workout.
 fresh la_l10; finished la_l10
-race L10 la_l10 "$(undo UNDO 900 904)" "" "$CUE"
+race L10 la_l10 "$(undo UNDO 900 904)" "" "$CUE" 4
 check "L10 holder exit" "$HRC" "0"
-check "L10 cue waits" "${HS%% *}" "BLOCKED"
-check "L10 cue refused by the recheck after the lock" "$(grep -q 'ERROR:  Choose a completed performed attempt' "$COUT" && grep -q 'look_a_require_completed_log(uuid,text) line 7 at RAISE' "$COUT" && echo refused-after-lock)" "refused-after-lock"
+check "L10 cue does not wait" "${HS%% *}" "NOT_BLOCKED"
+check "L10 cue refused at once (lock not waited for)" "$(grep -q 'ERROR:  This workout is changing right now. Try again.' "$COUT" && grep -q 'look_a_require_completed_log(uuid,text,boolean) line 10 at RAISE' "$COUT" && echo refused-nowait)" "refused-nowait"
 check "L10 no cue" "$(cell la_l10 "select count(*) from public.exercise_attempt_cues where source_log_id = '$LOG'")" "0"
+check "L10 Undo applied" "$(said "$HOUT" 'UNDO applied/-')/$(cell la_l10 "select status from public.workout_logs where id = '$LOG'")" "1/active"
 
 # L11. A coach response committed first (holding the workout FOR SHARE): the
 # Undo of Finish waits for it, then sees it and keeps the workout finished.
@@ -442,6 +445,29 @@ check "L12b exits" "$HRC/$CRC" "0/0"; no_errors L12b
 check "L12b Undo waits, then refused: workout changed" "$(grep -c '^UNDO refused/This workout changed since' "$COUT")/${HS%% *}" "1/BLOCKED"
 check "L12b resolution kept" "$(cell la_l12b "select actual_reps || '/' || status from public.workout_log_sets where id = '$B32'")" "6/skipped"
 check "L12b workout stays finished" "$(cell la_l12b "select status from public.workout_logs where id = '$LOG'")" "completed"
+# L13. The reviewer's three-operation interleaving (LOOK-A-API-REVIEW.md):
+# a cue write holds its exercise row FOR SHARE (as mutate_exercise_cue does)
+# and its first, unlocked status read was stale ('completed'); Undo has since
+# reopened the workout; a re-Finish holds the workout and waits for that
+# exercise row. The guard's two reads run inside one trigger and cannot be
+# paused between them natively, so the holder runs the guard's exact second
+# read at that point. With NOWAIT (the guard's cue branch) the cue fails at
+# once and the re-Finish completes; the negative control (a waiting FOR SHARE,
+# as before this change) shows the cycle is a real deadlock.
+fresh la_l13; finished la_l13
+q la_l13 "$(undo SETUP 900 908)" | grep -q '^SETUP applied' || die "L13 setup undo failed"
+race L13 la_l13 "select 1 from public.workout_log_exercises where id = '$PRESS' for share;" \
+  "select status from public.workout_logs where id = '$LOG' for share nowait;" "$(finish FIN 909 finish)"
+check "L13 re-Finish waits for the cue's exercise row" "${HS%% *}" "BLOCKED"
+check "L13 cue's workout read fails at once" "$(grep -c 'ERROR:  could not obtain lock on row in relation \"workout_logs\"' "$HOUT")" "1"
+check "L13 no deadlock in either session" "$(cat "$HOUT" "$COUT" | grep -c 'deadlock detected')" "0"
+check "L13 re-Finish applied" "$(grep -c '^FIN applied' "$COUT")/$CRC" "1/0"
+check "L13 workout finished again" "$(cell la_l13 "select status from public.workout_logs where id = '$LOG'")" "completed"
+fresh la_l13_neg; finished la_l13_neg
+q la_l13_neg "$(undo SETUP 900 910)" | grep -q '^SETUP applied' || die "L13_neg setup undo failed"
+race L13_neg la_l13_neg "select 1 from public.workout_log_exercises where id = '$PRESS' for share;" \
+  "select status from public.workout_logs where id = '$LOG' for share;" "$(finish FIN 911 finish)"
+check "L13_neg a waiting read deadlocks" "$(cat "$HOUT" "$COUT" | grep -c 'deadlock detected')" "1"
 else
   log "finish_workout_log_v3 absent: races not run"
 fi

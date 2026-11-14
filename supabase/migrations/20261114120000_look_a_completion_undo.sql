@@ -372,16 +372,66 @@ begin
 end;
 $$;
 
--- Whether a recorded change can be undone NOW: applied, not undone, not an
--- Undo, still the latest applied change of its workout, and the workout still
--- at the exact version recorded right after it. Replays report this current
--- answer, never the answer that was true when the change was first applied.
+-- Why a recorded change cannot be undone NOW, or null when it can. The one
+-- rule both the Undo itself and every report of the current Undo use, so a
+-- page is never offered an Undo the database would refuse: the change must be
+-- applied, not undone, not an Undo, made by this actor, still the latest
+-- applied change of its workout, the workout still at the exact version
+-- recorded right after it, and, for a Finish, nothing that depends on the
+-- finished workout yet (a coach response, a cue made or used from it, or
+-- another workout in progress). Replays report this current answer, never the
+-- answer that was true when the change was first applied.
+create function public.look_a_undo_blocker(p_change public.workout_material_changes, p_actor_role text, p_actor_coach_id uuid)
+returns text language plpgsql stable security invoker set search_path = '' as $$
+begin
+  if p_change.id is null or p_change.kind = 'undo' then return 'There is nothing to undo.'; end if;
+  if p_change.actor_role <> p_actor_role or p_change.actor_coach_id is distinct from p_actor_coach_id then
+    return 'Only the person who made this change can undo it.';
+  end if;
+  if p_change.outcome <> 'applied' or p_change.inverse is null then return 'That change was not saved, so there is nothing to undo.'; end if;
+  if p_change.undone_by is not null then return 'That change was already undone.'; end if;
+  if exists (select 1 from public.workout_material_changes c
+      where c.workout_log_id = p_change.workout_log_id and c.outcome = 'applied' and c.seq > p_change.seq) then
+    return 'A later change replaced this Undo.';
+  end if;
+  if public.workout_log_material_fingerprint(p_change.workout_log_id) is distinct from p_change.fingerprint_after then
+    return 'This workout changed since (on another device, by your coach, or a later change), so it was not undone.';
+  end if;
+  if p_change.kind = 'finish' then
+    if exists (select 1 from public.workout_coach_responses r where r.workout_log_id = p_change.workout_log_id and not r.archived) then
+      return 'Your coach already responded to this workout, so it stays finished.';
+    end if;
+    if exists (select 1 from public.exercise_attempt_cues q
+        where (q.source_log_id = p_change.workout_log_id or q.retry_log_id = p_change.workout_log_id)
+          and greatest(q.created_at, q.updated_at, coalesce(q.rechecked_at, q.created_at), coalesce(q.linked_at, q.created_at)) >= p_change.created_at) then
+      return 'Your coach already used this finished workout, so it stays finished.';
+    end if;
+    if exists (select 1 from public.workout_logs l
+        where l.client_id = p_change.client_id and l.status = 'active' and not l.archived and l.id <> p_change.workout_log_id) then
+      return 'Another workout is in progress, so this one cannot be reopened.';
+    end if;
+  end if;
+  return null;
+end;
+$$;
+
 create function public.look_a_change_undoable(p_change public.workout_material_changes) returns boolean
 language sql stable security invoker set search_path = '' as $$
-  select p_change.outcome = 'applied' and p_change.kind <> 'undo' and p_change.inverse is not null and p_change.undone_by is null
-    and not exists (select 1 from public.workout_material_changes c
-      where c.workout_log_id = p_change.workout_log_id and c.outcome = 'applied' and c.seq > p_change.seq)
-    and public.workout_log_material_fingerprint(p_change.workout_log_id) is not distinct from p_change.fingerprint_after;
+  select public.look_a_undo_blocker(p_change, p_change.actor_role, p_change.actor_coach_id) is null;
+$$;
+
+-- The one Undo a workout offers right now, for one actor, or null: the latest
+-- applied change, only while it is still undoable and was made by that actor.
+-- Lets a reloaded page or another device of the same person show the same
+-- Undo, and never an older or someone else's.
+create function public.workout_current_undo(p_log_id uuid, p_actor_role text, p_actor_coach_id uuid) returns jsonb
+language sql stable security invoker set search_path = '' as $$
+  select case when c.actor_role = p_actor_role and c.actor_coach_id is not distinct from p_actor_coach_id
+                and public.look_a_change_undoable(c)
+              then jsonb_build_object('change_id', c.id, 'kind', c.kind, 'result', c.result, 'created_at', c.created_at) end
+  from public.workout_material_changes c
+  where c.workout_log_id = p_log_id and c.outcome = 'applied'
+  order by c.seq desc limit 1;
 $$;
 
 -- An event id seen before: the same change replays its recorded answer; a
@@ -392,7 +442,12 @@ returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare v_row public.workout_material_changes;
 begin
   select * into v_row from public.workout_material_changes where id = p_id;
-  if not found then return null; end if;
+  if not found then
+    -- An id already used for a set event (which may have recorded nothing
+    -- here) is refused too: one event id names one change.
+    if exists (select 1 from public.workout_set_events where id = p_id) then raise exception 'event_id_reused'; end if;
+    return null;
+  end if;
   if v_row.workout_log_id <> p_log_id or v_row.kind <> p_kind or v_row.actor_role <> p_actor_role
      or v_row.actor_coach_id is distinct from p_actor_coach_id or v_row.request <> p_request then
     raise exception 'event_id_reused';
@@ -417,6 +472,20 @@ end;
 $$;
 
 -- ---------- 4. Set events with an Undo record ----------
+-- What a v3 set event asked for: the set, the actor, the revisions it was
+-- based on, the values and the declared origin (not transport details such as
+-- the offline flag or local sequence). A retry must ask for exactly this; the
+-- same id with anything else is refused (event_id_reused). Events first
+-- written by the older functions have no row here and keep their old replay.
+create table public.workout_set_event_requests (
+  event_id uuid primary key references public.workout_set_events(id),
+  request text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.workout_set_event_requests enable row level security;
+revoke all privileges on table public.workout_set_event_requests from public, anon, authenticated, service_role;
+grant select, insert on table public.workout_set_event_requests to service_role;
+
 -- Same parameters and outcomes as apply_workout_set_event_v2 (which it calls
 -- unchanged), plus the workout lock first and, for an applied write that
 -- changed the set's material content, the recorded inverse (the set's exact
@@ -435,14 +504,32 @@ declare
   v_after_seq bigint;
   v_result jsonb;
   v_change public.workout_material_changes;
+  v_request text := md5(jsonb_build_object('set', p_set_id, 'actor', p_actor_role, 'coach', p_actor_coach_id,
+    'base', p_base_revision, 'plan', p_plan_revision_seen, 'origin', p_value_origin,
+    'payload', coalesce(p_payload, '{}'::jsonb) - 'completed_at' - 'updated_at')::text);
+  v_bound text;
 begin
   select e.workout_log_id into v_log_id from public.workout_log_sets s
     join public.workout_log_exercises e on e.id = s.workout_log_exercise_id where s.id = p_set_id;
   if v_log_id is null then raise exception 'Workout set not found'; end if;
   select * into v_log from public.workout_logs where id = v_log_id for no key update;
   select * into v_before from public.workout_log_sets where id = p_set_id for update;
+  -- Before anything is written: an id used for another kind of change, or for
+  -- a different set write, is refused.
+  if exists (select 1 from public.workout_material_changes where id = p_event_id and kind <> 'set') then
+    raise exception 'event_id_reused';
+  end if;
+  select request into v_bound from public.workout_set_event_requests where event_id = p_event_id;
+  if found and v_bound <> v_request then raise exception 'event_id_reused'; end if;
+  if not found and exists (select 1 from public.workout_set_events where id = p_event_id
+      and (workout_log_set_id <> p_set_id or actor_role <> p_actor_role or actor_coach_id is distinct from p_actor_coach_id)) then
+    raise exception 'event_id_reused';
+  end if;
   v_result := public.apply_workout_set_event_v2(p_set_id, p_event_id, p_actor_role, p_actor_coach_id, p_base_revision,
     p_local_seq, p_offline, p_plan_revision_seen, p_payload, p_value_origin);
+  if v_result ->> 'outcome' <> 'replayed' then
+    insert into public.workout_set_event_requests(event_id, request) values (p_event_id, v_request);
+  end if;
   if v_result ->> 'outcome' = 'applied' then
     select material_seq into v_after_seq from public.workout_log_sets where id = p_set_id;
     if v_after_seq is distinct from v_before.material_seq then
@@ -487,6 +574,9 @@ begin
   select * into v_ex from public.workout_log_exercises where id = p_exercise_id and workout_log_id = p_log_id for no key update;
   if not found or v_ex.archived then raise exception 'Workout exercise not found'; end if;
   if v_ex.not_set_tracked then v_reason := 'This exercise is already done.';
+  elsif exists (select 1 from public.workout_set_conflicts c join public.workout_log_sets s on s.id = c.workout_log_set_id
+      where s.workout_log_exercise_id = v_ex.id and c.status = 'open') then
+    v_reason := 'A set here has a disagreement waiting for your coach. Record sets one at a time.';
   elsif not exists (select 1 from public.workout_log_sets where workout_log_exercise_id = v_ex.id and not archived and status = 'pending') then
     v_reason := 'Every set of this exercise is already logged or skipped.';
   end if;
@@ -537,6 +627,11 @@ begin
          coalesce(jsonb_agg(public.look_a_set_restore(s) order by s.id), '[]'::jsonb)
     into v_actual, v_before
   from public.workout_log_sets s where s.workout_log_exercise_id = v_ex.id and not s.archived and s.status = 'pending';
+  if exists (select 1 from public.workout_set_conflicts c join public.workout_log_sets s on s.id = c.workout_log_set_id
+      where s.workout_log_exercise_id = v_ex.id and c.status = 'open') then
+    return public.look_a_record(p_event_id, v_log, 'exercise_skip', p_actor_role, p_actor_coach_id, v_request, 'refused',
+      'A set here has a disagreement waiting for your coach. Record sets one at a time.', null, null, null, false);
+  end if;
   if v_expected = '[]'::jsonb or v_expected <> v_actual then
     return public.look_a_record(p_event_id, v_log, 'exercise_skip', p_actor_role, p_actor_coach_id, v_request, 'refused',
       'These sets changed since you looked. Check them and try again.', jsonb_build_object('current', v_actual), null, null, false);
@@ -559,6 +654,12 @@ $$;
 -- already have logged sets; no set is written at all, whatever its state.
 -- quick_completed (the existing column) is also set when nothing was logged,
 -- so existing readers keep their meaning.
+-- p_mode 'home_quick': Home's one-tap Quick Complete. The same flag, no set
+-- written, but only for an untouched workout: the original Home guard
+-- (quick_complete_workout_log_v2) refuses any recorded data, including a
+-- value typed into a still-pending set, and the workout stays active for the
+-- person to resume. It is never a way to finish a workout someone is
+-- recording. p_target (Home's assignment/day) is part of the event identity.
 -- Both modes lock every exercise and then every set of the workout (after the
 -- workout) before classifying, so an exercise or set write already in flight
 -- lands first and is counted, and one that arrives later finds the workout
@@ -569,21 +670,22 @@ $$;
 -- never do).
 create function public.finish_workout_log_v3(
   p_log_id uuid, p_client_id uuid, p_event_id uuid, p_actor_role text, p_actor_coach_id uuid,
-  p_mode text, p_notes text, p_feedback text, p_completed_at timestamptz
+  p_mode text, p_notes text, p_feedback text, p_completed_at timestamptz, p_target jsonb default null
 ) returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare
   v_request jsonb := jsonb_build_object('mode', p_mode, 'notes', coalesce(p_notes, ''), 'feedback', coalesce(p_feedback, ''),
-    'completed_at', p_completed_at);
+    'completed_at', p_completed_at)
+    || case when p_target is not null then jsonb_build_object('target', p_target) else '{}'::jsonb end;
   v_replay jsonb;
   v_log public.workout_logs;
   v_completed integer;
-  v_flag boolean := p_mode = 'not_set_tracked';
+  v_flag boolean := p_mode in ('not_set_tracked', 'home_quick');
   v_before jsonb := '[]'::jsonb;
   v_at timestamptz;
   v_new integer := 0;
 begin
   if p_actor_role not in ('client', 'coach') then raise exception 'invalid actor'; end if;
-  if p_mode is null or p_mode not in ('finish', 'not_set_tracked') then raise exception 'invalid finish mode'; end if;
+  if p_mode is null or p_mode not in ('finish', 'not_set_tracked', 'home_quick') then raise exception 'invalid finish mode'; end if;
   v_log := public.look_a_lock_log(p_log_id);
   if v_log.client_id <> p_client_id then raise exception 'Workout log not found'; end if;
   v_replay := public.look_a_replay(p_event_id, p_log_id, 'finish', p_actor_role, p_actor_coach_id, v_request);
@@ -603,6 +705,19 @@ begin
   select count(*) into v_completed from public.workout_log_sets s
     join public.workout_log_exercises e on e.id = s.workout_log_exercise_id
     where e.workout_log_id = v_log.id and not e.archived and not s.archived and s.status = 'completed';
+  if p_mode = 'home_quick' and (coalesce(v_log.notes, '') <> '' or coalesce(v_log.feedback, '') <> '' or exists (
+      select 1 from public.workout_log_exercises e
+      left join public.workout_log_sets s on s.workout_log_exercise_id = e.id
+      where e.workout_log_id = v_log.id and (
+        e.archived or e.not_set_tracked or coalesce(e.client_notes, '') <> '' or e.updated_at <> e.created_at
+        or s.archived or s.status <> 'pending' or s.set_origin <> 'prescribed' or s.updated_at <> s.created_at
+        or s.actual_reps is not null or s.actual_rpe is not null
+        or s.actual_duration_value is not null or s.actual_distance_value is not null
+        or s.actual_load_value is distinct from e.prescribed_load_value
+        or s.actual_load_unit is distinct from e.prescribed_load_unit))) then
+    return public.look_a_record(p_event_id, v_log, 'finish', p_actor_role, p_actor_coach_id, v_request, 'refused',
+      'logged_changes', null, null, null, false);
+  end if;
   if not v_flag and v_completed = 0 then
     return public.look_a_record(p_event_id, v_log, 'finish', p_actor_role, p_actor_coach_id, v_request, 'refused',
       'complete_at_least_one_set', null, null, null, false);
@@ -644,6 +759,46 @@ begin
       'not_set_tracked_change_id', v_log.not_set_tracked_change_id),
       'sets', v_before),
     null, v_new > 0);
+end;
+$$;
+
+-- ---------- 7b. Home Quick Complete, one transaction ----------
+-- A retry with the same event id replays the first answer before any start
+-- runs again; the id is bound to this client and this assignment/day, so it
+-- can never finish a different workout. Concurrent duplicates serialize on
+-- the event id. A start that resumed or found a finished workout returns that
+-- outcome and records nothing.
+create function public.quick_complete_workout_v3(
+  p_client_id uuid, p_event_id uuid, p_program_assignment_id uuid, p_program_day_id uuid, p_workout_assignment_id uuid,
+  p_auth_user_id uuid, p_session_id uuid
+) returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare
+  v_target jsonb := jsonb_build_object('program_assignment_id', p_program_assignment_id, 'program_day_id', p_program_day_id,
+    'workout_assignment_id', p_workout_assignment_id);
+  v_row public.workout_material_changes;
+  v_start jsonb;
+begin
+  if p_event_id is null then raise exception 'event id required'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('cvf:look-a-event:' || p_event_id::text, 0));
+  select * into v_row from public.workout_material_changes where id = p_event_id;
+  if found then
+    if v_row.client_id <> p_client_id or v_row.kind <> 'finish' or v_row.actor_role <> 'client'
+       or v_row.request ->> 'mode' is distinct from 'home_quick' or v_row.request -> 'target' is distinct from v_target then
+      raise exception 'event_id_reused';
+    end if;
+    return v_row.result || jsonb_build_object('change_id', v_row.id, 'outcome', 'replayed', 'original_outcome', v_row.outcome,
+      'reason', v_row.reason, 'undone', v_row.undone_by is not null, 'undoable', public.look_a_change_undoable(v_row),
+      'notified', false, 'workout_log_id', v_row.workout_log_id);
+  end if;
+  if exists (select 1 from public.workout_set_events where id = p_event_id) then raise exception 'event_id_reused'; end if;
+  v_start := public.start_workout_log_with_cues(p_client_id, p_program_assignment_id, p_program_day_id, p_workout_assignment_id,
+    'client', null, p_session_id, p_auth_user_id);
+  if v_start ->> 'outcome' is distinct from 'started' then
+    return jsonb_build_object('outcome', 'not_started', 'start_outcome', v_start ->> 'outcome', 'workout_log_id', v_start ->> 'workout_log_id');
+  end if;
+  return public.finish_workout_log_v3((v_start ->> 'workout_log_id')::uuid, p_client_id, p_event_id, 'client', null,
+      'home_quick', '', '', null, v_target)
+    || jsonb_build_object('workout_log_id', v_start ->> 'workout_log_id', 'start_outcome', 'started');
 end;
 $$;
 
@@ -700,31 +855,11 @@ begin
     exception when lock_not_available then v_busy := true;
     end;
   end if;
-  if not v_found or v_target.workout_log_id <> p_log_id or v_target.kind = 'undo' then
+  if not v_found or v_target.workout_log_id <> p_log_id then
     v_reason := 'There is nothing to undo.';
-  elsif v_target.actor_role <> p_actor_role or v_target.actor_coach_id is distinct from p_actor_coach_id then
-    v_reason := 'Only the person who made this change can undo it.';
-  elsif v_target.outcome <> 'applied' or v_target.inverse is null then
-    v_reason := 'That change was not saved, so there is nothing to undo.';
-  elsif v_target.undone_by is not null then
-    v_reason := 'That change was already undone.';
-  elsif exists (select 1 from public.workout_material_changes c
-      where c.workout_log_id = p_log_id and c.outcome = 'applied' and c.seq > v_target.seq) then
-    v_reason := 'A later change replaced this Undo.';
-  elsif v_busy then
-    v_reason := 'This workout is saving another change. Try Undo again.';
-  elsif public.workout_log_material_fingerprint(p_log_id) is distinct from v_target.fingerprint_after then
-    v_reason := 'This workout changed since (on another device, by your coach, or a later change), so it was not undone.';
-  elsif v_target.kind = 'finish' and exists (select 1 from public.workout_coach_responses r
-      where r.workout_log_id = v_log.id and not r.archived) then
-    v_reason := 'Your coach already responded to this workout, so it stays finished.';
-  elsif v_target.kind = 'finish' and exists (select 1 from public.exercise_attempt_cues q
-      where (q.source_log_id = v_log.id or q.retry_log_id = v_log.id)
-        and greatest(q.created_at, q.updated_at, coalesce(q.rechecked_at, q.created_at), coalesce(q.linked_at, q.created_at)) >= v_target.created_at) then
-    v_reason := 'Your coach already used this finished workout, so it stays finished.';
-  elsif v_target.kind = 'finish' and exists (select 1 from public.workout_logs
-      where client_id = v_log.client_id and status = 'active' and not archived and id <> v_log.id) then
-    v_reason := 'Another workout is in progress, so this one cannot be reopened.';
+  else
+    v_reason := public.look_a_undo_blocker(v_target, p_actor_role, p_actor_coach_id);
+    if v_reason is null and v_busy then v_reason := 'This workout is saving another change. Try Undo again.'; end if;
   end if;
   if v_reason is not null then
     return public.look_a_record(p_event_id, v_log, 'undo', p_actor_role, p_actor_coach_id, v_request, 'refused', v_reason,
@@ -790,13 +925,26 @@ $$;
 -- a reopening Undo's FOR UPDATE) and refuse unless it is still completed. A
 -- workout that is not completed is refused without taking any lock, so no
 -- finished-workout writer waits on an active workout's writers.
-create function public.look_a_require_completed_log(p_log_id uuid, p_message text) returns void
+-- A cue write already holds its exercise row (FOR SHARE) when this runs. A
+-- Finish of a reopened workout holds the workout and then waits for that
+-- exercise row, so a cue waiting here for the workout could deadlock with it.
+-- Cue writes therefore never wait (p_nowait): a busy workout refuses them
+-- with a retryable message. Coach responses hold no exercise row and wait.
+create function public.look_a_require_completed_log(p_log_id uuid, p_message text, p_nowait boolean default false) returns void
 language plpgsql security invoker set search_path = '' as $$
 declare v_status text;
 begin
   select status into v_status from public.workout_logs where id = p_log_id;
   if v_status is distinct from 'completed' then raise exception '%', p_message; end if;
-  select status into v_status from public.workout_logs where id = p_log_id for share;
+  if p_nowait then
+    begin
+      select status into v_status from public.workout_logs where id = p_log_id for share nowait;
+    exception when lock_not_available then
+      raise exception using errcode = 'P0409', message = 'This workout is changing right now. Try again.';
+    end;
+  else
+    select status into v_status from public.workout_logs where id = p_log_id for share;
+  end if;
   if v_status is distinct from 'completed' then raise exception '%', p_message; end if;
 end;
 $$;
@@ -817,10 +965,10 @@ create function public.look_a_cue_guard() returns trigger
 language plpgsql security invoker set search_path = '' as $$
 begin
   if tg_op = 'INSERT' or new.text is distinct from old.text or new.source_version is distinct from old.source_version then
-    perform public.look_a_require_completed_log(new.source_log_id, 'Choose a completed performed attempt');
+    perform public.look_a_require_completed_log(new.source_log_id, 'Choose a completed performed attempt', true);
   end if;
   if tg_op = 'UPDATE' and (new.verdict is distinct from old.verdict or new.rechecked_at is distinct from old.rechecked_at) then
-    perform public.look_a_require_completed_log(new.retry_log_id, 'Complete a performed retry before recording a verdict');
+    perform public.look_a_require_completed_log(new.retry_log_id, 'Complete a performed retry before recording a verdict', true);
   end if;
   return new;
 end;
@@ -841,13 +989,16 @@ begin
     'look_a_lock_log(uuid)',
     'look_a_change_undoable(public.workout_material_changes)',
     'look_a_replay(uuid, uuid, text, text, uuid, jsonb)',
+    'workout_current_undo(uuid, text, uuid)',
     'look_a_record(uuid, public.workout_logs, text, text, uuid, jsonb, text, text, jsonb, jsonb, uuid, boolean)',
     'apply_workout_set_event_v3(uuid, uuid, text, uuid, integer, integer, boolean, integer, jsonb, text)',
     'mark_workout_exercise_not_set_tracked(uuid, uuid, uuid, text, uuid)',
     'skip_workout_exercise_sets(uuid, uuid, uuid, text, uuid, jsonb)',
-    'finish_workout_log_v3(uuid, uuid, uuid, text, uuid, text, text, text, timestamptz)',
+    'finish_workout_log_v3(uuid, uuid, uuid, text, uuid, text, text, text, timestamptz, jsonb)',
+    'quick_complete_workout_v3(uuid, uuid, uuid, uuid, uuid, uuid, uuid)',
+    'look_a_undo_blocker(public.workout_material_changes, text, uuid)',
     'undo_workout_material_change(uuid, uuid, uuid, text, uuid)',
-    'look_a_require_completed_log(uuid, text)',
+    'look_a_require_completed_log(uuid, text, boolean)',
     'look_a_coach_response_guard()',
     'look_a_cue_guard()'] loop
     execute format('revoke execute on function public.%s from public, anon, authenticated', f);

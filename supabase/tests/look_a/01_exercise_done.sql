@@ -63,6 +63,13 @@ begin
   assert public.workout_log_material_fingerprint(log) <> (select fingerprint_after from public.workout_material_changes
     where id = '00000000-0000-4000-8000-0000000c0003'), 'ABA: version after Undo(D) differs from the version after done(C)';
   assert (select not_set_tracked from public.workout_log_exercises where id = row_ex), 'C stays done';
+  -- The current Undo, as a reload or another device of the same person sees it.
+  assert public.workout_current_undo(log, 'client', null) is null, 'after an Undo nothing is offered';
+  r := public.mark_workout_exercise_not_set_tracked(log, press, '00000000-0000-4000-8000-0000000c0018', 'client', null);
+  assert public.workout_current_undo(log, 'client', null)->>'change_id' = '00000000-0000-4000-8000-0000000c0018', 'latest change offered';
+  assert public.workout_current_undo(log, 'coach', '00000000-0000-4000-8000-000000000001') is null, 'never someone else''s';
+  update public.workout_log_exercises set client_notes = 'other device', updated_at = now() where id = plank;
+  assert public.workout_current_undo(log, 'client', null) is null, 'gone after a material change elsewhere';
   -- An Undo cannot be undone.
   u := public.undo_workout_material_change(log, '00000000-0000-4000-8000-0000000c0013', '00000000-0000-4000-8000-0000000c0015', 'client', null);
   assert u->>'outcome' = 'refused' and u->>'reason' = 'There is nothing to undo.', format('undo of undo %s', u);
@@ -70,7 +77,7 @@ begin
   -- An exercise with nothing pending cannot be marked.
   update public.workout_log_sets set status = 'skipped' where workout_log_exercise_id = row_ex and status = 'pending';
   -- (row_ex was flagged above; use a fresh check on press after logging everything)
-  update public.workout_log_sets set status = 'skipped' where workout_log_exercise_id = press;
-  r := public.mark_workout_exercise_not_set_tracked(log, press, '00000000-0000-4000-8000-0000000c0016', 'client', null);
-  assert r->>'outcome' = 'refused' and r->>'reason' like 'Every set%', format('nothing pending %s', r);
+  update public.workout_log_sets set status = 'skipped' where workout_log_exercise_id = row_ex;
+  r := public.mark_workout_exercise_not_set_tracked(log, row_ex, '00000000-0000-4000-8000-0000000c0016', 'client', null);
+  assert r->>'outcome' = 'refused', format('already done or nothing pending %s', r);
 end $$;

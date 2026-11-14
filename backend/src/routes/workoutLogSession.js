@@ -109,12 +109,16 @@ function registerSessionRoutes(router, deps) {
       p_plan_revision_seen: envelope.planRevisionSeen,
       p_payload: payload,
     };
-    // A declared origin uses v2. A database without v2 (not yet migrated) gets
-    // the same event through the unchanged v1 RPC, without the declaration:
-    // the set's meaning is then unknown to new clients, never assumed.
+    // A declared origin uses v3 (v2's rule plus the workout's one Undo record,
+    // Look A 20261114120000), then v2, then the unchanged v1 RPC on a database
+    // that is not yet migrated, without the declaration: the set's meaning is
+    // then unknown to new clients, never assumed.
     let { data, error } = envelope.valueOrigin
-      ? await supabaseAdmin.rpc('apply_workout_set_event_v2', { ...args, p_value_origin: envelope.valueOrigin })
+      ? await supabaseAdmin.rpc('apply_workout_set_event_v3', { ...args, p_value_origin: envelope.valueOrigin })
       : await supabaseAdmin.rpc('apply_workout_set_event', args);
+    if (error && envelope.valueOrigin && MISSING_FUNCTION.has(error.code)) {
+      ({ data, error } = await supabaseAdmin.rpc('apply_workout_set_event_v2', { ...args, p_value_origin: envelope.valueOrigin }));
+    }
     if (error && envelope.valueOrigin && MISSING_FUNCTION.has(error.code)) {
       ({ data, error } = await supabaseAdmin.rpc('apply_workout_set_event', args));
     }
@@ -122,7 +126,9 @@ function registerSessionRoutes(router, deps) {
       if (/event_id_reused/.test(error.message || '')) return res.status(409).json({ error: 'That event id belongs to another set' });
       throw error;
     }
-    return res.json({ ...data.set, event: { id: envelope.eventId, outcome: data.outcome, original_outcome: data.original_outcome || null, conflict_id: data.conflict_id || null } });
+    // change: this write's own Undo, as the database answers it now (null when
+    // the write changed nothing material, or on a database without v3).
+    return res.json({ ...data.set, event: { id: envelope.eventId, outcome: data.outcome, original_outcome: data.original_outcome || null, conflict_id: data.conflict_id || null, change: data.change || null } });
   }
 
   // Coach edit of UNFINISHED work: the log exercise prescription and the
