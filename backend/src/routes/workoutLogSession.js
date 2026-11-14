@@ -128,6 +128,8 @@ function registerSessionRoutes(router, deps) {
     }
     if (error) {
       if (/event_id_reused/.test(error.message || '')) return res.status(409).json({ error: 'That event id belongs to another set' });
+      // Look A client gate (20261114150000): retryable, so the queued write is kept.
+      if (error.code === 'P0409') return res.status(503).json({ error: 'This workout is changing right now. Try again.' });
       throw error;
     }
     // change: this write's own Undo, as the database answers it now (null when

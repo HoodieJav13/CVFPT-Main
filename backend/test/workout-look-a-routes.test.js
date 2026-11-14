@@ -204,3 +204,11 @@ test('database errors map to 409/503/404 without SQL details', async () => {
     assert.ok(!/relation|function public/.test(r.body.error), r.body.error);
   }
 });
+
+// LOOK-A-START-RACE-REVIEW.md: the client gate's retryable refusal is a 5xx
+// so the outbox keeps and retries the write instead of dropping it.
+test('the client gate refusal is retryable', () => {
+  const { lookAError } = require('../src/routes/workoutLookA');
+  assert.deepEqual(lookAError({ code: 'P0409', message: 'This workout is changing right now. Try again.' }),
+    { status: 503, error: 'This workout is changing right now. Try again.' });
+});

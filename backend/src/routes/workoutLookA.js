@@ -18,6 +18,8 @@ const FINISH_MODES = new Set(['finish', 'not_set_tracked']);
 function lookAError(error) {
   const message = error?.message || '';
   if (MISSING_FUNCTION.has(error?.code)) return { status: 503, error: 'This needs the latest database update.' };
+  // Retryable (20261114150000 client gate): a 5xx, so a queued write is kept and retried.
+  if (error?.code === 'P0409') return { status: 503, error: 'This workout is changing right now. Try again.' };
   if (/event_id_reused/.test(message)) return { status: 409, error: 'That change id was already used for a different change.' };
   if (/Workout (log|exercise|set) not found/.test(message)) return { status: 404, error: message };
   if (/Workout log is not active/.test(message)) return { status: 409, error: 'This workout is no longer active.' };

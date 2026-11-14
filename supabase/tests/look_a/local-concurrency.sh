@@ -505,6 +505,43 @@ race L15b la_l15b "$(done_on DONE "$LOG2" "$EX2" 151)" "" "$(v3 SET "$B31" 151 '
 cross_log L15b la_l15b 151
 check "L15b no set event written for the reused id" "$(cell la_l15b "select count(*) from public.workout_set_events where id = '$(E 151)'")" "0"
 check "L15b the refused set is unchanged" "$(cell la_l15b "select status from public.workout_log_sets where id = '$B31'")" "pending"
+
+# L16. Start/resume against a new material writer (LOOK-A-START-RACE-REVIEW.md).
+# Start takes the client FOR UPDATE, then the active workout. A material
+# writer that took the workout first and then needed the client (its ledger
+# row's client_id key) closed a cycle. Every Look A writer now takes client
+# KEY SHARE before the workout (20261114150000), so it waits for start first.
+AUTH="00000000-0000-4000-8000-0000000000f1"
+auth_client() {
+  q "$1" "insert into auth.users(id, email) values ('$AUTH', 'looka@example.invalid'); update public.clients set auth_user_id = '$AUTH' where id = '$CLIENT';" > /dev/null || die "auth setup failed in $1"
+}
+START="select 'START ' || (public.start_workout_log_with_cues('$CLIENT', null, null, '00000000-0000-4000-8000-00000000000b', 'client', null, null, '$AUTH') ->> 'outcome');"
+# The challenger's row lock on the workout, read by the holder: 0 means it is
+# waiting before it took the workout.
+loglock() { echo "select 'LOGLOCK ' || count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid where a.application_name = 'ch_$1' and l.relation = 'public.workout_logs'::regclass and l.mode = 'RowShareLock';"; }
+# Negative control: a writer that already holds the workout (the old lock
+# point) while start holds the client and waits for the workout: still a
+# cycle, so the order, not luck, is what removes it.
+fresh la_l16_neg; auth_client la_l16_neg
+race L16_neg la_l16_neg "select 1 from public.workout_logs where id = '$LOG' for no key update;" "$(done_ex DONE "$PRESS" 160)" "$START"
+check "L16_neg the workout-first order deadlocks" "$(cat "$HOUT" "$COUT" | grep -c 'deadlock detected')" "1"
+positive_start() {  # name db: start holds the client; the writer waits before the workout
+  check "$1 writer waited" "${HS%% *}" "BLOCKED"
+  check "$1 writer had not taken the workout" "$(grep '^LOGLOCK ' "$HOUT" | cut -d' ' -f2)" "0"
+  check "$1 start resumed" "$(grep -c '^START resumed$' "$HOUT")" "1"
+  check "$1 no deadlock" "$(cat "$HOUT" "$COUT" | grep -c 'deadlock detected')" "0"
+  no_errors "$1"
+}
+fresh la_l16; auth_client la_l16
+race L16 la_l16 "select 1 from public.clients where id = '$CLIENT' for update;" "$(loglock L16)
+$START" "$(done_ex DONE "$PRESS" 161)"
+positive_start L16 la_l16
+check "L16 Done applied after start" "$(grep -c '^DONE applied$' "$COUT")" "1"
+fresh la_l16b; auth_client la_l16b
+race L16b la_l16b "select 1 from public.clients where id = '$CLIENT' for update;" "$(loglock L16b)
+$START" "$(v3 SET "$B31" 162 '{"status":"completed","actual_reps":5}')"
+positive_start L16b la_l16b
+check "L16b set write applied after start" "$(grep -c '^SET applied$' "$COUT")" "1"
 else
   log "finish_workout_log_v3 absent: races not run"
 fi
