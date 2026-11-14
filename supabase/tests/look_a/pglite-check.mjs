@@ -31,7 +31,7 @@ try {
   for (const name of names) await db.exec(await readFile(path.join(migrations, name), 'utf8'));
   console.log(`chain applied: ${names.length} migrations, last ${names.at(-1)}`);
   const fixtures = (await readFile(path.join(here, '../pr120_repairs/fixtures.sql'), 'utf8')) + (await readFile(path.join(here, 'fixtures.sql'), 'utf8'));
-  for (const file of (await readdir(here)).filter((n) => /^0.*\.sql$/.test(n)).sort()) {
+  for (const file of (await readdir(here)).filter((n) => /^[0-9].*\.sql$/.test(n)).sort()) {
     try {
       await db.exec(`begin;${fixtures}${await readFile(path.join(here, file), 'utf8')}`);
       console.log(`PASS ${file}`);

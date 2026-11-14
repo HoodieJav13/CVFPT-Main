@@ -78,6 +78,8 @@ connstr() { printf 'host=%s port=%s user=postgres dbname=%s application_name=%s 
 sqlx() { local db="$1" app="$2"; shift 2; "$PGBIN/psql" "$(connstr "$db" "$app")" -X -q -At -v ON_ERROR_STOP=1 "$@"; }
 sql() { local db="$1"; shift; sqlx "$db" race_admin "$@"; }
 check() {
+  # An empty answer (a failed query) never passes.
+  if [ -z "$2" ]; then FAILS=$((FAILS + 1)); printf 'FAIL\t%s\tgot=(empty)\texpected=%s\n' "$1" "$3" | tee -a "$RESULTS"; return; fi
   if [ "$2" = "$3" ]; then PASSES=$((PASSES + 1)); printf 'PASS\t%s\t%s\n' "$1" "$2" | tee -a "$RESULTS"
   else FAILS=$((FAILS + 1)); printf 'FAIL\t%s\tgot=%s\texpected=%s\n' "$1" "$2" "$3" | tee -a "$RESULTS"; fi
 }
@@ -542,6 +544,160 @@ race L16b la_l16b "select 1 from public.clients where id = '$CLIENT' for update;
 $START" "$(v3 SET "$B31" 162 '{"status":"completed","actual_reps":5}')"
 positive_start L16b la_l16b
 check "L16b set write applied after start" "$(grep -c '^SET applied$' "$COUT")" "1"
+
+# L17. A coach-backup swap against a set write on the exercise it replaces
+# (LOOK-A-HANDOFF-REVIEW.md item 1). The page showed 4 - 2 = 2 sets; a set
+# completed first makes the server's count 1, so the swap is refused with the
+# new count and writes nothing. In the other order the swap is saved with 2
+# sets and the later set write ends its Undo. The replaced rows are only read.
+BACKUP="00000000-0000-4000-8000-0000000d0017"
+swap_setup() {
+  q "$1" "update public.workout_log_exercises set source_workout_exercise_id = '00000000-0000-4000-8000-000000000061' where id = '$SQUAT';
+insert into public.workout_exercise_backups(id, workout_exercise_id, backup_exercise_library_id, target_sets, created_by_coach_id)
+  values ('$BACKUP', '00000000-0000-4000-8000-000000000061', '00000000-0000-4000-8000-000000000052', 4, '$COACH');" > /dev/null || die "swap setup failed in $1"
+}
+swap() {  # label event expected-sets
+  local ids="" i
+  for i in $(seq 1 "$3"); do ids="$ids${ids:+,}'$(printf '00000000-0000-4000-8000-0000000f%02d%02d' "$2" "$i")'"; done
+  echo "select '$1 ' || coalesce(r->>'outcome','?') || '/' || coalesce(r->>'reason','-') || '/' || coalesce(r->>'sets','-') from (select public.create_workout_substitution_v3(jsonb_build_object('id', '$(E "$2")', 'workout_log_id', '$LOG', 'client_id', '$CLIENT', 'original_log_exercise_id', '$SQUAT', 'original_name', 'Fictional Squat', 'replacement_log_exercise_id', '$(printf '00000000-0000-4000-8000-0000000f%04d' "$2")', 'replacement_exercise_library_id', '00000000-0000-4000-8000-000000000052', 'replacement_name', 'Replacement', 'source', 'coach_backup', 'backup_id', '$BACKUP', 'trigger', 'other', 'targets', '{}'::jsonb, 'actor_role', 'client'), true, $3, array[$ids]::uuid[]) r) x;"
+}
+# The replaced exercise's set rows as one fingerprint, optionally without one
+# set. A failed query or an empty answer stops the run (never compares equal).
+squat_rows() {
+  local out
+  out="$(cell "$1" "select md5(string_agg(to_jsonb(s)::text, ',' order by s.id)) from public.workout_log_sets s where workout_log_exercise_id = '$SQUAT' and s.id is distinct from nullif('${2:-}', '')::uuid" 2>&1)" || die "squat_rows query failed in $1: $out"
+  [[ "$out" =~ ^[0-9a-f]{32}$ ]] || die "squat_rows gave no fingerprint in $1: $out"
+  echo "$out"
+}
+fresh la_l17; swap_setup la_l17
+race L17 la_l17 "$(v3 SET "$B3" 170 '{"status":"completed","actual_reps":5}')" "" "$(swap SWAP 71 2)"
+no_errors L17
+check "L17 swap waits for the set write" "${HS%% *}" "BLOCKED"
+check "L17 swap refused with the new count" "$(said "$COUT" 'SWAP refused/count_changed/1')" "1"
+check "L17 nothing swapped" "$(cell la_l17 "select count(*) from public.workout_log_substitutions where id = '$(E 71)'") / $(cell la_l17 "select count(*) from public.workout_log_exercises where id = '$(printf '00000000-0000-4000-8000-0000000f%04d' 71)'")" "0 / 0"
+check "L17 the set write kept" "$(cell la_l17 "select status from public.workout_log_sets where id = '$B3'")" "completed"
+L17ROWS="$(squat_rows la_l17)" || die "L17 rows"
+q la_l17 "$(swap REPLAY 71 2)" > "$RUNDIR/races/L17/replay.out"
+check "L17 the same swap replays its refusal" "$(said "$RUNDIR/races/L17/replay.out" 'REPLAY replayed/count_changed/1')" "1"
+q la_l17 "$(swap SWAP2 72 1)" > "$RUNDIR/races/L17/again.out"
+check "L17 swap with the new count applies" "$(said "$RUNDIR/races/L17/again.out" 'SWAP2 created/-/1')" "1"
+L17AFTER="$(squat_rows la_l17)" || die "L17 rows after"
+check "L17 replaced rows unchanged by the swap" "$L17AFTER" "$L17ROWS"
+fresh la_l17b; swap_setup la_l17b
+L17BROWS="$(squat_rows la_l17b "$B3")" || die "L17b rows"
+race L17b la_l17b "$(swap SWAP 73 2)" "" "$(v3 SET "$B3" 174 '{"status":"completed","actual_reps":5}')"
+no_errors L17b
+check "L17b set write waits for the swap" "${HS%% *}" "BLOCKED"
+check "L17b swap applied with 2 sets" "$(said "$HOUT" 'SWAP created/-/2')" "1"
+check "L17b set write applied after" "$(said "$COUT" 'SET applied')" "1"
+check "L17b replacement has the page's 2 sets" "$(cell la_l17b "select count(*) from public.workout_log_sets where workout_log_exercise_id = '$(printf '00000000-0000-4000-8000-0000000f%04d' 73)'")" "2"
+check "L17b the later set write ended the swap Undo" "$(cell la_l17b "select public.workout_current_undo('$LOG', 'client', null) ->> 'kind'")" "set"
+L17BAFTER="$(squat_rows la_l17b "$B3")" || die "L17b rows after"
+check "L17b swap only read the replaced rows" "$L17BAFTER" "$L17BROWS"
+
+# L18. An Add Set that passed its check against a swap Undo that archives the
+# replacement (LOOK-A-SWAP-RACE-REVIEW.md item 2). The set insert re-reads its
+# exercise under a row lock (20261114170000), so it waits for the Undo and is
+# refused. Negative control: with that check disabled the late set lands
+# under the archived replacement (it waits, then inserts). Reverse order: the
+# Undo waits for the insert and is then refused because the workout changed.
+REP18="$(printf '00000000-0000-4000-8000-0000000f%04d' 80)"
+swapped_now() {  # db: a saved coach-backup swap of 2 sets (event 80)
+  swap_setup "$1"
+  q "$1" "update public.workout_log_sets set status = 'pending' where workout_log_exercise_id = '$SQUAT'" > /dev/null
+  q "$1" "$(swap SETUP 80 4)" | grep -q '^SETUP created/-/4$' || die "swap setup failed in $1"
+}
+UNDO_SWAP="$(undo UNDO 80 81)"
+ADD_SET="insert into public.workout_log_sets(workout_log_exercise_id, set_number, set_origin, client_operation_id) values ('$REP18', 5, 'extra', gen_random_uuid());"
+live_sets() { cell "$1" "select count(*) from public.workout_log_sets s join public.workout_log_exercises e on e.id = s.workout_log_exercise_id where e.id = '$REP18' and not s.archived"; }
+fresh la_l18_neg; swapped_now la_l18_neg
+q la_l18_neg "alter table public.workout_log_sets disable trigger look_a_require_live_exercise" > /dev/null
+race L18_neg la_l18_neg "$UNDO_SWAP" "" "$ADD_SET"
+check "L18_neg Undo applied" "$(said "$HOUT" 'UNDO applied/-')" "1"
+check "L18_neg without the check the insert still waits (a lock alone only delays it)" "${HS%% *}" "BLOCKED"
+check "L18_neg without the check a live set lands under the archived replacement" "$(live_sets la_l18_neg)/$(cell la_l18_neg "select archived from public.workout_log_exercises where id = '$REP18'")" "1/t"
+fresh la_l18; swapped_now la_l18
+race L18 la_l18 "$UNDO_SWAP" "" "$ADD_SET"
+check "L18 holder exit" "$HRC" "0"
+check "L18 Undo applied" "$(said "$HOUT" 'UNDO applied/-')" "1"
+check "L18 the late insert waits for the Undo" "${HS%% *}" "BLOCKED"
+check "L18 the late insert is refused" "$(grep -c 'no longer in the workout' "$COUT")" "1"
+check "L18 no deadlock" "$(cat "$HOUT" "$COUT" | grep -c 'deadlock detected')" "0"
+check "L18 no live set under the archived replacement" "$(live_sets la_l18)" "0"
+check "L18 swap undone" "$(cell la_l18 "select status from public.workout_log_substitutions where id = '$(E 80)'")" "undone"
+fresh la_l18b; swapped_now la_l18b
+race L18b la_l18b "$ADD_SET" "" "$UNDO_SWAP"
+no_errors L18b
+check "L18b the Undo waits for the insert's workout write" "${HS%% *}" "BLOCKED"
+check "L18b then the Undo is refused: the workout changed" "$(grep -c '^UNDO refused/This workout changed since' "$COUT")" "1"
+check "L18b the added set kept, swap still active" "$(live_sets la_l18b)/$(cell la_l18b "select status from public.workout_log_substitutions where id = '$(E 80)'")" "5/active"
+q la_l18b "$(undo LATER 80 82)" > "$RUNDIR/races/L18b/later.out"
+check "L18b a later Undo is refused: the workout changed" "$(grep -c '^LATER refused/This workout changed' "$RUNDIR/races/L18b/later.out")" "1"
+
+# L19. An older create for ANOTHER workout with the same swap id as a Look A
+# swap (LOOK-A-SWAP-LEGACY-COLLISION.md). The older create holds its new row;
+# the Look A swap then runs for workout A. It must be refused as a reuse and
+# never add sets to, record an Undo for, or change workout B's swap.
+# L19 uses the fenced older create (it takes the shared event lock, so the
+# Look A swap waits before its check). L19_unfenced reinstalls the original
+# older create (no event lock) in its own database, so the Look A swap passes
+# its check, waits on the row insert and gets the helper's replay of B's row:
+# the result check alone must refuse it.
+REPB="00000000-0000-4000-8000-0000000f9002"; REPA="00000000-0000-4000-8000-0000000f9001"
+LEGACY_B="select 'LEGACY ' || (public.create_workout_substitution(jsonb_build_object('id', '$(E 90)', 'workout_log_id', '$LOG2', 'client_id', '$CLIENT2', 'original_log_exercise_id', '$EX2', 'original_name', 'Fictional Hinge', 'replacement_log_exercise_id', '$REPB', 'replacement_exercise_library_id', '00000000-0000-4000-8000-000000000052', 'replacement_name', 'Replacement', 'source', 'catalog_suggestion', 'trigger', 'equipment_busy', 'targets', '{\"sets\":2}'::jsonb, 'actor_role', 'client', 'create_target_sets', false), true) ->> 'outcome');"
+catalog_a() {  # label event replacement
+  echo "select '$1 ' || (public.create_workout_substitution_v3(jsonb_build_object('id', '$(E "$2")', 'workout_log_id', '$LOG', 'client_id', '$CLIENT', 'original_log_exercise_id', '$SQUAT', 'original_name', 'Fictional Squat', 'replacement_log_exercise_id', '$3', 'replacement_exercise_library_id', '00000000-0000-4000-8000-000000000052', 'replacement_name', 'Replacement', 'source', 'catalog_suggestion', 'trigger', 'other', 'targets', '{\"sets\":2}'::jsonb, 'actor_role', 'client'), true, 2, array['00000000-0000-4000-8000-0000000f9101', '00000000-0000-4000-8000-0000000f9102']::uuid[]) ->> 'outcome');"
+}
+collision() {  # name db
+  check "$1 holder (older create, workout B) created" "$(said "$HOUT" 'LEGACY created')" "1"
+  check "$1 holder exit" "$HRC" "0"
+  check "$1 the Look A swap is refused as a reuse" "$(grep -c 'event_id_reused' "$COUT")/$(grep -c 'ERROR' "$COUT")" "1/1"
+  check "$1 no deadlock, no other error" "$(cat "$HOUT" "$COUT" | grep -c 'deadlock detected')/$HERR" "0/0"
+  check "$1 workout B's swap unchanged" "$(cell "$2" "select workout_log_id || '/' || status || '/' || replacement_log_exercise_id from public.workout_log_substitutions where id = '$(E 90)'")" "$LOG2/active/$REPB"
+  check "$1 no set added under B's replacement" "$(cell "$2" "select count(*) from public.workout_log_sets where workout_log_exercise_id = '$REPB'")" "0"
+  check "$1 the page's set ids exist nowhere" "$(cell "$2" "select count(*) from public.workout_log_sets where id in ('00000000-0000-4000-8000-0000000f9101', '00000000-0000-4000-8000-0000000f9102')")" "0"
+  check "$1 no Undo recorded for the id" "$(cell "$2" "select count(*) from public.workout_material_changes where id = '$(E 90)'")" "0"
+  check "$1 workout A has no replacement" "$(cell "$2" "select count(*) from public.workout_log_exercises where id = '$REPA'")" "0"
+  q "$2" "$LEGACY_B" > "$RUNDIR/races/$1/legacy-replay.out"
+  check "$1 the older create still replays its own row" "$(said "$RUNDIR/races/$1/legacy-replay.out" 'LEGACY replayed')" "1"
+  q "$2" "$(catalog_a OWN 91 '00000000-0000-4000-8000-0000000f9003')" > "$RUNDIR/races/$1/own.out"
+  check "$1 a Look A swap with its own id still works" "$(said "$RUNDIR/races/$1/own.out" 'OWN created')" "1"
+}
+fresh la_l19; second_log la_l19
+race L19 la_l19 "$LEGACY_B" "" "$(catalog_a SWAP 90 "$REPA")"
+check "L19 the Look A swap waited for the event" "${HS%% *}" "BLOCKED"
+collision L19 la_l19
+fresh la_l19_unfenced; second_log la_l19_unfenced
+awk '/^create or replace function public.create_workout_substitution\(p_row jsonb, p_activate boolean\)/{on=1} on{print} on&&/^\$\$;/{exit}' "$MIG/20261023000000_session_conductor_events.sql" > "$RUNDIR/legacy-unfenced.sql"
+grep -q "pg_advisory_xact_lock" "$RUNDIR/legacy-unfenced.sql" && die "unfenced legacy body unexpectedly has the event lock"
+sql la_l19_unfenced -f "$RUNDIR/legacy-unfenced.sql" > /dev/null || die "cannot install the unfenced older create"
+check "L19_unfenced the older create has no event lock" "$(cell la_l19_unfenced "select (pg_get_functiondef('public.create_workout_substitution(jsonb,boolean)'::regprocedure) like '%advisory%')::text")" "false"
+race L19_unfenced la_l19_unfenced "$LEGACY_B" "" "$(catalog_a SWAP 90 "$REPA")"
+check "L19_unfenced the Look A swap waited on the row, past its check" "${HS%% *}" "BLOCKED"
+collision L19_unfenced la_l19_unfenced
+
+# L19_neg (negative control): the unfenced older create AND a Look A swap
+# with its result check removed (the draft before the collision review). The
+# same ordering then adds the page's sets under workout B's replacement and
+# records an Undo for workout A: the hazard the two fixes close.
+fresh la_l19_neg; second_log la_l19_neg
+sql la_l19_neg -f "$RUNDIR/legacy-unfenced.sql" > /dev/null || die "cannot install the unfenced older create (neg)"
+python3 - "$MIG/20261114170000_look_a_swap_count_undo.sql" "$RUNDIR/v3-unchecked.sql" <<'PY' || die "cannot build the unchecked swap"
+import sys
+src = open(sys.argv[1]).read()
+a = src.index('create function public.create_workout_substitution_v3(')
+b = src.index('$$;', a) + 3
+f = src[a:b].replace('create function', 'create or replace function', 1)
+start = f.index('  -- Only a row this call created is built on.')
+end = f.index('  if p_activate then\n    v_load')
+f = f[:start] + f[end:]
+assert 'Only a row this call created' not in f
+open(sys.argv[2], 'w').write(f)
+PY
+sql la_l19_neg -f "$RUNDIR/v3-unchecked.sql" > /dev/null || die "cannot install the unchecked swap"
+race L19_neg la_l19_neg "$LEGACY_B" "" "$(catalog_a SWAP 90 "$REPA")"
+check "L19_neg without both fixes the page's sets land under B's replacement" "$(cell la_l19_neg "select count(*) from public.workout_log_sets where workout_log_exercise_id = '$REPB'")" "2"
+check "L19_neg and an Undo is recorded under workout A for B's swap" "$(cell la_l19_neg "select workout_log_id from public.workout_material_changes where id = '$(E 90)'")" "$LOG"
 else
   log "finish_workout_log_v3 absent: races not run"
 fi

@@ -887,6 +887,9 @@ router.post('/:id/exercises/:exerciseId/sets', async (req, res) => {
       if (duplicateError) throw duplicateError;
       if (duplicate) return res.json(duplicate);
     }
+    // 20261114170000: the exercise left the workout (a swap was undone) after
+    // this request checked it.
+    if (error?.code === 'P0410') return res.status(409).json({ error: 'This exercise is no longer in the workout.' });
     if (error) throw error;
     return res.status(201).json(data);
   } catch (error) {

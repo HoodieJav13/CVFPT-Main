@@ -9,6 +9,7 @@ const {
   isUuid, setEventEnvelope, substitutionRequest, substitutionPolicy, rankSuggestions, triggerLabel, cleanText,
   backupTargets,
 } = require('../lib/sessionEvents');
+const { lookAError } = require('./workoutLookA');
 
 const isCoachRole = (user) => user?.role === 'coach' || user?.role === 'admin';
 
@@ -269,8 +270,121 @@ function registerSessionRoutes(router, deps) {
     }
   });
 
+  // Look A swap (20261114170000): sent with expected_sets (the set count the
+  // page showed) and, for a swap made now, set_ids (one per replacement set).
+  // The database fixes a coach backup's count, binds the swap id to this exact
+  // request, records it as the workout's one Undo, and answers every retry
+  // with the recorded result. Older queued payloads (no expected_sets) keep
+  // the unchanged path below.
+  function lookASwapFields(body) {
+    const expected = body.expected_sets;
+    if (expected !== null && !(Number.isInteger(expected) && expected >= 1 && expected <= 10)) throw new Error('A valid set count is required');
+    const ids = body.set_ids;
+    if (ids !== undefined && ids !== null && !(Array.isArray(ids) && ids.length <= 10 && ids.every(isUuid))) throw new Error('Valid set ids are required');
+    return { expectedSets: expected, setIds: Array.isArray(ids) ? ids.map((id) => id.toLowerCase()) : null };
+  }
+
+  async function currentUndoFor(logId, user) {
+    const stamp = actorStamp(user);
+    const { data, error } = await supabaseAdmin.rpc('workout_current_undo', {
+      p_log_id: logId, p_actor_role: stamp.entered_by, p_actor_coach_id: stamp.entered_by_coach_id,
+    });
+    if (error) { if (MISSING_FUNCTION.has(error.code)) return null; throw error; }
+    return data || null;
+  }
+
+  async function lookASwap(req, res, request) {
+    let fields;
+    try { fields = lookASwapFields(req.body); } catch (error) { return res.status(400).json({ error: error.message }); }
+    const actorRole = isCoachRole(req.user) ? 'coach' : 'client';
+    const policy = substitutionPolicy({ source: request.source, actorRole, offline: request.offline });
+    const clientTargets = request.targets;
+    const row = {
+      id: request.id, workout_log_id: req.params.id, original_log_exercise_id: req.params.exerciseId,
+      replacement_log_exercise_id: request.replacementLogExerciseId, replacement_exercise_library_id: request.exerciseLibraryId,
+      source: request.source, backup_id: request.backupId, trigger: request.trigger, reason: request.reason,
+      targets: clientTargets, client_targets: clientTargets, offline: request.offline, chosen_at: request.chosenAt,
+      actor_role: actorRole, actor_coach_id: actorRole === 'coach' ? req.user.coach.id : null, coach_review_status: policy.reviewStatus,
+    };
+    // A swap already recorded (applied or refused) replays through the
+    // database's request check, never by id alone.
+    const [{ data: priorSwap }, { data: priorChange }] = await Promise.all([
+      supabaseAdmin.from('workout_log_substitutions').select('id, workout_log_id').eq('id', request.id).maybeSingle(),
+      supabaseAdmin.from('workout_material_changes').select('id, workout_log_id').eq('id', request.id).maybeSingle(),
+    ]);
+    const prior = priorSwap || priorChange;
+    let log;
+    let original;
+    let library;
+    if (prior) {
+      log = await workoutLogWithDetails(req.params.id, { media: false });
+      if (!canReadLog(req.user, log) || prior.workout_log_id !== req.params.id) return res.status(404).json({ error: 'Workout log not found' });
+      original = log.exercises.find((exercise) => exercise.id === req.params.exerciseId);
+      if (!original) return res.status(404).json({ error: 'Workout exercise not found' });
+    } else {
+      log = await requireWritableActiveLog(req, res);
+      if (!log) return undefined;
+      original = originalExerciseOrFail(res, log, req.params.exerciseId);
+      if (!original) return undefined;
+      ({ data: library } = await supabaseAdmin.from('exercise_library')
+        .select('id, name, review_status, hidden, archived').eq('id', request.exerciseLibraryId).maybeSingle());
+      if (!library || library.archived || library.hidden || library.review_status !== 'approved') return res.status(422).json({ error: 'That exercise is not available as a substitute.' });
+      if (library.id === original.exercise_library_id) return res.status(422).json({ error: 'Choose a different exercise.' });
+      if (request.source === 'coach_backup') {
+        const { data: backup } = await supabaseAdmin.from('workout_exercise_backups')
+          .select('id, workout_exercise_id, backup_exercise_library_id, target_load_value, target_load_unit, target_load_max, target_per_side')
+          .eq('id', request.backupId).eq('archived', false).maybeSingle();
+        if (!backup || backup.workout_exercise_id !== original.source_workout_exercise_id || backup.backup_exercise_library_id !== library.id) {
+          return res.status(422).json({ error: 'That backup is not planned for this exercise.' });
+        }
+        row.targets = backupTargets(backup, clientTargets, req.body?.targets || {});
+      }
+    }
+    Object.assign(row, {
+      client_id: log.client_id, original_exercise_library_id: original.exercise_library_id, original_name: original.exercise_name,
+      replacement_name: library?.name || original.exercise_name,
+    });
+    const { data, error } = await supabaseAdmin.rpc('create_workout_substitution_v3', {
+      p_row: row, p_activate: policy.activate, p_expected_sets: fields.expectedSets, p_set_ids: policy.activate ? fields.setIds : null,
+    });
+    if (error) {
+      const mapped = lookAError(error);
+      if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+      if (/substitution_exists|duplicate key/i.test(error.message || '')) return res.status(409).json({ error: 'This exercise already has a swap in progress.' });
+      if (/cannot be changed/i.test(error.message || '')) return res.status(409).json({ error: 'Completed workouts cannot be changed' });
+      if (/set ids|expected sets|targets must be/i.test(error.message || '')) return res.status(400).json({ error: 'The swap does not match its sets. Reload and try again.' });
+      if (/Exercise not found/.test(error.message || '')) return res.status(404).json({ error: 'Workout exercise not found' });
+      throw error;
+    }
+    const refused = data.outcome === 'refused' || data.original_outcome === 'refused';
+    if (refused) {
+      return res.status(409).json({ error: data.message || 'This swap was not saved.', reason: data.reason, sets: data.sets ?? null, outcome: data.outcome });
+    }
+    const substitution = data.substitution;
+    if (policy.notice && data.outcome === 'created') {
+      const status = policy.notice === 'substitution_request' ? 'Waiting for your OK.'
+        : policy.notice === 'substitution_offline'
+          ? (request.source === 'coach_backup' ? 'Used your planned backup while offline.' : 'Chosen offline without your approval; review it.')
+          : 'Used your planned backup.';
+      await raiseCoachNotice({
+        log, kind: policy.notice, dedupeKey: `substitution:${substitution.id}`, refId: substitution.id,
+        summary: `${log.client?.name || 'Client'}: ${original.exercise_name} → ${row.replacement_name} (${triggerLabel(request.trigger)}). ${status}`,
+      });
+    }
+    return res.status(data.outcome === 'created' ? 201 : 200).json({
+      outcome: data.outcome, substitution, sets: data.sets ?? null,
+      change: { id: request.id, undoable: data.undoable === true },
+      log: await detailedLogResponse(log.id), undo: await currentUndoFor(log.id, req.user),
+    });
+  }
+
   router.post('/:id/exercises/:exerciseId/substitutions', async (req, res) => {
     try {
+      if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'expected_sets')) {
+        let lookARequest;
+        try { lookARequest = substitutionRequest(req.body); } catch (error) { return res.status(400).json({ error: error.message }); }
+        return await lookASwap(req, res, lookARequest);
+      }
       let request;
       try { request = substitutionRequest(req.body || {}); } catch (error) { return res.status(400).json({ error: error.message }); }
       const { data: replayed } = await supabaseAdmin.from('workout_log_substitutions').select('*').eq('id', request.id).maybeSingle();
@@ -351,7 +465,10 @@ function registerSessionRoutes(router, deps) {
       if (error) throw error;
       if (data.outcome === 'not_found') return res.status(404).json({ error: 'Swap not found' });
       if (data.outcome === 'replayed') return res.json({ outcome: 'replayed', substitution: data.substitution, log: await detailedLogResponse(log.id) });
-      if (data.outcome === 'already_decided') return res.status(409).json({ error: 'This swap was already decided.', substitution: data.substitution });
+      if (data.outcome === 'already_decided') {
+        const error = data.substitution?.status === 'undone' ? 'The client took this swap back.' : 'This swap was already decided.';
+        return res.status(409).json({ error, substitution: data.substitution });
+      }
       if (data.outcome === 'log_not_active') return res.status(409).json({ error: 'The workout is no longer active.' });
       return res.json({ outcome: body.decision, substitution: data.substitution, log: await detailedLogResponse(log.id) });
     } catch (error) {

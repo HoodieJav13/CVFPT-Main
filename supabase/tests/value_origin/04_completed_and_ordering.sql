@@ -12,7 +12,9 @@ begin
   where event_object_table = 'workout_log_sets' and trigger_name = 'set_value_origin_guard' limit 1;
   assert v is not null, 'guard trigger present';
   assert (select array_agg(tgname::text order by tgname) from pg_trigger where tgrelid = 'public.workout_log_sets'::regclass and not tgisinternal)
-    = array['check_workout_set_metrics', 'prevent_completed_workout_set_change', 'set_value_origin_guard'], 'trigger set and name order';
+    -- look_a_require_live_exercise (20261114170000) refuses a set under an
+    -- archived exercise; it sorts before the guard, which still fires last.
+    = array['check_workout_set_metrics', 'look_a_require_live_exercise', 'prevent_completed_workout_set_change', 'set_value_origin_guard'], 'trigger set and name order';
 
   failed := false;
   begin
