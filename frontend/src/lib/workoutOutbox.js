@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { ackedSetRow, isWriteBlocked, markRecheck, metricWriteAcknowledged, nextSendable, optimisticSetData, reconcileAddedSet, reconcileQueuedSet, replyRow, rewritePendingSetId } from '@/lib/workoutSync';
+import { ackedSetRow, deliveredBy, isWriteBlocked, markRecheck, metricWriteAcknowledged, nextSendable, optimisticSetData, reconcileAddedSet, reconcileQueuedSet, replyRow, rewritePendingSetId } from '@/lib/workoutSync';
 
 /**
  * Offline outbox for workout writes (docs/offline-workout-completion.md).
@@ -161,11 +161,6 @@ export function setEventEnvelope(log, operation, eventId, logId) {
     offline: typeof navigator !== 'undefined' && navigator.onLine === false,
     plan_revision_seen: Number.isInteger(exercise?.plan_revision) ? exercise.plan_revision : 0,
   };
-}
-
-// The server row's last write is exactly this queued set event.
-export function deliveredBy(row, operation) {
-  return operation?.kind === 'set' && Boolean(operation.data?.event_id) && row?.last_event_id === operation.data.event_id;
 }
 
 // A rebuilt set write refused because its event id is bound to the first

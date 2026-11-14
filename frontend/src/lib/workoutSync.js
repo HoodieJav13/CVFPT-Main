@@ -4,6 +4,14 @@ export function metricWriteAcknowledged(request, response = {}) {
   return ['actual_duration_value', 'actual_duration_unit', 'actual_distance_value', 'actual_distance_unit']
     .every((field) => !Object.hasOwn(request, field) || (Object.hasOwn(response, field) && response[field] === request[field]));
 }
+// The server row's last write is exactly this queued set event, and the row
+// holds the metrics it asked for (the same protection as a sent write:
+// an older backend can stamp the event id yet ignore duration/distance).
+// LOOK-A-INTEGRATION-REVIEW residual case 1; LOOK-A-OUTBOX-ACK-REVIEW.md.
+export function deliveredBy(row, operation) {
+  return operation?.kind === 'set' && Boolean(operation.data?.event_id) && row?.last_event_id === operation.data.event_id
+    && metricWriteAcknowledged(operation.data, row);
+}
 /**
  * Pure reconciliation rules for the workout outbox and tracker
  * (docs/offline-workout-completion.md). No app imports, so the rules are

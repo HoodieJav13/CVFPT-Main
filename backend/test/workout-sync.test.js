@@ -84,3 +84,20 @@ test('outbox and tracker wire the rules in', () => {
   // Preview responses are copies, like real HTTP bodies.
   assert.match(preview, /JSON\.parse\(JSON\.stringify\(data\)\)/);
 });
+
+// LOOK-A-OUTBOX-ACK-REVIEW.md: the duplicate-drain shortcut ("the server row
+// already names this event as its last write") keeps the same metric
+// acknowledgement protection as a sent write. An older backend can stamp the
+// event id yet ignore duration/distance; that write is not treated as saved.
+test('a queued write counts as already delivered only when its metrics were acknowledged too', async () => {
+  const { deliveredBy } = await sync();
+  const op = (data) => ({ kind: 'set', setId: 's2', data: { event_id: 'ev-b', ...data } });
+  const timed = { status: 'completed', actual_duration_value: 40, actual_duration_unit: 's' };
+  assert.equal(deliveredBy({ id: 's2', last_event_id: 'ev-b', actual_duration_value: 40, actual_duration_unit: 's' }, op(timed)), true);
+  assert.equal(deliveredBy({ id: 's2', last_event_id: 'ev-b' }, op(timed)), false, 'old backend ignored the metric columns');
+  assert.equal(deliveredBy({ id: 's2', last_event_id: 'ev-b', actual_duration_value: null, actual_duration_unit: null }, op(timed)), false, 'metric not stored');
+  assert.equal(deliveredBy({ id: 's2', last_event_id: 'ev-b', actual_duration_value: 45, actual_duration_unit: 's' }, op(timed)), false, 'mismatched metric');
+  assert.equal(deliveredBy({ id: 's2', last_event_id: 'ev-b', actual_reps: 9 }, op({ actual_reps: 9 })), true, 'no metric requested');
+  assert.equal(deliveredBy({ id: 's2', last_event_id: 'ev-other', actual_reps: 9 }, op({ actual_reps: 9 })), false, 'another write was last');
+  assert.equal(deliveredBy({ id: 's2', last_event_id: 'ev-b' }, { kind: 'note', data: { event_id: 'ev-b' } }), false);
+});
