@@ -39,6 +39,7 @@ import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseI
 import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
 import { demoForRow } from '@/lib/exerciseDemo';
 import { nextPosterTargets } from '@/lib/exerciseMedia';
+import { EXERCISE_UNDO_MS, exerciseQuickPlan, exerciseUndoPlan } from '@/lib/exerciseQuickComplete';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
 // database parses and backfills. The old runtime text parser is gone; text
@@ -278,6 +279,11 @@ export default function WorkoutTracker() {
   const [announcement, setAnnouncement] = useState('');
   const [detailsOpen, setDetailsOpen] = useState({});
   const [rpeOpen, setRpeOpen] = useState({});
+  // Exercise quick completion (final review 2026-11-12 #5): the one grouped
+  // Undo that is currently offered, and a synchronous double-activation gate.
+  const [exerciseUndo, setExerciseUndo] = useState(null);
+  const [undoNow, setUndoNow] = useState(() => Date.now());
+  const exerciseQuickGate = useRef(null);
   const landedRef = useRef(false);
   const outbox = useWorkoutOutbox(id, setLog, {
     onCompleteRejected: (message) => { completeRejection.current = message; },
@@ -315,6 +321,18 @@ export default function WorkoutTracker() {
       localStorage.removeItem(restStorageKey);
     }
   }, [restStorageKey]);
+
+  useEffect(() => {
+    if (!exerciseUndo) return undefined;
+    const tick = () => {
+      const now = Date.now();
+      setUndoNow(now);
+      if (now >= exerciseUndo.expiresMs) setExerciseUndo((current) => (current === exerciseUndo ? null : current));
+    };
+    tick();
+    const timer = window.setInterval(tick, 500);
+    return () => window.clearInterval(timer);
+  }, [exerciseUndo]);
 
   const load = useCallback(async () => {
     try {
@@ -581,6 +599,61 @@ export default function WorkoutTracker() {
     afterCompletion(exercise, set);
   };
 
+  // Record every remaining set of one exercise exactly as entered (blank sets
+  // stay blank, prefilled prescription is not copied), as one grouped action.
+  const quickCompleteExercise = (exercise) => {
+    if (exerciseQuickGate.current === exercise.id) return;
+    const plan = exerciseQuickPlan(exercise, { sealed, conflicts: log.conflicts });
+    if (!plan.available) {
+      if (plan.invalidSetId) setValidatedSets((current) => ({ ...current, [plan.invalidSetId]: true }));
+      if (plan.reason) toast.message(plan.reason);
+      return;
+    }
+    exerciseQuickGate.current = exercise.id;
+    window.setTimeout(() => { if (exerciseQuickGate.current === exercise.id) exerciseQuickGate.current = null; }, 800);
+    for (const entry of plan.entries) {
+      outbox.enqueue({
+        kind: 'set', exerciseId: exercise.id, setId: entry.setId,
+        method: 'patch', url: `/workout-logs/${id}/sets/${entry.setId}`,
+        data: entry.payload,
+      });
+      draftIds.current.delete(entry.setId);
+    }
+    const lastSet = plan.entries[plan.entries.length - 1];
+    const rest = restAfterSet(log.exercises, exercise.id, lastSet.setId);
+    if (rest.seconds > 0) startRest(rest.seconds);
+    else if (rest.clear) clearRest();
+    const done = new Map(plan.entries.map((entry) => [entry.setId, entry.payload]));
+    const updated = updateExercise(logRef.current || log, exercise.id, (row) => ({
+      ...row, sets: row.sets.map((item) => (done.has(item.id) ? { ...item, ...done.get(item.id) } : item)),
+    }));
+    const following = nextWork(updated.exercises);
+    if (following) setReveal({ ...following, nonce: Date.now() });
+    const summary = `${exercise.exercise_name}: ${plan.entries.length} ${plan.entries.length === 1 ? 'set' : 'sets'} recorded as entered (${plan.withDetails} with details, ${plan.without} without).`;
+    setAnnouncement(following ? summary : `${summary} All sets done. Finish the workout when ready.`);
+    setExerciseUndo({ exerciseId: exercise.id, exerciseName: exercise.exercise_name, entries: plan.entries, expiresMs: Date.now() + EXERCISE_UNDO_MS, summary });
+  };
+
+  const undoExerciseQuick = () => {
+    const record = exerciseUndo;
+    if (!record) return;
+    const exercise = (logRef.current || log).exercises.find((row) => row.id === record.exerciseId);
+    const plan = exerciseUndoPlan(record, exercise, { nowMs: Date.now(), sealed });
+    setExerciseUndo(null);
+    if (!plan.available) {
+      if (plan.reason) toast.message(plan.reason);
+      return;
+    }
+    for (const entry of plan.entries) {
+      outbox.enqueue({
+        kind: 'set', exerciseId: record.exerciseId, setId: entry.setId,
+        method: 'patch', url: `/workout-logs/${id}/sets/${entry.setId}`,
+        data: entry.payload,
+      });
+    }
+    setAnnouncement(`${record.exerciseName}: ${plan.entries.length} ${plan.entries.length === 1 ? 'set' : 'sets'} reopened.`);
+  };
+
   const jumpTo = (exerciseId) => {
     setOutlineOpen(false);
     const exercise = log.exercises.find((row) => row.id === exerciseId);
@@ -777,6 +850,16 @@ export default function WorkoutTracker() {
         className="signature-glass flex flex-col gap-2 rounded-2xl p-2.5"
         data-testid="workout-control-dock"
       >
+        {exerciseUndo && undoNow < exerciseUndo.expiresMs && (
+          // In the always-visible dock: the tracker moves on to the next
+          // exercise, so an Undo inside the finished card would be off screen.
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5" role="status" data-testid="exercise-quick-undo">
+            <span className="min-w-0 break-words text-sm">{exerciseUndo.exerciseName}: {exerciseUndo.entries.length} {exerciseUndo.entries.length === 1 ? 'set' : 'sets'} recorded as entered.</span>
+            <Button type="button" variant="outline" size="sm" className="h-auto min-h-11 whitespace-normal" disabled={sealed} onClick={undoExerciseQuick} data-testid="exercise-quick-undo-button">
+              Undo ({Math.max(1, Math.ceil((exerciseUndo.expiresMs - undoNow) / 1000))}s)
+            </Button>
+          </div>
+        )}
         <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} onAdjust={adjustRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
         <div className="flex items-center gap-2 px-1">
           <div
@@ -1057,6 +1140,22 @@ export default function WorkoutTracker() {
                   })()}
                 </div>
               ))}
+              {(() => {
+                if (exerciseUndo?.exerciseId === exercise.id && undoNow < exerciseUndo.expiresMs) return null;
+                const plan = exerciseQuickPlan(exercise, { sealed, conflicts: log.conflicts });
+                if (!plan.available) {
+                  return plan.reason ? <p className="text-xs text-muted-foreground" data-testid="exercise-quick-unavailable">{plan.reason}</p> : null;
+                }
+                return (
+                  <div className="space-y-1">
+                    <Button type="button" variant="secondary" className="h-auto min-h-11 w-full justify-start whitespace-normal py-2 text-left leading-snug"
+                      onClick={(event) => { if (event.detail > 1) return; quickCompleteExercise(exercise); }} data-testid="exercise-quick-complete">
+                      <Check className="mr-1.5 h-4 w-4 shrink-0" aria-hidden /> {plan.label}
+                    </Button>
+                    <p className="px-1 text-xs text-muted-foreground">Only what you entered is recorded; blank sets stay blank and the prescribed numbers are not filled in.</p>
+                  </div>
+                );
+              })()}
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={sealed} onClick={() => addSet(exercise)}>
                   <Plus className="mr-1.5 h-4 w-4" /> Add set
