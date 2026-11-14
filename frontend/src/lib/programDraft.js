@@ -87,13 +87,13 @@ function draftLoad(exercise) {
 function loadErrors(exercise, path) {
   const errors = [];
   const hasLoad = 'default_load_value' in exercise;
-  if (hasLoad && !(typeof exercise.default_load_value === 'number' && exercise.default_load_value >= 0 && exercise.default_load_value <= 2000)) {
+  if (hasLoad && !(Number.isFinite(exercise.default_load_value) && exercise.default_load_value >= 0)) {
     errors.push({ path: `${path}.default_load_value`, message: 'Enter the load as a number' });
   }
   if (hasLoad && !['lb', 'kg'].includes(exercise.default_load_unit)) errors.push({ path: `${path}.default_load_unit`, message: 'Load unit must be lb or kg' });
   if ('prescribed_load_max' in exercise) {
     const max = exercise.prescribed_load_max;
-    if (!(typeof max === 'number' && max >= 0 && max <= 2000)) errors.push({ path: `${path}.prescribed_load_max`, message: 'Enter the upper load as a number' });
+    if (!(Number.isFinite(max) && max >= 0)) errors.push({ path: `${path}.prescribed_load_max`, message: 'Enter the upper load as a number' });
     else if (!hasLoad || !(max >= exercise.default_load_value)) errors.push({ path: `${path}.prescribed_load_max`, message: 'The upper load must be higher than the load it starts from.' });
   }
   if ('per_side' in exercise && exercise.per_side !== true) errors.push({ path: `${path}.per_side`, message: 'Per side must be yes or no' });

@@ -80,3 +80,21 @@ test('the CSV template shows the load columns', () => {
   assert.match(header, /load_value,load_unit,load_max,per_side/);
   assert.match(press, /,30,lb,35,yes,/);
 });
+
+// Integration review 3: authoring/import parity with the general load bound.
+test('import keeps loads above 2000 and refuses negative or non-finite loads in both copies', async () => {
+  const fe = await frontend();
+  const program = (load, max) => ({ name: 'Fictional', frequency_days: 3, days: [1, 2, 3].map((n) => ({ day_number: n, workout: { name: `D${n}`, exercises: [
+    { custom_name: 'Sled Push', sets: '3', reps: '20m', default_load_value: load, default_load_unit: 'lb', prescribed_load_max: max, per_side: false, video_link_mode: null },
+  ] } })) });
+  const heavy = backend.draftFromProgram(program(2100, 2200));
+  assert.deepEqual(fe.draftFromProgram(program(2100, 2200)), heavy);
+  assert.equal(backend.validateDraft(heavy).valid, true);
+  assert.deepEqual(fe.validateDraft(heavy), backend.validateDraft(heavy));
+  for (const [load, max, path] of [[-5, null, 'default_load_value'], [Infinity, null, 'default_load_value'], [100, -1, 'prescribed_load_max'], [100, Infinity, 'prescribed_load_max']]) {
+    const draft = backend.draftFromProgram(program(load, max));
+    const b = backend.validateDraft(draft);
+    assert.deepEqual(fe.validateDraft(draft), b);
+    assert.ok(b.errors.some((e) => e.path === `days.0.exercises.0.${path}`), `${load}/${max}`);
+  }
+});

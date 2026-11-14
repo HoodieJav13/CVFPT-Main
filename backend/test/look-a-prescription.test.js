@@ -20,7 +20,7 @@ test('explicit null or empty clears the upper load; numbers and numeric strings 
 
 test('invalid upper loads and per side values are 400s', () => {
   for (const row of [
-    { prescribed_load_max: 'abc' }, { prescribed_load_max: -1 }, { prescribed_load_max: 5000 }, { prescribed_load_max: '1e3' },
+    { prescribed_load_max: 'abc' }, { prescribed_load_max: -1 }, { prescribed_load_max: Infinity }, { prescribed_load_max: NaN }, { prescribed_load_max: '1e3' },
     { default_load_value: 180, prescribed_load_max: 170 }, { default_load_value: null, prescribed_load_max: 170 },
     { per_side: 'yes' }, { per_side: 1 }, { per_side: null },
   ]) {
@@ -40,4 +40,11 @@ test('the client tracker receives the two facts', () => {
   assert.equal(safe.prescribed_load_max, 180);
   assert.equal(safe.per_side, true);
   assert.equal(safe.coach_notes, undefined);
+});
+
+// Integration review 3: general authored loads keep the established bound
+// (finite, zero or more). The 2000 cap belongs to substitution targets only.
+test('an authored upper load above 2000 is kept', () => {
+  const [row] = normalizeLookAPrescription([{ default_load_value: 2100, prescribed_load_max: '2200' }]);
+  assert.equal(row.prescribed_load_max, 2200);
 });

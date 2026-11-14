@@ -98,6 +98,28 @@ function normalizeTargets(input = {}) {
   return out;
 }
 
+// Look A, integration review 4: a coach backup swap keeps the backup's saved
+// replacement facts. `normalized` is normalizeTargets(raw); `saved` is the
+// backup row. Only what the client could not express is recovered: an older
+// client omitted the upper load and per side, and always labelled the load
+// "lb" (no screen ever let anyone choose the unit for a backup). An explicit
+// key in the request always wins, an adjusted load is a single number (the
+// saved range is not stretched over it), and nothing is invented for a
+// backup that saved no load.
+function backupTargets(saved, normalized, raw = {}) {
+  const out = { ...normalized };
+  const has = (key) => Object.prototype.hasOwnProperty.call(raw || {}, key);
+  const savedLoad = saved?.target_load_value == null ? null : Number(saved.target_load_value);
+  const savedUnit = saved?.target_load_unit || null;
+  if (out.load_value !== undefined && savedLoad !== null && savedUnit) out.load_unit = savedUnit;
+  if (!has('load_max') && saved?.target_load_max != null && out.load_value !== undefined
+      && out.load_value === savedLoad && out.load_unit === savedUnit && Number(saved.target_load_max) > savedLoad) {
+    out.load_max = Number(saved.target_load_max);
+  }
+  if (!has('per_side') && saved?.target_per_side === true) out.per_side = true;
+  return out;
+}
+
 function substitutionRequest(body = {}) {
   if (!isUuid(body.id)) throw invalid('A valid substitution id is required');
   if (!isUuid(body.replacement_log_exercise_id)) throw invalid('A valid replacement id is required');
@@ -171,6 +193,7 @@ function triggerLabel(trigger) {
 }
 
 module.exports = {
+  backupTargets,
   UUID_RE, TRIGGERS, isUuid, setEventEnvelope, normalizeTargets, substitutionRequest, substitutionPolicy,
   rankSuggestions, equipmentItems, triggerLabel, cleanText,
 };

@@ -468,6 +468,43 @@ q la_l13_neg "$(undo SETUP 900 910)" | grep -q '^SETUP applied' || die "L13_neg 
 race L13_neg la_l13_neg "select 1 from public.workout_log_exercises where id = '$PRESS' for share;" \
   "select status from public.workout_logs where id = '$LOG' for share;" "$(finish FIN 911 finish)"
 check "L13_neg a waiting read deadlocks" "$(cat "$HOUT" "$COUT" | grep -c 'deadlock detected')" "1"
+
+# L14-L15. Integration review 2: one new event id used at once on two
+# different workouts. Every Look A writer takes the shared event lock first,
+# so the second caller waits, then sees the first change and is refused with
+# event_id_reused (a 409) instead of a duplicate-key error (a 500).
+LOG2="00000000-0000-4000-8000-0000000000a2"; CLIENT2="00000000-0000-4000-8000-000000000015"
+EX2="00000000-0000-4000-8000-0000000a0101"; SET2="00000000-0000-4000-8000-0000000b0101"
+second_log() {
+  q "$1" "insert into public.clients(id, coach_id, name, email) values ('$CLIENT2', '$COACH', 'Fictional Look A Client Two', 'looka2@example.invalid');
+insert into public.workout_assignments(id, client_id, workout_id) values ('00000000-0000-4000-8000-00000000000d', '$CLIENT2', '00000000-0000-4000-8000-000000000005');
+insert into public.workout_logs(id, client_id, coach_id, source_workout_id, workout_assignment_id, workout_name, status, started_at) values ('$LOG2', '$CLIENT2', '$COACH', '00000000-0000-4000-8000-000000000005', '00000000-0000-4000-8000-00000000000d', 'Fictional Lower B', 'active', now());
+insert into public.workout_log_exercises(id, workout_log_id, exercise_library_id, exercise_name, position, tracking_type, prescribed_load_value, prescribed_load_unit) values ('$EX2', '$LOG2', '00000000-0000-4000-8000-000000000051', 'Fictional Hinge', 0, 'reps_weight', 100, 'lb');
+insert into public.workout_log_sets(id, workout_log_exercise_id, set_number, status, actual_load_value, actual_load_unit) values ('$SET2', '$EX2', 1, 'pending', 100, 'lb');" > /dev/null || die "second workout setup failed in $1"
+}
+done_on() { echo "select '$1 ' || coalesce(r->>'outcome','?') from (select public.mark_workout_exercise_not_set_tracked('$2', '$3', '$(E "$4")', 'client', null) r) x;"; }
+cross_log() {  # name: the challenger is refused as a reuse, never a duplicate key
+  check "$1 challenger waited for the event" "${HS%% *}" "BLOCKED"
+  check "$1 holder applied" "$(grep -c ' applied$' "$HOUT")" "1"
+  check "$1 challenger refused as reuse" "$(grep -c 'event_id_reused' "$COUT")" "1"
+  check "$1 no duplicate key" "$(cat "$HOUT" "$COUT" | grep -c 'duplicate key')" "0"
+  check "$1 one change recorded for the id" "$(cell "$2" "select count(*) from public.workout_material_changes where id = '$(E "$3")'")" "1"
+}
+fresh la_l14; second_log la_l14
+race L14 la_l14 "$(done_on DONE "$LOG" "$PRESS" 140)" "" "$(done_on DONE "$LOG2" "$EX2" 140)"
+cross_log L14 la_l14 140
+fresh la_l14b; second_log la_l14b
+race L14b la_l14b "$(v3 SET "$B31" 145 '{"status":"completed","actual_reps":5}')" "" "$(v3 SET "$SET2" 145 '{"status":"completed","actual_reps":5}')"
+cross_log L14b la_l14b 145
+check "L14b one set event for the id" "$(cell la_l14b "select count(*) from public.workout_set_events where id = '$(E 145)'")" "1"
+fresh la_l15; second_log la_l15
+race L15 la_l15 "$(v3 SET "$B31" 150 '{"status":"completed","actual_reps":5}')" "" "$(done_on DONE "$LOG2" "$EX2" 150)"
+cross_log L15 la_l15 150
+fresh la_l15b; second_log la_l15b
+race L15b la_l15b "$(done_on DONE "$LOG2" "$EX2" 151)" "" "$(v3 SET "$B31" 151 '{"status":"completed","actual_reps":5}')"
+cross_log L15b la_l15b 151
+check "L15b no set event written for the reused id" "$(cell la_l15b "select count(*) from public.workout_set_events where id = '$(E 151)'")" "0"
+check "L15b the refused set is unchanged" "$(cell la_l15b "select status from public.workout_log_sets where id = '$B31'")" "pending"
 else
   log "finish_workout_log_v3 absent: races not run"
 fi

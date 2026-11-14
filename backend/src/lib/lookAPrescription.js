@@ -4,7 +4,8 @@
 // 400; the database re-checks every writer (look_a_load_range). A key that is
 // absent is left absent so the database keeps the stored value; an explicit
 // null or "" clears the upper load.
-const MAX_LOAD = 2000;
+// General authored loads are finite and zero or more (the established
+// bound); the 2000 cap applies only to substitution targets (sessionEvents).
 
 function invalid(message) {
   return Object.assign(new Error(message), { status: 400 });
@@ -25,7 +26,7 @@ function normalizeLookAPrescription(rows) {
         out.prescribed_load_max = null;
       } else {
         const value = typeof raw === 'number' ? raw : (typeof raw === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(raw) ? Number(raw) : NaN);
-        if (!Number.isFinite(value) || value < 0 || value > MAX_LOAD) throw invalid('Enter the upper load as a number');
+        if (!Number.isFinite(value) || value < 0) throw invalid('Enter the upper load as a number');
         const lowerRaw = row.default_load_value;
         const lower = lowerRaw === null || lowerRaw === undefined || lowerRaw === '' ? null : Number(lowerRaw);
         if ('default_load_value' in row && (lower === null || !(value >= lower))) {

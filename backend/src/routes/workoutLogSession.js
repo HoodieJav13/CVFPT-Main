@@ -7,6 +7,7 @@ const { logError } = require('../utils/logger');
 const { requireCoach, requireClient } = require('../middleware/auth');
 const {
   isUuid, setEventEnvelope, substitutionRequest, substitutionPolicy, rankSuggestions, triggerLabel, cleanText,
+  backupTargets,
 } = require('../lib/sessionEvents');
 
 const isCoachRole = (user) => user?.role === 'coach' || user?.role === 'admin';
@@ -285,11 +286,14 @@ function registerSessionRoutes(router, deps) {
       if (!library || library.archived || library.hidden || library.review_status !== 'approved') return res.status(422).json({ error: 'That exercise is not available as a substitute.' });
       if (library.id === original.exercise_library_id) return res.status(422).json({ error: 'Choose a different exercise.' });
       if (request.source === 'coach_backup') {
-        const { data: backup } = await supabaseAdmin.from('workout_exercise_backups').select('id, workout_exercise_id, backup_exercise_library_id')
+        const { data: backup } = await supabaseAdmin.from('workout_exercise_backups')
+          .select('id, workout_exercise_id, backup_exercise_library_id, target_load_value, target_load_unit, target_load_max, target_per_side')
           .eq('id', request.backupId).eq('archived', false).maybeSingle();
         if (!backup || backup.workout_exercise_id !== original.source_workout_exercise_id || backup.backup_exercise_library_id !== library.id) {
           return res.status(422).json({ error: 'That backup is not planned for this exercise.' });
         }
+        // Look A: keep the backup's saved range, per side and unit (review 4).
+        request.targets = backupTargets(backup, request.targets, req.body?.targets || {});
       }
       const actorRole = isCoachRole(req.user) ? 'coach' : 'client';
       const policy = substitutionPolicy({ source: request.source, actorRole, offline: request.offline });
