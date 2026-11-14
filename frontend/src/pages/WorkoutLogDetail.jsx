@@ -18,7 +18,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { MOTION_EASINGS, WORKOUT_COMPLETION_MOTION, msToSeconds } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { useNotifications } from '@/context/NotificationsContext';
-import { hasQueuedCompleteFor, useWorkoutOutbox } from '@/lib/workoutOutbox';
+import { hasParkedFor, hasQueuedCompleteFor, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
 import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
@@ -81,6 +81,9 @@ export default function WorkoutLogDetail() {
     isClient && location.state?.completedWorkoutId === id ? id : null
   ));
   const [waitingToSync, setWaitingToSync] = useState(() => hasQueuedCompleteFor(id));
+  // A queued set write is parked for the person's choice (F6): waiting for a
+  // connection cannot resolve it; only the tracker can.
+  const [needsChoice, setNeedsChoice] = useState(() => hasParkedFor(id));
   const [syncError, setSyncError] = useState(null);
   const [previousByExercise, setPreviousByExercise] = useState({});
   // Today's guide for an exercise, opened on demand (never preloaded here).
@@ -104,6 +107,7 @@ export default function WorkoutLogDetail() {
       setSyncError(message);
       if (freshLog) setLog(freshLog);
     },
+    onParked: () => setNeedsChoice(true),
   });
   const queueStillWaiting = waitingToSync && outbox.queuedComplete;
   const celebrateCompletion = isClient && completionSignalId === id;
@@ -184,12 +188,20 @@ export default function WorkoutLogDetail() {
       { replace: true, state: null },
     );
   }, [id, isClient, location.hash, location.pathname, location.search, location.state, navigate]);
-  const waitingBanner = queueStillWaiting && (
+  const waitingBanner = queueStillWaiting && (needsChoice ? (
+    <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
+      <span className="flex items-start gap-2"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
+        Finished on this phone, but a set was also changed on another device and needs your choice before this workout can sync. Your results are safe.</span>
+      <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0" onClick={() => navigate(`${isClient ? '/client' : '/coach'}/workouts/${id}/track`)}>
+        Back to tracking
+      </Button>
+    </div>
+  ) : (
     <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
       <Clock3 className="h-4 w-4 shrink-0 text-gold" />
       Finished on this phone — syncing when a connection returns. Your results are safe.
     </div>
-  );
+  ));
   if (!log && loadError) return <div>{waitingBanner}<LoadErrorState message={loadError} scope="workout-detail" onRetry={load} /></div>;
   if (!log) return <div>{waitingBanner}<LoadingScreen /></div>;
 

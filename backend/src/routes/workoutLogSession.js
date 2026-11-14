@@ -1,6 +1,7 @@
 // pt-session-events/v1 routes on the workout-log router (L12 conductor +
 // PT-Sub; L12/CONTRACT.md). Registered by routes/workoutLogs.js, which passes
 // its own access helpers so authorization stays exactly the log router's.
+const { randomUUID } = require('node:crypto');
 const { supabaseAdmin } = require('../supabase');
 const { logError } = require('../utils/logger');
 const { requireCoach, requireClient } = require('../middleware/auth');
@@ -45,6 +46,11 @@ async function sessionExtras(log) {
     server_time: new Date().toISOString(),
   };
 }
+
+// Error codes for a database that does not have the value-origin migration
+// yet (no apply_workout_set_event_v2 / no value_origin columns).
+const MISSING_FUNCTION = new Set(['PGRST202', '42883']);
+const MISSING_COLUMN = new Set(['42703', 'PGRST204']);
 
 async function raiseCoachNotice({ log, kind, dedupeKey, refId, summary }) {
   const coachId = log.client?.coach_id;
@@ -92,7 +98,7 @@ function registerSessionRoutes(router, deps) {
       throw error;
     }
     const stamp = actorStamp(req.user);
-    const { data, error } = await supabaseAdmin.rpc('apply_workout_set_event', {
+    const args = {
       p_set_id: set.id,
       p_event_id: envelope.eventId,
       p_actor_role: stamp.entered_by,
@@ -102,7 +108,16 @@ function registerSessionRoutes(router, deps) {
       p_offline: envelope.offline,
       p_plan_revision_seen: envelope.planRevisionSeen,
       p_payload: payload,
-    });
+    };
+    // A declared origin uses v2. A database without v2 (not yet migrated) gets
+    // the same event through the unchanged v1 RPC, without the declaration:
+    // the set's meaning is then unknown to new clients, never assumed.
+    let { data, error } = envelope.valueOrigin
+      ? await supabaseAdmin.rpc('apply_workout_set_event_v2', { ...args, p_value_origin: envelope.valueOrigin })
+      : await supabaseAdmin.rpc('apply_workout_set_event', args);
+    if (error && envelope.valueOrigin && MISSING_FUNCTION.has(error.code)) {
+      ({ data, error } = await supabaseAdmin.rpc('apply_workout_set_event', args));
+    }
     if (error) {
       if (/event_id_reused/.test(error.message || '')) return res.status(409).json({ error: 'That event id belongs to another set' });
       throw error;
@@ -136,9 +151,20 @@ function registerSessionRoutes(router, deps) {
       if (error) throw error;
       if (!updated) return res.status(409).json({ error: 'The plan changed since you opened it. Review the current plan and try again.', current: exercise });
       if (Object.hasOwn(patch, 'prescribed_load_value')) {
-        const { error: setError } = await supabaseAdmin.from('workout_log_sets')
-          .update({ actual_load_value: patch.prescribed_load_value, actual_load_unit: patch.prescribed_load_unit, updated_at: new Date().toISOString() })
-          .eq('workout_log_exercise_id', exercise.id).eq('status', 'pending').eq('revision', 0).eq('archived', false);
+        // Untouched sets only: restored prefill, or legacy rows nobody has
+        // written since the start. They stay prefill under a fresh nonce (the
+        // database guard makes any undeclared value write unknown). A database
+        // without the origin columns keeps the original revision-0 rule.
+        const defaults = { actual_load_value: patch.prescribed_load_value, actual_load_unit: patch.prescribed_load_unit, updated_at: new Date().toISOString() };
+        let { error: setError } = await supabaseAdmin.from('workout_log_sets')
+          .update({ ...defaults, value_origin: 'prefill', value_origin_nonce: randomUUID() })
+          .eq('workout_log_exercise_id', exercise.id).eq('status', 'pending').eq('archived', false)
+          .or('value_origin.eq.prefill,and(value_origin.eq.legacy,revision.eq.0,last_actor_role.is.null)');
+        if (setError && MISSING_COLUMN.has(setError.code)) {
+          ({ error: setError } = await supabaseAdmin.from('workout_log_sets')
+            .update(defaults)
+            .eq('workout_log_exercise_id', exercise.id).eq('status', 'pending').eq('revision', 0).eq('archived', false));
+        }
         if (setError) throw setError;
       }
       return res.json(await detailedLogResponse(log.id));

@@ -42,8 +42,18 @@ const sameNumber = (a, b) => (blank(a) && blank(b)) || (!blank(a) && !blank(b) &
 // True when the set still holds only the untouched prescribed prefill: no
 // performed values typed or saved, and the load still equals the coach's
 // prescribed load. Anything else is the user's own entry and is never
-// replaced silently.
+// replaced silently. A set annotated by the tracker with what its values mean
+// (value_view, see exerciseQuickComplete.annotateValueViews: server value
+// origin plus this device's markers) follows that annotation instead, so an
+// untouched prefill restored by Undo on any device, even after the
+// prescription changed, is still untouched, and an unproven load is not.
 export function isUntouchedPrefill(exercise, set) {
+  if (set.value_view) return set.value_view === 'untouched';
+  return prescribedPrefillOnly(exercise, set);
+}
+
+/** The original revision rule: revision 0, nothing performed, load = prescription. */
+export function prescribedPrefillOnly(exercise, set) {
   if (Number.isInteger(set.revision) && set.revision > 0) return false;
   if (!blank(set.actual_reps) || !blank(set.actual_rpe)) return false;
   for (const metric of ['duration', 'distance']) if (!blank(set[`actual_${metric}_value`])) return false;
