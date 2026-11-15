@@ -568,7 +568,8 @@ test('client workout completion creates a coach notification with immutable resu
   await squat.getByRole('button', { name: 'Remove extra set' }).click();
   await expect(squat.getByRole('button', { name: 'Remove extra set' })).toHaveCount(0);
   await expect(page.getByTestId('workout-save-state')).toContainText('Not saved yet');
-  await expect(page.getByRole('button', { name: 'Complete all remaining' })).toBeDisabled();
+  // Look A: the tracker offers no bulk set completion at all.
+  await expect(page.getByRole('button', { name: 'Complete all remaining' })).toHaveCount(0);
   // Offline completion (docs/offline-workout-completion.md, PR #16): finishing
   // is now allowed offline — the completion queues behind pending writes.
   await expect(page.getByRole('button', { name: 'Finish workout' })).toBeEnabled();

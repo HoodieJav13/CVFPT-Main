@@ -556,3 +556,28 @@ for (const how of ['refresh', 'reload']) {
     expect(results.errors).toEqual([]);
   });
 }
+
+// LOOK-A-BULK-UI-REVIEW: the new tracker offers no bulk set completion. Done
+// stays a flag, Finish is the guarded /finish, Undo still works, and nothing
+// ever reaches the legacy /complete-all (kept on the server for old clients).
+test('no bulk "Complete all remaining": Done, Undo and Finish work and /complete-all is never sent', async ({ page }) => {
+  const { server, results } = await setup(page);
+  await expect(page.getByRole('button', { name: /Complete all remaining/i })).toHaveCount(0);
+  const before = rows(server, 'b');
+  await card(page, 'Goblet Squat').getByTestId('exercise-quick-complete').click();
+  await settled(page, LOG);
+  expect(flag(server, 'b')).toBe(true);
+  await undoButton(page).click();
+  await settled(page, LOG);
+  expect(flag(server, 'b')).toBe(false);
+  await card(page, 'Goblet Squat').getByTestId('exercise-quick-complete').click();
+  await settled(page, LOG);
+  expect(rows(server, 'b')).toEqual(before);
+  await page.getByRole('button', { name: 'Finish workout', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm completion', exact: true }).click();
+  await expect.poll(() => sent(server, /\/finish$/).length).toBe(1);
+  expect(sent(server, /\/complete-all$/)).toEqual([]);
+  expect(sent(server, /\/complete$/)).toEqual([]);
+  expect(rows(server, 'b')).toEqual(before);
+  expect(results.errors).toEqual([]);
+});

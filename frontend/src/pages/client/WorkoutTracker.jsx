@@ -1227,17 +1227,6 @@ export default function WorkoutTracker() {
     toast.success(`Filled ${filledCount} set${filledCount === 1 ? '' : 's'} from ${new Date(occurrence.completed_at).toLocaleDateString()}`);
   };
 
-  const completeAll = async () => {
-    if (!outbox.online || outbox.saveState !== 'saved') return;
-    try {
-      const { data } = await api.post(`/workout-logs/${id}/complete-all`);
-      setLog(data);
-      toast.success('Remaining sets completed');
-    } catch (error) {
-      toast.error(errMsg(error));
-    }
-  };
-
   // The first set that must be settled before Finish can sync (F6): a choice
   // to make, or a write still checking for newer saved values after a replay.
   const finishBlocker = () => {
@@ -1369,9 +1358,7 @@ export default function WorkoutTracker() {
           <span className="text-xs tabular-nums text-muted-foreground">{completedCount}/{allSets.length}</span>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2" disabled={sealed || !remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
-            Complete all remaining
-          </Button>
+          {/* Look A: no "Complete all remaining" here. Sets are logged one by one, Done is a flag and Finish is the guarded /finish; /complete-all stays on the server for older clients only. */}
           <Button className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2 font-display text-[0.9375rem] font-semibold uppercase tracking-[0.05em] sm:text-base" disabled={sealed || !(completedCount || log.exercises.some((exercise) => exercise.not_set_tracked))} onClick={() => setFinishOpen(true)}>
             Finish workout
           </Button>
