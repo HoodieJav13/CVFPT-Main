@@ -429,7 +429,9 @@ test('shared dialogs, selects, and dropdowns use fade-only reduced motion', asyn
   expect(dialogMotion.transform).not.toBe('none');
   await page.keyboard.press('Escape');
 
-  await page.getByTestId('mobile-header-actions').getByTestId('user-menu-trigger').click();
+  // The tracker has no app header (its copy stays hidden); the account menu is
+  // in the tracker's own Workout options.
+  await page.getByTestId('workout-options').getByTestId('user-menu-trigger').click();
   const menu = page.getByRole('menu');
   await expect(menu).toBeVisible();
   await expect.poll(async () => reducedFade(menu)).toMatchObject({

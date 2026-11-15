@@ -20,6 +20,7 @@
 // copy. Fictional data only. This proves UI behaviour and the writes the page
 // sends, not server authorization or database rules (those are covered by
 // supabase/tests/value_origin and backend/test/set-value-origin-mounted).
+import { appendFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 
 const LOG = 'xd-log';
@@ -235,11 +236,34 @@ const completeSet = (page, n) => page.getByRole('button', { name: `Complete set 
 const undoButton = (page) => page.getByTestId('workout-undo-button');
 
 // Family 1: set 3 recorded on its own (the prefilled 50 lb), then the one Undo.
+// An empty queue key alone is not proof that the inverse happened (the queue
+// reaches storage asynchronously, after a lock): wait for the matching set
+// write and the matching Undo replies, registered before each click, and check
+// the Undo names that write's change and was applied (or replays an applied
+// one). The request/outcome order is recorded for the evidence.
+const reply = (page, method, pattern) => page.waitForResponse((res) => res.request().method() === method && pattern.test(new URL(res.url()).pathname));
 async function setThenUndo(page) {
+  const chronology = [];
+  const patched = reply(page, 'PATCH', new RegExp(`/workout-logs/${LOG}/sets/a-s3$`));
   await completeSet(page, 3).click();
+  const patch = await patched;
+  const written = await patch.json();
+  const changeId = written.event?.change?.id;
+  chronology.push({ request: 'PATCH a-s3', status: patch.status(), outcome: written.event?.outcome, change: changeId });
+  expect(written.event?.outcome).toBe('applied');
+  expect(changeId).toBeTruthy();
   await settle(page);
   await expect(undoButton(page)).toHaveAccessibleName(/Undo set 3 of Incline Press/);
+  const undone = reply(page, 'POST', new RegExp(`/workout-logs/${LOG}/undo$`));
   await undoButton(page).click();
+  const undo = await undone;
+  const sent = undo.request().postDataJSON();
+  const answer = await undo.json();
+  chronology.push({ request: 'POST undo', status: undo.status(), change: sent.change_id, outcome: answer.result?.outcome, original: answer.result?.original_outcome ?? null });
+  await test.info().attach('undo-chronology', { body: JSON.stringify(chronology, null, 2), contentType: 'application/json' });
+  if (process.env.LOOK_A_CHRONOLOGY) appendFileSync(process.env.LOOK_A_CHRONOLOGY, `${JSON.stringify({ test: test.info().title, chronology })}\n`);
+  expect(sent.change_id).toBe(changeId);
+  expect(answer.result?.outcome === 'replayed' ? answer.result.original_outcome : answer.result?.outcome).toBe('applied');
   await settle(page);
 }
 // Today's plan from set 2 logged as 8 × 50 lb: which set would it log next?

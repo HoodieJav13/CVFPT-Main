@@ -14,6 +14,7 @@ test('typed outbox survives reload and an ambiguous add response, then completes
   let addAttempts = 0;
   let ignoreMetricWrites = true; // old API on migrated DB returns 200 but ignores metrics
   let failLogReads = false;
+  let finishes = null;
   await page.addInitScript(() => {
     localStorage.setItem('cvf_access_token', 'synthetic-test-token');
     Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => localStorage.getItem('synthetic_offline') !== 'yes' });
@@ -45,6 +46,18 @@ test('typed outbox survives reload and an ambiguous add response, then completes
       if (!set) { unexpected.push(path); return route.fulfill({ status: 404, body: '{}' }); }
       Object.assign(set, ignoreMetricWrites ? Object.fromEntries(Object.entries(body).filter(([key]) => !key.startsWith('actual_duration_') && !key.startsWith('actual_distance_'))) : body);
       writes.push(`set:${set.id}`); return json(set);
+    }
+    // Look A reads the one Undo on load; this fixture's set replies carry no change envelope: null.
+    if (path === '/workout-logs/log-1/undo' && method === 'GET') return json({ undo: null });
+    // Look A Finish: applied once per event id (a resend replays), same checks as /complete.
+    if (path === '/workout-logs/log-1/finish' && method === 'POST') {
+      finishes = finishes || new Set();
+      if (finishes.has(body.event_id)) { writes.push('complete-replayed'); return json({ result: { outcome: 'replayed', original_outcome: 'applied' }, log, undo: null }); }
+      expect(log.exercises[0].sets.every((row) => row.status === 'completed')).toBe(true);
+      expect(log.exercises[0].sets[1].actual_distance_value).toBe(2.25);
+      finishes.add(body.event_id);
+      writes.push('complete'); Object.assign(log, { status: 'completed', completed_at: new Date().toISOString() });
+      return json({ result: { outcome: 'applied' }, log, undo: null });
     }
     if (path === '/workout-logs/log-1/complete') {
       expect(log.exercises[0].sets.every((row) => row.status === 'completed')).toBe(true);

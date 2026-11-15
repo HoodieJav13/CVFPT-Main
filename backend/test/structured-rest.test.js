@@ -11,6 +11,7 @@ const migration = fs.readFileSync(
 const tracker = fs.readFileSync(path.join(root, 'frontend', 'src', 'pages', 'client', 'WorkoutTracker.jsx'), 'utf8');
 const restLib = fs.readFileSync(path.join(root, 'frontend', 'src', 'lib', 'rest.js'), 'utf8');
 const supersetsLib = fs.readFileSync(path.join(root, 'frontend', 'src', 'lib', 'supersets.js'), 'utf8');
+const guideLib = fs.readFileSync(path.join(root, 'frontend', 'src', 'lib', 'workoutGuide.js'), 'utf8');
 const builder = fs.readFileSync(path.join(root, 'frontend', 'src', 'pages', 'coach', 'Programs.jsx'), 'utf8');
 
 test('structured rest schema: parser, columns, range checks, service-role only', () => {
@@ -49,8 +50,12 @@ test('fill triggers keep every writer consistent, explicit values winning', () =
 
 test('tracker reads the structured column and never parses rest text', () => {
   // The timer duration comes from restAfterSet, which reads only the
-  // structured column (round-aware for supersets).
-  assert.match(tracker, /restAfterSet\(log\.exercises, exercise\.id, set\.id\)/);
+  // structured column (round-aware for supersets). Look A passes the guided
+  // exercises (a swapped original's work is its replacement's); guidedExercises
+  // only leaves rows out and never rewrites them, so rest stays structured.
+  assert.match(tracker, /restAfterSet\(guidedExercises\(log\), exercise\.id, set\.id\)/);
+  assert.match(guideLib, /return swapped\.size \? exercises\.filter\(\(row\) => !swapped\.has\(row\.id\)\) : exercises;/);
+  assert.doesNotMatch(guideLib, /rest_seconds|prescribed_rest\b/);
   assert.match(supersetsLib, /Number\(exercise\.prescribed_rest_seconds\) \|\| 0/);
   assert.doesNotMatch(supersetsLib, /prescribed_rest\b(?!_seconds)/);
   assert.doesNotMatch(tracker, /function parseRest\b/);

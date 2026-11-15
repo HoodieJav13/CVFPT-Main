@@ -154,6 +154,21 @@ test('keyboard focus in a short viewport stays clear of fixed navigation',async(
  await page.setViewportSize({width:320,height:320});await tracker(page);await page.getByTestId('workout-scroll-region').focus();
  for(let step=0;step<22;step++) {
   await page.keyboard.press('Tab');
-  await expect.poll(()=>page.evaluate(()=>{const e=document.activeElement,r=e.getBoundingClientRect();return r.top>=65&&r.bottom<=255&&e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})).toBe(true);
+  // Look A's tracker has no app header or bottom navigation (the old 65..255
+  // band). The clear area is the visual viewport minus whatever is actually
+  // pinned there now (fixed/sticky header, outline row, control dock, nav) that
+  // does not contain the focused control: the control is whole inside it and
+  // is what a tap at its centre hits.
+  await expect.poll(()=>page.evaluate(()=>{
+   const e=document.activeElement,r=e.getBoundingClientRect(),vv=window.visualViewport;
+   let top=Math.max(0,vv?vv.offsetTop:0),bottom=Math.min(innerHeight,vv?vv.offsetTop+vv.height:innerHeight);
+   const pinnedOf=(el)=>{for(let n=el;n&&n!==document.body;n=n.parentElement){const p=getComputedStyle(n).position;if(p==='fixed'||p==='sticky')return n;}return null;};
+   const candidates=[...document.querySelectorAll('[data-testid="workout-control-dock"],[data-testid="workout-outline-row"],[data-testid="workout-header"],header,nav')];
+   for(const c of new Set(candidates.map(pinnedOf).filter(Boolean))){
+    if(c.contains(e))continue;const b=c.getBoundingClientRect();if(b.height<=0||b.bottom<=top||b.top>=bottom)continue;
+    if(b.top+b.height/2<(top+bottom)/2)top=Math.max(top,b.bottom);else bottom=Math.min(bottom,b.top);
+   }
+   return r.height>0&&r.top>=top-1&&r.bottom<=bottom+1&&e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));
+  })).toBe(true);
  }
 });
