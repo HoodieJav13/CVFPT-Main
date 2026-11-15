@@ -1,4 +1,5 @@
 import RescuePreviewEntry from '@/components/training/RescuePreviewEntry';
+import { prescribedLoadText } from '@/lib/lookA';
 import { ProgramHistoryButton } from '@/components/training/ProgramHistory';
 import { exerciseSummary } from '@/lib/builderMetrics';
 import { ExerciseRemovalNotice, useExerciseRemoval } from '@/components/training/ExerciseRemoval';
@@ -1630,6 +1631,15 @@ function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, relo
                               <Input value={exercise.rest} onChange={(e) => setExercise(dayIndex, exerciseIndex, { rest: e.target.value })} placeholder="Rest" data-testid="program-import-exercise-rest-input" />
                               <Input value={exercise.tempo} onChange={(e) => setExercise(dayIndex, exerciseIndex, { tempo: e.target.value })} placeholder="Tempo" data-testid="program-import-exercise-tempo-input" />
                             </div>
+                            {/* Read-only: the authored load this import commits (prescription, not performed data). */}
+                            <p className="text-xs text-muted-foreground" data-testid="program-import-exercise-load-line">
+                              Prescribed load: <span className="tabular-nums text-foreground">{prescribedLoadText({
+                                prescribed_load_value: exercise.default_load_value ?? null,
+                                prescribed_load_unit: exercise.default_load_unit,
+                                prescribed_load_max: exercise.prescribed_load_max ?? null,
+                                per_side: exercise.per_side === true,
+                              }) ?? '—'}</span>
+                            </p>
                             <div className="grid gap-2 sm:grid-cols-2">
                               <Input value={exercise.client_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { client_notes: e.target.value })} placeholder="Client notes" data-testid="program-import-exercise-client-notes-input" />
                               <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" data-testid="program-import-exercise-coach-notes-input" />

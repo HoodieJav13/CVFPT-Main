@@ -3,6 +3,7 @@
 // only the history occurrence the button already uses; never changes fill rules.
 import { fmtDate } from './format.js';
 import { trackingType, tracks } from './workoutMetrics.js';
+import { lastTimeSet } from './lookA.js';
 
 // The fill's own choice: the most recent occurrence (history is newest first)
 // with the same tracking type. The line and the fill must never disagree.
@@ -22,6 +23,13 @@ export function lastTimeSetText(set, occurrence) {
   return ['duration', 'distance'].filter((metric) => tracks(occurrence, metric))
     .map((metric) => shown(set[`actual_${metric}_value`], set[`actual_${metric}_unit`] ? ` ${set[`actual_${metric}_unit`]}` : ''))
     .join(' · ');
+}
+
+// x_last_time, the same set number only (lookA.lastTimeSet): "Last time,
+// set 2: 170 lb × 4", or an em dash when that set was not done then.
+export function lastTimeSetLine(occurrence, setNumber) {
+  const prior = lastTimeSet(occurrence, setNumber);
+  return `Last time, set ${setNumber}: ${prior ? lastTimeSetText(prior, occurrence) : '—'}`;
 }
 
 export function lastTimeDate(occurrence) {

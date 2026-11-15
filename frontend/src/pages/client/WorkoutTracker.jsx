@@ -29,7 +29,7 @@ import { MISSING_BACKUP_SETS, swapRequestTargets } from '@/lib/swapTargets';
 import { draftCollisionsIn, freshnessLabel, lastTimeFills, mergeRefresh, noteDraftEdit, reconcileQueuedSet, resolveQueuedChoice } from '@/lib/workoutSync';
 import { SetConflictNotice, SwapStatus, canSwap } from '@/components/training/SessionCorrections';
 import SwapExerciseDialog, { readCachedSwapOptions, swapOptionsCacheKey } from '@/components/training/SwapExerciseDialog';
-import { lastTimeDate, lastTimeFillNote, lastTimeLine, pickLastTimeOccurrence } from '@/lib/lastTime';
+import { lastTimeDate, lastTimeFillNote, lastTimeLine, lastTimeSetLine, pickLastTimeOccurrence } from '@/lib/lastTime';
 import { trackProductEvent } from '@/lib/telemetry';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 import { exerciseMarkers, nextExercise, restAfterSet, supersetBlocks, supersetRestSeconds } from '@/lib/supersets';
@@ -1634,6 +1634,9 @@ export default function WorkoutTracker() {
                         <Button type="button" size="sm" variant="outline" className="min-h-11" disabled={(sealed && choice.kind !== 'queued') || checking} onClick={() => takeSaved(exercise, set)} data-testid="set-choice-saved">Use saved</Button>
                       </div>
                     </div>
+                  )}
+                  {lastTimeCache.current[exercise.id] && (
+                    <p className="col-span-full px-1 text-xs tabular-nums text-muted-foreground" data-testid="set-last-time">{lastTimeSetLine(lastTimeCache.current[exercise.id], set.set_number)}</p>
                   )}
                   {checking && (
                     <p role="status" className="col-span-full flex items-start gap-2 text-xs text-muted-foreground" data-testid="set-checking">

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  filledSetsLabel, lastTimeFillNote, lastTimeLine, lastTimeSetText, pickLastTimeOccurrence,
+  filledSetsLabel, lastTimeFillNote, lastTimeLine, lastTimeSetLine, lastTimeSetText, pickLastTimeOccurrence,
 } from '../../src/lib/lastTime.js';
 import { lastTimeFills } from '../../src/lib/workoutSync.js';
 
@@ -58,4 +58,15 @@ test('the fill note names the filled sets as ranges and the source date', () => 
   assert.equal(filledSetsLabel([1, 2, 4]), 'sets 1, 2, 4');
   assert.equal(filledSetsLabel([1, 2, 3, 5, 6, 7]), 'sets 1–3, 5–7');
   assert.equal(lastTimeFillNote([1, 2, 3], occurrence), 'Filled sets 1–3 from Sep 14, 2026. Typed values kept.');
+});
+
+test('x_last_time: each set shows only the same set number from last time, unit kept', () => {
+  const occurrence = { tracking_type: 'reps_weight', completed_at: '2026-11-07T15:00:00.000Z', sets: [
+    { set_number: 1, actual_load_value: 170, actual_load_unit: 'lb', actual_reps: 4 },
+    { set_number: 3, actual_load_value: 75, actual_load_unit: 'kg', actual_reps: 6 },
+  ] };
+  assert.equal(lastTimeSetLine(occurrence, 1), 'Last time, set 1: 170 lb × 4');
+  assert.equal(lastTimeSetLine(occurrence, 2), 'Last time, set 2: —');
+  assert.equal(lastTimeSetLine(occurrence, 3), 'Last time, set 3: 75 kg × 6');
+  assert.equal(lastTimeSetLine(null, 1), 'Last time, set 1: —');
 });

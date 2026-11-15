@@ -116,6 +116,8 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
   await expect(page.getByTestId('program-import-exercise-sets-input').nth(4)).toHaveValue('2');
   await expect(page.getByTestId('program-import-exercise-reps-input').nth(4)).toHaveValue('7');
   await expect(page.getByTestId('program-import-exercise-client-notes-input').nth(4)).toHaveValue('to true failure');
+  // Read-only prescription line: nothing authored in this paste, so a blank (em dash), never an invented load.
+  await expect(page.getByTestId('program-import-exercise-load-line').nth(4)).toHaveText('Prescribed load: —');
   await page.getByTestId('program-import-paste-textarea').fill(`${FLAT_PASTE}\nEdited after parsing`);
   await expect(page.getByTestId('program-import-review')).toHaveCount(0);
   await page.getByTestId('program-import-paste-textarea').fill(FLAT_PASTE);
