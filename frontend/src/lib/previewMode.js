@@ -955,6 +955,16 @@ function previewLogAssignmentKind(log) {
   return assignment ? (assignment.kind === 'quick' ? 'quick' : 'assigned') : null;
 }
 
+// One coach notification per recipient per completed workout (never repeated by a re-finish).
+function notifyWorkoutCompleted(log) {
+  const recipients = new Set([clientById(log.client_id)?.coach_id, ...state.coaches.filter((coach) => coach.is_admin && !coach.archived).map((coach) => coach.id)]);
+  recipients.forEach((recipientCoachId) => {
+    if (!recipientCoachId || state.notifications.some((row) => row.recipient_coach_id === recipientCoachId && row.workout_log_id === log.id && row.event_type === 'workout_completed')) return;
+    const createdAt = new Date().toISOString();
+    state.notifications.unshift({ id: id('notification'), recipient_coach_id: recipientCoachId, event_type: 'workout_completed', workout_log_id: log.id, read_at: null, archived: false, created_at: createdAt, updated_at: createdAt });
+  });
+}
+
 // ---------- Look A one-step Undo (preview mirror, fictional, memory only) ----------
 // Same rules the page relies on (supabase 20261114 migrations): an event id is
 // the change id and replays its first answer; Undo inverts only the newest
@@ -977,8 +987,10 @@ function lookARecord(logId, changeId, kind, inverse, result = {}, outcome = 'app
   if (outcome === 'applied') ledger.order.set(logId, [...(ledger.order.get(logId) || []), changeId]);
   return change;
 }
+const EMPTY_LEDGER = { byId: new Map(), order: new Map() };
+// Reads never create the ledger (a GET must not change fixture state).
 function lookACurrent(logId) {
-  const ledger = lookALedger();
+  const ledger = state.lookAChanges || EMPTY_LEDGER;
   const changeId = (ledger.order.get(logId) || []).at(-1);
   const change = changeId && ledger.byId.get(changeId);
   if (!change || change.undone || !change.inverse || change.after !== lookAMaterial(logId)) return null;
@@ -1939,8 +1951,14 @@ export async function installPreviewApi(api) {
         lookARecord(log.id, payload.event_id, 'finish', null, {}, 'refused', 'complete_at_least_one_set');
         return Promise.reject({ response: { data: { error: 'Complete at least one set', result: { outcome: 'refused', reason: 'complete_at_least_one_set' } }, status: 400, statusText: 'Bad Request', headers: {}, config }, config });
       }
+      // Same rule as the SQL: mode 'finish' skips the pending sets of exercises
+      // not marked done; 'not_set_tracked' writes no set at all.
+      const flagged = new Set(state.workoutLogExercises.filter((row) => row.workout_log_id === log.id && row.not_set_tracked).map((row) => row.id));
+      const skipped = payload.mode === 'finish' ? sets.filter((set) => set.status === 'pending' && !flagged.has(set.workout_log_exercise_id)) : [];
+      skipped.forEach((set) => { set.status = 'skipped'; set.revision = (set.revision || 0) + 1; set.updated_at = new Date().toISOString(); });
       Object.assign(log, { status: 'completed', not_set_tracked: payload.mode === 'not_set_tracked', notes: String(payload.notes || '') || null, feedback: String(payload.feedback || '') || null, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-      lookARecord(log.id, payload.event_id, 'finish', { finish: true }, {});
+      notifyWorkoutCompleted(log);
+      lookARecord(log.id, payload.event_id, 'finish', { finish: true, skipped: skipped.map((set) => set.id) }, {});
       emitChange();
       return lookAReply(log.id, { outcome: 'applied' });
     }
@@ -1981,12 +1999,7 @@ export async function installPreviewApi(api) {
       if (!sets.some((set) => set.status === 'completed')) return fail(config, 400, 'Complete at least one set');
       sets.filter((set) => set.status === 'pending').forEach((set) => { set.status = 'skipped'; set.updated_at = new Date().toISOString(); });
       Object.assign(log, { status: 'completed', notes: String(payload.notes || '') || null, feedback: String(payload.feedback || '') || null, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-      const recipients = new Set([clientById(log.client_id)?.coach_id, ...state.coaches.filter((coach) => coach.is_admin && !coach.archived).map((coach) => coach.id)]);
-      recipients.forEach((recipientCoachId) => {
-        if (!recipientCoachId || state.notifications.some((row) => row.recipient_coach_id === recipientCoachId && row.workout_log_id === log.id && row.event_type === 'workout_completed')) return;
-        const createdAt = new Date().toISOString();
-        state.notifications.unshift({ id: id('notification'), recipient_coach_id: recipientCoachId, event_type: 'workout_completed', workout_log_id: log.id, read_at: null, archived: false, created_at: createdAt, updated_at: createdAt });
-      });
+      notifyWorkoutCompleted(log);
       emitChange();
       return ok(workoutLogDetails(log.id), config);
     }
