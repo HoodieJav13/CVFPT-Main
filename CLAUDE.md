@@ -146,6 +146,12 @@ of unreleased features and UI on Vercel preview links, design QA, and the
 
 ## Status (updated as of this session)
 
+- CVF PT Look A (2026-11-15): **local branch `claude/pt-look-a-20261114` only; not pushed, merged, applied or deployed.**
+  - Exercise Done sets one `not_set_tracked` flag and never writes a set; one revision-checked server Undo (`workout_material_changes`, `GET/POST /workout-logs/:id/undo`) stays in the dock until the next material change. Finish is `/finish` (modes `finish`, `not_set_tracked`); the tracker no longer offers `/complete-all` (the backend route stays for older clients).
+  - Tracker leads with a Focus panel: same-set Last/Today, the coach's range large, one truthful Log (entered values, else the guarded same-as-set-N repeat, else "Enter set N"). The per-set editor stays below as secondary.
+  - Coach queue: Needs a look / Missed (existing `low_adherence` reason) / On track (never derived; shown as not measured).
+  - Seven `x_` mappings: `docs/look-a/MAPPING.md`. New local migrations `20261114120000`–`20261114150000` are **unapplied** on both hosted databases.
+  - Receipts: `LOOK-A-BUILD-RECEIPT.txt`, `LOOK-A-PROGRESS.txt`.
 - PT Development acceptance setup (2026-10-28): owner-approved draft PR #125 publishes the isolated combined candidate; only Development received the four canonical PT migrations and passed the53-entry/22-function/five-table catalog verification. Production and main merge remain excluded. CI exposed missing cue-context reads in two existing metric/outbox mock fixtures; the scoped follow-up supplies empty contexts for those exact paths without changing application code or migration bytes. Actual synthetic sessions/fixture acceptance still wait for immutable target checks and hidden owner entry. Preserve deployment/build/history artifacts; remove only newly owned branch-setting rows during approved cleanup.
 
 - PT preparation reconciliation (2026-10-28): isolated candidate285126a retains feature runtime/SQL bytes while incorporating main e52e32c dependency-audit/docs/lint changes. Local preparation only; no push, CI trigger, hosted apply, auth session or deployment. Finite next-stage targets, fixture ceilings, retention and separate authority are in `docs/pt-integration/DEVELOPMENT-ACCEPTANCE.md`. Owner-run two-account auth preflight passed on diagnostic989f850; it does not complete combined feature acceptance or provide reusable credentials.
