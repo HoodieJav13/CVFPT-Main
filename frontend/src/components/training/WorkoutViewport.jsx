@@ -104,7 +104,10 @@ export function WorkoutViewport({ children, controls, header = null, headerStick
         </div>
       )}
       <div ref={entries} data-testid="workout-scroll-region" role="region" aria-label="Workout entries" tabIndex={0}
-        className={height === null ? 'min-h-0' : 'min-h-0 flex-1 overflow-y-auto'}>
+        // relative: screen-reader-only (absolute) helpers deep in the list stay
+        // inside the region instead of stretching the page, which let a tap
+        // scroll the whole page under the pinned dock.
+        className={height === null ? 'min-h-0' : 'relative min-h-0 flex-1 overflow-y-auto'}>
         {children}
       </div>
       <div ref={footer} className="shrink-0">{controls}</div>

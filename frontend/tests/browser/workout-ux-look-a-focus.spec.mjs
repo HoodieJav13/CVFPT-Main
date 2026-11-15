@@ -101,3 +101,112 @@ test('"I did something different" moves to the set editor without writing', asyn
   expect(setWrites(server).slice(before)).toEqual([]);
   expect(results.errors).toEqual([]);
 });
+
+// Look A visual round 1: "Change this set" keeps the adjustment inline. The
+// focused set's own editor opens inside the Focus panel, between Last/Today and
+// Log, and leaves the list (one editor per set); Log then records exactly the
+// entered values once, and the editor closes as the next set takes focus.
+test('"I did something different" opens the set editor inline with Last/Today and Log; Log writes the entered values once', async ({ page }) => {
+  const { server, results } = await setup(page, [DONE_1, row(2), row(3)]);
+  await page.getByTestId('focus-adjust').click();
+  const editor = panel(page).getByTestId('focus-editor');
+  await expect(editor).toBeVisible();
+  await expect(editor.locator('[data-set-id="a-s2"]')).toHaveCount(1);
+  await expect(page.locator('[data-set-id="a-s2"]')).toHaveCount(1);
+  await expect(panel(page).getByTestId('focus-rows')).toBeVisible();
+  await expect(panel(page).getByTestId('focus-adjust')).toHaveCount(0);
+  await expect(editor.getByRole('button', { name: 'Complete set 2', exact: true })).toHaveCount(0);
+  const reps = editor.locator('input[aria-label="Back Squat set 2 performed reps"]');
+  await expect(editor.locator('input').first()).toBeFocused();
+  // Editor open with only the prefilled load: Log names exactly that (reps
+  // blank, said so) and never falls back to repeating set 1.
+  await expect(panel(page).getByTestId('focus-log')).toHaveAttribute('data-kind', 'log');
+  await expect(panel(page).getByTestId('focus-log')).toContainText(/reps not recorded/i);
+  await expect(panel(page).getByTestId('focus-log')).not.toContainText('Same as set 1');
+  await reps.fill('5');
+  const log = panel(page).getByTestId('focus-log');
+  await expect(log).toHaveAttribute('data-kind', 'log');
+  const before = setWrites(server).length;
+  await log.click();
+  await settled(page, LOG);
+  const writes = setWrites(server).slice(before);
+  expect(writes.filter((write) => write.body.status === 'completed')).toHaveLength(1);
+  expect(writes.at(-1).path).toMatch(/\/sets\/a-s2$/);
+  expect(writes.at(-1).body).toMatchObject({ status: 'completed', actual_load_value: 170, actual_reps: 5 });
+  await expect(panel(page)).toHaveAttribute('data-focus-set', 'a-s3');
+  await expect(page.getByTestId('focus-editor')).toHaveCount(0);
+  expect(results.errors).toEqual([]);
+});
+
+test('Enter set opens the same inline editor and writes nothing by itself', async ({ page }) => {
+  const { server, results } = await setup(page, [row(1), row(2), row(3)]);
+  const before = setWrites(server).length;
+  await page.getByTestId('focus-log').click();
+  await expect(panel(page).getByTestId('focus-editor').locator('input').first()).toBeFocused();
+  await page.waitForTimeout(300);
+  expect(setWrites(server).slice(before)).toEqual([]);
+  expect(results.errors).toEqual([]);
+});
+
+// Inline-editor review: a partial entry keeps its explicit, guarded Log. With
+// no set to repeat, enter only a load (reps blank): Log records exactly that
+// through the set write, reps stay null (nothing filled in from the coach's
+// numbers), and the one Undo takes back just that completion.
+test('load-only entry in the inline editor: explicit Log keeps reps null, then one Undo reverts the completion', async ({ page }) => {
+  const { server, results } = await setup(page, [row(1), row(2), row(3)]);
+  await page.getByTestId('focus-log').click();
+  const editor = panel(page).getByTestId('focus-editor');
+  const weight = editor.locator('input[aria-label="Back Squat set 1 weight"]');
+  await expect(weight).toBeFocused();
+  await weight.fill('175');
+  const log = panel(page).getByTestId('focus-log');
+  await expect(log).toHaveAttribute('data-kind', 'log');
+  await expect(log).toContainText('175 lb');
+  await expect(log).toContainText(/reps not recorded/i);
+  const before = setWrites(server).length;
+  await log.click();
+  await settled(page, LOG);
+  const completions = setWrites(server).slice(before).filter((write) => write.body.status === 'completed');
+  expect(completions).toHaveLength(1);
+  expect(completions[0].path).toMatch(/\/sets\/a-s1$/);
+  expect(completions[0].body).toMatchObject({ status: 'completed', actual_load_value: 175, actual_load_unit: 'lb', actual_reps: null });
+  expect(server.find('a-s1')).toMatchObject({ status: 'completed', actual_load_value: 175, actual_reps: null, actual_rpe: null });
+  const undo = page.getByTestId('workout-undo-button');
+  await expect(undo).toBeEnabled();
+  await undo.click();
+  await settled(page, LOG);
+  expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_reps: null });
+  await expect(panel(page)).toHaveAttribute('data-focus-set', 'a-s1');
+  await expect(page.locator('[data-testid="workout-undo-button"]:not([disabled])')).toHaveCount(0);
+  expect(results.errors).toEqual([]);
+});
+
+// Inline-editor review follow-up: RPE alone (load and reps blank) is a valid
+// partial log. Log names it, records only it (no load or reps invented), and
+// the one Undo takes the completion back.
+test('RPE-only entry in the inline editor: explicit Log records RPE with load and reps null, then one Undo reverts it', async ({ page }) => {
+  const blank = (n) => row(n, { actual_load_value: null, value_origin: 'unknown', prefill_load_value: null, prefill_load_unit: null });
+  const { server, results } = await setup(page, [blank(1), blank(2), blank(3)]);
+  await page.getByTestId('rpe-toggle').click();
+  await page.getByTestId('focus-log').click();
+  const editor = panel(page).getByTestId('focus-editor');
+  await expect(editor.locator('input').first()).toBeFocused();
+  const log = panel(page).getByTestId('focus-log');
+  await expect(log).toHaveAttribute('data-kind', 'enter');
+  await editor.locator('input[aria-label="Back Squat set 1 performed RPE"]').fill('8');
+  await expect(log).toHaveAttribute('data-kind', 'log');
+  await expect(log).toContainText('RPE 8');
+  await expect(log).toContainText(/weight and reps not recorded/i);
+  const before = setWrites(server).length;
+  await log.click();
+  await settled(page, LOG);
+  const completions = setWrites(server).slice(before).filter((write) => write.body.status === 'completed');
+  expect(completions).toHaveLength(1);
+  expect(completions[0].body).toMatchObject({ status: 'completed', actual_load_value: null, actual_reps: null, actual_rpe: 8 });
+  expect(server.find('a-s1')).toMatchObject({ status: 'completed', actual_load_value: null, actual_reps: null, actual_rpe: 8 });
+  await page.getByTestId('workout-undo-button').click();
+  await settled(page, LOG);
+  expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_load_value: null, actual_reps: null });
+  await expect(panel(page)).toHaveAttribute('data-focus-set', 'a-s1');
+  expect(results.errors).toEqual([]);
+});

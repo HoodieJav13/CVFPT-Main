@@ -1,7 +1,7 @@
 // Look A tracker facts (local, 2026-11-14).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { finishReply, undoOffer, undoableOp, planFromSet, planPayload, planTargets, planText, exerciseMark, progressText, quickDoneGate, finishModeFor, restOverrunSeconds, prescribedLoadText, lastTimeSet, swappedFrom, undoLabel, nextUndo } from '../../src/lib/lookA.js';
+import { finishReply, undoOffer, undoableOp, planFromSet, planPayload, planTargets, planText, exerciseMark, progressText, quickDoneGate, finishModeFor, restOverrunSeconds, prescribedLoadText, lastTimeSet, swappedFrom, undoLabel, undoParts, nextUndo } from '../../src/lib/lookA.js';
 
 const set = (n, status = 'pending', extra = {}) => ({ id: `s${n}`, set_number: n, status, ...extra });
 const ex = (sets, extra = {}) => ({ id: 'e1', exercise_name: 'Fictional Press', sets, ...extra });
@@ -63,6 +63,9 @@ test('one Undo: labelled, replaced by the next material change, kept otherwise',
   assert.equal(undoLabel({ change_id: 'c', kind: 'set', result: { set_id: 's2' } }, log), 'Undo set 2 of Fictional Press');
   assert.equal(undoLabel({ change_id: 'c', kind: 'set', result: {} }, log), 'Undo last set');
   assert.equal(undoLabel({ change_id: 'c', kind: 'finish' }, log), 'Undo finish');
+  assert.deepEqual(undoParts({ change_id: 'c', kind: 'exercise_done', result: { exercise_id: 'e1' } }, log), { action: 'Undo done', target: 'Fictional Press' });
+  assert.deepEqual(undoParts({ change_id: 'c', kind: 'set', result: { set_id: 's2' } }, log), { action: 'Undo set 2', target: 'Fictional Press' });
+  assert.deepEqual(undoParts({ change_id: 'c', kind: 'finish' }, log), { action: 'Undo finish', target: null });
   const current = { change_id: 'a', kind: 'exercise_done' };
   assert.deepEqual(nextUndo(current, { undo: null }), null);
   assert.deepEqual(nextUndo(current, { id: 's1', event: { change: null } }), current, 'non-material write keeps it');

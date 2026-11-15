@@ -132,6 +132,31 @@ export function undoLabel(undo, log) {
   return 'Undo';
 }
 
+// The same Undo split for a narrow button: the action (always shown whole) and
+// the exercise it applies to (may be shortened on screen). The full sentence
+// from undoLabel stays the button's accessible name.
+export function undoParts(undo, log) {
+  if (!undo) return null;
+  const exercise = (id) => (log?.exercises || []).find((row) => row.id === id)?.exercise_name || null;
+  if (undo.kind === 'exercise_done') return { action: 'Undo done', target: exercise(undo.result?.exercise_id) };
+  if (undo.kind === 'exercise_skip') return { action: 'Undo skip', target: exercise(undo.result?.exercise_id) };
+  if (undo.kind === 'finish') return { action: 'Undo finish', target: null };
+  if (undo.kind === 'swap') {
+    const replacement = exercise(undo.result?.replacement_log_exercise_id);
+    const original = exercise(undo.result?.original_log_exercise_id);
+    return { action: 'Undo swap', target: replacement && original ? `to ${replacement}` : original };
+  }
+  if (undo.kind === 'set') {
+    const setId = undo.result?.set_id || undo.set_id;
+    for (const row of log?.exercises || []) {
+      const set = (row.sets || []).find((item) => item.id === setId);
+      if (set) return { action: `Undo set ${set.set_number}`, target: row.exercise_name };
+    }
+    return { action: 'Undo last set', target: null };
+  }
+  return { action: 'Undo', target: null };
+}
+
 // A reply that carries the current Undo replaces it; a set write that changed
 // nothing material leaves it as it was (the server recorded nothing).
 export function nextUndo(current, reply) {

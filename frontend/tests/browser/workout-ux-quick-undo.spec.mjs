@@ -66,9 +66,10 @@ const restDeadline = (page) => page.evaluate((key) => localStorage.getItem(key),
 const region = (page) => page.getByTestId('workout-scroll-region');
 const queuedUrls = (page) => page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '[]').map((op) => op.url.split('/').slice(-2).join('/')), OUTBOX);
 const markers = (page) => page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '{}'), PRESCRIPTION_KEY);
+// Nothing to undo: no enabled Undo exists (Look A round 1: the slot is absent
+// until the first change, then stays disabled "Nothing to undo").
 const noUndo = async (page) => {
-  await expect(undoButton(page)).toBeDisabled();
-  await expect(undoButton(page)).toHaveText(/Nothing to undo yet/);
+  await expect(page.locator('[data-testid="workout-undo-button"]:not([disabled])')).toHaveCount(0);
 };
 
 for (const [width, height] of [[390, 844], [320, 700]]) {
@@ -86,7 +87,7 @@ for (const [width, height] of [[390, 844], [320, 700]]) {
     await settled(page, LOG);
     expect(flag(server, 'a')).toBe(true);
     expect(rows(server, 'a')).toEqual(before);
-    await expect(undoButton(page)).toHaveText(/Undo Incline Press done/);
+    await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
     await page.screenshot({ path: test.info().outputPath(`2-after-done-${width}x${height}.png`) });
 
     await undoButton(page).click();
@@ -120,10 +121,10 @@ test('the Undo stays past six seconds and across a reload until it is used', asy
   await done(page, 'Incline Press').click();
   await settled(page, LOG);
   await page.waitForTimeout(6500);
-  await expect(undoButton(page)).toHaveText(/Undo Incline Press done/);
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
   await page.reload();
   await expect(page.getByTestId('workout-outline')).toBeVisible();
-  await expect(undoButton(page)).toHaveText(/Undo Incline Press done/);
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
   await undoButton(page).click();
   await settled(page, LOG);
   expect(flag(server, 'a')).toBe(false);
@@ -139,7 +140,7 @@ test('a newer successful set edit becomes the Undo; using it leaves Done in plac
   await reps(page, 'Goblet Squat', 1).fill('9');
   await reps(page, 'Goblet Squat', 1).blur();
   await settled(page, LOG);
-  await expect(undoButton(page)).toHaveText(/Undo set 1 of Goblet Squat/);
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo set 1 of Goblet Squat/);
   await undoButton(page).click();
   await settled(page, LOG);
   // Only the set edit is undone; its row is back to its values; Done stays.
@@ -164,7 +165,7 @@ test('a refused set write keeps the earlier Undo, which still works', async ({ p
   await reps(page, 'Goblet Squat', 1).blur();
   await expect.poll(() => setWrites(server).length).toBeGreaterThan(0);
   await settled(page, LOG);
-  await expect(undoButton(page)).toHaveText(/Undo Incline Press done/);
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
   await undoButton(page).click();
   await settled(page, LOG);
   expect(flag(server, 'a')).toBe(false);
@@ -176,7 +177,7 @@ test('a coach prescription change ends the Undo: a stale tap is refused and chan
   const { server, results } = await setup(page);
   await done(page, 'Incline Press').click();
   await settled(page, LOG);
-  await expect(undoButton(page)).toHaveText(/Undo Incline Press done/);
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
   const before = rows(server, 'a');
   server.coachPrescription('a', { prescribed_load_value: 55 });
   // This page still offers its older Undo; the server refuses it.
@@ -341,6 +342,9 @@ test('scrolling right after Undo is never pulled back', async ({ page }) => {
     document.querySelector('[data-testid="workout-undo-button"]').addEventListener('click', () => requestAnimationFrame(tick), { once: true });
   });
   await undoButton(page).click();
+  // The wheel scrolls the workout content, so it starts over the content (the
+  // click left the pointer on the dock, which does not scroll the entries).
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, 240);
   await page.waitForTimeout(600);
   const tops = await page.evaluate(() => window.__tops);
@@ -434,7 +438,7 @@ test('a set write that reaches the server and changes nothing keeps the Undo of 
   // The server recorded nothing material: no inverse, no new current change.
   expect(server.changes.get('noop-op')).toMatchObject({ inverse: null });
   expect(server.current()?.kind).toBe('exercise_done');
-  await expect(undoButton(page)).toHaveText(/Undo Goblet Squat done/);
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Goblet Squat done/);
   await undoButton(page).click();
   await expect.poll(() => flag(server, 'b')).toBe(false);
   expect(undos(server).map((r) => r.body.change_id)).toEqual([sent(server, /\/exercises\/b\/done$/)[0].body.event_id]);
@@ -449,7 +453,7 @@ test('typing a value and back before leaving the field sends nothing and keeps t
   await reps(page, 'Incline Press', 2).fill('4');
   await reps(page, 'Incline Press', 2).blur();
   await page.waitForTimeout(400);
-  await expect(undoButton(page)).toHaveText(/Undo Goblet Squat done/);
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Goblet Squat done/);
   expect([...server.changes.values()].filter((c) => c.kind === 'set' && c.inverse)).toEqual([]);
   expect(results.errors).toEqual([]);
 });

@@ -213,7 +213,7 @@ test('an Undo reply keeps unsaved typing; Undo targets the newest saved change o
   const rowsBefore = setRows(server, 'a');
   await card(page, 'Incline Press').getByTestId('exercise-quick-complete').click();
   await settled(page);
-  await expect(undoButton(page)).toContainText('Undo Incline Press done');
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
   const releaseUndo = held(server, 'undo');
   await undoButton(page).click();
   // Typed while the Undo reply is on its way, not blurred.
@@ -245,7 +245,7 @@ test('Undo before the reply, then a reload with the server unreachable: one Done
   const { server, results } = await setup(page);
   server.down = true;
   await card(page, 'Incline Press').getByTestId('exercise-quick-complete').click();
-  await expect(undoButton(page)).toContainText('Undo Incline Press done');
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
   await expect(undoButton(page)).toHaveAttribute('data-pending', 'true');
   await undoButton(page).click();
   // Rapid second tap: nothing more is offered or queued.
@@ -278,10 +278,10 @@ test('a GET of the Undo answered after a newer change does not bring the older U
   await expect(page.getByTestId('workout-outline')).toBeVisible();
   await card(page, 'Goblet Squat').getByTestId('exercise-quick-complete').click();
   await settled(page);
-  await expect(undoButton(page)).toContainText('Undo Goblet Squat done');
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Goblet Squat done/);
   releaseRead();
   await page.waitForTimeout(400);
-  await expect(undoButton(page)).toContainText('Undo Goblet Squat done');
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Goblet Squat done/);
   expect(results.errors).toEqual([]);
 });
 
@@ -291,7 +291,7 @@ test('skip the rest, then Undo before the reply: the same sets come back, in ord
   await settled(page);
   server.down = true;
   await card(page, 'Incline Press').getByTestId('exercise-skip-rest').click();
-  await expect(undoButton(page)).toContainText('Undo skip of Incline Press');
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo skip of Incline Press/);
   await undoButton(page).click();
   await expect(card(page, 'Incline Press').getByRole('button', { name: 'Complete set 2', exact: true })).toBeVisible();
   server.down = false;
@@ -370,7 +370,7 @@ test('a refused Finish keeps the earlier valid Undo', async ({ page }) => {
   const { server, results } = await setup(page);
   await card(page, 'Incline Press').getByTestId('exercise-quick-complete').click();
   await settled(page);
-  await expect(undoButton(page)).toContainText('Undo Incline Press done');
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
   // Another device logs nothing; this Finish is refused (mode 'finish' with no completed set is forced here).
   await page.route(`**/api/workout-logs/${LOG}/finish`, async (route) => {
     const body = route.request().postDataJSON();
@@ -379,7 +379,7 @@ test('a refused Finish keeps the earlier valid Undo', async ({ page }) => {
   await finishWorkout(page);
   await expect(page.getByText('Complete at least one set')).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/client/workouts/${LOG}/track$`));
-  await expect(undoButton(page)).toContainText('Undo Incline Press done');
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
   expect(server.log.status).toBe('active');
   expect(results.errors).toEqual([]);
 });

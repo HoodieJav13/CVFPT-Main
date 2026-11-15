@@ -238,7 +238,7 @@ const undoButton = (page) => page.getByTestId('workout-undo-button');
 async function setThenUndo(page) {
   await completeSet(page, 3).click();
   await settle(page);
-  await expect(undoButton(page)).toHaveText(/Undo set 3 of Incline Press/);
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo set 3 of Incline Press/);
   await undoButton(page).click();
   await settle(page);
 }
@@ -336,7 +336,7 @@ test('a coach prescription change after set 3 was recorded ends its Undo: a stal
   const a = await device(browser, server);
   await completeSet(a.page, 3).click();
   await settle(a.page);
-  await expect(undoButton(a.page)).toHaveText(/Undo set 3 of Incline Press/);
+  await expect(undoButton(a.page)).toHaveAccessibleName(/Undo set 3 of Incline Press/);
   // The coach edits the plan to 60 lb from another device (a material change; completed sets are not touched).
   Object.assign(server.log.exercises[0], { prescribed_load_value: 60, plan_revision: 1 });
   server.latest = null;
@@ -347,7 +347,8 @@ test('a coach prescription change after set 3 was recorded ends its Undo: a stal
   await expect(undoButton(a.page)).toBeDisabled();
   const b = await device(browser, server, { label: 'B' });
   await expect(b.page.locator('[data-set-id="a-s3"] button[aria-label="Mark incomplete set 3"]')).toBeVisible();
-  await expect(undoButton(b.page)).toBeDisabled();
+  // B never had a change to undo, so it shows no Undo at all (Look A round 1).
+  await expect(undoButton(b.page)).toHaveCount(0);
   expect([...a.errors, ...b.errors]).toEqual([]);
   await a.context.close(); await b.context.close();
 });
