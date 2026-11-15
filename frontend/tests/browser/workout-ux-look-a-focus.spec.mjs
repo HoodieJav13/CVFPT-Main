@@ -241,3 +241,29 @@ test('weight-only entry on a duration exercise: Log names the weight, keeps dura
   expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_duration_value: null });
   expect(results.errors).toEqual([]);
 });
+
+// Inline-editor review: a freshly typed duration with no recorded unit yet uses
+// the prescribed unit in the editor and the payload, so the Log label says the
+// same ("30 min", not a bare "30").
+test('typed duration with no recorded unit: Log label, editor unit and payload all say minutes', async ({ page }) => {
+  const timedRow = (n) => row(n, { actual_load_value: null, value_origin: 'unknown', prefill_load_value: null, prefill_load_unit: null, actual_duration_unit: null });
+  const log = fixture([timedRow(1), timedRow(2)]);
+  Object.assign(log.exercises[0], { exercise_name: 'Bike', tracking_type: 'duration', prescribed_reps: null, prescribed_load_value: null, prescribed_load_max: null, prescribed_duration_value: 30, prescribed_duration_unit: 'min', prescribed_sets: '2' });
+  const server = makeServer(log);
+  const results = await installServer(page, server, { logId: LOG });
+  await open(page, LOG);
+  const action = panel(page).getByTestId('focus-log');
+  await action.click();
+  const editor = panel(page).getByTestId('focus-editor');
+  await editor.locator('input[aria-label="Bike set 1 performed duration"]').fill('30');
+  await expect(editor.getByRole('combobox', { name: 'Bike set 1 performed duration unit' })).toContainText('min');
+  await expect(action).toHaveAttribute('data-kind', 'log');
+  await expect(action).toContainText('30 min');
+  const before = setWrites(server).length;
+  await action.click();
+  await settled(page, LOG);
+  const completions = setWrites(server).slice(before).filter((write) => write.body.status === 'completed');
+  expect(completions).toHaveLength(1);
+  expect(completions[0].body).toMatchObject({ status: 'completed', actual_duration_value: 30, actual_duration_unit: 'min', actual_load_value: null });
+  expect(results.errors).toEqual([]);
+});

@@ -8,7 +8,7 @@
 // not the database rules (supabase/tests/look_a covers those).
 import { expect } from '@playwright/test';
 
-export const SET_FIELDS = ['status', 'actual_load_value', 'actual_load_unit', 'actual_reps', 'actual_rpe'];
+export const SET_FIELDS = ['status', 'actual_load_value', 'actual_load_unit', 'actual_reps', 'actual_rpe', 'actual_duration_value', 'actual_duration_unit', 'actual_distance_value', 'actual_distance_unit'];
 export const clone = (value) => JSON.parse(JSON.stringify(value));
 const material = (log) => JSON.stringify([log.status, log.exercises.map((e) => [e.id, e.not_set_tracked, e.prescription_seq || 0, e.sets.map((s) => [s.id, ...SET_FIELDS.map((k) => s[k])])])]);
 

@@ -1030,9 +1030,16 @@ export default function WorkoutTracker() {
       // The label lists every value being sent: the usual "load × reps" or
       // timed/distance text, plus weight on timed/distance exercises and RPE.
       const load = present(set.actual_load_value) ? `${set.actual_load_value} ${set.actual_load_unit || 'lb'}` : null;
+      // Timed/distance units resolve exactly as the payload does (performedSet:
+      // the set's unit, else the prescribed unit, else s / m), so a freshly
+      // typed "30" reads as the "30 min" that is sent. Recorded history is untouched.
+      const shown = { ...set };
+      for (const metric of timed) {
+        if (present(set[`actual_${metric}_value`])) shown[`actual_${metric}_unit`] = set[`actual_${metric}_unit`] || exercise[`prescribed_${metric}_unit`] || (metric === 'duration' ? 's' : 'm');
+      }
       const parts = reps
         ? [load || present(set.actual_reps) ? lastTimeSetText(set, exercise) : null]
-        : [timed.some((metric) => present(set[`actual_${metric}_value`])) ? lastTimeSetText(set, exercise) : null, load];
+        : [timed.some((metric) => present(set[`actual_${metric}_value`])) ? lastTimeSetText(shown, exercise) : null, load];
       if (present(set.actual_rpe)) parts.push(`RPE ${set.actual_rpe}`);
       const values = parts.filter(Boolean).join(' · ');
       const missing = required.filter(([field]) => !present(set[field])).map(([, name]) => name);
