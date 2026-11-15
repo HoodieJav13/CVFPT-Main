@@ -24,7 +24,8 @@ const fixtureLog = () => ({
   exercises: [
     exercise('a', 'Back Squat', [
       row('a', 1, { status: 'completed', actual_load_value: 170, actual_reps: 4, revision: 2, last_actor_role: 'client', value_origin: 'entered' }),
-      row('a', 2), row('a', 3),
+      row('a', 2, { actual_load_value: 170, value_origin: 'prefill', prefill_load_value: 170, prefill_load_unit: 'lb' }),
+      row('a', 3, { actual_load_value: 170, value_origin: 'prefill', prefill_load_value: 170, prefill_load_unit: 'lb' }),
     ], { prescribed_load_value: 170, prescribed_load_max: 180, prescribed_load_unit: 'lb', prescribed_notes: 'Slow lower, tall chest.' }),
     exercise('b', 'Single-leg RDL', [1, 2, 3].map((n) => row('b', n)), { prescribed_reps: '8', prescribed_load_value: 35, prescribed_load_unit: 'lb', per_side: true }),
     exercise('c', 'Cable Row', [1, 2, 3].map((n) => row('c', n)), { prescribed_reps: '10', prescribed_load_value: 40, prescribed_load_unit: 'lb' }),

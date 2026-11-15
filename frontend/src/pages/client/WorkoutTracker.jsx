@@ -29,7 +29,7 @@ import { MISSING_BACKUP_SETS, swapRequestTargets } from '@/lib/swapTargets';
 import { draftCollisionsIn, freshnessLabel, lastTimeFills, mergeRefresh, noteDraftEdit, reconcileQueuedSet, resolveQueuedChoice } from '@/lib/workoutSync';
 import { SetConflictNotice, SwapStatus, canSwap } from '@/components/training/SessionCorrections';
 import SwapExerciseDialog, { readCachedSwapOptions, swapOptionsCacheKey } from '@/components/training/SwapExerciseDialog';
-import { lastTimeDate, lastTimeFillNote, lastTimeLine, lastTimeSetLine, pickLastTimeOccurrence } from '@/lib/lastTime';
+import { lastTimeDate, lastTimeFillNote, lastTimeLine, lastTimeSetLine, lastTimeSetText, pickLastTimeOccurrence } from '@/lib/lastTime';
 import { trackProductEvent } from '@/lib/telemetry';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 import { exerciseMarkers, nextExercise, restAfterSet, supersetBlocks, supersetRestSeconds } from '@/lib/supersets';
@@ -42,7 +42,7 @@ import { demoForRow } from '@/lib/exerciseDemo';
 import { nextPosterTargets } from '@/lib/exerciseMedia';
 import { CHOICE_SET_REASON, HELD_SET_REASON, ackPrefillMarker, annotateValueViews, setValueView } from '@/lib/exerciseQuickComplete';
 import {
-  exerciseMark, finishModeFor, nextUndo, restOverrunSeconds, planFromSet, planPayload, planTargets, planText, prescribedLoadText, progressText,
+  exerciseMark, finishModeFor, lastTimeSet, nextUndo, restOverrunSeconds, planFromSet, planPayload, planTargets, planText, prescribedLoadText, progressText,
   quickDoneGate, readPlans, readStoredUndo, storePlans, storeUndo, undoLabel, undoOffer,
 } from '@/lib/lookA';
 
@@ -73,6 +73,79 @@ function formatTimer(seconds) {
 
 function displayPerformed(value, suffix = '') {
   return value === null || value === undefined ? 'Not recorded' : `${value}${suffix}`;
+}
+
+// Look A Focus: the one set to do now. Same-set Last/Today rows (real history
+// only, an em dash when unknown), the coach's prescription large, and ONE
+// explicit Log action that records exactly the values shown, through the same
+// set write as the row's Complete button. Changing a value happens in that
+// set's own row (the full set editor stays below as the secondary detail).
+const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '');
+const rangeText = (text) => String(text).replace(/\s*-\s*/g, '–');
+function FocusPanel({ exercise, set, occurrence, held, sealed, primary, onAdjust }) {
+  const reps = trackingType(exercise) === 'reps_weight';
+  const value = exercise.prescribed_load_value;
+  const max = exercise.prescribed_load_max;
+  const load = value === null || value === undefined ? null : (max !== null && max !== undefined && Number(max) > Number(value) ? `${value}–${max}` : `${value}`);
+  const today = (row) => {
+    if (row.id === set.id) return <span className="font-semibold text-primary">Now</span>;
+    if (row.status === 'completed') return lastTimeSetText(row, exercise);
+    if (row.status === 'skipped') return 'Skipped';
+    return '—';
+  };
+  return (
+    <section className="scroll-mt-2 space-y-2.5" aria-label={`Now: ${exercise.exercise_name} set ${set.set_number}`} data-testid="focus-panel" data-focus-set={set.id}>
+      <table className="w-full table-fixed text-sm tabular-nums" data-testid="focus-rows">
+        <thead>
+          <tr className="text-left text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+            <th scope="col" className="w-10 pb-1 font-semibold">Set</th>
+            <th scope="col" className="pb-1 font-semibold">Last{occurrence ? ` · ${shortDate(occurrence.completed_at)}` : ''}</th>
+            <th scope="col" className="pb-1 font-semibold">Today</th>
+          </tr>
+        </thead>
+        <tbody>
+          {exercise.sets.map((row) => {
+            const prior = occurrence ? lastTimeSet(occurrence, row.set_number) : null;
+            return (
+              <tr key={row.id} className={cn('border-t border-border/60', row.id !== set.id && row.status !== 'completed' && 'text-muted-foreground')} data-testid="focus-row">
+                <td className="py-1">{row.set_number}</td>
+                <td className="py-1 text-muted-foreground">{prior ? lastTimeSetText(prior, occurrence) : '—'}</td>
+                <td className="py-1">{today(row)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div>
+        <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Set {set.set_number} of {exercise.sets.length} · Coach asked</p>
+        <div className="mt-1 flex flex-wrap items-end gap-x-6 gap-y-2" data-testid="focus-prescription">
+          {reps && (
+            <div>
+              <p className="font-display text-[clamp(2.25rem,11vw,3.5rem)] font-bold leading-none">{exercise.prescribed_reps ? rangeText(exercise.prescribed_reps) : '—'}</p>
+              <p className="mt-1 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Reps</p>
+            </div>
+          )}
+          {(reps || load) && (
+            <div>
+              <p className="font-display text-[clamp(1.625rem,8vw,2.25rem)] font-semibold leading-none">{load ?? '—'}</p>
+              <p className="mt-1 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{load ? (exercise.prescribed_load_unit || 'lb') : 'Load'}{exercise.per_side ? ' · per side' : ''}</p>
+            </div>
+          )}
+        </div>
+      </div>
+      <Button type="button" className="h-auto min-h-14 w-full flex-col gap-0 whitespace-normal rounded-xl py-2 font-display text-lg font-semibold uppercase tracking-[0.05em]"
+        disabled={sealed || held} onClick={primary.run} data-testid="focus-log" data-kind={primary.kind}
+        aria-label={primary.kind === 'enter' ? `Enter ${exercise.exercise_name} set ${set.set_number}` : `Log ${exercise.exercise_name} set ${set.set_number} as ${primary.values}`}>
+        <span className="flex items-center gap-2">{primary.kind !== 'enter' && <Check className="h-5 w-5 shrink-0" aria-hidden />}{primary.label}</span>
+        <span className="font-sans text-xs font-medium normal-case tracking-normal opacity-80">{primary.note}</span>
+      </Button>
+      {primary.kind !== 'enter' && (
+        <Button type="button" variant="outline" className="h-auto min-h-11 w-full whitespace-normal rounded-xl" disabled={sealed || held} onClick={onAdjust} data-testid="focus-adjust">
+          I did something different
+        </Button>
+      )}
+    </section>
+  );
 }
 
 // The dated prior sets "Same as last time" would copy (what the fill reads).
@@ -699,9 +772,12 @@ export default function WorkoutTracker() {
       const editing = active && tracker?.contains(active) && active.matches('input, textarea, select, [contenteditable="true"]');
       if (editing && !reveal.force) return;
       const selector = reveal.setId ? `[data-set-id="${CSS.escape(reveal.setId)}"]` : `[data-exercise-id="${CSS.escape(reveal.exerciseId)}"]`;
-      const target = tracker?.querySelector(selector);
+      // Look A: the next set is shown by its Focus panel, so land on it
+      // (Last/Today, prescription and Log in view; the Next bar names it).
+      const focus = reveal.setId ? tracker?.querySelector(`[data-focus-set="${CSS.escape(reveal.setId)}"]`) : null;
+      const target = focus || tracker?.querySelector(selector);
       if (!target) return;
-      target.scrollIntoView({ block: reveal.force ? 'start' : reveal.initial ? 'nearest' : 'center', behavior: 'auto' });
+      target.scrollIntoView({ block: reveal.force || focus ? 'start' : reveal.initial ? 'nearest' : 'center', behavior: 'auto' });
       if (reveal.force) tracker.querySelector(`[data-exercise-heading="${CSS.escape(reveal.exerciseId)}"]`)?.focus({ preventScroll: true });
       if (reveal.exerciseName && !reveal.initial) setAnnouncement(`Next: ${reveal.exerciseName}${reveal.setNumber ? `, set ${reveal.setNumber}` : ''}`);
     });
@@ -819,7 +895,7 @@ export default function WorkoutTracker() {
   const nextIndex = next ? log.exercises.findIndex((exercise) => exercise.id === next.exerciseId) : -1;
   const setRowClass = (exercise, set) => {
     if (set.status === 'completed') return 'bg-success/5 opacity-55';
-    if (isActiveSet(exercise, set)) return 'bg-primary/15 ring-1 ring-primary/40';
+    if (isActiveSet(exercise, set)) return 'bg-primary/5 ring-1 ring-primary/25';
     return 'bg-secondary/30';
   };
   const remainingCount = allSets.filter((set) => set.status === 'pending').length;
@@ -893,6 +969,32 @@ export default function WorkoutTracker() {
     const following = nextWork(updated.exercises);
     if (following) setReveal({ ...following, nonce: Date.now() });
     else setAnnouncement('All sets done. Finish the workout when ready.');
+  };
+
+  // Look A Focus primary action, always truthful: the values already entered
+  // in the set (the row's own Complete write); else the existing guarded
+  // "same as set N" repeat; else no log at all, only "Enter set N".
+  const focusSetInput = (set) => {
+    const input = document.querySelector(`[data-set-id="${CSS.escape(set.id)}"] input:not([readonly]):not([disabled])`);
+    input?.scrollIntoView({ block: 'center', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    input?.focus({ preventScroll: true });
+  };
+  const focusPrimary = (exercise, set) => {
+    const present = (value) => value !== null && value !== undefined && value !== '';
+    const entered = trackingType(exercise) === 'reps_weight'
+      ? present(set.actual_reps)
+      : ['duration', 'distance'].filter((metric) => tracks(exercise, metric)).every((metric) => present(set[`actual_${metric}_value`]));
+    if (entered) {
+      const values = lastTimeSetText(set, exercise);
+      return { kind: 'log', label: `Log ${values}`, values, note: `Set ${set.set_number} as entered`, run: () => toggleSet(exercise, set) };
+    }
+    const ruled = rulesView(exercise);
+    const plan = repeatPlan(ruled, ruled.sets.find((row) => row.id === set.id) || set, { drafting: draftIds.current.has(set.id), conflicts: log.conflicts });
+    if (plan.available) {
+      const [source, values] = plan.label.split(': ');
+      return { kind: 'repeat', label: `Log ${values}`, values, note: source, run: () => repeatPrevious(exercise, set) };
+    }
+    return { kind: 'enter', label: `Enter set ${set.set_number}`, note: 'Nothing entered for this set yet', run: () => focusSetInput(set) };
   };
 
   // Explicit "same as the previous set": records this set as performed with the
@@ -1457,6 +1559,11 @@ export default function WorkoutTracker() {
             data-exercise-id={exercise.id}
           >
             <CardHeader className="pb-3">
+              {!sealed && next?.exerciseId === exercise.id && (
+                <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-primary" data-testid="focus-eyebrow">
+                  Exercise {log.exercises.findIndex((row) => row.id === exercise.id) + 1} of {log.exercises.length}
+                </p>
+              )}
               <div className="flex items-start justify-between gap-2">
                 <CardTitle className="flex min-w-0 items-center gap-2 font-display text-lg font-semibold uppercase leading-tight tracking-[0.02em] sm:text-xl">
                   {hasGroups && <ExerciseMarker marker={marker} />}
@@ -1489,8 +1596,8 @@ export default function WorkoutTracker() {
                 />
               )}
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                {prescribedLoadText(exercise) && <span data-testid="prescribed-load">Load {prescribedLoadText(exercise)}</span>}
-                {trackingType(exercise) === 'reps_weight' && exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
+                {!(next?.exerciseId === exercise.id && !sealed) && prescribedLoadText(exercise) && <span data-testid="prescribed-load">Load {prescribedLoadText(exercise)}</span>}
+                {!(next?.exerciseId === exercise.id && !sealed) && trackingType(exercise) === 'reps_weight' && exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
                 {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => exercise[`prescribed_${metric}_value`] != null && <span key={metric}>{metric === 'duration' ? 'Duration' : 'Distance'} {exercise[`prescribed_${metric}_value`]} {exercise[`prescribed_${metric}_unit`]}</span>)}
                 {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
                 {/* Grouped exercises rest once per round (shown on the group). */}
@@ -1513,6 +1620,19 @@ export default function WorkoutTracker() {
               />
             </CardHeader>
             <CardContent className="space-y-3">
+              {!sealed && next?.exerciseId === exercise.id && (() => {
+                const focusSet = exercise.sets.find((row) => row.id === next.setId);
+                if (!focusSet) return null;
+                return (
+                  <FocusPanel
+                    exercise={exercise}
+                    set={focusSet} occurrence={lastTimeCache.current[exercise.id] || null}
+                    held={isHeld(focusSet.id) || Boolean(draftChoices.current.get(focusSet.id))} sealed={sealed}
+                    primary={focusPrimary(exercise, focusSet)}
+                    onAdjust={() => focusSetInput(focusSet)}
+                  />
+                );
+              })()}
               <CueRetryEntry log={log} exercise={exercise} />
               {plans[exercise.id] && (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 px-2 py-1 text-xs" data-testid="plan-chip">
