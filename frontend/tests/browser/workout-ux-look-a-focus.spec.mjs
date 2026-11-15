@@ -267,3 +267,92 @@ test('typed duration with no recorded unit: Log label, editor unit and payload a
   expect(completions[0].body).toMatchObject({ status: 'completed', actual_duration_value: 30, actual_duration_unit: 'min', actual_load_value: null });
   expect(results.errors).toEqual([]);
 });
+
+// Load unit default (owner decision: lb default; LOOK-A-UNIT-DEFAULT-CLOSURE-REVIEW).
+// A weight with no recorded unit is lb everywhere: the unit selector, the Log
+// label and the payload. A recorded or deliberately chosen kg stays kg; nothing
+// is converted and no unit is inferred from the prescription or history.
+const unitSelect = (page, n) => page.getByRole('combobox', { name: `Back Squat set ${n} weight unit` });
+async function openSetEditor(page) {
+  const p = panel(page);
+  if (await p.getByTestId('focus-adjust').count()) await p.getByTestId('focus-adjust').click();
+  else await p.getByTestId('focus-log').click();
+  await expect(p.getByTestId('focus-editor')).toBeVisible();
+  return p.getByTestId('focus-editor');
+}
+
+test('kg prescription: a cleared weight saves a blank pair; after reload a typed 45 is lb in the selector, the Log label before blur, the save and the completion', async ({ page }) => {
+  const kgRow = (n) => row(n, { actual_load_value: 40, actual_load_unit: 'kg', prefill_load_value: 40, prefill_load_unit: 'kg' });
+  const log = fixture([kgRow(1), kgRow(2)]);
+  Object.assign(log.exercises[0], { prescribed_load_value: 40, prescribed_load_max: null, prescribed_load_unit: 'kg', prescribed_sets: '2' });
+  const server = makeServer(log);
+  const results = await installServer(page, server, { logId: LOG });
+  await open(page, LOG);
+  let editor = await openSetEditor(page);
+  let weight = editor.getByLabel('Back Squat set 1 weight', { exact: true });
+  // Recorded kg stays kg.
+  await expect(unitSelect(page, 1)).toHaveText('kg');
+  await weight.fill('');
+  await weight.blur();
+  await expect.poll(() => setWrites(server).map((w) => w.body).find((b) => b.actual_load_value === null)).toMatchObject({ actual_load_value: null, actual_load_unit: null });
+  await settled(page, LOG);
+  expect(server.log.exercises[0].sets[0]).toMatchObject({ actual_load_value: null, actual_load_unit: null });
+  await page.reload();
+  await expect(page.getByTestId('workout-outline')).toBeVisible();
+  editor = await openSetEditor(page);
+  weight = editor.getByLabel('Back Squat set 1 weight', { exact: true });
+  await expect(unitSelect(page, 1)).toHaveText('lb');
+  // No kg number offered as the hint for an lb field.
+  expect(await weight.getAttribute('placeholder')).toBeNull();
+  // The coach's kg prescription is still shown as written, not converted.
+  await expect(panel(page).getByTestId('focus-prescription')).toContainText('40');
+  await expect(panel(page).getByTestId('focus-prescription')).toContainText('kg');
+  const before = setWrites(server).length;
+  await weight.fill('45');
+  const action = panel(page).getByTestId('focus-log');
+  await expect(action).toHaveAccessibleName(/45 lb/);
+  await expect(action).not.toHaveAccessibleName(/kg/);
+  await weight.blur();
+  await expect.poll(() => setWrites(server).slice(before).map((w) => w.body).find((b) => b.actual_load_value === 45)).toMatchObject({ actual_load_value: 45, actual_load_unit: 'lb' });
+  await editor.getByLabel('Back Squat set 1 performed reps').fill('6');
+  await expect(action).toHaveAccessibleName(/45 lb × 6/);
+  await action.click();
+  await settled(page, LOG);
+  const completions = setWrites(server).slice(before).filter((w) => w.body.status === 'completed');
+  expect(completions).toHaveLength(1);
+  expect(completions[0].body).toMatchObject({ status: 'completed', actual_load_value: 45, actual_load_unit: 'lb', actual_reps: 6 });
+  expect(setWrites(server).slice(before).every((w) => w.body.actual_load_unit !== 'kg')).toBe(true);
+  // Set 2's recorded kg is untouched and still shown as kg.
+  expect(server.log.exercises[0].sets[1]).toMatchObject({ actual_load_value: 40, actual_load_unit: 'kg', status: 'pending' });
+  await expect(unitSelect(page, 2)).toHaveText('kg');
+  expect(results.errors).toEqual([]);
+});
+
+test('no prescription: a new unitless weight defaults to lb; a deliberately chosen kg stays kg in the label, the save and the completion', async ({ page }) => {
+  const blankRow = (n) => row(n, { actual_load_value: null, actual_load_unit: null, value_origin: 'unknown', prefill_load_value: null, prefill_load_unit: null });
+  const log = fixture([blankRow(1), blankRow(2)]);
+  Object.assign(log.exercises[0], { prescribed_load_value: null, prescribed_load_max: null, prescribed_load_unit: null, prescribed_sets: '2' });
+  const server = makeServer(log);
+  const results = await installServer(page, server, { logId: LOG });
+  await open(page, LOG);
+  const editor = await openSetEditor(page);
+  const weight = editor.getByLabel('Back Squat set 1 weight', { exact: true });
+  await expect(unitSelect(page, 1)).toHaveText('lb');
+  expect(await weight.getAttribute('placeholder')).toBeNull();
+  await weight.fill('50');
+  const action = panel(page).getByTestId('focus-log');
+  await expect(action).toHaveAccessibleName(/50 lb/);
+  const before = setWrites(server).length;
+  await unitSelect(page, 1).click();
+  await page.getByRole('option', { name: 'kg', exact: true }).click();
+  await expect(unitSelect(page, 1)).toHaveText('kg');
+  await expect(action).toHaveAccessibleName(/50 kg/);
+  await expect.poll(() => setWrites(server).slice(before).map((w) => w.body).find((b) => b.actual_load_unit === 'kg')).toMatchObject({ actual_load_value: 50, actual_load_unit: 'kg' });
+  await editor.getByLabel('Back Squat set 1 performed reps').fill('5');
+  await action.click();
+  await settled(page, LOG);
+  const completions = setWrites(server).slice(before).filter((w) => w.body.status === 'completed');
+  expect(completions).toHaveLength(1);
+  expect(completions[0].body).toMatchObject({ status: 'completed', actual_load_value: 50, actual_load_unit: 'kg', actual_reps: 5 });
+  expect(results.errors).toEqual([]);
+});

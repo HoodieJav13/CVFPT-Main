@@ -1547,14 +1547,18 @@ export default function WorkoutTracker() {
             type="number" min="0" step="0.5" inputMode="decimal"
             className={cn('h-11 min-w-[5rem] flex-1 px-2 text-sm tabular-nums', isActiveSet(exercise, set) && 'h-12 border-primary/40 font-display text-lg font-semibold')}
             value={set.actual_load_value ?? ''}
-            placeholder={exercise.prescribed_load_value != null ? String(exercise.prescribed_load_value) : undefined}
+            // The hint is the coach's number only when it is in the field's unit:
+            // a kg prescription never reads as an lb weight (nothing converted).
+            placeholder={exercise.prescribed_load_value != null && (exercise.prescribed_load_unit || 'lb') === (set.actual_load_unit || 'lb') ? String(exercise.prescribed_load_value) : undefined}
             onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
             onBlur={() => saveSet(exercise, set)}
             disabled={sealed} readOnly={held}
             {...errorProps(exercise, set, 'actual_load_value')}
             aria-label={`${exercise.exercise_name} set ${set.set_number} weight`}
           />
-          <Select disabled={sealed || held} value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
+          {/* A weight with no recorded unit is lb (the default), exactly as it is
+              sent and labelled; a recorded or chosen kg stays kg. */}
+          <Select disabled={sealed || held} value={set.actual_load_unit || 'lb'} onValueChange={(value) => {
             setLocalValue(exercise.id, set.id, 'actual_load_unit', value);
             saveSet(exercise, { ...set, actual_load_unit: value });
           }}>
