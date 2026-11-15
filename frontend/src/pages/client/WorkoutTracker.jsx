@@ -790,9 +790,15 @@ export default function WorkoutTracker() {
       focus.querySelector('[data-testid="focus-log"]')?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
     };
     let frame = 0;
+    let follow = 0;
     let observer = null;
     let timer = 0;
+    let stopped = false;
+    // The person's own touch, scroll or key (or the time limit) ends following
+    // at once, including a landing already queued for the next frame.
     const stopFollowing = () => {
+      stopped = true;
+      cancelAnimationFrame(follow);
       observer?.disconnect();
       observer = null;
       clearTimeout(timer);
@@ -818,9 +824,10 @@ export default function WorkoutTracker() {
           let initial = true;
           observer = new ResizeObserver(() => {
             if (initial) { initial = false; return; }
-            cancelAnimationFrame(frame);
-            frame = requestAnimationFrame(() => {
-              if (!focus.isConnected || typing(tracker)) return;
+            if (stopped) return;
+            cancelAnimationFrame(follow);
+            follow = requestAnimationFrame(() => {
+              if (stopped || !focus.isConnected || typing(tracker)) return;
               land(focus);
             });
           });

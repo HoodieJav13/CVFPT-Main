@@ -203,6 +203,55 @@ for (const [width, height] of [[390, 844], [320, 700], [1280, 900], [390, 500]])
   });
 }
 
+// After a reveal the tracker re-lands Focus on a layout change until the person
+// acts. Deterministic order inside the page: a probe ResizeObserver created
+// after the tracker's own runs after it in the same notification step, so the
+// tracker's follow-up landing is already queued for the next frame when the
+// probe moves the scroll position (with or without an intent event). The
+// scroll position is then read three frames and 100 ms later.
+async function resizeThenIntent(page, intent) {
+  return page.evaluate((kind) => new Promise((resolve) => {
+    const tracker = document.querySelector('[data-testid="workout-tracker"]');
+    const region = document.querySelector('[data-testid="workout-scroll-region"]');
+    const scroller = getComputedStyle(region).overflowY !== 'visible' ? region : document.scrollingElement;
+    let seen = false;
+    const probe = new ResizeObserver(() => {
+      if (!seen) { seen = true; requestAnimationFrame(() => { tracker.style.paddingBottom = '2px'; }); return; }
+      probe.disconnect();
+      const before = scroller.scrollTop;
+      if (kind === 'wheel') region.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, bubbles: true }));
+      if (kind === 'keydown') region.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
+      if (kind === 'pointerdown') region.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      scroller.scrollTop = 0;
+      const at = scroller.scrollTop;
+      requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => {
+        tracker.style.paddingBottom = '';
+        resolve({ before, at, after: scroller.scrollTop });
+      }, 100))));
+    });
+    probe.observe(tracker);
+  }), intent);
+}
+
+for (const intent of [null, 'wheel', 'keydown', 'pointerdown']) {
+  test(`390×844: after a reveal, a layout change ${intent ? `then the person's ${intent} leaves their scroll position alone` : 'with no action from the person lands Focus again'}`, async ({ page }) => {
+    const { results } = await setup(page, 390, 844);
+    const editor = await openEditor(page, results, { name: 'Incline Press', n: 1, weight: '50', unit: 'lb' });
+    await editor.getByLabel('Incline Press set 1 performed reps').fill('8');
+    await page.getByTestId('focus-log').click();
+    await expect.poll(() => activeId(page)).toBe('a2-s1');
+    await expectFocus(page, { name: 'Chest-supported Row', n: 1, of: 2, reps: '10', load: '40', unit: 'lb' });
+    const { before, at, after } = await resizeThenIntent(page, intent);
+    // The Focus landing put A2 below the top, so moving to the top is a real change.
+    expect(before).toBeGreaterThan(0);
+    expect(at).toBe(0);
+    if (intent) expect(after).toBe(0);
+    else expect(after).toBe(before);
+    expect(results.unexpected).toEqual([]);
+    expect(results.errors).toEqual([]);
+  });
+}
+
 for (const [width, height] of [[390, 844], [320, 700], [1280, 900]]) {
   test(`${width}×${height}: a fresh workout opens with the first set in Focus and its whole Log/Enter action; no focus move, no writes`, async ({ page }) => {
     const { results } = await setup(page, width, height);
