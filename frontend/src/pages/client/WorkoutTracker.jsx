@@ -779,11 +779,28 @@ export default function WorkoutTracker() {
   // jump chosen from the outline (force) moves focus to that exercise.
   useEffect(() => {
     if (!reveal) return undefined;
-    const frame = requestAnimationFrame(() => {
-      const tracker = document.querySelector('[data-testid="workout-tracker"]');
+    const typing = (tracker) => {
       const active = document.activeElement;
-      const editing = active && tracker?.contains(active) && active.matches('input, textarea, select, [contenteditable="true"]');
-      if (editing && !reveal.force) return;
+      return Boolean(active && tracker?.contains(active) && active.matches('input, textarea, select, [contenteditable="true"]'));
+    };
+    // Land on the exercise (eyebrow and name), then make sure its Log action
+    // is in view too: on a short phone the name may scroll off, never Log.
+    const land = (focus) => {
+      (focus.closest('[data-testid="tracker-exercise-card"]') || focus).scrollIntoView({ block: 'start', behavior: 'auto' });
+      focus.querySelector('[data-testid="focus-log"]')?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    };
+    let frame = 0;
+    let observer = null;
+    let timer = 0;
+    const stopFollowing = () => {
+      observer?.disconnect();
+      observer = null;
+      clearTimeout(timer);
+      for (const type of ['pointerdown', 'wheel', 'touchstart', 'keydown']) window.removeEventListener(type, stopFollowing, true);
+    };
+    frame = requestAnimationFrame(() => {
+      const tracker = document.querySelector('[data-testid="workout-tracker"]');
+      if (typing(tracker) && !reveal.force) return;
       const selector = reveal.setId ? `[data-set-id="${CSS.escape(reveal.setId)}"]` : `[data-exercise-id="${CSS.escape(reveal.exerciseId)}"]`;
       // Look A: the next set is shown by its Focus panel, so land on it
       // (Last/Today, prescription and Log in view; the Next bar names it).
@@ -791,17 +808,33 @@ export default function WorkoutTracker() {
       const target = focus || tracker?.querySelector(selector);
       if (!target) return;
       if (focus && !reveal.force) {
-        // Land on the exercise (eyebrow and name), then make sure its Log action
-        // is in view too: on a short phone the name may scroll off, never Log.
-        (focus.closest('[data-testid="tracker-exercise-card"]') || focus).scrollIntoView({ block: 'start', behavior: 'auto' });
-        focus.querySelector('[data-testid="focus-log"]')?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        land(focus);
+        // The same completion can resize the control dock (a rest timer
+        // starts). On a short window that switches the tracker between its
+        // pinned entries region and page scrolling after this placement, which
+        // would leave Log below the fold. Land again after each such layout
+        // change, briefly, until the person touches, scrolls or types.
+        if (typeof ResizeObserver === 'function') {
+          let initial = true;
+          observer = new ResizeObserver(() => {
+            if (initial) { initial = false; return; }
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+              if (!focus.isConnected || typing(tracker)) return;
+              land(focus);
+            });
+          });
+          observer.observe(tracker);
+          for (const type of ['pointerdown', 'wheel', 'touchstart', 'keydown']) window.addEventListener(type, stopFollowing, true);
+          timer = setTimeout(stopFollowing, 1500);
+        }
       } else {
         target.scrollIntoView({ block: reveal.force || focus ? 'start' : reveal.initial ? 'nearest' : 'center', behavior: 'auto' });
       }
       if (reveal.force) tracker.querySelector(`[data-exercise-heading="${CSS.escape(reveal.exerciseId)}"]`)?.focus({ preventScroll: true });
       if (reveal.exerciseName && !reveal.initial) setAnnouncement(`Next: ${reveal.exerciseName}${reveal.setNumber ? `, set ${reveal.setNumber}` : ''}`);
     });
-    return () => cancelAnimationFrame(frame);
+    return () => { cancelAnimationFrame(frame); stopFollowing(); };
   }, [reveal]);
 
   // Save swap choices on this phone while online, so a swap still works offline.
