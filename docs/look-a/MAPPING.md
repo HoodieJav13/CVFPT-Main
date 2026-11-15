@@ -33,15 +33,34 @@ The active exercise card leads with one focused set: same-set Last/Today
 rows, "Set n of N · Coach asked" with the rep and load range large, and one
 primary action that is always truthful: the values already entered (the set
 row's own write), else the existing guarded "same as set N" repeat, else
-"Enter set N" (logs nothing). The per-set editor stays below as secondary.
+"Enter set N" (logs nothing). "I did something different" and "Enter set N"
+open that set's own editor inline in the panel, between Last/Today and Log
+(the row leaves the list, so there is one editor per set). With the editor
+open, Log records exactly what it shows, including a partial entry such as a
+load with reps blank ("reps not recorded"; nothing is filled in), and never
+falls back to the repeat. Other sets stay editable below under "All sets".
 There is no bulk "Complete all remaining" in the Look A tracker.
+
+## Workout shell (tracker)
+
+On the tracker the shell's phone header and bottom tabs step aside. The
+workout header carries the logo (home link), workout name, date, set count and
+a fixed-width save state (wraps below the name at large text sizes). The
+account menu, manual rest timer, rest alerts and Abandon sit under "Workout
+options" at the end of the workout. The dock holds the progress bar, Undo and
+Finish: Undo appears with the first change to undo, sits beside Finish in the
+same row (the dock never grows when it appears) and then keeps its slot,
+disabled when nothing is left. Finish is a gold outline (solid gold when every
+set is done); the teal emphasis belongs to Log.
 
 ## Coach queue
 
-Needs a look (every existing action, same order), Missed (attention rows with
-the existing `low_adherence` reason: past-due dated workouts, at least 3
-eligible, last 30 days) and On track, which is never derived: CVF PT has no
-on-track measure, so it shows an em dash and says so. Unknown trend data shows
-an em dash for Missed with the existing partial note. Counts are items shown,
-not clients; the 12-item cut is stated. No weekly cohorts or program-review
-dates are invented (the prototype's coach data is fictional).
+A compact warm header (date, greeting, New session), then the queue first:
+Needs a look (every existing action, same order) and Missed (attention rows
+with the existing `low_adherence` reason: past-due dated workouts, at least 3
+eligible, last 30 days). There is no On track group: CVF PT has no on-track
+measure, so nothing is shown or inferred for it. Unknown trend data shows an
+em dash for Missed with the existing partial note. Counts are items shown, not
+clients; the 12-item cut is stated. Stats and today's sessions follow. No
+weekly cohorts or program-review dates are invented (the prototype's coach
+data is fictional).
