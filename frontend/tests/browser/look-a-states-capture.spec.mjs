@@ -6,7 +6,7 @@
 // Run: LOOK_A_SPECS='look-a-states-capture.spec.mjs' CAPTURE_DIR=<abs dir> npx playwright test --config playwright.look-a.config.mjs
 // Normal mode, synthetic in-process API, fictional data only, headless.
 import { test, expect } from '@playwright/test';
-import { makeServer, installServer, card, settled, undoButton, open, clone } from './look-a-server.mjs';
+import { makeServer, installServer, card, settled, undoButton, open, clone, routeSwap } from './look-a-server.mjs';
 
 const OUT = process.env.CAPTURE_DIR;
 const LOG = 'states-log';
@@ -82,34 +82,7 @@ test('coach backup swap: fixed remaining count, no reason asked, then the replac
     exercise('a', 'Split Squat', [done('a', 1, 40, 8), row('a', 2), row('a', 3)], { prescribed_load_value: 40, prescribed_load_unit: 'lb', backups: [BACKUP] }),
     exercise('b', 'Cable Row', [row('b', 1), row('b', 2)], { prescribed_reps: '10', prescribed_load_value: 40, prescribed_load_unit: 'lb' }),
   ]));
-  const swaps = [];
-  await page.route(new RegExp(`/api/workout-logs/${LOG}/exercises/a/substitution-options$`), (route) => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ backups: [BACKUP], suggestions: [], catalog_reason: null, server_time: new Date().toISOString() }),
-  }));
-  // Synthetic confirmation shaped like the real route's {outcome, substitution, log}.
-  await page.route(new RegExp(`/api/workout-logs/${LOG}/exercises/a/substitutions$`), (route) => {
-    const body = route.request().postDataJSON();
-    swaps.push(body);
-    const original = server.log.exercises[0];
-    const substitution = {
-      id: body.id, original_log_exercise_id: 'a', replacement_log_exercise_id: body.replacement_log_exercise_id, replacement_name: BACKUP.name,
-      source: 'coach_backup', status: 'active', trigger: body.trigger, coach_review_status: null, decided_by_coach_id: null,
-    };
-    server.log.exercises.splice(1, 0, {
-      ...clone(original), id: body.replacement_log_exercise_id, exercise_name: BACKUP.name, exercise_library_id: BACKUP.exercise_library_id,
-      substitutes_log_exercise_id: 'a', substitution_id: body.id, prescribed_sets: String(body.expected_sets), prescribed_reps: BACKUP.targets.reps,
-      prescribed_load_value: BACKUP.targets.load_value, prescribed_load_max: BACKUP.targets.load_max, prescribed_load_unit: 'kg', per_side: true, backups: [],
-      sets: body.set_ids.map((setId, i) => ({ ...row(body.replacement_log_exercise_id, i + 1), id: setId, actual_load_unit: 'kg' })),
-    });
-    server.log.substitutions.push(substitution);
-    // As the Look A route answers: the change and the current one-step Undo come with the log.
-    server.record(body.id, 'swap', body, 'applied', { swap: true }, { original_log_exercise_id: 'a', replacement_log_exercise_id: body.replacement_log_exercise_id });
-    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({
-      outcome: 'created', substitution, change: { id: body.id, undoable: true },
-      log: { ...clone(server.log), server_time: new Date().toISOString() }, undo: server.current(),
-    }) });
-  });
+  const swaps = await routeSwap(page, server, LOG, 'a', { backups: [BACKUP] });
   await open(page, LOG);
   const before = statuses(server);
   await card(page, 'Split Squat').getByTestId('swap-open').click();
@@ -130,6 +103,10 @@ test('coach backup swap: fixed remaining count, no reason asked, then the replac
   // The original exercise's logged and pending sets are untouched by the swap.
   expect(statuses(server).filter((s) => s.startsWith('a-') || s.startsWith('b-'))).toEqual(before);
   await expect(undoButton(page)).toHaveAccessibleName(/Undo swap/);
+  // Guidance follows the swap: the replacement is next and holds the Focus panel.
+  await expect(page.getByTestId('workout-outline')).toContainText(`Next: ${BACKUP.name}`);
+  await expect(replacement.getByTestId('focus-log')).toBeVisible();
+  await expect(card(page, 'Split Squat').getByTestId('focus-log')).toHaveCount(0);
   await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 10_000 });
   await replacement.evaluate((e) => e.scrollIntoView({ block: 'start', behavior: 'instant' }));
   await shot(page, 'state-05-swap-replacement-390x844');

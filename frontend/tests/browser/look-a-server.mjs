@@ -151,6 +151,12 @@ export async function installServer(page, server, { logId, profile = 'Fictional 
           if (inv.set) { const s = server.find(inv.set); Object.assign(s, inv.before, { revision: s.revision + 1, updated_at: server.stamp() }); }
           if (inv.exercise) server.log.exercises.find((e) => e.id === inv.exercise).not_set_tracked = false;
           if (inv.finish) { server.log.status = 'active'; server.log.completed_at = null; }
+          // As 20261114170000: the swap is withdrawn ('undone') and its replacement rows archived (no longer returned).
+          if (inv.swap) {
+            server.log.exercises = server.log.exercises.filter((e) => e.id !== inv.swap.replacement);
+            const sub = (server.log.substitutions || []).find((row) => row.id === inv.swap.id);
+            if (sub) sub.status = 'undone';
+          }
           target.undone = true;
           server.record(body.event_id, 'undo', body, 'applied', null, { undoes: body.change_id });
           answer = reply({ result: { outcome: 'applied', undoes: body.change_id } });
@@ -177,4 +183,50 @@ export const undoButton = (page) => page.getByTestId('workout-undo-button');
 export async function open(page, logId) {
   await page.goto(`/client/workouts/${logId}/track`);
   await expect(page.getByTestId('workout-outline')).toBeVisible();
+}
+
+// A coach backup / catalog suggestion swap on `exerciseId`, answered like the
+// Look A route ({outcome, substitution, change, log, undo}). mode 'active'
+// inserts the replacement with the page's set ids and records an undoable
+// change; 'pending' records a request waiting for the coach (no replacement);
+// 'refuse' answers 409 like a refused swap. Page routes, so they take
+// precedence over installServer's context routes. Fictional data only.
+export async function routeSwap(page, server, logId, exerciseId, { backups = [], suggestions = [], mode = 'active', insertAt = null } = {}) {
+  const sent = [];
+  await page.route(new RegExp(`/api/workout-logs/${logId}/exercises/${exerciseId}/substitution-options$`), (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ backups, suggestions, catalog_reason: null, server_time: new Date().toISOString() }),
+  }));
+  await page.route(new RegExp(`/api/workout-logs/${logId}/exercises/${exerciseId}/substitutions$`), (route) => {
+    const body = route.request().postDataJSON();
+    sent.push(body);
+    const json = (status, value) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
+    if (mode === 'refuse') return json(409, { error: 'This swap was not saved.', reason: 'sets_changed', outcome: 'refused' });
+    const original = server.log.exercises.find((e) => e.id === exerciseId);
+    const item = body.source === 'coach_backup' ? backups.find((b) => b.id === body.backup_id) : suggestions.find((b) => b.id === body.exercise_library_id);
+    server.log.substitutions = server.log.substitutions || [];
+    const substitution = {
+      id: body.id, original_log_exercise_id: exerciseId, replacement_log_exercise_id: body.replacement_log_exercise_id, replacement_name: item.name,
+      source: body.source, status: mode === 'pending' ? 'pending_confirmation' : 'active', trigger: body.trigger, coach_review_status: null, decided_by_coach_id: null,
+    };
+    server.log.substitutions.push(substitution);
+    if (mode === 'pending') return json(201, { outcome: 'created', substitution, change: null, log: { ...clone(server.log), server_time: new Date().toISOString() }, undo: server.current() });
+    const targets = item.targets || {};
+    const unit = targets.load_unit || 'lb';
+    const index = insertAt ?? server.log.exercises.indexOf(original) + 1;
+    server.log.exercises.splice(index, 0, {
+      ...clone(original), id: body.replacement_log_exercise_id, exercise_name: item.name, exercise_library_id: item.exercise_library_id || item.id,
+      substitutes_log_exercise_id: exerciseId, substitution_id: body.id, not_set_tracked: false, prescribed_sets: String(body.expected_sets),
+      prescribed_reps: targets.reps ?? body.targets?.reps ?? null, prescribed_load_value: targets.load_value ?? null, prescribed_load_max: targets.load_max ?? null,
+      prescribed_load_unit: unit, per_side: Boolean(targets.per_side), backups: [], pending_swap: undefined,
+      sets: body.set_ids.map((setId, i) => ({
+        ...clone(original.sets[0]), id: setId, workout_log_exercise_id: body.replacement_log_exercise_id, set_number: i + 1, status: 'pending', set_origin: 'prescribed',
+        actual_load_value: null, actual_load_unit: unit, actual_reps: null, actual_rpe: null, revision: 0, last_actor_role: null, value_origin: 'unknown',
+      })),
+    });
+    server.record(body.id, 'swap', body, 'applied', { swap: { id: body.id, replacement: body.replacement_log_exercise_id } },
+      { original_log_exercise_id: exerciseId, replacement_log_exercise_id: body.replacement_log_exercise_id });
+    return json(201, { outcome: 'created', substitution, change: { id: body.id, undoable: true }, log: { ...clone(server.log), server_time: new Date().toISOString() }, undo: server.current() });
+  });
+  return sent;
 }

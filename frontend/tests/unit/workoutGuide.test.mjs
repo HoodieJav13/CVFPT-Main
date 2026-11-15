@@ -2,7 +2,7 @@
 // explicit repeat-previous-performed-set rule (fictional fixtures).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isUntouchedPrefill, nextWork, outlineBlocks, repeatPlan } from '../../src/lib/workoutGuide.js';
+import { guidedExercises, isUntouchedPrefill, nextWork, outlineBlocks, repeatPlan, swappedOriginalIds } from '../../src/lib/workoutGuide.js';
 
 const set = (id, n, extra = {}) => ({ id, set_number: n, status: 'pending', actual_load_value: null, actual_load_unit: null, actual_reps: null, actual_rpe: null, revision: 0, ...extra });
 const done = (row, reps, load, unit = 'lb') => ({ ...row, status: 'completed', actual_reps: reps, actual_load_value: load, actual_load_unit: load == null ? null : unit, revision: 1 });
@@ -147,4 +147,44 @@ test('done without set tracking inside a superset: the round moves on without it
   assert.equal(nextWork(exercises).setId, 'p1');
   exercises = complete(exercises, 'a1', 'p1');
   assert.equal(nextWork(exercises).setId, 'p2');
+});
+
+// Look A swap guidance (LOOK-A-FINAL-SWAP-GUIDANCE-REVIEW, 2026-11-15): an
+// original whose swap is in force keeps its rows and recorded sets, but its
+// remaining work is the replacement's, so guidance skips it.
+const swapLog = (substitutions, extra = {}) => {
+  const original = ex('a', 'Split Squat', [done(set('as1', 1), 8, 40), set('as2', 2), set('as3', 3)], extra.original || {});
+  const replacement = ex('r', 'Step Up', [set('rs1', 1), set('rs2', 2)], { substitutes_log_exercise_id: 'a', substitution_id: 'sub' });
+  const later = ex('b', 'Cable Row', [set('bs1', 1)]);
+  return { exercises: extra.noReplacement ? [original, later] : [original, replacement, later], substitutions };
+};
+
+test('active swap: the replacement is next; the original keeps its rows and recorded set', () => {
+  const log = swapLog([{ id: 'sub', original_log_exercise_id: 'a', replacement_log_exercise_id: 'r', status: 'active' }]);
+  const before = JSON.stringify(log);
+  assert.deepEqual([...swappedOriginalIds(log)], ['a']);
+  assert.deepEqual(guidedExercises(log).map((row) => row.id), ['r', 'b']);
+  assert.equal(nextWork(guidedExercises(log)).setId, 'rs1');
+  const items = outlineBlocks(log.exercises, swappedOriginalIds(log)).flatMap((block) => block.items);
+  assert.deepEqual(items.map((item) => [item.id, item.status]), [['a', 'swapped'], ['r', 'next'], ['b', 'open']]);
+  assert.equal(JSON.stringify(log), before);
+});
+
+test('swap waiting for the coach, declined or undone: the original stays guided', () => {
+  for (const status of ['pending_confirmation', 'declined', 'undone']) {
+    const log = swapLog([{ id: 'sub', original_log_exercise_id: 'a', replacement_log_exercise_id: 'r', status }], { noReplacement: status !== 'undone' });
+    assert.equal(swappedOriginalIds(log).size, 0, status);
+    assert.equal(nextWork(guidedExercises(log)).setId, 'as2', status);
+  }
+  // An "active" row whose replacement is not in the log (Undo archived it) does not hide the original.
+  const gone = swapLog([{ id: 'sub', original_log_exercise_id: 'a', replacement_log_exercise_id: 'r', status: 'active' }], { noReplacement: true });
+  assert.equal(nextWork(guidedExercises(gone)).setId, 'as2');
+  assert.equal(outlineBlocks(gone.exercises, swappedOriginalIds(gone)).flatMap((block) => block.items)[0].status, 'next');
+});
+
+test('this device\'s swap: activated with its replacement row guides the replacement; a request waiting for the coach does not', () => {
+  const active = swapLog([], { original: { pending_swap: { id: 'sub', replacementId: 'r', activate: true } } });
+  assert.equal(nextWork(guidedExercises(active)).setId, 'rs1');
+  const waiting = swapLog([], { noReplacement: true, original: { pending_swap: { id: 'sub', replacementId: 'r', activate: false } } });
+  assert.equal(nextWork(guidedExercises(waiting)).setId, 'as2');
 });

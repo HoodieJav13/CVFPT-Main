@@ -17,12 +17,41 @@ export function nextWork(exercises) {
   return set ? { exerciseId: exercise.id, setId: set.id, setNumber: set.set_number, exerciseName: exercise.exercise_name } : null;
 }
 
+// Look A swaps: the originals whose swap is in force. That is a server
+// substitution with status 'active' whose replacement row is in the log, or
+// this device's activated swap (still queued) whose replacement row is in the
+// log. A swap waiting for the coach, declined or undone leaves the original as
+// it was. Only guidance uses this: the original's rows, sets and recorded
+// values are never changed or hidden.
+export function swappedOriginalIds(log) {
+  const exercises = log?.exercises || [];
+  const present = new Set(exercises.map((row) => row.id));
+  const ids = new Set();
+  for (const sub of log?.substitutions || []) {
+    if (sub?.status === 'active' && present.has(sub.replacement_log_exercise_id)) ids.add(sub.original_log_exercise_id);
+  }
+  for (const row of exercises) {
+    if (row.pending_swap?.activate && present.has(row.pending_swap.replacementId)) ids.add(row.id);
+  }
+  return ids;
+}
+
+// The exercises guidance works through (next set, Focus, rest rounds, the
+// landing): every exercise except an original whose swap is in force, whose
+// remaining work is now its replacement's.
+export function guidedExercises(log) {
+  const exercises = log?.exercises || [];
+  const swapped = swappedOriginalIds(log);
+  return swapped.size ? exercises.filter((row) => !swapped.has(row.id)) : exercises;
+}
+
 // Compact outline: exercise names in coach order, grouped by superset/giant
-// set. Deliberately no sets, reps or loads.
-export function outlineBlocks(exercises) {
+// set. Deliberately no sets, reps or loads. A swapped original stays listed,
+// marked 'swapped', and is never next.
+export function outlineBlocks(exercises, swapped = new Set()) {
   const list = exercises || [];
   const markers = exerciseMarkers(list);
-  const next = nextWork(list);
+  const next = nextWork(list.filter((exercise) => !swapped.has(exercise.id)));
   const grouped = list.some((exercise) => exercise.superset_group);
   return supersetBlocks(list).map((block, blockIndex) => ({
     key: `${block.start}-${block.end}`,
@@ -30,7 +59,8 @@ export function outlineBlocks(exercises) {
     label: block.kind === 'single' ? null : `${groupKindLabel(block.kind)} ${markers[block.start]?.replace(/\d+$/, '') || blockIndex + 1}`,
     items: block.items.map(({ exercise, index }) => {
       const sets = exercise.sets || [];
-      const status = exercise.not_set_tracked || (sets.length && sets.every(isDone)) ? 'done' : next?.exerciseId === exercise.id ? 'next' : 'open';
+      const status = exercise.not_set_tracked || (sets.length && sets.every(isDone)) ? 'done'
+        : swapped.has(exercise.id) ? 'swapped' : next?.exerciseId === exercise.id ? 'next' : 'open';
       return { id: exercise.id, name: exercise.exercise_name, marker: grouped ? markers[index] : String(index + 1), status };
     }),
   }));

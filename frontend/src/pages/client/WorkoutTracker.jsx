@@ -34,7 +34,7 @@ import { lastTimeDate, lastTimeFillNote, lastTimeLine, lastTimeSetLine, lastTime
 import { trackProductEvent } from '@/lib/telemetry';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 import { exerciseMarkers, nextExercise, restAfterSet, supersetBlocks, supersetRestSeconds } from '@/lib/supersets';
-import { nextWork, outlineBlocks, repeatPlan } from '@/lib/workoutGuide';
+import { guidedExercises, nextWork, outlineBlocks, repeatPlan, swappedOriginalIds } from '@/lib/workoutGuide';
 import { WorkoutOutline } from '@/components/training/WorkoutOutline';
 import { ExerciseMediaInline } from '@/components/training/media/ExerciseMediaInline';
 import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
@@ -664,7 +664,7 @@ export default function WorkoutTracker() {
       // save status stay as high as possible; a resume centres the row.
       if (!landedRef.current) {
         landedRef.current = true;
-        const next = nextWork(hydrated.exercises);
+        const next = nextWork(guidedExercises(hydrated));
         const resumed = hydrated.exercises.some((exercise) => exercise.sets.some((set) => set.status === 'completed'));
         if (next) setReveal({ ...next, initial: !resumed, nonce: Date.now() });
       }
@@ -873,7 +873,7 @@ export default function WorkoutTracker() {
 
   // Preview the source for the ACTIVE exercise only, once per visit. Offline
   // without a cached result it waits (no request) and loads on reconnect.
-  const lastTimeActiveId = log ? nextExercise(log.exercises)?.id : null;
+  const lastTimeActiveId = log ? nextExercise(guidedExercises(log))?.id : null;
   useEffect(() => {
     const exercise = lastTimeActiveId && logRef.current?.exercises.find((row) => row.id === lastTimeActiveId);
     if (!exercise || outbox.queuedComplete) return;
@@ -890,28 +890,34 @@ export default function WorkoutTracker() {
   if (!log && loadError) return <LoadErrorState message={loadError} scope="workout-tracker" onRetry={load} />;
   if (!log) return <LoadingScreen />;
 
-  const allSets = log.exercises.flatMap((exercise) => exercise.sets);
+  // Guidance follows the swaps in force (workoutGuide.guidedExercises): an
+  // original whose swap is in force keeps its rows and recorded sets, but its
+  // remaining work is the replacement's. Its logged sets still count; its
+  // unlogged ones are not counted twice.
+  const swapped = swappedOriginalIds(log);
+  const guided = guidedExercises(log);
+  const allSets = log.exercises.flatMap((exercise) => (swapped.has(exercise.id) ? exercise.sets.filter((set) => set.status === 'completed') : exercise.sets));
   const completedCount = allSets.filter((set) => set.status === 'completed').length;
   // Previous / current / upcoming set states (design-plans/010, bold
   // direction): the first pending set is "current"; completed sets go quiet.
   // Inside a superset the "current" card alternates between members.
-  const activeExerciseId = nextExercise(log.exercises)?.id;
+  const activeExerciseId = nextExercise(guided)?.id;
   const hasGroups = log.exercises.some((exercise) => exercise.superset_group);
   // Manual rest defaults to the current exercise's rest (else 90s); inside
   // a superset it is the group's round rest, like the automatic timer.
-  const activeExercise = log.exercises.find((ex) => ex.id === activeExerciseId) || log.exercises[0];
-  const posterTargets = nextPosterTargets(log.exercises, activeExerciseId);
-  const activeBlock = supersetBlocks(log.exercises).find((block) => block.items.some(({ exercise }) => exercise.id === activeExercise?.id));
+  const activeExercise = log.exercises.find((ex) => ex.id === activeExerciseId) || guided[0] || log.exercises[0];
+  const posterTargets = nextPosterTargets(guided, activeExerciseId);
+  const activeBlock = supersetBlocks(guided).find((block) => block.items.some(({ exercise }) => exercise.id === activeExercise?.id));
   const manualRest = manualRestSeconds(activeBlock && activeBlock.kind !== 'single'
     ? { prescribed_rest_seconds: supersetRestSeconds(activeBlock.items.map(({ exercise }) => exercise)) }
     : activeExercise);
   // One active row for the whole workout: the round-aware next unfinished set
   // (P1). Before, every card highlighted its own first pending set, so in a
   // superset A1 set 2 looked current while A2 set 1 was next.
-  const next = nextWork(log.exercises);
+  const next = nextWork(guided);
   const isActiveSet = (exercise, set) => !sealed && set.id === next?.setId;
   const markers = exerciseMarkers(log.exercises);
-  const outline = outlineBlocks(log.exercises);
+  const outline = outlineBlocks(log.exercises, swapped);
   const nextIndex = next ? log.exercises.findIndex((exercise) => exercise.id === next.exerciseId) : -1;
   const setRowClass = (exercise, set) => {
     if (set.status === 'completed') return 'bg-success/5 opacity-55';
@@ -980,13 +986,13 @@ export default function WorkoutTracker() {
   // the next unfinished set without an extra Next action.
   const afterCompletion = (exercise, set) => {
     // Inside a superset/giant set, rest waits for the end of the round.
-    const rest = restAfterSet(log.exercises, exercise.id, set.id);
+    const rest = restAfterSet(guidedExercises(log), exercise.id, set.id);
     if (rest.seconds > 0) startRest(rest.seconds);
     else if (rest.clear) clearRest();
     const updated = updateExercise(logRef.current || log, exercise.id, (row) => ({
       ...row, sets: row.sets.map((item) => (item.id === set.id ? { ...item, status: 'completed' } : item)),
     }));
-    const following = nextWork(updated.exercises);
+    const following = nextWork(guidedExercises(updated));
     if (following) setReveal({ ...following, nonce: Date.now() });
     else setAnnouncement('All sets done. Finish the workout when ready.');
   };
@@ -1097,8 +1103,10 @@ export default function WorkoutTracker() {
       data: { event_id: makeId(), sets },
       announce: `${exercise.exercise_name}: the rest skipped.`,
     });
-    const updated = { ...(logRef.current || log), exercises: (logRef.current || log).exercises.filter((row) => row.id !== exercise.id) };
-    const following = nextWork(updated.exercises);
+    // Guidance comes from the intact log first, then leaves out the skipped
+    // exercise: dropping a replacement row first would make its swapped
+    // original look eligible again.
+    const following = nextWork(guidedExercises(logRef.current || log).filter((row) => row.id !== exercise.id));
     if (following) setReveal({ ...following, nonce: Date.now() });
     setAnnouncement(`${exercise.exercise_name}: ${sets.length} ${sets.length === 1 ? 'set' : 'sets'} skipped.`);
   };
@@ -1120,7 +1128,7 @@ export default function WorkoutTracker() {
       announce: `${exercise.exercise_name} marked done. Sets were not logged.`,
     });
     const updated = updateExercise(logRef.current || log, exercise.id, (row) => ({ ...row, not_set_tracked: true }));
-    const following = nextWork(updated.exercises.filter((row) => !row.not_set_tracked));
+    const following = nextWork(guidedExercises(updated).filter((row) => !row.not_set_tracked));
     if (following) setReveal({ ...following, nonce: Date.now() });
     setAnnouncement(`${exercise.exercise_name}: done, sets not logged.${following ? '' : ' Finish the workout when ready.'}`);
   };
