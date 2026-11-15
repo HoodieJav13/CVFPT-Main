@@ -9,7 +9,7 @@ published. Prototype: `fable-redesign/pt` at 96fdcf66 (read only).
 | `x_per_side` | `workout_exercises.per_side` → `workout_log_exercises.per_side` | Boolean; shown in words ("per side"). |
 | `x_last_time` | `GET /workout-logs/:id/exercises/:exerciseId/history` (v3 adds the prescription each occurrence was logged against) | Same set number only (`lookA.lastTimeSet`): Focus Last column and each set row ("Last time, set 2: 170 lb × 4"); an em dash when that set was not done; recorded unit kept (kg stays kg). Never fills a value by itself. |
 | `x_not_set_tracked` | `workout_log_exercises.not_set_tracked` (exercise Quick Complete) and `workout_logs.not_set_tracked` (Finish with no logged set) | One flag; sets are never written. Outlined teal tick. Not counted as volume or a PR. |
-| `x_swapped_from` | `workout_log_exercises.substitutes_log_exercise_id` → the original's name | Only a real recorded substitution. |
+| `x_swapped_from` | `workout_log_exercises.substitutes_log_exercise_id` → the original's name | Only a real recorded substitution. While a swap is in force (active substitution, or this device's activated swap, with the replacement row present) guidance (Next, Focus, rest rounds, outline) follows the replacement and the outline marks the original "swapped"; the original's rows and recorded sets are unchanged (`workoutGuide.guidedExercises`). Waiting, declined, refused or undone swaps leave the original guided. |
 | `x_client_plan` | The existing per-set drafts and queued outbox writes on this device | Never sent as a new server field. |
 | `x_rest_over_seconds` | Derived from the stored rest deadline and the clock | The expired deadline is kept until dismissed. |
 
