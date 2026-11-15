@@ -1493,10 +1493,11 @@ export default function WorkoutTracker() {
       <span className={cn('row-span-2 self-center text-center font-display text-base tabular-nums sm:row-span-1', isActiveSet(exercise, set) && 'font-semibold text-primary')}>{set.set_number}</span>
       <div className="col-span-3 min-w-0 sm:col-span-1">
         <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:hidden">Weight</span>
-        <div className="flex min-w-0 gap-1">
+        {/* The unit wraps below rather than squeezing the number (large text). */}
+        <div className="flex min-w-0 flex-wrap gap-1">
           <Input
             type="number" min="0" step="0.5" inputMode="decimal"
-            className={cn('h-11 min-w-0 px-2 text-sm tabular-nums', isActiveSet(exercise, set) && 'h-12 border-primary/40 font-display text-lg font-semibold')}
+            className={cn('h-11 min-w-[5rem] flex-1 px-2 text-sm tabular-nums', isActiveSet(exercise, set) && 'h-12 border-primary/40 font-display text-lg font-semibold')}
             value={set.actual_load_value ?? ''}
             placeholder={exercise.prescribed_load_value != null ? String(exercise.prescribed_load_value) : undefined}
             onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
@@ -1519,7 +1520,7 @@ export default function WorkoutTracker() {
           </Select>
         </div>
       </div>
-      <div className={cn('col-start-2 min-w-0 sm:col-start-auto', !showRpe(exercise) && 'col-span-2 sm:col-span-1')}>
+      <div className={cn('col-start-2 min-w-0 sm:col-start-auto', !showRpe(exercise) && (inline ? 'col-span-3 sm:col-span-1' : 'col-span-2 sm:col-span-1'))}>
         <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:hidden">{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>
         {trackingType(exercise) === 'reps_weight' ? <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
           placeholder={exercise.prescribed_reps || undefined}

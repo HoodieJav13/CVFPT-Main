@@ -34,11 +34,16 @@ export function WorkoutViewport({ children, controls, header = null, headerStick
       // row (inputs, labels and the repeat action), or a revealed row would be
       // clipped; shorter windows use the document-scroll fallback instead.
       const headerHeight = headerRef.current ? headerRef.current.offsetHeight + gap : 0;
-      const minEntries = headerRef.current ? 176 : 120;
+      // Pinning must also leave the entries a real share of the screen: with
+      // enlarged text the header and dock grow, and a sliver of entries can be
+      // shorter than one Log action. Then the page scrolls normally instead.
+      const minEntries = Math.max(headerRef.current ? 176 : 120, Math.round(visibleHeight * 0.45));
       // In the fallback the outline sticks only while a whole set row still
       // fits between it and the bottom clearance; on very short windows it
       // scrolls away instead of covering the focused field.
-      setRoomToStick(visibleHeight - shellBottom - bottom - headerHeight >= minEntries);
+      // A header grown by enlarged text (over a quarter of the window) scrolls
+      // away instead of covering the entries.
+      setRoomToStick(visibleHeight - shellBottom - bottom - headerHeight >= minEntries && headerHeight <= visibleHeight * 0.25);
       setViewport({ height: visibleTop <= top && available >= footer.current.offsetHeight + headerHeight + gap + minEntries ? available : null, viewportHeight: visibleHeight, viewportTop: visibleTop });
     };
     measure();

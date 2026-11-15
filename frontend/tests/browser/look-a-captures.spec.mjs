@@ -105,6 +105,58 @@ test('tracker 390x844 at 200% text', async ({ page }) => {
   expect(results.errors).toEqual([]);
 });
 
+// Enlarged text is usable, not just unclipped: at 200% the Focus Log, the
+// inline editor and Finish can each be brought fully into view by scrolling,
+// and with a phone keyboard open (simulated by a shorter window) the focused
+// field and then Log stay reachable. "Whole" = inside the window and not under
+// the pinned dock (when the dock is pinned).
+const wholeInView = (locator) => locator.evaluate((e) => {
+  const r = e.getBoundingClientRect();
+  const dock = document.querySelector('[data-testid="workout-control-dock"]');
+  const pinned = dock && dock.contains(e) ? null : dock?.getBoundingClientRect();
+  const bottom = pinned && pinned.top < innerHeight && pinned.top > 0 ? Math.min(innerHeight, pinned.top) : innerHeight;
+  return r.height > 0 && r.top >= -1 && r.bottom <= bottom + 1;
+});
+const userScrollTo = (locator) => locator.evaluate((e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+
+test('tracker 390x844 at 200% text: Log, inline editor, keyboard and Finish stay reachable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { results } = await tracker(page);
+  await page.addStyleTag({ content: 'html { font-size: 200% !important; }' });
+  await page.waitForTimeout(200);
+  const log = page.getByTestId('focus-log');
+  await userScrollTo(log);
+  expect(await wholeInView(log), 'Log whole after scrolling').toBe(true);
+  await shot(page, 'tracker-06-text200-log-390x844');
+  await userScrollTo(page.getByTestId('focus-adjust'));
+  await page.getByTestId('focus-adjust').click();
+  const input = page.getByTestId('focus-editor').locator('input').first();
+  await expect(input).toBeFocused();
+  await page.waitForTimeout(200);
+  expect(await wholeInView(input), 'focused field whole when the editor opens').toBe(true);
+  await userScrollTo(log);
+  expect(await wholeInView(log), 'Log whole with the editor open').toBe(true);
+  await shot(page, 'tracker-07-text200-adjust-390x844');
+  // Phone keyboard: the visible window shrinks while the field is focused.
+  await input.focus();
+  await page.setViewportSize({ width: 390, height: 460 });
+  await page.waitForTimeout(250);
+  expect(await wholeInView(input), 'focused field whole with the keyboard open').toBe(true);
+  await shot(page, 'tracker-08-text200-keyboard-390x460');
+  await userScrollTo(log);
+  expect(await wholeInView(log), 'Log reachable with the keyboard open').toBe(true);
+  await shot(page, 'tracker-08b-text200-keyboard-log-390x460');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(200);
+  const finish = page.getByRole('button', { name: 'Finish workout', exact: true });
+  await userScrollTo(finish);
+  expect(await finish.evaluate((e) => { const r = e.getBoundingClientRect(); return r.top >= -1 && r.bottom <= innerHeight + 1; }), 'Finish whole').toBe(true);
+  await shot(page, 'tracker-09-text200-finish-390x844');
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  expect(results.errors).toEqual([]);
+});
+
 // ---------- coach dashboard (fictional clients, real response shapes) ----------
 const NOW = new Date('2026-11-14T17:00:00.000Z');
 const DASHBOARD = {
