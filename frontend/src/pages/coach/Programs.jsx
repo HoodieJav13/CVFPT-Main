@@ -71,7 +71,7 @@ const {
 } = draftTools;
 
 const EMPTY_LIBRARY = { name: '', category: '', equipment: '', primary_muscle: '', secondary_muscles: '', video_url: '', notes: '' };
-const EMPTY_EXERCISE = { tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null, id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', client_notes: '', coach_notes: '', video_url: '', video_link_mode: null, superset_group: null };
+const EMPTY_EXERCISE = { tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null, id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', prescribed_load_max: '', per_side: false, client_notes: '', coach_notes: '', video_url: '', video_link_mode: null, superset_group: null };
 // Builder rows carry a client-only _uid so accordion state follows an
 // exercise when it is reordered (the save RPC ignores unknown keys).
 let exerciseUid = 0;
@@ -420,6 +420,8 @@ export function workoutToForm(workout) {
       target_rpe: ex.target_rpe || '',
       default_load_value: ex.default_load_value ?? '',
       default_load_unit: ex.default_load_unit || 'lb',
+      prescribed_load_max: ex.prescribed_load_max ?? '',
+      per_side: ex.per_side === true,
       client_notes: ex.client_notes || ex.notes || '',
       coach_notes: ex.coach_notes || '',
       // Never the library link: an inheriting row follows the library live.
@@ -1949,6 +1951,14 @@ function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onS
               <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
             </Select>
             </div>
+          </div>
+          {/* Look A: an optional upper load (same unit) and per side. Blank = a single load. */}
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-end gap-2">
+            <LabeledField label="Load up to (optional)"><Input type="number" min="0" step="any" inputMode="decimal" value={exercise.prescribed_load_max ?? ''} onChange={(e) => setExercise(index, { prescribed_load_max: e.target.value })} placeholder="Same as default" data-testid="workout-exercise-load-max-input" /></LabeledField>
+            <label htmlFor={`${idPrefix}-${rowValue(exercise, index)}-per-side`} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-1 text-sm">
+              <Checkbox id={`${idPrefix}-${rowValue(exercise, index)}-per-side`} checked={exercise.per_side === true} onCheckedChange={(checked) => setExercise(index, { per_side: checked === true })} data-testid="workout-exercise-per-side-input" />
+              Per side
+            </label>
           </div>
           <DemoLinkField
             exercise={exercise}

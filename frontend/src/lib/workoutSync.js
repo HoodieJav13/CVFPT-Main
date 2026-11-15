@@ -50,7 +50,9 @@ export function rewritePendingSetId(operation, pendingId, realId) {
  */
 export function isWriteBlocked(queue, operation) {
   if (operation.kind === 'complete') return false;
-  return queue.some((queued) => queued.kind === 'complete');
+  // The one exception (Look A): the Undo of that very Finish, queued behind it.
+  return queue.some((queued) => queued.kind === 'complete'
+    && !(operation.undoOf?.kind === 'finish' && queued.data?.event_id && operation.undoOf.change_id === queued.data.event_id));
 }
 
 function isBlank(value) {
@@ -259,7 +261,9 @@ export function nextSendable(queue) {
   for (const operation of queue) {
     if (operation.parked) { if (operation.setId) waiting.add(operation.setId); continue; }
     if (operation.setId && waiting.has(operation.setId)) continue;
-    if (operation.kind === 'complete' && queue.some((queued) => queued.parked)) return null;
+    // A Finish or a Look A change (Done, Undo) waits for every parked write:
+    // it is decided against everything before it, in order.
+    if ((operation.kind === 'complete' || operation.kind === 'material') && queue.some((queued) => queued.parked)) return null;
     return operation;
   }
   return null;

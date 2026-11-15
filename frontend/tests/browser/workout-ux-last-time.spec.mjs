@@ -79,6 +79,11 @@ async function setup(page, { role = 'client', online = true, historyHold = null,
       Object.assign(set, body);
       return json(set);
     }
+    // Look A Finish: {result, log, undo}; the older /complete stays for queued entries.
+    if (path === '/workout-logs/lt-log/finish' && method === 'POST') {
+      Object.assign(state.log, { status: 'completed', completed_at: new Date().toISOString() });
+      return json({ result: { outcome: 'applied', change_id: request.postDataJSON().event_id }, log: state.log, undo: null });
+    }
     if (path === '/workout-logs/lt-log/complete' && method === 'POST') {
       Object.assign(state.log, { status: 'completed', completed_at: new Date().toISOString() });
       return json(state.log);

@@ -1,536 +1,558 @@
-// Normal tracker: per-exercise quick complete and its six-second Undo restore
-// the whole previous state (owner decision 2026-11-12: "keep the 6-second
-// Undo; Undo restores everything as it was, skipped sets included"). Normal
-// mode, synthetic in-process API, fictional data only. A mixed exercise has a
-// completed set, a typed set, an untouched prefilled set and a skipped set.
-// This proves UI behaviour and the writes the page sends, not server
-// authorization or database rules.
+// Look A per-exercise Done and the one Undo (adapted 2026-11-15 from the
+// 2026-11-12 bulk "Record N remaining as entered" + six-second Undo contract;
+// LOOK-A-BROWSER-CONTRACT-MAP, LOOK-A-TEST-ADAPTATION-ADDENDUM).
+//
+// Done now sets one "done, not set-tracked" flag and leaves every set row
+// untouched; the Undo in the dock is one revision-checked server inverse that
+// stays until the next material change. The old protections against an Undo
+// write turning a prescription into a performed value are kept, seeded as
+// legacy queued writes and markers (flag-only Done no longer produces them).
+// Normal mode, stateful synthetic API (look-a-server.mjs), fictional data only.
 import { test, expect } from '@playwright/test';
+import { makeServer, installServer, clone, held, sent, card, reps, settled, undoButton, open } from './look-a-server.mjs';
 
 const LOG = 'undo-log';
 const REST_KEY = `cvf_rest_timer_${LOG}`;
+const OUTBOX = `cvf_workout_outbox_${LOG}`;
+const PRESCRIPTION_KEY = `cvf_workout_prefill_${LOG}`;
 const row = (exercise, n, extra = {}) => ({
   id: `${exercise}-s${n}`, workout_log_exercise_id: exercise, set_number: n, status: 'pending', set_origin: 'prescribed',
   actual_load_value: 50, actual_load_unit: 'lb', actual_reps: null, actual_rpe: null,
   actual_duration_value: null, actual_duration_unit: null, actual_distance_value: null, actual_distance_unit: null,
-  revision: 0, last_actor_role: null, ...extra,
+  revision: 0, last_actor_role: null, value_origin: 'prefill', value_origin_nonce: null, archived: false,
+  updated_at: '2026-11-14T11:00:00.000Z', ...extra,
 });
+const exercise = (id, name, load, sets, extra = {}) => ({
+  id, exercise_name: name, tracking_type: 'reps_weight', prescribed_sets: String(sets.length), prescribed_reps: '8', prescribed_load_value: load, prescribed_load_unit: 'lb',
+  prescribed_rest_seconds: 60, superset_group: null, plan_revision: 0, backups: [], not_set_tracked: false, sets, ...extra,
+});
+// A mixed exercise: a completed set, a set typed into (saved), an untouched prefilled set and a skipped set.
 const fixtureLog = () => ({
-  id: LOG, client_id: 'undo-client', workout_name: 'Fictional undo workout', status: 'active', started_at: new Date().toISOString(),
+  id: LOG, client_id: 'undo-client', workout_name: 'Fictional undo workout', status: 'active', started_at: new Date().toISOString(), not_set_tracked: false,
   exercises: [
-    { id: 'a', exercise_name: 'Incline Press', tracking_type: 'reps_weight', prescribed_sets: '4', prescribed_reps: '8', prescribed_load_value: 50, prescribed_load_unit: 'lb', prescribed_rest_seconds: 90, superset_group: null, plan_revision: 0, backups: [],
-      sets: [row('a', 1, { status: 'completed', actual_reps: 8, revision: 2, last_actor_role: 'client' }), row('a', 2), row('a', 3), row('a', 4, { status: 'skipped', actual_load_value: null, actual_load_unit: null, revision: 1 })] },
-    { id: 'b', exercise_name: 'Goblet Squat', tracking_type: 'reps_weight', prescribed_sets: '3', prescribed_reps: '10', prescribed_load_value: 35, prescribed_load_unit: 'lb', prescribed_rest_seconds: 60, superset_group: null, plan_revision: 0, backups: [],
-      sets: [row('b', 1, { actual_load_value: 35 }), row('b', 2, { actual_load_value: 35 }), row('b', 3, { actual_load_value: 35 })] },
-    { id: 'c', exercise_name: 'Cable Row', tracking_type: 'reps_weight', prescribed_sets: '3', prescribed_reps: '12', prescribed_load_value: 40, prescribed_load_unit: 'lb', prescribed_rest_seconds: 60, superset_group: null, plan_revision: 0, backups: [],
-      sets: [row('c', 1, { actual_load_value: 40 }), row('c', 2, { actual_load_value: 40 }), row('c', 3, { actual_load_value: 40 })] },
+    exercise('a', 'Incline Press', 50, [
+      row('a', 1, { status: 'completed', actual_reps: 8, revision: 2, last_actor_role: 'client', value_origin: 'entered', value_origin_nonce: 'seed-a1' }),
+      row('a', 2, { actual_reps: 4, revision: 1, last_actor_role: 'client', value_origin: 'entered', value_origin_nonce: 'seed-a2' }),
+      row('a', 3),
+      row('a', 4, { status: 'skipped', actual_load_value: null, actual_load_unit: null, revision: 1, last_actor_role: 'client', value_origin: 'entered' }),
+    ]),
+    exercise('b', 'Goblet Squat', 35, [1, 2, 3].map((n) => row('b', n, { actual_load_value: 35 }))),
+    exercise('c', 'Cable Row', 40, [1, 2, 3].map((n) => row('c', n, { actual_load_value: 40 }))),
   ],
   coach_responses: [], conflicts: [], substitutions: [],
 });
-const SET_FIELDS = ['status', 'actual_load_value', 'actual_load_unit', 'actual_reps', 'actual_rpe'];
-const pick = (set) => Object.fromEntries(SET_FIELDS.map((key) => [key, set[key] ?? null]));
 
-async function setup(page, { width = 390, height = 844, alerts = false } = {}) {
+async function setup(page, { width = 390, height = 844, seed = null, legacySetReplies = false, oldServer = false, alerts = false } = {}) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const server = fixtureLog();
-  const results = { errors: [], unexpected: [], writes: [] };
-  page.on('pageerror', (error) => results.errors.push(error.message));
   await page.addInitScript((on) => {
-    localStorage.setItem('cvf_access_token', 'synthetic-undo-token');
     if (on) localStorage.setItem('cvf_rest_alerts', 'on');
     window.__vibrations = 0;
     navigator.vibrate = () => { window.__vibrations += 1; return true; };
   }, alerts);
-  await page.route('**/api/**', async (route) => {
-    const r = route.request();
-    const path = new URL(r.url()).pathname.replace(/^\/api/, '');
-    const method = r.method();
-    const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
-    if (path === '/auth/me') return json({ role: 'client', email: 'undo@example.invalid', profile: { id: 'undo-client', name: 'Fictional undo client', waiver_signed: true } });
-    if (path === '/telemetry/events') return route.fulfill({ status: 204 });
-    if (path.endsWith('/unread-count')) return json({ unread: 0 });
-    if (path === `/workout-logs/${LOG}` && method === 'GET') return json({ ...server, server_time: new Date().toISOString() });
-    if (new RegExp(`^/workout-logs/${LOG}/exercises/[^/]+/history$`).test(path)) return json({ occurrences: [], next_cursor: null });
-    if (new RegExp(`^/workout-logs/${LOG}/exercises/[^/]+/substitution-options$`).test(path)) return json({ backups: [], suggestions: [], catalog_reason: null, server_time: new Date().toISOString() });
-    if (method === 'GET' && new RegExp(`^/workout-logs/${LOG}/exercises/[^/]+/cue-retry$`).test(path)) return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
-    if (method === 'PATCH' && path.startsWith(`/workout-logs/${LOG}/sets/`)) {
-      const setId = path.split('/').at(-1);
-      const set = server.exercises.flatMap((exercise) => exercise.sets).find((item) => item.id === setId);
-      const body = r.postDataJSON();
-      results.writes.push({ setId, ...pick(body), base_revision: body.base_revision });
-      for (const key of SET_FIELDS) if (key in body) set[key] = body[key];
-      set.revision += 1;
-      set.last_actor_role = 'client';
-      return json({ ...set, event: { outcome: 'applied' } });
-    }
-    results.unexpected.push(`${method} ${path}`);
-    return json({ error: 'Unexpected synthetic route' }, 404);
-  });
-  await page.goto(`/client/workouts/${LOG}/track`);
-  await expect(page.getByTestId('workout-outline')).toBeVisible();
+  const server = makeServer(fixtureLog());
+  if (seed) seed(server);
+  const results = await installServer(page, server, { logId: LOG, legacySetReplies: legacySetReplies || oldServer, oldServer });
+  await open(page, LOG);
   return { server, results };
 }
-
-const card = (page, name) => page.getByTestId('tracker-exercise-card').filter({ has: page.getByText(name, { exact: true }) }).first();
-const region = (page) => page.getByTestId('workout-scroll-region');
+// Complete server rows: every field, revisions, actor, provenance and timestamps included.
+const rows = (server, exerciseId) => clone(server.log.exercises.find((e) => e.id === exerciseId).sets);
+const flag = (server, exerciseId) => server.log.exercises.find((e) => e.id === exerciseId).not_set_tracked;
+const setWrites = (server) => sent(server, /\/sets\//);
+const undos = (server) => sent(server, /\/undo$/);
+const done = (page, name) => card(page, name).getByTestId('exercise-quick-complete');
 const restDeadline = (page) => page.evaluate((key) => localStorage.getItem(key), REST_KEY);
-// The server copy of each set without its concurrency fields (revision and last actor move on by design).
-const serverSets = (server, exerciseId) => server.exercises.find((exercise) => exercise.id === exerciseId).sets.map((set) => {
-  const copy = { ...set };
-  delete copy.revision;
-  delete copy.last_actor_role;
-  return copy;
-});
-const settle = (page) => page.waitForFunction(() => !localStorage.getItem('cvf_workout_outbox_undo-log'));
-const quickButton = (page) => card(page, 'Incline Press').getByTestId('exercise-quick-complete');
-const quickReason = (page) => card(page, 'Incline Press').getByTestId('exercise-quick-unavailable');
-
-async function typeReps(page, n, value) {
-  const input = page.locator(`input[aria-label="Incline Press set ${n} performed reps"]`);
-  await input.scrollIntoViewIfNeeded();
-  await input.fill(value);
-  await input.blur();
-}
+const region = (page) => page.getByTestId('workout-scroll-region');
+const queuedUrls = (page) => page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '[]').map((op) => op.url.split('/').slice(-2).join('/')), OUTBOX);
+const markers = (page) => page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '{}'), PRESCRIPTION_KEY);
+const noUndo = async (page) => {
+  await expect(undoButton(page)).toBeDisabled();
+  await expect(undoButton(page)).toHaveText(/Nothing to undo yet/);
+};
 
 for (const [width, height] of [[390, 844], [320, 700]]) {
-  test(`${width}×${height}: Undo restores the sets, skipped and completed sets untouched, the earlier rest timer, the scroll position and focus`, async ({ page }) => {
+  test(`${width}×${height}: Done sets only the flag and Undo clears only the flag; every set row is identical throughout`, async ({ page }) => {
     const { server, results } = await setup(page, { width, height });
-    await typeReps(page, 2, '4');
-    await settle(page);
-    const before = serverSets(server, 'a');
-    // A rest timer started by the client before the action.
+    const before = rows(server, 'a');
     await page.getByTestId('rest-start').click();
-    const deadlineBefore = await restDeadline(page);
-    expect(Number(deadlineBefore)).toBeGreaterThan(Date.now());
-    const quick = card(page, 'Incline Press').getByTestId('exercise-quick-complete');
-    await expect(quick).toHaveText(/Record 2 remaining as entered \(1 with details, 1 without\)/);
-    await quick.scrollIntoViewIfNeeded();
+    const deadline = await restDeadline(page);
+    await done(page, 'Incline Press').scrollIntoViewIfNeeded();
     await page.waitForTimeout(150);
-    const scrollBefore = await region(page).evaluate((node) => node.scrollTop);
-    const cardTopBefore = await card(page, 'Incline Press').evaluate((node) => Math.round(node.getBoundingClientRect().top));
     const windowBefore = await page.evaluate(() => window.scrollY);
     await page.screenshot({ path: test.info().outputPath(`1-before-${width}x${height}.png`) });
-    const writesBefore = results.writes.length;
 
-    await quick.click();
-    await expect(page.getByTestId('exercise-quick-undo')).toBeVisible();
-    await settle(page);
-    const deadlineAfter = await restDeadline(page);
-    expect(deadlineAfter).not.toBe(deadlineBefore);
-    expect(serverSets(server, 'a').map((set) => set.status)).toEqual(['completed', 'completed', 'completed', 'skipped']);
-    await page.screenshot({ path: test.info().outputPath(`2-after-quick-${width}x${height}.png`) });
+    await done(page, 'Incline Press').click();
+    await settled(page, LOG);
+    expect(flag(server, 'a')).toBe(true);
+    expect(rows(server, 'a')).toEqual(before);
+    await expect(undoButton(page)).toHaveText(/Undo Incline Press done/);
+    await page.screenshot({ path: test.info().outputPath(`2-after-done-${width}x${height}.png`) });
 
-    await page.getByTestId('exercise-quick-undo-button').click();
-    await expect(page.getByTestId('exercise-quick-undo')).toHaveCount(0);
-    await settle(page);
-    // Set data: back exactly as before (server copy and the page), completed and skipped sets never written.
-    expect(serverSets(server, 'a')).toEqual(before);
-    const undoWrites = results.writes.slice(writesBefore);
-    expect(undoWrites.map((w) => `${w.setId}:${w.status}`)).toEqual(['a-s2:completed', 'a-s3:completed', 'a-s2:pending', 'a-s3:pending']);
-    await expect(page.locator('input[aria-label="Incline Press set 2 performed reps"]')).toHaveValue('4');
+    await undoButton(page).click();
+    await settled(page, LOG);
+    expect(flag(server, 'a')).toBe(false);
+    expect(rows(server, 'a')).toEqual(before);
+    // No set was written by Done or by its Undo; one Done, one Undo, aimed at it.
+    expect(setWrites(server)).toEqual([]);
+    expect(sent(server, /\/exercises\/a\/done$/)).toHaveLength(1);
+    expect(undos(server).map((r) => r.body.change_id)).toEqual([sent(server, /\/done$/)[0].body.event_id]);
+    // The page shows the same values: typed reps, the untouched prefill, the completed and skipped sets.
+    await expect(reps(page, 'Incline Press', 2)).toHaveValue('4');
     await expect(page.locator('input[aria-label="Incline Press set 3 weight"]')).toHaveValue('50');
-    await expect(page.locator('input[aria-label="Incline Press set 3 performed reps"]')).toHaveValue('');
+    await expect(reps(page, 'Incline Press', 3)).toHaveValue('');
     await expect(page.locator('[data-set-id="a-s1"] button[aria-label="Mark incomplete set 1"]')).toBeVisible();
-    await expect(card(page, 'Incline Press').getByTestId('exercise-quick-complete')).toHaveText(/Record 2 remaining as entered \(1 with details, 1 without\)/);
-    // The earlier rest timer, with its original deadline.
-    expect(await restDeadline(page)).toBe(deadlineBefore);
-    await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state', 'running');
-    // The view: same scroll position, focus back on the control that was used.
-    await expect.poll(() => region(page).evaluate((node) => node.scrollTop)).toBeGreaterThanOrEqual(scrollBefore - 1);
-    expect(await region(page).evaluate((node) => node.scrollTop)).toBeLessThanOrEqual(scrollBefore + 1);
+    await expect(done(page, 'Incline Press')).toBeVisible();
+    // Done never touched the rest timer the person started.
+    expect(await restDeadline(page)).toBe(deadline);
+    // Done moved the view on to the next exercise; its Undo brings Incline Press back into view.
+    await expect(card(page, 'Incline Press')).toBeInViewport();
     expect(Math.abs((await page.evaluate(() => window.scrollY)) - windowBefore)).toBeLessThanOrEqual(1);
-    expect(await card(page, 'Incline Press').evaluate((node) => Math.round(node.getBoundingClientRect().top))).toBe(cardTopBefore);
-    await expect(card(page, 'Incline Press').getByTestId('exercise-quick-complete')).toBeFocused();
+    await noUndo(page);
     await page.screenshot({ path: test.info().outputPath(`3-after-undo-${width}x${height}.png`) });
     expect(results.unexpected).toEqual([]);
     expect(results.errors).toEqual([]);
   });
 }
 
-test('a newer rest timer started after the action is kept; a double tap on Undo reopens once', async ({ page }) => {
+test('the Undo stays past six seconds and across a reload until it is used', async ({ page }) => {
   const { server, results } = await setup(page);
-  await card(page, 'Incline Press').getByTestId('exercise-quick-complete').click();
-  await settle(page);
-  // The client stops the action's timer and starts a new one: newer input.
-  await page.getByTestId('rest-timer').click();
-  await page.getByTestId('rest-start').click();
-  const newer = await restDeadline(page);
-  const writesBefore = results.writes.length;
-  await page.getByTestId('exercise-quick-undo-button').dblclick();
-  await settle(page);
-  expect(results.writes.slice(writesBefore).map((w) => `${w.setId}:${w.status}`)).toEqual(['a-s2:pending', 'a-s3:pending']);
-  expect(await restDeadline(page)).toBe(newer);
-  expect(serverSets(server, 'a').map((set) => set.status)).toEqual(['completed', 'pending', 'pending', 'skipped']);
-  expect(results.errors).toEqual([]);
-});
-
-test('no timer before the action: Undo removes the timer the action started', async ({ page }) => {
-  await setup(page);
-  expect(await restDeadline(page)).toBeNull();
-  await card(page, 'Incline Press').getByTestId('exercise-quick-complete').click();
-  await expect(page.getByTestId('rest-timer')).toBeVisible();
-  await page.getByTestId('exercise-quick-undo-button').click();
-  await expect(page.getByTestId('rest-timer')).toHaveCount(0);
-  expect(await restDeadline(page)).toBeNull();
-});
-
-test('an earlier timer that already finished comes back finished, without alerting again', async ({ page }) => {
-  await setup(page, { alerts: true });
-  await page.getByTestId('rest-start').click();
-  // Run the client's timer down to finished with the existing −15 s control.
-  for (let i = 0; i < 12 && (await page.getByTestId('rest-minus').count()); i += 1) await page.getByTestId('rest-minus').click();
-  await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state', 'complete');
-  await expect.poll(() => page.evaluate(() => window.__vibrations)).toBe(1);
-  const finished = await restDeadline(page);
-  await card(page, 'Incline Press').getByTestId('exercise-quick-complete').click();
-  await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state', 'running');
-  await page.getByTestId('exercise-quick-undo-button').click();
-  await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state', 'complete');
-  expect(await restDeadline(page)).toBe(finished);
-  await page.waitForTimeout(600);
-  expect(await page.evaluate(() => window.__vibrations)).toBe(1);
-  await expect(page.getByTestId('rest-complete-announcement')).toHaveText('');
-});
-
-test('after six seconds Undo is gone and nothing changes; a set changed since refuses Undo and writes nothing', async ({ page }) => {
-  const { server, results } = await setup(page);
-  await card(page, 'Incline Press').getByTestId('exercise-quick-complete').click();
-  await settle(page);
-  const afterQuick = serverSets(server, 'a');
-  const deadline = await restDeadline(page);
-  await page.waitForTimeout(6400);
-  await expect(page.getByTestId('exercise-quick-undo')).toHaveCount(0);
-  expect(serverSets(server, 'a')).toEqual(afterQuick);
-  expect(await restDeadline(page)).toBe(deadline);
-
-  // Second exercise: complete it, then change one of its sets before Undo.
-  await card(page, 'Goblet Squat').getByTestId('exercise-quick-complete').click();
-  await settle(page);
-  const reps = page.locator('input[aria-label="Goblet Squat set 1 performed reps"]');
-  await reps.fill('9');
-  await reps.blur();
-  await settle(page);
-  const writesBefore = results.writes.length;
-  const changed = serverSets(server, 'b');
-  await page.getByTestId('exercise-quick-undo-button').click();
-  await expect(page.getByText('A set changed since; undo it one set at a time.')).toBeVisible();
-  await page.waitForTimeout(300);
-  expect(results.writes.length).toBe(writesBefore);
-  expect(serverSets(server, 'b')).toEqual(changed);
-});
-
-test('offline: the completion and the Undo stay queued in order and send in order on reconnect', async ({ page, context }) => {
-  const { server, results } = await setup(page);
-  await typeReps(page, 2, '4');
-  await settle(page);
-  const before = serverSets(server, 'a');
-  const writesBefore = results.writes.length;
-  await context.setOffline(true);
-  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
-  await card(page, 'Incline Press').getByTestId('exercise-quick-complete').click();
-  await page.getByTestId('exercise-quick-undo-button').click();
-  const queued = await page.evaluate(() => JSON.parse(localStorage.getItem('cvf_workout_outbox_undo-log') || '[]').map((op) => `${op.setId}:${op.data.status}`));
-  expect(queued).toEqual(['a-s2:completed', 'a-s3:completed', 'a-s2:pending', 'a-s3:pending']);
-  expect(results.writes.length).toBe(writesBefore);
-  await context.setOffline(false);
-  await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await settle(page);
-  expect(results.writes.slice(writesBefore).map((w) => `${w.setId}:${w.status}`)).toEqual(['a-s2:completed', 'a-s3:completed', 'a-s2:pending', 'a-s3:pending']);
-  expect(serverSets(server, 'a')).toEqual(before);
-  await expect(page.locator('input[aria-label="Incline Press set 2 performed reps"]')).toHaveValue('4');
-  // Once the queued Undo write is acknowledged, the untouched prefill of set 3 is untouched again.
-  await expect(card(page, 'Incline Press').getByTestId('exercise-quick-complete')).toHaveText(/Record 2 remaining as entered \(1 with details, 1 without\)/);
-});
-
-test('after Undo and a reload, an untouched prefilled set is still untouched: a second quick complete does not record the prescribed weight', async ({ page }) => {
-  const { results } = await setup(page);
-  const quick = card(page, 'Incline Press').getByTestId('exercise-quick-complete');
-  await expect(quick).toHaveText(/Record 2 remaining as entered \(0 with details, 2 without\)/);
-  await quick.click();
-  await settle(page);
-  expect(results.writes.filter((w) => w.status === 'completed').map((w) => w.actual_load_value)).toEqual([null, null]);
-  await page.getByTestId('exercise-quick-undo-button').click();
-  await settle(page);
-  await expect(quick).toHaveText(/Record 2 remaining as entered \(0 with details, 2 without\)/);
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  await page.waitForTimeout(6500);
+  await expect(undoButton(page)).toHaveText(/Undo Incline Press done/);
   await page.reload();
   await expect(page.getByTestId('workout-outline')).toBeVisible();
-  await expect(card(page, 'Incline Press').getByTestId('exercise-quick-complete')).toHaveText(/Record 2 remaining as entered \(0 with details, 2 without\)/);
-  const writesBefore = results.writes.length;
-  await card(page, 'Incline Press').getByTestId('exercise-quick-complete').click();
-  await settle(page);
-  expect(results.writes.slice(writesBefore).map((w) => [w.setId, w.status, w.actual_load_value])).toEqual([['a-s2', 'completed', null], ['a-s3', 'completed', null]]);
-  // Typing into a set makes its values the person's own again.
-  await page.getByTestId('exercise-quick-undo-button').click();
-  await settle(page);
-  await page.locator('input[aria-label="Incline Press set 3 performed reps"]').fill('7');
-  await page.locator('input[aria-label="Incline Press set 3 performed reps"]').blur();
-  await settle(page);
-  await expect(card(page, 'Incline Press').getByTestId('exercise-quick-complete')).toHaveText(/Record 2 remaining as entered \(1 with details, 1 without\)/);
+  await expect(undoButton(page)).toHaveText(/Undo Incline Press done/);
+  await undoButton(page).click();
+  await settled(page, LOG);
+  expect(flag(server, 'a')).toBe(false);
+  await noUndo(page);
   expect(results.errors).toEqual([]);
 });
 
-test('scrolling right after Undo is never pulled back by the view restore', async ({ page }) => {
+test('a newer successful set edit becomes the Undo; using it leaves Done in place and offers no older Undo, before or after a reload', async ({ page }) => {
+  const { server, results } = await setup(page);
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  const goblet = rows(server, 'b');
+  await reps(page, 'Goblet Squat', 1).fill('9');
+  await reps(page, 'Goblet Squat', 1).blur();
+  await settled(page, LOG);
+  await expect(undoButton(page)).toHaveText(/Undo set 1 of Goblet Squat/);
+  await undoButton(page).click();
+  await settled(page, LOG);
+  // Only the set edit is undone; its row is back to its values; Done stays.
+  const after = rows(server, 'b');
+  expect(after.map(({ status, actual_reps: r, actual_load_value: l, value_origin: o }) => [status, r, l, o]))
+    .toEqual(goblet.map(({ status, actual_reps: r, actual_load_value: l, value_origin: o }) => [status, r, l, o]));
+  expect(flag(server, 'a')).toBe(true);
+  expect(undos(server).map((r) => r.body.change_id)).toEqual([setWrites(server)[0].body.event_id]);
+  await noUndo(page);
+  await page.reload();
+  await expect(page.getByTestId('workout-outline')).toBeVisible();
+  await noUndo(page);
+  expect(results.errors).toEqual([]);
+});
+
+test('a refused set write keeps the earlier Undo, which still works', async ({ page }) => {
+  const { server, results } = await setup(page);
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  server.reject.set('b-s1', 'Synthetic rejection');
+  await reps(page, 'Goblet Squat', 1).fill('9');
+  await reps(page, 'Goblet Squat', 1).blur();
+  await expect.poll(() => setWrites(server).length).toBeGreaterThan(0);
+  await settled(page, LOG);
+  await expect(undoButton(page)).toHaveText(/Undo Incline Press done/);
+  await undoButton(page).click();
+  await settled(page, LOG);
+  expect(flag(server, 'a')).toBe(false);
+  expect([...server.changes.values()].filter((c) => c.kind === 'undo' && c.outcome === 'applied')).toHaveLength(1);
+  expect(results.errors).toEqual([]);
+});
+
+test('a coach prescription change ends the Undo: a stale tap is refused and changes nothing; the offer goes away', async ({ page }) => {
+  const { server, results } = await setup(page);
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  await expect(undoButton(page)).toHaveText(/Undo Incline Press done/);
+  const before = rows(server, 'a');
+  server.coachPrescription('a', { prescribed_load_value: 55 });
+  // This page still offers its older Undo; the server refuses it.
+  await undoButton(page).click();
+  await settled(page, LOG);
+  expect(flag(server, 'a')).toBe(true);
+  expect(rows(server, 'a')).toEqual(before);
+  expect([...server.changes.values()].filter((c) => c.kind === 'undo').map((c) => c.outcome)).toEqual(['refused']);
+  await noUndo(page);
+  await page.reload();
+  await expect(page.getByTestId('workout-outline')).toBeVisible();
+  await noUndo(page);
+  expect(setWrites(server)).toEqual([]);
+  expect(results.errors).toEqual([]);
+});
+
+test('a double tap on Undo sends one Undo', async ({ page }) => {
+  const { server, results } = await setup(page);
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  await undoButton(page).dblclick();
+  await settled(page, LOG);
+  await page.waitForTimeout(300);
+  expect(new Set(undos(server).map((r) => r.body.event_id)).size).toBe(1);
+  expect(flag(server, 'a')).toBe(false);
+  expect(results.errors).toEqual([]);
+});
+
+// Offline here is this tab's navigator.onLine plus an unreachable server
+// (context.setOffline also blocks the dev server's lazily loaded modules).
+test('offline: Done and its Undo stay queued in order and send in order on reconnect; no set is written', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__online = true;
+    Object.defineProperty(Navigator.prototype, 'onLine', { configurable: true, get: () => window.__online });
+  });
+  const { server, results } = await setup(page);
+  const before = rows(server, 'a');
+  server.down = true;
+  await page.evaluate(() => { window.__online = false; window.dispatchEvent(new Event('offline')); });
+  await done(page, 'Incline Press').click();
+  await undoButton(page).click();
+  expect(await queuedUrls(page)).toEqual(['a/done', `${LOG}/undo`]);
+  expect(server.requests).toEqual([]);
+  server.down = false;
+  await page.evaluate(() => { window.__online = true; window.dispatchEvent(new Event('online')); });
+  await settled(page, LOG);
+  expect(server.requests.map((r) => r.path.split('/').slice(-2).join('/'))).toEqual(['a/done', `${LOG}/undo`]);
+  expect(flag(server, 'a')).toBe(false);
+  expect(rows(server, 'a')).toEqual(before);
+  await expect(reps(page, 'Incline Press', 2)).toHaveValue('4');
+  expect(results.errors).toEqual([]);
+});
+
+test('after Done, Undo and a reload the prefilled set is still untouched: a second Done records no weight', async ({ page }) => {
+  const { server, results } = await setup(page);
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  await undoButton(page).click();
+  await settled(page, LOG);
+  await page.reload();
+  await expect(page.getByTestId('workout-outline')).toBeVisible();
+  const before = rows(server, 'a');
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  expect(rows(server, 'a')).toEqual(before);
+  expect(rows(server, 'a')[2]).toMatchObject({ status: 'pending', actual_reps: null, value_origin: 'prefill' });
+  expect(setWrites(server)).toEqual([]);
+  expect(results.errors).toEqual([]);
+});
+
+// ---------- Legacy protections, seeded (the old bulk Undo wrote set rows) ----------
+// A queued set write from the old six-second Undo (status back to pending with
+// the prescription restored) and this device's marker for it.
+const legacyUndoWrite = (setId, id = 'legacy-undo-op') => ({
+  id, attempts: 0, kind: 'set', exerciseId: 'a', setId, method: 'patch', url: `/workout-logs/${LOG}/sets/${setId}`,
+  // Queued by the 2026-11-12 build: the pt-session-events/v1 envelope (event id = queue id) was added at enqueue.
+  data: { status: 'pending', actual_load_value: 50, actual_load_unit: 'lb', actual_reps: null, actual_rpe: null, event_id: id, base_revision: 1, local_seq: 1, offline: false, plan_revision_seen: 0 },
+});
+async function seedLegacy(page, queue, marks) {
+  await page.evaluate(([outbox, prefill, q, m]) => {
+    if (q) localStorage.setItem(outbox, JSON.stringify(q));
+    if (m) localStorage.setItem(prefill, JSON.stringify(m));
+  }, [OUTBOX, PRESCRIPTION_KEY, queue, marks]);
+  await page.reload();
+  await expect(page.getByTestId('workout-outline')).toBeVisible();
+}
+
+test('legacy: an old Undo write the server rejects leaves no marker behind and nothing waits on it', async ({ page }) => {
+  const { server, results } = await setup(page, { seed: (s) => Object.assign(s.find('a-s3'), { status: 'completed', actual_load_value: null, actual_load_unit: null, revision: 1, last_actor_role: 'client', value_origin: 'entered' }) });
+  server.reject.set('a-s3', 'Synthetic rejection');
+  await seedLegacy(page, [legacyUndoWrite('a-s3')], { 'a-s3': { op: 'legacy-undo-op', base: 1 } });
+  await expect.poll(() => setWrites(server).length).toBe(1);
+  await settled(page, LOG);
+  expect(Object.keys(await markers(page))).not.toContain('a-s3');
+  expect(server.find('a-s3').status).toBe('completed');
+  await page.reload();
+  await expect(page.getByTestId('workout-outline')).toBeVisible();
+  // The set is an ordinary completed set again: it can be changed directly.
+  await expect(page.locator('[data-set-id="a-s3"] button[aria-label="Mark incomplete set 3"]')).toBeEnabled();
+  expect(undos(server)).toEqual([]);
+  expect(results.errors).toEqual([]);
+});
+
+test('legacy: a marker left without its write is never treated as untouched; typing into that set lifts it', async ({ page }) => {
+  const { server, results } = await setup(page, { seed: (s) => Object.assign(s.find('a-s3'), { revision: 2, last_actor_role: 'client', value_origin: 'legacy' }) });
+  await seedLegacy(page, null, { 'a-s3': { op: 'synthetic-gone-op', base: 1 } });
+  expect(server.requests).toEqual([]);
+  // Today's plan from set 2 never targets set 3 while its old Undo is unaccounted for.
+  await card(page, 'Incline Press').getByRole('button', { name: 'Complete set 2', exact: true }).click();
+  await settled(page, LOG);
+  await card(page, 'Incline Press').getByTestId('plan-keep').click();
+  await expect(card(page, 'Incline Press').getByTestId('plan-log')).toHaveCount(0);
+  // Typing makes set 3's values the person's own.
+  await reps(page, 'Incline Press', 3).fill('7');
+  await reps(page, 'Incline Press', 3).blur();
+  await settled(page, LOG);
+  // Its own acknowledged write leaves at most an 'entered' marker, never the old Undo one.
+  expect((await markers(page))['a-s3']?.op).not.toBe('synthetic-gone-op');
+  expect(['entered', undefined]).toContain((await markers(page))['a-s3']?.origin);
+  expect(setWrites(server).filter((r) => r.path.endsWith('/a-s3')).map((r) => [r.body.actual_load_value, r.body.actual_reps])).toEqual([[50, 7]]);
+  expect(results.errors).toEqual([]);
+});
+
+test('legacy: an old Undo write committed but unanswered across a reload replays once and never turns the prescription into a performed weight', async ({ page }) => {
+  const { server, results } = await setup(page, { seed: (s) => Object.assign(s.find('a-s3'), { status: 'completed', actual_load_value: null, actual_load_unit: null, revision: 1, last_actor_role: 'client', value_origin: 'entered' }) });
+  server.drop.add('sets/a-s3');
+  await seedLegacy(page, [legacyUndoWrite('a-s3')], { 'a-s3': { op: 'legacy-undo-op', base: 1 } });
+  await expect.poll(() => setWrites(server).length).toBeGreaterThan(0);
+  expect(server.find('a-s3')).toMatchObject({ status: 'pending', actual_load_value: 50, revision: 2 });
+  server.drop.delete('sets/a-s3');
+  await page.reload();
+  await expect(page.getByTestId('workout-outline')).toBeVisible();
+  await settled(page, LOG);
+  // The same event replays; it is applied once.
+  const ids = new Set(setWrites(server).map((r) => r.body.event_id));
+  expect(ids.size).toBe(1);
+  expect([...server.changes.values()].filter((c) => c.kind === 'set' && c.outcome === 'applied')).toHaveLength(1);
+  // Set 3 shows the restored 50 lb, pending, and no performed weight was recorded by anything.
+  await expect(page.locator('input[aria-label="Incline Press set 3 weight"]')).toHaveValue('50');
+  expect(server.find('a-s3')).toMatchObject({ status: 'pending', actual_reps: null });
+  const start = server.requests.length;
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  expect(server.requests.slice(start).map((r) => r.path.split('/').slice(-2).join('/'))).toEqual(['a/done']);
+  expect(server.find('a-s3')).toMatchObject({ status: 'pending', actual_reps: null });
+  expect(undos(server)).toEqual([]);
+  expect(results.errors).toEqual([]);
+});
+
+test('scrolling right after Undo is never pulled back', async ({ page }) => {
   await setup(page);
-  await card(page, 'Incline Press').getByTestId('exercise-quick-complete').click();
-  await settle(page);
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  await region(page).evaluate((node) => { node.scrollTop = 0; });
   const box = await region(page).boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  // Probe the restore: watch every frame for 500 ms after Undo, and scroll
-  // with the wheel as soon as the first frame has run.
   await page.evaluate(() => {
     window.__tops = [];
     const node = document.querySelector('[data-testid="workout-scroll-region"]');
     const start = performance.now();
     const tick = () => { window.__tops.push(node.scrollTop); if (performance.now() - start < 500) requestAnimationFrame(tick); };
-    document.querySelector('[data-testid="exercise-quick-undo-button"]').addEventListener('click', () => requestAnimationFrame(tick), { once: true });
+    document.querySelector('[data-testid="workout-undo-button"]').addEventListener('click', () => requestAnimationFrame(tick), { once: true });
   });
-  await page.getByTestId('exercise-quick-undo-button').click();
+  await undoButton(page).click();
   await page.mouse.wheel(0, 240);
   await page.waitForTimeout(600);
   const tops = await page.evaluate(() => window.__tops);
   const peak = Math.max(...tops);
-  // Once the person scrolled, later frames never go back up to the restored position.
-  const afterPeak = tops.slice(tops.indexOf(peak));
   expect(peak).toBeGreaterThan(tops[0]);
-  expect(Math.min(...afterPeak)).toBeGreaterThanOrEqual(peak - 1);
+  expect(Math.min(...tops.slice(tops.indexOf(peak)))).toBeGreaterThanOrEqual(peak - 1);
 });
 
-// Independent finding 01 (2026-11-12): after Undo, another device (here the
-// coach) explicitly saves the prescribed 50 lb with blank reps; this device has
-// already fetched that newer revision before quick completing again. The saved
-// weight is newer input and must never be stripped.
-// Mapped (cross-device Undo release 2026-11-12, coordinator's old-server
-// correction): this synthetic API is an OLD server (no value_origin). There a
-// load-only value at a newer revision from another device cannot be told apart
-// from another device's restored prefill, so quick complete no longer records
-// it as 50 (that could invent a weight); it is gated with a reason, the 50 lb is
-// kept on the server and on screen, and recording set 3 on its own records 50.
-// The original "recorded 50" expectation is kept for the new schema in
-// workout-ux-cross-device-undo.spec.mjs (finding 01 on the new schema).
-for (const how of ['refresh', 'reload']) {
-  test(`a newer saved weight fetched by ${how} after Undo is never stripped: an old server gates the shortcut and set 3 records 50 on its own`, async ({ page }) => {
-    const { server, results } = await setup(page);
-    const quick = () => card(page, 'Incline Press').getByTestId('exercise-quick-complete');
-    await quick().click();
-    await settle(page);
-    await page.getByTestId('exercise-quick-undo-button').click();
-    await settle(page);
-    await expect(quick()).toHaveText(/Record 2 remaining as entered \(0 with details, 2 without\)/);
-    const s3 = server.exercises[0].sets[2];
-    const undoRevision = s3.revision;
-    Object.assign(s3, { actual_load_value: 50, actual_load_unit: 'lb', revision: undoRevision + 1, last_actor_role: 'coach' });
+test('a held Undo reply: the button stays unavailable until it answers, then nothing older is offered', async ({ page }) => {
+  const { server, results } = await setup(page);
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  const release = held(server, 'undo');
+  await undoButton(page).click();
+  await expect.poll(() => undos(server).length).toBe(1);
+  await expect(undoButton(page)).toBeDisabled();
+  release();
+  await settled(page, LOG);
+  expect(flag(server, 'a')).toBe(false);
+  await noUndo(page);
+  expect(undos(server)).toHaveLength(1);
+  expect(results.errors).toEqual([]);
+});
+
+// ---------- Rest intent, finished-rest alert, keyboard focus (flag-only) ----------
+test('a newer rest timer started after Done is kept by its Undo', async ({ page }) => {
+  await setup(page);
+  await page.getByTestId('rest-start').click();
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  // The person stops that timer and starts a new one: newer input.
+  await page.getByTestId('rest-timer').click();
+  await page.getByTestId('rest-start').click();
+  const newer = await restDeadline(page);
+  await undoButton(page).click();
+  await settled(page, LOG);
+  expect(await restDeadline(page)).toBe(newer);
+  await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state', 'running');
+});
+
+test('a rest timer that already finished stays finished through Done and Undo, without alerting again', async ({ page }) => {
+  await setup(page, { alerts: true });
+  await page.getByTestId('rest-start').click();
+  for (let i = 0; i < 12 && (await page.getByTestId('rest-minus').count()); i += 1) await page.getByTestId('rest-minus').click();
+  await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state', 'complete');
+  await expect.poll(() => page.evaluate(() => window.__vibrations)).toBe(1);
+  const finished = await restDeadline(page);
+  // Count announcements from here on (the live region keeps the earlier "Rest complete").
+  await page.evaluate(() => {
+    window.__announced = 0;
+    const node = document.querySelector('[data-testid="rest-complete-announcement"]');
+    new MutationObserver(() => { window.__announced += 1; }).observe(node, { childList: true, characterData: true, subtree: true });
+  });
+  await done(page, 'Incline Press').click();
+  await settled(page, LOG);
+  await undoButton(page).click();
+  await settled(page, LOG);
+  await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state', 'complete');
+  expect(await restDeadline(page)).toBe(finished);
+  await page.waitForTimeout(600);
+  expect(await page.evaluate(() => window.__vibrations)).toBe(1);
+  expect(await page.evaluate(() => window.__announced)).toBe(0);
+});
+
+test('keyboard: Done and Undo by Enter; after Undo focus is back on that exercise\'s Done, which still works', async ({ page }) => {
+  const { server, results } = await setup(page);
+  await done(page, 'Incline Press').focus();
+  await page.keyboard.press('Enter');
+  await settled(page, LOG);
+  await undoButton(page).focus();
+  await page.keyboard.press('Enter');
+  await settled(page, LOG);
+  await expect(done(page, 'Incline Press')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => flag(server, 'a')).toBe(true);
+  expect(results.errors).toEqual([]);
+});
+
+test('a set write that reaches the server and changes nothing keeps the Undo of Done, which then works', async ({ page }) => {
+  const { server, results } = await setup(page);
+  await done(page, 'Goblet Squat').click();
+  await settled(page, LOG);
+  // A queued write equal to set 2's saved row (4 reps, 50 lb), as a page queues it.
+  const same = { id: 'noop-op', attempts: 0, kind: 'set', exerciseId: 'a', setId: 'a-s2', method: 'patch', url: `/workout-logs/${LOG}/sets/a-s2`,
+    data: { status: 'pending', actual_load_value: 50, actual_load_unit: 'lb', actual_reps: 4, actual_rpe: null, event_id: 'noop-op', base_revision: 1, local_seq: 9, offline: false, plan_revision_seen: 0, value_origin: 'entered' } };
+  await page.evaluate(([key, op]) => localStorage.setItem(key, JSON.stringify([op])), [OUTBOX, same]);
+  await page.reload();
+  await expect(page.getByTestId('workout-outline')).toBeVisible();
+  await expect.poll(() => setWrites(server).map((r) => r.body.event_id)).toEqual(['noop-op']);
+  await settled(page, LOG);
+  // The server recorded nothing material: no inverse, no new current change.
+  expect(server.changes.get('noop-op')).toMatchObject({ inverse: null });
+  expect(server.current()?.kind).toBe('exercise_done');
+  await expect(undoButton(page)).toHaveText(/Undo Goblet Squat done/);
+  await undoButton(page).click();
+  await expect.poll(() => flag(server, 'b')).toBe(false);
+  expect(undos(server).map((r) => r.body.change_id)).toEqual([sent(server, /\/exercises\/b\/done$/)[0].body.event_id]);
+  expect(results.errors).toEqual([]);
+});
+
+test('typing a value and back before leaving the field sends nothing and keeps the Undo of Done', async ({ page }) => {
+  const { server, results } = await setup(page);
+  await done(page, 'Goblet Squat').click();
+  await settled(page, LOG);
+  await reps(page, 'Incline Press', 2).fill('5');
+  await reps(page, 'Incline Press', 2).fill('4');
+  await reps(page, 'Incline Press', 2).blur();
+  await page.waitForTimeout(400);
+  await expect(undoButton(page)).toHaveText(/Undo Goblet Squat done/);
+  expect([...server.changes.values()].filter((c) => c.kind === 'set' && c.inverse)).toEqual([]);
+  expect(results.errors).toEqual([]);
+});
+
+// ---------- Legacy held PATCH races on rows WITHOUT provenance (old server columns) ----------
+// What the old bulk quick complete and its six-second Undo left behind: sets 2
+// and 3 completed without a weight, then two queued Undo writes putting the
+// prescribed 50 lb back, with this device's markers. The server rows carry no
+// value_origin at all. The page must never record the prescription as
+// performed on its own, never strip a newer value, and recover only through an
+// explicit action by the person. (Done itself is not blocked by any of this.)
+const afterOldQuick = (s) => {
+  for (const id of ['a-s2', 'a-s3']) Object.assign(s.find(id), { status: 'completed', actual_load_value: null, actual_load_unit: null, actual_reps: null, revision: 1, last_actor_role: 'client', value_origin: 'unknown' });
+};
+const legacyBoth = () => [legacyUndoWrite('a-s2', 'legacy-undo-s2'), legacyUndoWrite('a-s3', 'legacy-undo-s3')];
+const legacyMarks = { 'a-s2': { op: 'legacy-undo-s2', base: 1 }, 'a-s3': { op: 'legacy-undo-s3', base: 1 } };
+const s3Writes = (server) => setWrites(server).filter((r) => r.path.endsWith('/a-s3'));
+// Today's plan from completed set 1 (8 × 50 lb): which sets would it log?
+async function planTargetsShown(page) {
+  const keep = card(page, 'Incline Press').getByTestId('plan-keep');
+  if (await keep.count()) await keep.click();
+  const log = card(page, 'Incline Press').getByTestId('plan-log');
+  return (await log.count()) ? log.getAttribute('aria-label') : null;
+}
+
+for (const [how, width, height] of [['reload', 390, 844], ['reload', 320, 700], ['refresh', 390, 844]]) {
+  test(`${width}×${height} legacy (no provenance, ${how}): an old Undo write committed with its reply held is replayed once; set 3 is never recorded by itself and keeps 50 lb until the person records it`, async ({ page }) => {
+    const { server, results } = await setup(page, { width, height, oldServer: true, seed: afterOldQuick });
+    const release = held(server, 'sets/a-s3');
+    await seedLegacy(page, legacyBoth(), legacyMarks);
+    await expect.poll(() => s3Writes(server).length).toBeGreaterThan(0);
+    expect(server.find('a-s3')).toMatchObject({ status: 'pending', actual_load_value: 50, revision: 2 });
+    expect(server.find('a-s3')).not.toHaveProperty('value_origin', 'prefill');
     if (how === 'reload') {
       await page.reload();
       await expect(page.getByTestId('workout-outline')).toBeVisible();
+      await expect.poll(() => s3Writes(server).length).toBeGreaterThan(1);
     } else {
       await page.evaluate(() => window.dispatchEvent(new Event('online')));
     }
-    await expect(quickReason(page)).toHaveText(/^Set 3 may still be the prescribed weight\. Record it on its own or enter what you did\.$/);
-    await expect(quick()).toHaveCount(0);
     await expect(page.locator('input[aria-label="Incline Press set 3 weight"]')).toHaveValue('50');
-    const writesBefore = results.writes.length;
-    await page.locator('[data-set-id="a-s3"] button[aria-label="Complete set 3"]').click();
-    await settle(page);
-    expect(results.writes.slice(writesBefore).map((w) => [w.setId, w.status, w.actual_load_value])).toEqual([['a-s3', 'completed', 50]]);
-    expect(server.exercises[0].sets[2].actual_load_value).toBe(50);
-    expect(results.writes.filter((w) => w.setId === 'a-s3' && w.status === 'completed' && w.base_revision > undoRevision).every((w) => w.actual_load_value === 50)).toBe(true);
-    expect(results.errors).toEqual([]);
-  });
-}
-
-// Independent finding 02 (2026-11-12): this device's own Undo write for set 3 is
-// committed by the server, but its answer is held. Until that answer arrives
-// nobody can tell whether the set holds this device's restored prescription or
-// someone else's newer value, so quick complete must neither record the
-// prescription as performed nor strip a newer value: it waits, with a reason,
-// and lifts by itself when the answer arrives.
-const PRESCRIPTION_KEY = `cvf_workout_prefill_${LOG}`;
-// Cross-device Undo (2026-11-12): this device now also keeps 'entered' markers
-// for its own acknowledged writes (so an old server never gates them). The
-// finding 02 checks that no Undo-prefill marker is left behind are kept by
-// asserting there is no marker without origin 'entered'.
-const prefillMarkersLeft = (page) => page.evaluate((key) => Object.entries(JSON.parse(localStorage.getItem(key) || '{}'))
-  .filter(([, marker]) => marker?.origin !== 'entered').map(([setId]) => setId), PRESCRIPTION_KEY);
-async function holdUndoAnswer(page, server, setId, { conflictWith = null } = {}) {
-  let open;
-  const gate = new Promise((resolve) => { open = resolve; });
-  const state = { requests: 0, release: () => open() };
-  let answer = null;
-  await page.route(`**/api/workout-logs/${LOG}/sets/${setId}`, async (route) => {
-    const body = route.request().postDataJSON();
-    if (body.status !== 'pending') return route.fallback();
-    state.requests += 1;
-    if (!answer) {
-      const set = server.exercises.flatMap((exercise) => exercise.sets).find((item) => item.id === setId);
-      if (conflictWith) {
-        // Another writer got there first; the server keeps that value.
-        Object.assign(set, conflictWith, { revision: set.revision + 1, last_actor_role: 'coach' });
-        answer = { row: { ...set }, outcome: 'conflict' };
-      } else {
-        for (const key of SET_FIELDS) if (key in body) set[key] = body[key];
-        Object.assign(set, { revision: set.revision + 1, last_actor_role: 'client' });
-        answer = { row: { ...set }, outcome: 'applied' };
-      }
-    }
-    await gate;
-    const event = state.requests > 1 ? { outcome: 'replayed', original_outcome: answer.outcome } : { outcome: answer.outcome };
-    try {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...answer.row, event }) });
-    } catch { /* the page that sent this request has reloaded */ }
-  });
-  return state;
-}
-const s3Completions = (results) => results.writes.filter((w) => w.setId === 'a-s3' && w.status === 'completed');
-
-for (const [width, height] of [[390, 844], [320, 700]]) {
-  test(`${width}×${height}: an Undo committed but unanswered across a reload never turns the prescription into a performed weight`, async ({ page }) => {
-    const { server, results } = await setup(page, { width, height });
-    await quickButton(page).click();
-    await settle(page);
-    const held = await holdUndoAnswer(page, server, 'a-s3');
-    await page.getByTestId('exercise-quick-undo-button').click();
-    await expect.poll(() => held.requests).toBe(1);
-    expect(server.exercises[0].sets[2]).toMatchObject({ status: 'pending', actual_load_value: 50, revision: 2 });
-    await page.reload();
-    await expect(page.getByTestId('workout-outline')).toBeVisible();
-    await expect.poll(() => held.requests).toBeGreaterThan(1);
-    // Waiting for the answer: no shortcut, a clear reason, and set 3 still shows the restored 50 lb.
-    await expect(quickReason(page)).toHaveText(/^Set 3 is still confirming your Undo\. Record sets one at a time, or wait for it to save\.$/);
-    await expect(quickButton(page)).toHaveCount(0);
-    await expect(page.locator('input[aria-label="Incline Press set 3 weight"]')).toHaveValue('50');
-    await page.screenshot({ path: test.info().outputPath(`gated-pending-answer-${width}x${height}.png`) });
-    held.release();
-    await settle(page);
-    // Mapped (Ultra F2, 2026-11-12): was "the answer says the value is this
-    // device's own restored prescription: still untouched", then a quick
-    // complete recording [a-s2 null, a-s3 null]. After the reload the answer
-    // arrives as a replay, which carries the server's CURRENT row, not proof of
-    // what this Undo wrote; on this old-server harness (no value_origin) the
-    // load-only set is therefore gated with its 50 lb kept: never recorded as
-    // performed and never stripped. The new-schema copy (the server origin
-    // still says prefill: untouched, no weight recorded) is in
-    // workout-ux-cross-device-undo.spec.mjs.
-    await expect(quickReason(page)).toHaveText(/^Set 3 may still be the prescribed weight\. Record it on its own or enter what you did\.$/);
-    await expect(quickButton(page)).toHaveCount(0);
-    await expect(page.locator('input[aria-label="Incline Press set 3 weight"]')).toHaveValue('50');
-    await page.screenshot({ path: test.info().outputPath(`after-answer-${width}x${height}.png`) });
-    const start = results.writes.length;
+    release();
+    await settled(page, LOG);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await page.waitForTimeout(500);
-    expect(results.writes.slice(start)).toEqual([]);
-    expect(s3Completions(results).every((w) => w.actual_load_value === null)).toBe(true);
-    // Mapped (cross-device Undo): was `localStorage.getItem(PRESCRIPTION_KEY) === null`.
-    // Mapped again (Ultra F2): was `[]` after set 2 was recorded. Set 2 is not
-    // recorded now (the shortcut is gated), so its own freshly applied Undo
-    // marker legitimately remains; set 3's marker was retired by the replay.
-    expect(await prefillMarkersLeft(page)).toEqual(['a-s2']);
+    // Applied once; every later write for set 3 is the same event.
+    expect(new Set(s3Writes(server).map((r) => r.body.event_id))).toEqual(new Set(['legacy-undo-s3']));
+    // Today's plan never targets set 3 (its 50 lb cannot be told from a newer entry).
+    const target = await planTargetsShown(page);
+    expect(target ?? '').not.toMatch(/set 3/);
+    expect(s3Writes(server).filter((r) => r.body.status === 'completed')).toEqual([]);
+    // Explicit recovery: the person completes set 3 and its shown 50 lb is recorded.
+    await card(page, 'Incline Press').getByRole('button', { name: 'Complete set 3', exact: true }).click();
+    await settled(page, LOG);
+    expect(s3Writes(server).filter((r) => r.body.status === 'completed').map((r) => r.body.actual_load_value)).toEqual([50]);
+    expect(undos(server)).toEqual([]);
     expect(results.errors).toEqual([]);
   });
 }
 
-test('the same race through an in-page refresh: the shortcut waits past the six-second window, then lifts on the answer', async ({ page }) => {
-  const { server, results } = await setup(page);
-  await quickButton(page).click();
-  await settle(page);
-  const held = await holdUndoAnswer(page, server, 'a-s3');
-  await page.getByTestId('exercise-quick-undo-button').click();
-  await expect.poll(() => held.requests).toBe(1);
-  // Not yet known to be applied: still the untouched prefill on this device.
-  await expect(quickButton(page)).toHaveText(/Record 2 remaining as entered \(0 with details, 2 without\)/);
+test('legacy (no provenance): an old Undo write that loses to the coach\'s 55 lb, reply held across a reload, keeps 55: never stripped, never invented', async ({ page }) => {
+  const { server, results } = await setup(page, { oldServer: true, seed: afterOldQuick });
+  server.setHook = (set, body) => {
+    if (set.id !== 'a-s3' || body.status !== 'pending') return null;
+    Object.assign(set, { status: 'pending', actual_load_value: 55, actual_load_unit: 'lb', actual_reps: null, revision: set.revision + 1, last_actor_role: 'coach', value_origin: 'entered' });
+    return { outcome: 'conflict', conflict_id: 'qu-conflict' };
+  };
+  const release = held(server, 'sets/a-s3');
+  await seedLegacy(page, legacyBoth(), legacyMarks);
+  await expect.poll(() => s3Writes(server).length).toBeGreaterThan(0);
+  server.setHook = null;
+  await page.reload();
+  await expect(page.getByTestId('workout-outline')).toBeVisible();
+  release();
+  await settled(page, LOG);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect(quickReason(page)).toHaveText(/^Set 3 is still confirming your Undo\./);
-  await page.waitForTimeout(6500);
-  await expect(page.getByTestId('exercise-quick-undo-button')).toHaveCount(0);
-  await expect(quickReason(page)).toHaveText(/^Set 3 is still confirming your Undo\./);
-  await expect(quickButton(page)).toHaveCount(0);
-  held.release();
-  await settle(page);
-  await expect(quickButton(page)).toHaveText(/Record 2 remaining as entered \(0 with details, 2 without\)/);
-  const start = results.writes.length;
-  await quickButton(page).click();
-  await settle(page);
-  expect(results.writes.slice(start).map((w) => [w.setId, w.status, w.actual_load_value])).toEqual([['a-s2', 'completed', null], ['a-s3', 'completed', null]]);
-  expect(held.requests).toBe(1);
-  expect(results.errors).toEqual([]);
-});
-
-test('an unanswered Undo that turns out to have lost to another writer keeps that newer value: never stripped, never invented', async ({ page }) => {
-  const { server, results } = await setup(page);
-  await quickButton(page).click();
-  await settle(page);
-  const held = await holdUndoAnswer(page, server, 'a-s3', { conflictWith: { status: 'pending', actual_load_value: 55, actual_load_unit: 'lb', actual_reps: null } });
-  await page.getByTestId('exercise-quick-undo-button').click();
-  await expect.poll(() => held.requests).toBe(1);
-  await page.reload();
-  await expect(page.getByTestId('workout-outline')).toBeVisible();
-  await expect.poll(() => held.requests).toBeGreaterThan(1);
-  await expect(quickReason(page)).toHaveText(/^Set 3 is still confirming your Undo\./);
-  await expect(quickButton(page)).toHaveCount(0);
-  held.release();
-  await settle(page);
-  // The answer: the server kept the coach's 55 lb. It is newer input and is kept.
-  // Mapped (cross-device Undo release, old-server correction): this OLD server
-  // gives no origin, so a load-only value from another writer is gated, not
-  // recorded by the shortcut; recording set 3 on its own records 55. The
-  // new-schema copy (cross-device spec) keeps "quick complete records 55".
   await expect(page.locator('input[aria-label="Incline Press set 3 weight"]')).toHaveValue('55');
-  await expect(quickReason(page)).toHaveText(/^Set 3 may still be the prescribed weight\./);
-  await expect(quickButton(page)).toHaveCount(0);
-  const start = results.writes.length;
-  await page.locator('[data-set-id="a-s3"] button[aria-label="Complete set 3"]').click();
-  await settle(page);
-  expect(results.writes.slice(start).map((w) => [w.setId, w.status, w.actual_load_value])).toEqual([['a-s3', 'completed', 55]]);
-  expect(server.exercises[0].sets[2].actual_load_value).toBe(55);
-  expect(s3Completions(results).every((w) => w.actual_load_value === null || w.actual_load_value === 55)).toBe(true);
-  // Set 2 still holds this device's acknowledged restored prefill: the shortcut
-  // records it without a weight, which also retires its marker.
-  await expect(quickButton(page)).toHaveText(/Record 1 remaining as entered \(0 with details, 1 without\)/);
-  const second = results.writes.length;
-  await quickButton(page).click();
-  await settle(page);
-  expect(results.writes.slice(second).map((w) => [w.setId, w.status, w.actual_load_value])).toEqual([['a-s2', 'completed', null]]);
-  // Mapped: was `localStorage.getItem(PRESCRIPTION_KEY) === null`.
-  expect(await prefillMarkersLeft(page)).toEqual([]);
+  const target = await planTargetsShown(page);
+  expect(target ?? '').not.toMatch(/set 3/);
+  expect(server.find('a-s3')).toMatchObject({ actual_load_value: 55, status: 'pending' });
+  await card(page, 'Incline Press').getByRole('button', { name: 'Complete set 3', exact: true }).click();
+  await settled(page, LOG);
+  expect(s3Writes(server).filter((r) => r.body.status === 'completed').map((r) => r.body.actual_load_value)).toEqual([55]);
+  expect(s3Writes(server).some((r) => r.body.status === 'completed' && r.body.actual_load_value === 50)).toBe(false);
   expect(results.errors).toEqual([]);
 });
 
-test('an Undo write the server rejects leaves no marker behind: nothing waits on an answer that already came', async ({ page }) => {
-  const { server, results } = await setup(page);
-  await quickButton(page).click();
-  await settle(page);
-  await page.route(`**/api/workout-logs/${LOG}/sets/a-s3`, (route) => (route.request().postDataJSON().status === 'pending'
-    ? route.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: 'Synthetic rejection' }) })
-    : route.fallback()));
-  await page.getByTestId('exercise-quick-undo-button').click();
-  await settle(page);
-  const marks = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '{}'), PRESCRIPTION_KEY);
-  expect(Object.keys(marks)).not.toContain('a-s3');
-  // The rejected set is still completed on the server and on screen; nothing is gated.
-  expect(server.exercises[0].sets[2].status).toBe('completed');
-  await page.reload();
-  await expect(page.getByTestId('workout-outline')).toBeVisible();
-  await expect(quickReason(page)).toHaveCount(0);
-  await expect(quickButton(page)).toHaveText(/Record 1 remaining as entered \(0 with details, 1 without\)/);
-  expect(results.errors).toEqual([]);
-});
-
-test('an Undo marker left without its operation waits with a recovery reason; recording that set yourself lifts it', async ({ page }) => {
-  const { server, results } = await setup(page);
-  // Set 3 holds the restored prescription at a revision this device cannot account for.
-  Object.assign(server.exercises[0].sets[2], { status: 'pending', actual_load_value: 50, actual_load_unit: 'lb', revision: 2, last_actor_role: 'client' });
-  await page.evaluate((key) => localStorage.setItem(key, JSON.stringify({ 'a-s3': { op: 'synthetic-gone-op', base: 1 } })), PRESCRIPTION_KEY);
-  await page.reload();
-  await expect(page.getByTestId('workout-outline')).toBeVisible();
-  await expect(quickReason(page)).toHaveText(/^Set 3's earlier Undo could not be confirmed\. Check its values and record it on its own\.$/);
-  await expect(quickButton(page)).toHaveCount(0);
-  expect(results.writes).toEqual([]);
-  await typeReps(page, 3, '7');
-  await settle(page);
-  await expect(quickReason(page)).toHaveCount(0);
-  await expect(quickButton(page)).toHaveText(/Record 2 remaining as entered \(1 with details, 1 without\)/);
-  const start = results.writes.length;
-  await quickButton(page).click();
-  await settle(page);
-  expect(results.writes.slice(start).map((w) => [w.setId, w.status, w.actual_load_value, w.actual_reps])).toEqual([['a-s2', 'completed', null, null], ['a-s3', 'completed', 50, 7]]);
-  expect(results.errors).toEqual([]);
-});
+for (const how of ['refresh', 'reload']) {
+  test(`legacy (no provenance, ${how}): the coach saves the prescribed 50 lb after the old Undo landed; it is kept and never treated as untouched`, async ({ page }) => {
+    const { server, results } = await setup(page, { oldServer: true, seed: afterOldQuick });
+    await seedLegacy(page, legacyBoth(), legacyMarks);
+    await settled(page, LOG);
+    server.coachSet('a-s3', { status: 'pending', actual_load_value: 50, actual_load_unit: 'lb', actual_reps: null });
+    if (how === 'reload') { await page.reload(); await expect(page.getByTestId('workout-outline')).toBeVisible(); }
+    else await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect(page.locator('input[aria-label="Incline Press set 3 weight"]')).toHaveValue('50');
+    const before = s3Writes(server).length;
+    const target = await planTargetsShown(page);
+    expect(target ?? '').not.toMatch(/set 3/);
+    expect(s3Writes(server)).toHaveLength(before);
+    await card(page, 'Incline Press').getByRole('button', { name: 'Complete set 3', exact: true }).click();
+    await settled(page, LOG);
+    expect(s3Writes(server).slice(before).map((r) => [r.body.status, r.body.actual_load_value])).toEqual([['completed', 50]]);
+    expect(results.errors).toEqual([]);
+  });
+}

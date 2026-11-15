@@ -74,7 +74,14 @@ for (const [label, load, done, expected] of [
     if (load) await page.getByTestId('swap-target-load').fill(load);
     await page.getByTestId('swap-confirm').click();
     await expect.poll(() => sent.length).toBe(1);
-    expect(sent[0].targets).toEqual(expected);
+    // The count is fixed by the server from the backup's own count (Look A
+    // v3): the page sends what it showed as expected_sets plus one id per set,
+    // never a count inside the targets.
+    const { sets: count, ...targets } = expected;
+    expect(sent[0].targets).toEqual(targets);
+    expect(sent[0].expected_sets).toBe(count);
+    expect(sent[0].set_ids).toHaveLength(count);
+    expect(new Set(sent[0].set_ids).size).toBe(count);
     expect(sent[0]).toMatchObject({ source: 'coach_backup', backup_id: BACKUP.id, trigger: 'other' });
     expect(sent[0].reason).toBeUndefined();
     await context.close();

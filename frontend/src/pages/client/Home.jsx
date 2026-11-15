@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -12,8 +12,12 @@ import {
 } from '@/components/ui/dialog';
 import {
   Dumbbell, ChevronRight, MapPin,
-  MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2, CheckCircle2, Pencil,
+  MessageSquare, AlertTriangle, ClipboardCheck, Activity, Play, Loader2, CheckCircle2, Pencil, Undo2,
 } from 'lucide-react';
+import { forgetHomeQuick, homeQuickEventId, homeQuickReply, homeUndoIdentity, readHomeUndo, swapHomeUndo } from '@/lib/lookA';
+
+const newId = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID()
+  : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16)));
 import { fmtDay, fmtTime, fmtDateTime, fmtDate, initials } from '@/lib/format';
 import { toast } from 'sonner';
 import { DashboardHero } from '@/components/BrandBackdrop';
@@ -32,7 +36,28 @@ export default function ClientHome() {
   const [data, setData] = useState(null);
   const [training, setTraining] = useState({ assignments: null, activeLog: null, history: [], complete: false });
   const [startingWorkout, setStartingWorkout] = useState(false);
-  const [quickCompleting, setQuickCompleting] = useState(false);
+  // Look A: the one Undo for Home's Mark done. It stays (across reloads)
+  // until the server says it is no longer the current change.
+  const [homeUndo, setHomeUndoState] = useState(() => readHomeUndo());
+  // One Mark done / Undo operation at a time (LOOK-A-HOME-UNDO-REVIEW 3):
+  // `busy` names it for the buttons; the ref is the synchronous guard.
+  const [busy, setBusy] = useState(null);
+  const busyRef = useRef(null);
+  const quickCompleting = busy === 'mark';
+  const undoing = busy === 'undo';
+  // Every pointer change is a compare-and-set against the pointer the
+  // operation started from, so an older reply never replaces a newer one.
+  const swapPointer = useCallback((expected, next) => {
+    const swapped = swapHomeUndo(homeUndoIdentity(expected), next);
+    setHomeUndoState(readHomeUndo());
+    return swapped;
+  }, []);
+  const exclusive = useCallback(async (kind, fn) => {
+    if (busyRef.current) return undefined;
+    busyRef.current = kind;
+    setBusy(kind);
+    try { return await fn(); } finally { busyRef.current = null; setBusy(null); }
+  }, []);
   const [rhythm, setRhythm] = useState(null);
   const [announcements, setAnnouncements] = useState([]);
   const [acknowledging, setAcknowledging] = useState(false);
@@ -118,26 +143,136 @@ export default function ClientHome() {
   // One-tap "I did it" (design-plans/011 A): for clients who won't track sets.
   // Records the assigned workout done without set detail, then offers — never
   // forces — the daily check-in as the "how did it go?" handoff.
-  const quickComplete = async (source) => {
-    setQuickCompleting(true);
+  //
+  // The pending pointer is written before the request: a reload or a lost
+  // reply keeps the same event id and the Undo offer. Only a reply whose log
+  // is completed NOW is celebrated (a replay of a tap undone since is history).
+  const sendMarkDone = useCallback(async (pending, { announce }) => {
     try {
-      await api.post('/workout-logs/quick-complete', source);
-      trackProductEvent('workout_quick_completed', { source: 'client_home' });
-      toast.success('Nice work — your coach has been notified');
-      await load();
-      setCheckInOpen(true);
+      const { data: done } = await api.post('/workout-logs/quick-complete', { ...pending.source, event_id: pending.event_id });
+      forgetHomeQuick();
+      const reply = homeQuickReply(done);
+      swapPointer(pending, reply.undo);
+      if (reply.current) {
+        trackProductEvent('workout_quick_completed', { source: 'client_home' });
+        toast.success('Nice work — your coach has been notified');
+        await load();
+        if (announce) setCheckInOpen(true);
+      } else {
+        toast.message('That mark done was already undone. Nothing changed.');
+        await load();
+      }
+      return { kind: 'answered', reply };
     } catch (error) {
       const active = error.response?.data?.active_workout;
-      if (error.response?.status === 409 && active?.id) {
-        toast.error('You have a workout in progress — finish that one first.');
-        navigate(`/client/workouts/${active.id}/track`);
-      } else {
-        toast.error(errMsg(error, 'Could not mark the workout done'));
+      if (error.response?.status >= 400 && error.response?.status < 500) {
+        // A refusal is final: nothing was marked done.
+        forgetHomeQuick();
+        swapPointer(pending, null);
+        if (error.response.status === 409 && active?.id) {
+          toast.error('You have a workout in progress — finish that one first.');
+          if (announce) navigate(`/client/workouts/${active.id}/track`);
+        } else {
+          toast.error(errMsg(error, 'Could not mark the workout done'));
+        }
+        return { kind: 'refused' };
       }
-    } finally {
-      setQuickCompleting(false);
+      // No answer (offline or a lost reply): the server may have it. The
+      // pointer and id stay, so a retry replays and Undo is still offered.
+      if (announce) toast.error('Not confirmed yet. Tap Mark done again when you are online, or Undo it.');
+      return { kind: 'unanswered' };
     }
-  };
+  }, [load, navigate, swapPointer]);
+
+  const quickComplete = (source, workoutName = null) => exclusive('mark', async () => {
+    const current = readHomeUndo();
+    const same = current?.state === 'pending' && JSON.stringify(current.source) === JSON.stringify(source);
+    const pending = same ? current
+      : { state: 'pending', source, event_id: homeQuickEventId(source, newId), workout_name: workoutName };
+    if (!same && !swapPointer(current, pending)) return;
+    await sendMarkDone(pending, { announce: true });
+  });
+
+  // A pending tap found on load (a reload mid-request or after a lost reply)
+  // is replayed once with its own event id, when online.
+  const resolvedRef = useRef(new Set());
+  useEffect(() => {
+    if (homeUndo?.state !== 'pending' || resolvedRef.current.has(homeUndo.event_id)) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    resolvedRef.current.add(homeUndo.event_id);
+    const pending = homeUndo;
+    exclusive('mark', async () => {
+      if (homeUndoIdentity(readHomeUndo()) !== homeUndoIdentity(pending)) return;
+      await sendMarkDone(pending, { announce: false });
+    });
+  }, [homeUndo, exclusive, sendMarkDone]);
+
+  // Is Home's Undo still the server's current one? (Another change, here or
+  // on another device, ends it.) The reply only clears the pointer it asked about.
+  useEffect(() => {
+    if (homeUndo?.state !== 'saved') return undefined;
+    let live = true;
+    const asked = homeUndo;
+    api.get(`/workout-logs/${asked.logId}/undo`).then(({ data: reply }) => {
+      if (live && reply && Object.hasOwn(reply, 'undo') && reply.undo?.change_id !== asked.change_id && !busyRef.current) swapPointer(asked, null);
+    }).catch((error) => {
+      if (live && error.response?.status === 404 && !busyRef.current) swapPointer(asked, null);
+    });
+    return () => { live = false; };
+  }, [homeUndo, swapPointer]);
+
+  const undoSaved = useCallback(async (saved) => {
+    const target = saved.undo_event_id ? saved : { ...saved, undo_event_id: newId() };
+    if (target !== saved && !swapPointer(saved, target)) return;
+    try {
+      const { data: reply } = await api.post(`/workout-logs/${target.logId}/undo`, { event_id: target.undo_event_id, change_id: target.change_id });
+      const result = reply?.result;
+      const outcome = result?.outcome === 'replayed' ? result.original_outcome : result?.outcome;
+      swapPointer(target, null);
+      if (outcome === 'applied') toast.success('Marked not done. The workout is open again.');
+      else toast.message(result?.reason || 'That could not be undone.');
+      await load();
+    } catch (error) {
+      if (error.response?.status >= 400 && error.response?.status < 500) {
+        swapPointer(target, null);
+        toast.message(errMsg(error, 'That could not be undone.'));
+        await load();
+      } else {
+        toast.error('Could not undo right now. Try again.');
+      }
+    }
+  }, [load, swapPointer]);
+
+  // Undo stays locked until its whole chain is answered: for a pending tap,
+  // first learn what that tap did (the same id replays it), then undo exactly
+  // that change, all inside one operation.
+  const undoHome = () => exclusive('undo', async () => {
+    const current = readHomeUndo();
+    if (!current) { setHomeUndoState(null); return; }
+    if (current.state === 'saved') { await undoSaved(current); return; }
+    try {
+      const { data: done } = await api.post('/workout-logs/quick-complete', { ...current.source, event_id: current.event_id });
+      forgetHomeQuick();
+      const reply = homeQuickReply(done);
+      if (!reply.undo) {
+        swapPointer(current, null);
+        toast.message(reply.current ? 'That mark done can no longer be undone.' : 'That mark done was already undone. Nothing changed.');
+        await load();
+        return;
+      }
+      if (!swapPointer(current, reply.undo)) return;
+      await undoSaved(reply.undo);
+    } catch (error) {
+      if (error.response?.status >= 400 && error.response?.status < 500) {
+        forgetHomeQuick();
+        swapPointer(current, null);
+        toast.message('That mark done was not saved, so there is nothing to undo.');
+        await load();
+      } else {
+        toast.error('Could not reach the server. Try Undo again when you are online.');
+      }
+    }
+  });
 
   if (!data && loadError) return <LoadErrorState message={loadError} scope="client-home" onRetry={() => { setLoadError(null); load(); }} />;
   if (!data) return <DashboardSkeleton tiles={2} />;
@@ -183,14 +318,28 @@ export default function ClientHome() {
           </div>
           <Button
             size="sm" variant="outline" className="min-h-11 shrink-0 rounded-xl border-achievement/40"
-            disabled={quickCompleting}
-            onClick={() => quickComplete({ workout_assignment_id: rhythm.yesterday_missed[0].id })}
+            disabled={Boolean(busy)}
+            onClick={() => quickComplete({ workout_assignment_id: rhythm.yesterday_missed[0].id }, rhythm.yesterday_missed[0].workout_name || null)}
             aria-label={`Mark ${rhythm.yesterday_missed[0].workout_name || 'yesterday’s workout'} done without logging sets`}
             title="Mark done without logging sets"
             data-testid="catch-up-quick-complete"
           >
             {quickCompleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 aria-hidden />}
             Mark done
+          </Button>
+        </div>
+      )}
+
+      {homeUndo && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3" data-testid="home-undo">
+          <p className="min-w-0 break-words text-sm" aria-live="polite">
+            <CheckCircle2 className="mr-1.5 inline h-4 w-4 text-primary" aria-hidden />
+            {homeUndo.state === 'pending'
+              ? `${homeUndo.workout_name || 'Workout'}: Mark done is not confirmed yet.`
+              : `${homeUndo.workout_name || 'Workout'} marked done. Sets were not logged.`}
+          </p>
+          <Button type="button" variant="outline" className="min-h-11 shrink-0 rounded-xl" disabled={Boolean(busy)} aria-busy={undoing} onClick={undoHome} data-testid="home-undo-button">
+            {undoing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Undo2 className="mr-1.5 h-4 w-4" aria-hidden />} Undo mark done
           </Button>
         </div>
       )}
@@ -217,15 +366,15 @@ export default function ClientHome() {
           </div>
           {todayPlan.source ? (
             <div className="mt-4 flex gap-2">
-              <Button className="min-h-14 flex-1 rounded-xl text-base font-semibold" disabled={startingWorkout || quickCompleting} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
+              <Button className="min-h-14 flex-1 rounded-xl text-base font-semibold" disabled={startingWorkout || Boolean(busy)} onClick={() => startWorkout(todayPlan.source)} data-testid="client-today-primary-action">
                 {startingWorkout ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Starting workout</span></> : <><Play className="mr-1.5 h-4 w-4" />{todayPlan.action}</>}
               </Button>
               {/* One-tap for clients who won't track sets: open app, tap, close. */}
               <Button
                 variant="outline"
                 className="min-h-14 shrink-0 rounded-xl px-4"
-                disabled={startingWorkout || quickCompleting}
-                onClick={() => quickComplete(todayPlan.source)}
+                disabled={startingWorkout || Boolean(busy)}
+                onClick={() => quickComplete(todayPlan.source, todayPlan.title || null)}
                 aria-label="Mark done without logging sets"
                 title="Mark done without logging sets"
                 data-testid="client-today-quick-complete"

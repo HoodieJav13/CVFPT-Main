@@ -122,3 +122,29 @@ test('untouched prefill detection', () => {
   assert.equal(isUntouchedPrefill(exercise, set('a', 1, { actual_load_value: 35, actual_load_unit: 'kg' })), false);
   assert.equal(isUntouchedPrefill(exercise, set('a', 1, { actual_load_value: 35, actual_load_unit: 'lb', actual_rpe: 8 })), false);
 });
+
+// Look A (LOOK-A-FRONTEND-LIFECYCLE-REVIEW 2): an exercise marked done
+// without set tracking has nothing left, everywhere, and its set rows stay
+// exactly as they were (no completed count is invented).
+test('done without set tracking: next set, outline and reload skip it; sets unchanged', () => {
+  const a = ex('a', 'Squat', [set('a1', 1), set('a2', 2)], { not_set_tracked: true });
+  const b = ex('b', 'Row', [set('b1', 1), set('b2', 2)]);
+  const before = JSON.stringify(a.sets);
+  assert.equal(nextWork([a, b]).setId, 'b1');
+  let exercises = complete([a, b], 'b', 'b1');
+  // A later set logged, then a reload of the same rows: never back to Squat.
+  assert.equal(nextWork(JSON.parse(JSON.stringify(exercises))).setId, 'b2');
+  assert.deepEqual(outlineBlocks(exercises)[0].items.map((item) => item.status), ['done']);
+  assert.equal(outlineBlocks(exercises)[1].items[0].status, 'next');
+  exercises = complete(exercises, 'b', 'b2');
+  assert.equal(nextWork(exercises), null);
+  assert.equal(JSON.stringify(exercises[0].sets), before);
+});
+test('done without set tracking inside a superset: the round moves on without it', () => {
+  const a1 = ex('a1', 'Press', [set('p1', 1), set('p2', 2)], { superset_group: 'A' });
+  const a2 = ex('a2', 'Pull', [set('q1', 1), set('q2', 2)], { superset_group: 'A', not_set_tracked: true });
+  let exercises = [a1, a2];
+  assert.equal(nextWork(exercises).setId, 'p1');
+  exercises = complete(exercises, 'a1', 'p1');
+  assert.equal(nextWork(exercises).setId, 'p2');
+});

@@ -12,18 +12,26 @@ const filled = (value) => String(value ?? '').trim() !== '';
 // Owner decision (2026-11-14, handoff c): a coach backup chosen mid-exercise
 // gets its own prescribed set count minus the sets already completed or
 // skipped on the old exercise, minimum 1. Fixed, not typed. The old
-// exercise's rows are never changed.
+// exercise's rows are never changed. A backup without its own valid set
+// count has no count (null): it cannot be used, and no count is taken from
+// the old exercise or typed (Jav, 2026-11-14). The server decides it again.
 export function backupSetCount(savedTargets, oldExercise) {
   const own = Number(savedTargets?.sets);
+  if (!Number.isInteger(own) || own < 1) return null;
   const touched = (oldExercise?.sets || []).filter((set) => !set.archived && (set.status === 'completed' || set.status === 'skipped')).length;
-  return Math.max(1, (Number.isInteger(own) && own > 0 ? own : 0) - touched);
+  return Math.max(1, own - touched);
 }
+
+export const MISSING_BACKUP_SETS = 'Your coach has not set how many sets this backup has, so it cannot be swapped in. Ask your coach, or pick another option.';
 
 export function swapRequestTargets(choice, oldExercise) {
   const typed = choice?.targets || {};
   const saved = choice?.kind === 'backup' ? choice.item?.targets || {} : {};
   const out = {};
-  if (choice?.kind === 'backup') out.sets = backupSetCount(saved, oldExercise);
+  if (choice?.kind === 'backup') {
+    const count = backupSetCount(saved, oldExercise);
+    if (count !== null) out.sets = count;
+  }
   else if (filled(typed.sets)) out.sets = Number(typed.sets);
   if (filled(typed.reps)) out.reps = String(typed.reps).trim();
   if (filled(typed.load_value)) {

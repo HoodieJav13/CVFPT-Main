@@ -30,7 +30,7 @@ export function outlineBlocks(exercises) {
     label: block.kind === 'single' ? null : `${groupKindLabel(block.kind)} ${markers[block.start]?.replace(/\d+$/, '') || blockIndex + 1}`,
     items: block.items.map(({ exercise, index }) => {
       const sets = exercise.sets || [];
-      const status = sets.length && sets.every(isDone) ? 'done' : next?.exerciseId === exercise.id ? 'next' : 'open';
+      const status = exercise.not_set_tracked || (sets.length && sets.every(isDone)) ? 'done' : next?.exerciseId === exercise.id ? 'next' : 'open';
       return { id: exercise.id, name: exercise.exercise_name, marker: grouped ? markers[index] : String(index + 1), status };
     }),
   }));

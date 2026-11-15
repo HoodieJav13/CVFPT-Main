@@ -3,8 +3,9 @@ import { tracks, trackingType } from '@/lib/workoutMetrics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { m, useReducedMotion } from 'framer-motion';
-import { ArrowLeft, BookOpen, Check, CircleSlash2, Clock3, MessageSquare, ShieldCheck, TrendingDown, TrendingUp, Users } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, CircleCheck, CircleSlash2, Clock3, MessageSquare, ShieldCheck, TrendingDown, TrendingUp, Undo2, Users } from 'lucide-react';
 import { api, errMsg } from '@/lib/api';
+import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { fmtDateTime, initials } from '@/lib/format';
 import { LoadingScreen, LoadErrorState, PageHeader } from '@/components/common';
@@ -18,7 +19,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { MOTION_EASINGS, WORKOUT_COMPLETION_MOTION, msToSeconds } from '@/lib/motion';
 import { useVisualIntensity } from '@/lib/visualIntensity';
 import { useNotifications } from '@/context/NotificationsContext';
-import { hasParkedFor, hasQueuedCompleteFor, useWorkoutOutbox } from '@/lib/workoutOutbox';
+import { hasParkedFor, hasQueuedCompleteFor, makeId, useWorkoutOutbox } from '@/lib/workoutOutbox';
+import { exerciseMark, nextUndo, prescribedLoadText, readStoredUndo, storeUndo, undoOffer } from '@/lib/lookA';
 import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
 import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
 import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
@@ -92,6 +94,13 @@ export default function WorkoutLogDetail() {
   // instruction that was shown when this workout happened.
   const [demoFor, setDemoFor] = useState(null);
   const previousFetchedFor = useRef(null);
+  // Look A: Undo finish, here too. The tracker's saved Undo for this workout
+  // (checked with the server), or a Finish still on its way (offline or
+  // waiting for its reply), which is cancelled or undone in order.
+  const [savedUndo, setSavedUndoState] = useState(() => readStoredUndo(id));
+  const setSavedUndo = useCallback((value) => { storeUndo(id, value); setSavedUndoState(value); }, [id]);
+  const [undoNote, setUndoNote] = useState(null);
+  const trackPath = `${isClient ? '/client' : '/coach'}/workouts/${id}/track`;
   // Drains a completion queued by the tracker before navigation
   // (docs/offline-workout-completion.md). The celebration fires only once
   // the server confirms — never for unsynced data.
@@ -102,16 +111,59 @@ export default function WorkoutLogDetail() {
       setLog(freshLog);
       if (isClient) setCompletionSignalId(id);
     },
-    onCompleteRejected: (message, freshLog) => {
+    onCompleteRejected: (message, freshLog, kind) => {
       setWaitingToSync(false);
+      // A late reply for a Finish undone since: the workout is open; go back to it.
+      if (kind === 'reopened') { navigate(trackPath, { replace: true }); return; }
       setSyncError(message);
       if (freshLog) setLog(freshLog);
     },
     onParked: () => setNeedsChoice(true),
+    onUndo: (reply) => setSavedUndo(nextUndo(readStoredUndo(id), reply)),
+    onMaterial: (operation, data) => {
+      if (operation.undoOf?.kind !== 'finish') return;
+      const result = data?.result;
+      const outcome = result?.outcome === 'replayed' ? result.original_outcome : result?.outcome;
+      if (outcome === 'applied') { navigate(trackPath, { replace: true }); return; }
+      setUndoNote(null);
+      toast.message(result?.reason || 'The finish could not be undone.');
+      if (data?.log) setLog(data.log);
+    },
   });
+  const finishUndo = (() => {
+    const offer = undoOffer(outbox.queue, savedUndo);
+    return offer?.kind === 'finish' ? offer : null;
+  })();
+  const undoFinish = async () => {
+    if (!finishUndo) return;
+    if (finishUndo.pending) {
+      const how = await outbox.undoQueuedFinish(makeId, 'Finish undone.');
+      if (how === 'cancelled') navigate(trackPath, { replace: true });
+      else if (how === 'queued') setUndoNote('Undo is sent right after the finish is confirmed.');
+      return;
+    }
+    outbox.enqueue({
+      kind: 'material', method: 'post', url: `/workout-logs/${id}/undo`,
+      data: { event_id: makeId(), change_id: finishUndo.change_id },
+      undoOf: { change_id: finishUndo.change_id, kind: 'finish', result: {} },
+    });
+    setUndoNote(outbox.online ? 'Undoing the finish.' : 'Undo is sent when you are back online.');
+  };
   const queueStillWaiting = waitingToSync && outbox.queuedComplete;
   const celebrateCompletion = isClient && completionSignalId === id;
   const completionRecipe = WORKOUT_COMPLETION_MOTION[intensity];
+
+  // Is the saved Undo still the server's current one?
+  useEffect(() => {
+    if (!savedUndo || outbox.hasPending()) return undefined;
+    let live = true;
+    api.get(`/workout-logs/${id}/undo`).then(({ data }) => {
+      if (live && !outbox.hasPending() && data && Object.hasOwn(data, 'undo')) setSavedUndo(data.undo || null);
+    }).catch(() => { /* kept; the server still decides the Undo */ });
+    return () => { live = false; };
+    // Checked once per page visit and saved Undo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, savedUndo?.change_id]);
 
   const load = useCallback(async () => {
     try {
@@ -202,8 +254,21 @@ export default function WorkoutLogDetail() {
       Finished on this phone — syncing when a connection returns. Your results are safe.
     </div>
   ));
-  if (!log && loadError) return <div>{waitingBanner}<LoadErrorState message={loadError} scope="workout-detail" onRetry={load} /></div>;
-  if (!log) return <div>{waitingBanner}<LoadingScreen /></div>;
+  // Undo finish shows even before the workout loads (offline, Finish queued).
+  const undoPanel = (finishUndo || undoNote) && (finishUndo?.pending || log?.status === 'completed') && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2" data-testid="detail-undo-finish">
+            <span className="min-w-0 break-words text-sm" aria-live="polite">
+              {undoNote || (finishUndo?.pending ? 'Finish saved on this phone.' : 'Finished just now.')}
+            </span>
+            {finishUndo && (
+              <Button type="button" variant="outline" className="h-auto min-h-11 whitespace-normal" onClick={undoFinish} data-testid="detail-undo-finish-button">
+                <Undo2 className="mr-1.5 h-4 w-4 shrink-0" aria-hidden /> Undo finish
+              </Button>
+            )}
+          </div>
+        );
+  if (!log && loadError) return <div>{waitingBanner}{undoPanel}<LoadErrorState message={loadError} scope="workout-detail" onRetry={load} /></div>;
+  if (!log) return <div>{waitingBanner}{undoPanel}<LoadingScreen /></div>;
 
   const completed = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'completed').length;
   const skipped = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'skipped').length;
@@ -255,6 +320,7 @@ export default function WorkoutLogDetail() {
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
       {waitingBanner}
+      {undoPanel}
       {syncError && (
         <div className="mb-4 flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="completion-sync-error">
           <span>{syncError} The workout is active again.</span>
@@ -280,6 +346,11 @@ export default function WorkoutLogDetail() {
         <PageHeader title={log.workout_name} subtitle={log.completed_at ? `Completed ${fmtDateTime(log.completed_at)}` : `Started ${fmtDateTime(log.started_at)}`} />
         <div className="mb-4 flex flex-wrap gap-2">
           {isQuickSessionLog(log) && <QuickSessionBadge testId="log-detail-quick-session" />}
+          {log.not_set_tracked && (
+            <Badge variant="outline" className="border-primary/40 text-primary" data-testid="log-not-set-tracked">
+              <CircleCheck className="mr-1 h-3.5 w-3.5" aria-hidden /> Done, sets not logged
+            </Badge>
+          )}
           <Badge variant="outline" className="bg-success/10 text-success-foreground"><Check className="mr-1 h-3.5 w-3.5" /> {completed} completed</Badge>
           {skipped > 0 && <Badge variant="outline"><CircleSlash2 className="mr-1 h-3.5 w-3.5" /> {skipped} skipped</Badge>}
           <Badge variant="outline"><Clock3 className="mr-1 h-3.5 w-3.5" /> {log.status}</Badge>
@@ -323,6 +394,11 @@ export default function WorkoutLogDetail() {
                   {hasGroups && <ExerciseMarker marker={marker} />}
                   <span className="min-w-0">{exercise.exercise_name}</span>
                 </CardTitle>
+                {exerciseMark(exercise) === 'not_set_tracked' && (
+                  <p className="flex items-center gap-1.5 text-xs text-primary" data-testid="history-not-set-tracked">
+                    <CircleCheck className="h-4 w-4 shrink-0" aria-hidden /> Done without set tracking. Nothing was recorded as lifted.
+                  </p>
+                )}
                 {log.server_time && <SwapStatus exercise={exercise} log={log} />}
                 {exercise.media && (
                   <Button
@@ -342,7 +418,7 @@ export default function WorkoutLogDetail() {
                   <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" data-testid="exercise-target-line">
                     <span className="font-medium">Target</span>
                     {exercise.prescribed_sets && <span>Sets {exercise.prescribed_sets}</span>}
-                    {exercise.prescribed_load_value != null && <span>Load {exercise.prescribed_load_value} {exercise.prescribed_load_unit}</span>}
+                    {prescribedLoadText(exercise) && <span data-testid="prescribed-load">Load {prescribedLoadText(exercise)}</span>}
                     {trackingType(exercise) === 'reps_weight' && exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
                     {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => exercise[`prescribed_${metric}_value`] != null && <span key={metric}>{metric === 'duration' ? 'Duration' : 'Distance'} {exercise[`prescribed_${metric}_value`]} {exercise[`prescribed_${metric}_unit`]}</span>)}
                     {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
