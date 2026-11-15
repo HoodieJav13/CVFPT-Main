@@ -210,3 +210,34 @@ test('RPE-only entry in the inline editor: explicit Log records RPE with load an
   await expect(panel(page)).toHaveAttribute('data-focus-set', 'a-s1');
   expect(results.errors).toEqual([]);
 });
+
+// Same partial rule on a timed exercise: weight alone (duration blank) is a
+// valid log. The label lists the weight it sends and names the blank duration;
+// nothing is invented, and the one Undo reverts it.
+test('weight-only entry on a duration exercise: Log names the weight, keeps duration null, then one Undo reverts it', async ({ page }) => {
+  const timedRow = (n) => row(n, { actual_load_value: null, value_origin: 'unknown', prefill_load_value: null, prefill_load_unit: null, actual_duration_unit: null });
+  const log = fixture([timedRow(1), timedRow(2)]);
+  Object.assign(log.exercises[0], { exercise_name: 'Carry', tracking_type: 'duration', prescribed_reps: null, prescribed_load_value: null, prescribed_load_max: null, prescribed_duration_value: 40, prescribed_duration_unit: 's', prescribed_sets: '2' });
+  const server = makeServer(log);
+  const results = await installServer(page, server, { logId: LOG });
+  await open(page, LOG);
+  const action = panel(page).getByTestId('focus-log');
+  await expect(action).toHaveAttribute('data-kind', 'enter');
+  await action.click();
+  const editor = panel(page).getByTestId('focus-editor');
+  await editor.locator('input[aria-label="Carry set 1 weight"]').fill('24');
+  await expect(action).toHaveAttribute('data-kind', 'log');
+  await expect(action).toContainText('24 lb');
+  await expect(action).toContainText(/duration not recorded/i);
+  const before = setWrites(server).length;
+  await action.click();
+  await settled(page, LOG);
+  const completions = setWrites(server).slice(before).filter((write) => write.body.status === 'completed');
+  expect(completions).toHaveLength(1);
+  expect(completions[0].body).toMatchObject({ status: 'completed', actual_load_value: 24, actual_duration_value: null });
+  expect(server.find('a-s1')).toMatchObject({ status: 'completed', actual_load_value: 24, actual_duration_value: null, actual_reps: null });
+  await page.getByTestId('workout-undo-button').click();
+  await settled(page, LOG);
+  expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_duration_value: null });
+  expect(results.errors).toEqual([]);
+});

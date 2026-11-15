@@ -1014,19 +1014,28 @@ export default function WorkoutTracker() {
     const entered = trackingType(exercise) === 'reps_weight'
       ? present(set.actual_reps)
       : ['duration', 'distance'].filter((metric) => tracks(exercise, metric)).every((metric) => present(set[`actual_${metric}_value`]));
-    // With the set's own editor open, a partial entry (say a load with reps
-    // blank) can still be logged exactly as shown, as the row's Complete always
-    // allowed: nothing is filled in, the blank stays blank and is named.
-    const metrics = trackingType(exercise) === 'reps_weight'
+    // With the set's own editor open, a partial entry can still be logged
+    // exactly as shown, as the row's Complete always allowed (performedSet):
+    // any supported actual counts (weight, reps where tracked, duration/
+    // distance where tracked, RPE). Nothing is filled in; a blank stays blank
+    // and the required metrics left blank are named.
+    const reps = trackingType(exercise) === 'reps_weight';
+    const timed = ['duration', 'distance'].filter((metric) => tracks(exercise, metric));
+    const required = reps
       ? [['actual_load_value', 'weight'], ['actual_reps', 'reps']]
-      : ['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => [`actual_${metric}_value`, metric]);
-    // RPE alone is a valid partial log too (it is never counted as a missing metric).
-    const rpe = present(set.actual_rpe) ? `RPE ${set.actual_rpe}` : null;
-    const partial = adjusting === set.id && (metrics.some(([field]) => present(set[field])) || Boolean(rpe));
+      : timed.map((metric) => [`actual_${metric}_value`, metric]);
+    const supported = ['actual_load_value', 'actual_rpe', ...(reps ? ['actual_reps'] : timed.map((metric) => `actual_${metric}_value`))];
+    const partial = adjusting === set.id && supported.some((field) => present(set[field]));
     if (entered || partial) {
-      const shownValues = metrics.some(([field]) => present(set[field])) ? lastTimeSetText(set, exercise) : null;
-      const values = [shownValues, rpe].filter(Boolean).join(' · ');
-      const missing = metrics.filter(([field]) => !present(set[field])).map(([, name]) => name);
+      // The label lists every value being sent: the usual "load × reps" or
+      // timed/distance text, plus weight on timed/distance exercises and RPE.
+      const load = present(set.actual_load_value) ? `${set.actual_load_value} ${set.actual_load_unit || 'lb'}` : null;
+      const parts = reps
+        ? [load || present(set.actual_reps) ? lastTimeSetText(set, exercise) : null]
+        : [timed.some((metric) => present(set[`actual_${metric}_value`])) ? lastTimeSetText(set, exercise) : null, load];
+      if (present(set.actual_rpe)) parts.push(`RPE ${set.actual_rpe}`);
+      const values = parts.filter(Boolean).join(' · ');
+      const missing = required.filter(([field]) => !present(set[field])).map(([, name]) => name);
       const note = missing.length ? `${missing.join(' and ')} not recorded`.replace(/^./, (c) => c.toUpperCase()) : `Set ${set.set_number} as entered`;
       return { kind: 'log', label: `Log ${values}`, values, note, run: () => toggleSet(exercise, set) };
     }
