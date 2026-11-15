@@ -179,7 +179,7 @@ const queue = (page) => page.evaluate((key) => JSON.parse(localStorage.getItem(k
 const undoButton = (page) => page.getByTestId('workout-undo-button');
 const held = (server, key) => { let release; server.holds.set(key, new Promise((resolve) => { release = () => { server.holds.delete(key); resolve(); }; })); return () => release(); };
 const sent = (server, pattern) => server.requests.filter((request) => pattern.test(request.path));
-const setRows = (server, id) => clone(server.log.exercises.find((e) => e.id === id).sets).map(({ revision, ...rest }) => rest);
+const setRows = (server, id) => clone(server.log.exercises.find((e) => e.id === id).sets).map((row) => { const copy = { ...row }; delete copy.revision; return copy; });
 async function logSet(page, name, n, value) {
   await reps(page, name, n).fill(value);
   await reps(page, name, n).blur();
@@ -394,7 +394,7 @@ const finishQueued = (eventId) => ({
   id: 'q-finish', attempts: 0, kind: 'complete', method: 'post', url: `/workout-logs/${LOG}/finish`,
   data: { event_id: eventId, mode: 'finish', notes: '', feedback: '', completed_at_local: new Date().toISOString() },
 });
-async function offlineTab(context, server) {
+async function offlineTab(context) {
   const page = await context.newPage();
   await page.addInitScript(() => {
     window.__online = window.localStorage.getItem('test_tab_b_online') === 'yes';
