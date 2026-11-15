@@ -1362,7 +1362,7 @@ export default function WorkoutTracker() {
             data-testid="workout-progress-bar"
           >
             <div
-              className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${allSets.length && completedCount === allSets.length ? 'bg-success' : 'bg-primary'}`}
+              className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${allSets.length && completedCount === allSets.length ? 'bg-gold' : 'bg-primary'}`}
               style={{ width: `${allSets.length ? Math.round((completedCount / allSets.length) * 100) : 0}%` }}
             />
           </div>
@@ -1372,7 +1372,7 @@ export default function WorkoutTracker() {
           <Button variant="outline" className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2" disabled={sealed || !remainingCount || !outbox.online || outbox.saveState !== 'saved'} onClick={completeAll}>
             Complete all remaining
           </Button>
-          <Button className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2" disabled={sealed || !(completedCount || log.exercises.some((exercise) => exercise.not_set_tracked))} onClick={() => setFinishOpen(true)}>
+          <Button className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2 font-display text-[0.9375rem] font-semibold uppercase tracking-[0.05em] sm:text-base" disabled={sealed || !(completedCount || log.exercises.some((exercise) => exercise.not_set_tracked))} onClick={() => setFinishOpen(true)}>
             Finish workout
           </Button>
         </div>
@@ -1421,7 +1421,7 @@ export default function WorkoutTracker() {
           </Button>
         </div>
       )}
-      <div className="mb-4 flex items-center gap-2 text-xs">
+      <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         <span className="sr-only" aria-live="polite" data-testid="next-set-announcement">{announcement}</span>
         <span className="flex items-center gap-2" aria-live="polite" data-testid="workout-save-state">
           {outbox.saveState === 'saved' && <><Save className="h-3.5 w-3.5 text-success" /> Saved</>}
@@ -1437,7 +1437,7 @@ export default function WorkoutTracker() {
         {!restEndsAt && !sealed && (
           <Button
             type="button" variant="ghost" size="sm"
-            className="ml-auto min-h-11 px-2 text-xs text-muted-foreground"
+            className="ml-auto h-auto min-h-11 whitespace-normal px-2 text-xs text-muted-foreground"
             onClick={() => startRest(manualRest)}
             aria-label={`Start a ${formatTimer(manualRest)} rest timer`}
             data-testid="rest-start"
@@ -1447,7 +1447,7 @@ export default function WorkoutTracker() {
         )}
         <Button
           type="button" variant="ghost" size="sm"
-          className={cn('min-h-11 px-2 text-xs text-muted-foreground', (restEndsAt || sealed) && 'ml-auto')}
+          className={cn('h-auto min-h-11 whitespace-normal px-2 text-xs text-muted-foreground', (restEndsAt || sealed) && 'ml-auto')}
           onClick={toggleRestAlerts}
           aria-pressed={restAlerts}
           aria-label={restAlerts ? 'Turn rest alerts off' : 'Turn rest alerts on'}
@@ -1471,7 +1471,7 @@ export default function WorkoutTracker() {
           >
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-2">
-                <CardTitle className="flex min-w-0 items-center gap-2 font-display text-lg">
+                <CardTitle className="flex min-w-0 items-center gap-2 font-display text-lg font-semibold uppercase leading-tight tracking-[0.02em] sm:text-xl">
                   {hasGroups && <ExerciseMarker marker={marker} />}
                   <span className="min-w-0 break-words outline-none" tabIndex={-1} data-exercise-heading={exercise.id}>{exercise.exercise_name}</span>
                 </CardTitle>
@@ -1538,7 +1538,7 @@ export default function WorkoutTracker() {
                 occurrence={lastTimeCache.current[exercise.id]}
                 online={outbox.online}
               />
-              <div className={cn('hidden gap-1 px-1 text-xs font-medium text-muted-foreground sm:grid', showRpe(exercise)
+              <div className={cn('hidden gap-1 px-1 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:grid', showRpe(exercise)
                 ? 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]'
                 : 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_2.75rem]')}>
                 <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>{showRpe(exercise) && <span>RPE</span>}<span className="sr-only">Complete</span>
@@ -1547,9 +1547,9 @@ export default function WorkoutTracker() {
                 <div key={set.id} data-set-id={set.id} data-held={checking ? 'true' : undefined} data-choosing={choice ? 'true' : undefined} data-active={isActiveSet(exercise, set) ? 'true' : undefined} className={cn('grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-end gap-1 rounded-md px-1 py-1 sm:items-center', showRpe(exercise)
                   ? 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]'
                   : 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_2.75rem]', setRowClass(exercise, set))}>
-                  <span className={cn('row-span-2 self-center text-center text-sm tabular-nums sm:row-span-1', isActiveSet(exercise, set) && 'font-semibold text-primary')}>{set.set_number}</span>
+                  <span className={cn('row-span-2 self-center text-center font-display text-base tabular-nums sm:row-span-1', isActiveSet(exercise, set) && 'font-semibold text-primary')}>{set.set_number}</span>
                   <div className="col-span-3 min-w-0 sm:col-span-1">
-                    <span className="text-xs text-muted-foreground sm:hidden">Weight</span>
+                    <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:hidden">Weight</span>
                     <div className="flex min-w-0 gap-1">
                       <Input
                         type="number" min="0" step="0.5" inputMode="decimal"
@@ -1577,14 +1577,14 @@ export default function WorkoutTracker() {
                     </div>
                   </div>
                   <div className={cn('col-start-2 min-w-0 sm:col-start-auto', !showRpe(exercise) && 'col-span-2 sm:col-span-1')}>
-                    <span className="text-xs text-muted-foreground sm:hidden">{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>
+                    <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:hidden">{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>
                     {trackingType(exercise) === 'reps_weight' ? <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
                       placeholder={exercise.prescribed_reps || undefined}
                       onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed} readOnly={held}
                       {...errorProps(exercise, set, 'actual_reps')} aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} /> : <span aria-hidden className="text-center text-muted-foreground">—</span>}
                   </div>
                   {showRpe(exercise) && <div className="min-w-0">
-                    <span className="text-xs text-muted-foreground sm:hidden">RPE</span>
+                    <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:hidden">RPE</span>
                     <Input type="number" min="1" max="10" step="0.5" inputMode="decimal" className="h-11 px-2 text-sm tabular-nums" value={set.actual_rpe ?? ''}
                       placeholder={exercise.prescribed_rpe || undefined}
                       onChange={(event) => {
@@ -1717,11 +1717,11 @@ export default function WorkoutTracker() {
                     <CircleSlash2 className="mr-1.5 h-4 w-4" aria-hidden /> Skip the rest
                   </Button>
                 )}
-                <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={sealed} onClick={() => addSet(exercise)}>
+                <Button type="button" variant="outline" size="sm" className="h-auto min-h-11 whitespace-normal" disabled={sealed} onClick={() => addSet(exercise)}>
                   <Plus className="mr-1.5 h-4 w-4" /> Add set
                 </Button>
                 <Button
-                  type="button" variant="outline" size="sm" className="min-h-11"
+                  type="button" variant="outline" size="sm" className="h-auto min-h-11 whitespace-normal"
                   disabled={sealed || lastTimePending.has(exercise.id)}
                   onClick={() => applyLastTime(exercise)}
                   aria-describedby={lastTimeCache.current[exercise.id] ? `last-time-source-${exercise.id}` : undefined}

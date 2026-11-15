@@ -7,10 +7,10 @@ import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, Users, Inbox, MessageSquare, Check, Plus, ChevronRight } from 'lucide-react';
+import { CalendarDays, Users, Inbox, MessageSquare, Check, Plus, ChevronRight, Triangle, X, Equal } from 'lucide-react';
 import { fmtTime, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
-import { buildCoachActionQueue } from '@/lib/coachActionQueue';
+import { buildCoachQueueGroups } from '@/lib/coachActionQueue';
 
 export default function CoachDashboard() {
   const { user } = useAuth();
@@ -85,7 +85,53 @@ export default function CoachDashboard() {
   if (!data) return <DashboardSkeleton />;
 
   const firstName = (user.profile?.name || '').split(' ')[0];
-  const actionQueue = buildCoachActionQueue(data, attention);
+  const queue = buildCoachQueueGroups(data, attention);
+  const firstKey = queue.needsLook[0]?.key || queue.missed[0]?.key;
+
+  const renderItem = (item) => (
+            <div
+              key={item.key}
+              // Surface roles (010 §6): the queue's first item — the thing to
+              // do next — is the raised surface; the rest stay standard.
+              className={item.key === firstKey
+                ? 'rounded-xl border border-primary/35 bg-card px-4 py-3 shadow-[var(--app-elev-soft)]'
+                : 'rounded-xl border border-border bg-card/60 px-4 py-3'}
+              data-testid={`coach-action-${item.kind}`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-[12rem] flex-1">
+                  <p className="font-medium">
+                    {item.kind === 'booking'
+                      ? <><span data-testid="booking-client-name">{item.detail.client?.name || 'Client'}</span> · booking request</>
+                      : item.title}
+                  </p>
+                  {item.kind === 'stale_session' && <p className="mt-0.5 text-xs text-muted-foreground">{fmtDateTime(item.detail.scheduled_at)} · {item.detail.duration_minutes}m</p>}
+                  {item.kind === 'booking' && <>
+                    <p className="mt-0.5 text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(item.detail.requested_time)} · {item.detail.duration_minutes}m</p>
+                    {item.detail.note && <p className="mt-1 truncate text-xs italic text-muted-foreground" data-testid="booking-request-note">&quot;{item.detail.note}&quot;</p>}
+                  </>}
+                  {item.kind === 'message' && <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.detail.content}</p>}
+                  {item.kind === 'check_in' && <CheckInStats className="mt-1" stats={[["Energy", item.detail.energy || '-'], ["Sleep", item.detail.sleep_quality || '-']]} />}
+                  {item.kind === 'attention' && <p className="mt-0.5 text-xs text-muted-foreground">{item.reasons.map((reason) => reason.label).join(' · ')}</p>}
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {item.kind === 'booking' ? (
+                    <>
+                      <Button size="sm" className="min-h-11 rounded-lg" disabled={acting === `booking-${item.detail.id}`} onClick={() => handleBooking(item.detail.id, 'approve')} data-testid="booking-approve-button"><Check className="mr-1 h-3.5 w-3.5" />Approve</Button>
+                      <Button size="sm" variant="outline" className="min-h-11 rounded-lg text-destructive" disabled={acting === `booking-${item.detail.id}`} onClick={() => handleBooking(item.detail.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
+                    </>
+                  ) : item.kind === 'stale_session' ? (
+                    <>
+                      <Button size="sm" className="min-h-11 rounded-lg" disabled={acting === `session-${item.detail.id}`} onClick={() => handleSessionComplete(item.detail.id)}><Check className="mr-1 h-3.5 w-3.5" />Complete</Button>
+                      <Button asChild size="sm" variant="outline" className="min-h-11 rounded-lg"><Link to="/coach/sessions?view=past">Review</Link></Button>
+                    </>
+                  ) : (
+                    <Button asChild size="sm" variant="outline" className="min-h-11 rounded-lg"><Link to={item.href}>{item.action}</Link></Button>
+                  )}
+                </div>
+              </div>
+            </div>
+  );
 
   return (
     <DashboardChoreography pageKey={`coach-dashboard-${user.id || user.profile?.id || user.role}`}>
@@ -136,66 +182,60 @@ export default function CoachDashboard() {
 
       <Card className="mt-4" data-testid="coach-action-queue">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-          <SectionLabel>Today&apos;s priorities</SectionLabel>
+          <SectionLabel>Client queue</SectionLabel>
           <Link to="/coach/analytics" className="flex min-h-11 shrink-0 items-center text-xs font-medium text-primary">
             Analytics <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         </CardHeader>
-        <CardContent className="space-y-2.5">
+        <CardContent className="space-y-4">
           {attentionUnavailable && (
             <p className="rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-xs" role="status" data-testid="coach-queue-partial-note">
               Client trend signals couldn't load. Everything else below is current.
             </p>
           )}
-          {actionQueue.length === 0 && (
-            <p className="text-sm text-muted-foreground py-2" data-testid="coach-action-queue-empty">All clear.</p>
+          {queue.total > queue.shown && (
+            <p className="text-xs text-muted-foreground" data-testid="coach-queue-truncated">Showing the first {queue.shown} of {queue.total} items, most urgent first.</p>
           )}
-          {actionQueue.map((item, index) => (
-            <div
-              key={item.key}
-              // Surface roles (010 §6): the queue's first item — the thing to
-              // do next — is the raised surface; the rest stay standard.
-              className={index === 0
-                ? 'rounded-xl border border-primary/35 bg-card px-4 py-3 shadow-[var(--app-elev-soft)]'
-                : 'rounded-xl border border-border bg-card/60 px-4 py-3'}
-              data-testid={`coach-action-${item.kind}`}
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="font-medium">
-                    {item.kind === 'booking'
-                      ? <><span data-testid="booking-client-name">{item.detail.client?.name || 'Client'}</span> · booking request</>
-                      : item.title}
-                  </p>
-                  {item.kind === 'stale_session' && <p className="mt-0.5 text-xs text-muted-foreground">{fmtDateTime(item.detail.scheduled_at)} · {item.detail.duration_minutes}m</p>}
-                  {item.kind === 'booking' && <>
-                    <p className="mt-0.5 text-xs text-muted-foreground" data-testid="booking-request-time">{fmtDateTime(item.detail.requested_time)} · {item.detail.duration_minutes}m</p>
-                    {item.detail.note && <p className="mt-1 truncate text-xs italic text-muted-foreground" data-testid="booking-request-note">&quot;{item.detail.note}&quot;</p>}
-                  </>}
-                  {item.kind === 'message' && <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.detail.content}</p>}
-                  {item.kind === 'check_in' && <CheckInStats className="mt-1" stats={[["Energy", item.detail.energy || '-'], ["Sleep", item.detail.sleep_quality || '-']]} />}
-                  {item.kind === 'attention' && <p className="mt-0.5 text-xs text-muted-foreground">{item.reasons.map((reason) => reason.label).join(' · ')}</p>}
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  {item.kind === 'booking' ? (
-                    <>
-                      <Button size="sm" className="min-h-11 rounded-lg" disabled={acting === `booking-${item.detail.id}`} onClick={() => handleBooking(item.detail.id, 'approve')} data-testid="booking-approve-button"><Check className="mr-1 h-3.5 w-3.5" />Approve</Button>
-                      <Button size="sm" variant="outline" className="min-h-11 rounded-lg text-destructive" disabled={acting === `booking-${item.detail.id}`} onClick={() => handleBooking(item.detail.id, 'decline')} data-testid="booking-decline-button">Decline</Button>
-                    </>
-                  ) : item.kind === 'stale_session' ? (
-                    <>
-                      <Button size="sm" className="min-h-11 rounded-lg" disabled={acting === `session-${item.detail.id}`} onClick={() => handleSessionComplete(item.detail.id)}><Check className="mr-1 h-3.5 w-3.5" />Complete</Button>
-                      <Button asChild size="sm" variant="outline" className="min-h-11 rounded-lg"><Link to="/coach/sessions?view=past">Review</Link></Button>
-                    </>
-                  ) : (
-                    <Button asChild size="sm" variant="outline" className="min-h-11 rounded-lg"><Link to={item.href}>{item.action}</Link></Button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
+          <div className="grid gap-5 lg:grid-cols-3">
+            <QueueGroup id="needs" count={queue.needsLook.length} title="Needs a look" note="Start here" tone="alert" icon={Triangle}>
+              {queue.shown === 0 && <p className="py-2 text-sm text-muted-foreground" data-testid="coach-action-queue-empty">All clear.</p>}
+              {queue.shown > 0 && queue.needsLook.length === 0 && <p className="py-2 text-sm text-muted-foreground">Nothing else right now.</p>}
+              {queue.needsLook.map(renderItem)}
+            </QueueGroup>
+            <QueueGroup id="missed" count={attentionUnavailable ? null : queue.missed.length} title="Missed" note="Past-due workouts, last 30 days" tone="alert" icon={X}>
+              {attentionUnavailable
+                ? <p className="py-2 text-sm text-muted-foreground">Unknown right now: trend signals didn&apos;t load.</p>
+                : queue.missed.length === 0 && <p className="py-2 text-sm text-muted-foreground">No client is below the completion threshold.</p>}
+              {queue.missed.map(renderItem)}
+            </QueueGroup>
+            <QueueGroup id="on-track" count={null} title="On track" note="Not measured yet" tone="quiet" icon={Equal}>
+              <p className="py-2 text-sm text-muted-foreground" data-testid="coach-queue-on-track-note">
+                CVF PT has no on-track measure yet, so no client is listed here. A client missing from the other groups is not counted as on track.
+              </p>
+            </QueueGroup>
+          </div>
         </CardContent>
       </Card>
     </DashboardChoreography>
+  );
+}
+
+// One Look A queue group: a large truthful count (an em dash when unknown),
+// caps title, a short note, then the rows. Tone is the only color: alert
+// groups get the destructive rule, the unmeasured group stays neutral.
+function QueueGroup({ id, count, title, note, tone, icon: Icon, children }) {
+  return (
+    <section aria-labelledby={`coach-queue-${id}-title`} className="min-w-0 space-y-2.5" data-testid={`coach-queue-group-${id}`}>
+      <header className={tone === 'alert' ? 'flex items-end gap-3 border-b-2 border-destructive/60 pb-2' : 'flex items-end gap-3 border-b-2 border-border pb-2'}>
+        <span className="font-display text-5xl font-bold leading-none tabular-nums" data-testid={`coach-queue-${id}-count`}>{count === null ? '—' : count}</span>
+        <div className="min-w-0">
+          <h3 id={`coach-queue-${id}-title`} className="flex items-center gap-1.5 font-display text-xl font-semibold uppercase leading-tight tracking-[0.03em]">
+            <Icon className={tone === 'alert' ? 'h-4 w-4 shrink-0 text-destructive' : 'h-4 w-4 shrink-0 text-muted-foreground'} aria-hidden />{title}
+          </h3>
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{note}</p>
+        </div>
+      </header>
+      {children}
+    </section>
   );
 }
