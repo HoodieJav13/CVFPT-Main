@@ -3,11 +3,10 @@ import { Link, useNavigate } from 'react-router';
 import { api, errMsg } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { StatTile, DashboardSkeleton, LoadErrorState, StatusBadge, SectionLabel, CheckInStats, IconLink } from '@/components/common';
-import { DashboardHero } from '@/components/BrandBackdrop';
 import { DashboardChoreography } from '@/components/Choreography';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, Users, Inbox, MessageSquare, Check, Plus, ChevronRight, Triangle, X, Equal } from 'lucide-react';
+import { CalendarDays, Users, Inbox, MessageSquare, Check, Plus, ChevronRight, Triangle, X } from 'lucide-react';
 import { fmtTime, fmtDateTime } from '@/lib/format';
 import { toast } from 'sonner';
 import { buildCoachQueueGroups } from '@/lib/coachActionQueue';
@@ -135,25 +134,60 @@ export default function CoachDashboard() {
 
   return (
     <DashboardChoreography pageKey={`coach-dashboard-${user.id || user.profile?.id || user.role}`}>
-      <DashboardHero
-        title={`Hey, ${firstName}`}
-        subtitle={user.role === 'admin' ? 'All coaches' : null}
-        testId="coach-dashboard-header"
-        action={
-          <Button onClick={() => navigate('/coach/sessions?new=1')} className="rounded-xl" data-testid="dashboard-new-session-button">
-            <Plus className="h-4 w-4 mr-1.5" /> New session
-          </Button>
-        }
-      />
+      {/* Look A: a compact warm header (no ridge/navy hero), then the client
+          queue first. Counts and today's sessions follow, unchanged. */}
+      <header className="mb-4 flex flex-wrap items-end justify-between gap-3" data-testid="coach-dashboard-header">
+        <div className="min-w-0">
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-primary">
+            {new Date(Date.now()).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}{user.role === 'admin' ? ' · All coaches' : ''}
+          </p>
+          <h1 className="font-display text-2xl font-semibold uppercase leading-tight tracking-[0.02em] sm:text-3xl">{`Hey, ${firstName}`}</h1>
+        </div>
+        <Button onClick={() => navigate('/coach/sessions?new=1')} className="min-h-11 rounded-xl" data-testid="dashboard-new-session-button">
+          <Plus className="mr-1.5 h-4 w-4" /> New session
+        </Button>
+      </header>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="space-y-3" aria-labelledby="coach-queue-heading" data-testid="coach-action-queue">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="coach-queue-heading" className="font-display text-lg font-semibold uppercase tracking-[0.04em] text-muted-foreground">Client queue</h2>
+          <Link to="/coach/analytics" className="flex min-h-11 shrink-0 items-center text-xs font-medium text-primary">
+            Analytics <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+        {attentionUnavailable && (
+          <p className="rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-xs" role="status" data-testid="coach-queue-partial-note">
+            Client trend signals couldn't load. Everything else below is current.
+          </p>
+        )}
+        {queue.total > queue.shown && (
+          <p className="text-xs text-muted-foreground" data-testid="coach-queue-truncated">Showing the first {queue.shown} of {queue.total} items, most urgent first.</p>
+        )}
+        {/* Only the groups CVF PT can actually fill. There is no on-track
+            measure, so no On track group is shown (nothing is inferred). */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <QueueGroup id="needs" count={queue.needsLook.length} title="Needs a look" note="Start here" icon={Triangle}>
+            {queue.shown === 0 && <p className="px-1 py-2 text-sm text-muted-foreground" data-testid="coach-action-queue-empty">All clear.</p>}
+            {queue.shown > 0 && queue.needsLook.length === 0 && <p className="px-1 py-2 text-sm text-muted-foreground">Nothing else right now.</p>}
+            {queue.needsLook.map(renderItem)}
+          </QueueGroup>
+          <QueueGroup id="missed" count={attentionUnavailable ? null : queue.missed.length} title="Missed" note="Past-due workouts, last 30 days" icon={X}>
+            {attentionUnavailable
+              ? <p className="px-1 py-2 text-sm text-muted-foreground">Unknown right now: trend signals didn&apos;t load.</p>
+              : queue.missed.length === 0 && <p className="px-1 py-2 text-sm text-muted-foreground">No client is below the completion threshold.</p>}
+            {queue.missed.map(renderItem)}
+          </QueueGroup>
+        </div>
+      </section>
+
+      <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Today" value={data.today_sessions.length} icon={CalendarDays} testId="stat-today-sessions" />
         <StatTile label="Clients" value={data.client_count} icon={Users} testId="stat-client-count" />
         <StatTile label="Requests" value={data.pending_bookings.length} icon={Inbox} testId="stat-pending-requests" />
         <StatTile label="Unread" value={data.unread_messages} icon={MessageSquare} testId="stat-unread-messages" />
       </div>
 
-      <Card className="mt-5" data-testid="coach-dashboard-today-sessions-card">
+      <Card className="mt-4" data-testid="coach-dashboard-today-sessions-card">
         <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
           <SectionLabel>Today's sessions</SectionLabel>
           <IconLink to="/coach/sessions" label="All sessions" data-testid="view-all-sessions-link" />
@@ -179,63 +213,26 @@ export default function CoachDashboard() {
           ))}
         </CardContent>
       </Card>
-
-      <Card className="mt-4" data-testid="coach-action-queue">
-        <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-          <SectionLabel>Client queue</SectionLabel>
-          <Link to="/coach/analytics" className="flex min-h-11 shrink-0 items-center text-xs font-medium text-primary">
-            Analytics <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {attentionUnavailable && (
-            <p className="rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-xs" role="status" data-testid="coach-queue-partial-note">
-              Client trend signals couldn't load. Everything else below is current.
-            </p>
-          )}
-          {queue.total > queue.shown && (
-            <p className="text-xs text-muted-foreground" data-testid="coach-queue-truncated">Showing the first {queue.shown} of {queue.total} items, most urgent first.</p>
-          )}
-          <div className="grid gap-5 lg:grid-cols-3">
-            <QueueGroup id="needs" count={queue.needsLook.length} title="Needs a look" note="Start here" tone="alert" icon={Triangle}>
-              {queue.shown === 0 && <p className="py-2 text-sm text-muted-foreground" data-testid="coach-action-queue-empty">All clear.</p>}
-              {queue.shown > 0 && queue.needsLook.length === 0 && <p className="py-2 text-sm text-muted-foreground">Nothing else right now.</p>}
-              {queue.needsLook.map(renderItem)}
-            </QueueGroup>
-            <QueueGroup id="missed" count={attentionUnavailable ? null : queue.missed.length} title="Missed" note="Past-due workouts, last 30 days" tone="alert" icon={X}>
-              {attentionUnavailable
-                ? <p className="py-2 text-sm text-muted-foreground">Unknown right now: trend signals didn&apos;t load.</p>
-                : queue.missed.length === 0 && <p className="py-2 text-sm text-muted-foreground">No client is below the completion threshold.</p>}
-              {queue.missed.map(renderItem)}
-            </QueueGroup>
-            <QueueGroup id="on-track" count={null} title="On track" note="Not measured yet" tone="quiet" icon={Equal}>
-              <p className="py-2 text-sm text-muted-foreground" data-testid="coach-queue-on-track-note">
-                CVF PT has no on-track measure yet, so no client is listed here. A client missing from the other groups is not counted as on track.
-              </p>
-            </QueueGroup>
-          </div>
-        </CardContent>
-      </Card>
     </DashboardChoreography>
   );
 }
 
 // One Look A queue group: a large truthful count (an em dash when unknown),
-// caps title, a short note, then the rows. Tone is the only color: alert
-// groups get the destructive rule, the unmeasured group stays neutral.
-function QueueGroup({ id, count, title, note, tone, icon: Icon, children }) {
+// caps title and a short note over the alert rule, then its rows on one warm
+// card. Only groups CVF PT can fill are rendered.
+function QueueGroup({ id, count, title, note, icon: Icon, children }) {
   return (
     <section aria-labelledby={`coach-queue-${id}-title`} className="min-w-0 space-y-2.5" data-testid={`coach-queue-group-${id}`}>
-      <header className={tone === 'alert' ? 'flex items-end gap-3 border-b-2 border-destructive/60 pb-2' : 'flex items-end gap-3 border-b-2 border-border pb-2'}>
+      <header className="flex items-end gap-3 border-b-2 border-destructive/60 pb-2">
         <span className="font-display text-5xl font-bold leading-none tabular-nums" data-testid={`coach-queue-${id}-count`}>{count === null ? '—' : count}</span>
         <div className="min-w-0">
           <h3 id={`coach-queue-${id}-title`} className="flex items-center gap-1.5 font-display text-xl font-semibold uppercase leading-tight tracking-[0.03em]">
-            <Icon className={tone === 'alert' ? 'h-4 w-4 shrink-0 text-destructive' : 'h-4 w-4 shrink-0 text-muted-foreground'} aria-hidden />{title}
+            <Icon className="h-4 w-4 shrink-0 text-destructive" aria-hidden />{title}
           </h3>
           <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{note}</p>
         </div>
       </header>
-      {children}
+      <div className="space-y-2">{children}</div>
     </section>
   );
 }

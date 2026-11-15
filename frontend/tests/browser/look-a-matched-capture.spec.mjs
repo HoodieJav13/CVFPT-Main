@@ -79,6 +79,19 @@ for (const { viewport, state, role } of SCENES) {
       await card.getByTestId('exercise-history').evaluate((e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
       entry.actions.push('Open first exercise History & notes, then Exercise history; show fictional mixed-unit prior sets.');
     }
+    if (role === 'client' && ['fresh', 'logged-rest'].includes(state)) {
+      // Look A addition: the real landing (the tracker's own scroll after load
+      // or after the logged set), before the baseline's scroll-to-top reset.
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      entry.landingFile = `screenshots/${role}-${state}-${viewport.width}x${viewport.height}-landing.png`;
+      await page.screenshot({ path: `${OUT}/${entry.landingFile}`, animations: 'disabled' });
+      entry.landingSha256 = await sha(`${OUT}/${entry.landingFile}`);
+      const log = page.getByTestId('focus-log');
+      entry.landingLogVisible = (await log.count()) ? await log.evaluate((e) => {
+        const r = e.getBoundingClientRect(); const dock = document.querySelector('[data-testid="workout-control-dock"]')?.getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= Math.min(innerHeight, dock ? dock.top : innerHeight);
+      }) : null;
+    }
     if (state !== 'history') await page.evaluate(() => { scrollTo(0, 0); const r = document.querySelector('[data-testid="workout-scroll-region"]'); if (r) r.scrollTop = 0; });
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     const file = `screenshots/${role}-${state}-${viewport.width}x${viewport.height}.png`;

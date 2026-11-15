@@ -57,12 +57,25 @@ const shot = async (page, name, fullPage = false) => {
   await page.screenshot({ path: `${OUT}/${name}.png`, fullPage });
 };
 
-for (const [w, h] of [[390, 844], [320, 700]]) {
-  test(`tracker ${w}x${h}: fresh, Done (outlined tick + Undo), Finish dialog`, async ({ page }) => {
+for (const [w, h] of [[375, 667], [390, 844], [320, 700]]) {
+  test(`tracker ${w}x${h}: fresh, inline adjust, Done (outlined tick + Undo), Finish dialog`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: h });
     const { results } = await tracker(page);
     await expect(page.getByTestId('set-last-time').first()).toBeVisible();
     await shot(page, `tracker-01-fresh-${w}x${h}`);
+    // "I did something different": the set's editor opens inside the Focus panel.
+    await page.getByTestId('focus-adjust').click();
+    await expect(page.getByTestId('focus-editor')).toBeVisible();
+    // No harness scrolling: this is where the tracker itself puts the editor and Log.
+    await page.waitForTimeout(100);
+    const whole = await page.getByTestId('focus-log').evaluate((e) => {
+      const r = e.getBoundingClientRect(); const region = document.querySelector('[data-testid="workout-scroll-region"]').getBoundingClientRect();
+      const dock = document.querySelector('[data-testid="workout-control-dock"]').getBoundingClientRect();
+      return r.top >= region.top - 1 && r.bottom <= Math.min(region.bottom, dock.top) + 1;
+    });
+    expect(whole, 'the whole Log action is in view when the editor opens').toBe(true);
+    await expect(page.getByTestId('focus-editor').locator('input').first()).toBeFocused();
+    await shot(page, `tracker-01b-adjust-${w}x${h}`);
     await card(page, 'Single-leg RDL').getByTestId('exercise-quick-complete').click();
     await settled(page, LOG);
     await expect(undoButton(page)).toBeVisible();
