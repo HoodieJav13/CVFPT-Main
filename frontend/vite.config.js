@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
+import { redesignOverlay, redesignRequested } from './redesign/overlayPlugin.mjs';
 
 // Emits sw.js into the build with __SW_VERSION__ replaced by a per-build id.
 // The source lives at frontend/sw.js (not public/) so it can never ship with
@@ -44,7 +45,8 @@ export default defineConfig(({ mode }) => {
         }
       : {};
   return {
-    plugins: [react(), serviceWorkerPlugin()],
+    // Redesign gate: off unless REACT_APP_PT_REDESIGN=look-a (docs/redesign-gate.md).
+    plugins: [...(redesignRequested() ? [redesignOverlay()] : []), react(), serviceWorkerPlugin()],
     envPrefix: ['REACT_APP_', 'VITE_'],
     define: {
       'process.env': JSON.stringify(env),

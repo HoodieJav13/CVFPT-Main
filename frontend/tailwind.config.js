@@ -3,7 +3,9 @@ module.exports = {
     darkMode: ["class"],
     content: [
     "./src/**/*.{js,jsx,ts,tsx}",
-    "./index.html"
+    "./index.html",
+    // Redesign gate: overlay screens are scanned only when the gate is on.
+    ...(process.env.REACT_APP_PT_REDESIGN === "look-a" ? ["./redesign/look-a/src/**/*.{js,jsx,ts,tsx}"] : [])
   ],
   theme: {
     extend: {

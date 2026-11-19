@@ -106,3 +106,8 @@ frontend/test-results-guides/
 frontend/test-results-guides-local/
 frontend/test-results-guides-visual/
 frontend/test-results-guides-proof/
+
+# Redesign gate: generated full copy with the overlay applied (scripts/redesign.mjs materialize)
+.redesign/
+# Local port evidence (logs, screenshots)
+port-evidence/
