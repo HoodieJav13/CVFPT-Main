@@ -46,7 +46,7 @@ export default defineConfig(({ mode }) => {
       : {};
   return {
     // Redesign gate: off unless REACT_APP_PT_REDESIGN=look-a (docs/redesign-gate.md).
-    plugins: [...(redesignRequested() ? [redesignOverlay()] : []), react(), serviceWorkerPlugin()],
+    plugins: [react(), serviceWorkerPlugin()].concat(redesignRequested() ? [redesignOverlay()] : []),
     envPrefix: ['REACT_APP_', 'VITE_'],
     define: {
       'process.env': JSON.stringify(env),
