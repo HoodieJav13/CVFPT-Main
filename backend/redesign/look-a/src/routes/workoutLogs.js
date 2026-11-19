@@ -1,0 +1,1097 @@
+const { normalizeRescueStart, rescueErrorStatus, UUID: RESCUE_UUID } = require('../lib/workoutRescue');
+const { registerCueRetryRoutes, cueErrorStatus } = require('./cueRetry');
+const express = require('express');
+const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
+const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
+const { todayDateInTz, dateInTz } = require('../utils/time');
+const { addDays, buildWeekRhythm } = require('../lib/rhythm');
+const { dispatchPush, sendToCoaches } = require('../services/push');
+
+const { actualMetrics, trackingType } = require('../lib/workoutMetrics');
+const { quickLogKinds } = require('../lib/quickSessionReads');
+const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
+const { resolveExerciseDemo, resolvedVideoUrl } = require('../lib/exerciseDemo');
+const { registerSessionRoutes, sessionExtras, setEventEnvelope } = require('./workoutLogSession');
+const { registerLookARoutes } = require('./workoutLookA');
+const { randomUUID } = require('node:crypto');
+
+const router = express.Router();
+router.use(requireAuth);
+registerCueRetryRoutes(router, { db: supabaseAdmin });
+
+function validLoad(value, unit) {
+  if (value === null || value === undefined || value === '') return unit === null || unit === undefined || unit === '';
+  return Number.isFinite(Number(value)) && Number(value) >= 0 && ['lb', 'kg'].includes(unit);
+}
+
+function validPerformedReps(value) {
+  return value === null || (typeof value === 'number' && Number.isInteger(value) && value >= 0);
+}
+
+function validPerformedRpe(value) {
+  return value === null || (typeof value === 'number' && Number.isFinite(value)
+    && value >= 1 && value <= 10 && Number.isInteger(value * 2));
+}
+
+function decodeHistoryCursor(value) {
+  if (value === undefined) return null;
+  if (typeof value !== 'string' || !value || value.length > 512) throw new Error('invalid');
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!parsed || Object.keys(parsed).sort().join(',') !== 'completed_at,id'
+      || typeof parsed.completed_at !== 'string' || Number.isNaN(Date.parse(parsed.completed_at))
+      || typeof parsed.id !== 'string' || !uuid.test(parsed.id)) throw new Error('invalid');
+    return parsed;
+  } catch {
+    throw new Error('invalid');
+  }
+}
+
+// Completed-workout list paging (?paged=1). Keyset on (completed_at, id),
+// newest first. The cursor is server-issued; it is strictly validated (ISO
+// timestamp + UUID) because its values are placed in a filter expression.
+const LOG_PAGE_DEFAULT = 20;
+const LOG_PAGE_MAX = 50;
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:?\d{2})$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function decodeLogListCursor(value) {
+  if (value === undefined) return null;
+  if (typeof value !== 'string' || !value || value.length > 512) throw new Error('invalid');
+  let parsed;
+  try {
+    parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('invalid');
+  }
+  if (!parsed || Object.keys(parsed).sort().join(',') !== 'completed_at,id'
+    || typeof parsed.completed_at !== 'string' || !ISO_TIMESTAMP.test(parsed.completed_at)
+    || typeof parsed.id !== 'string' || !UUID.test(parsed.id)) throw new Error('invalid');
+  return parsed;
+}
+
+function encodeLogListCursor(row) {
+  return Buffer.from(JSON.stringify({ completed_at: row.completed_at, id: row.id })).toString('base64url');
+}
+
+function logPageSize(value) {
+  const size = Number(value);
+  return Number.isInteger(size) && size >= 1 ? Math.min(size, LOG_PAGE_MAX) : LOG_PAGE_DEFAULT;
+}
+
+async function completedLogsPage(clientId, { cursor, limit }, { db = supabaseAdmin, details = workoutLogsWithDetailsBulk } = {}) {
+  let query = db.from('workout_logs').select('id, completed_at')
+    .eq('client_id', clientId).eq('status', 'completed').eq('archived', false);
+  if (cursor) {
+    query = query.or(`completed_at.lt."${cursor.completed_at}",and(completed_at.eq."${cursor.completed_at}",id.lt.${cursor.id})`);
+  }
+  const { data, error } = await query
+    .order('completed_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1);
+  if (error) throw error;
+  const rows = data || [];
+  const page = rows.slice(0, limit);
+  return {
+    logs: await details(page.map((row) => row.id)),
+    next_cursor: rows.length > limit ? encodeLogListCursor(page[page.length - 1]) : null,
+  };
+}
+
+// The unpaged form (an array of up to 50) stays for existing callers.
+async function sendCompletedLogs(req, res, clientId) {
+  if (req.query.paged !== '1') {
+    const { data, error } = await supabaseAdmin.from('workout_logs')
+      .select('id').eq('client_id', clientId).eq('status', 'completed').eq('archived', false)
+      .order('completed_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    return res.json(await workoutLogsWithDetailsBulk((data || []).map((row) => row.id)));
+  }
+  let cursor;
+  try {
+    cursor = decodeLogListCursor(req.query.cursor);
+  } catch {
+    return res.status(400).json({ error: 'Invalid history cursor' });
+  }
+  return res.json(await completedLogsPage(clientId, { cursor, limit: logPageSize(req.query.limit) }));
+}
+
+function encodeHistoryCursor(occurrence) {
+  return Buffer.from(JSON.stringify({ completed_at: occurrence.completed_at, id: occurrence.workout_log_id })).toString('base64url');
+}
+
+function workoutSetUpdatePayload(body, set, now = new Date().toISOString(), exercise = {}) {
+  const status = body.status === 'completed' ? 'completed' : body.status === 'pending' ? 'pending' : set.status;
+  const loadValue = Object.hasOwn(body, 'actual_load_value') ? body.actual_load_value : set.actual_load_value;
+  const loadUnit = Object.hasOwn(body, 'actual_load_unit') ? body.actual_load_unit : set.actual_load_unit;
+  if (!validLoad(loadValue, loadUnit)) throw Object.assign(new Error('Enter a valid weight and unit'), { status: 400 });
+  const actualReps = Object.hasOwn(body, 'actual_reps') ? body.actual_reps : set.actual_reps;
+  const actualRpe = Object.hasOwn(body, 'actual_rpe') ? body.actual_rpe : set.actual_rpe;
+  if (!validPerformedReps(actualReps)) throw Object.assign(new Error('Reps must be a nonnegative whole number or null'), { status: 400 });
+  if (!validPerformedRpe(actualRpe)) throw Object.assign(new Error('RPE must be 1 through 10 in 0.5 increments or null'), { status: 400 });
+  if (trackingType(exercise) !== 'reps_weight' && actualReps != null) throw Object.assign(new Error('Reps do not match the exercise tracking type'), { status: 400 });
+  return {
+    ...actualMetrics(body, set, exercise),
+    status,
+    actual_load_value: loadValue === '' || loadValue === null ? null : Number(loadValue),
+    actual_load_unit: loadValue === '' || loadValue === null ? null : loadUnit,
+    actual_reps: actualReps,
+    actual_rpe: actualRpe,
+    completed_at: status === 'completed' ? now : null,
+    updated_at: now,
+  };
+}
+
+async function updateSetAtHandlerBoundary({ body, set, exercise, mutate, now }) {
+  const payload = workoutSetUpdatePayload(body, set, now, exercise);
+  return mutate(payload);
+}
+
+function workoutRpcStatus(error) {
+  if (error?.code?.startsWith('P04') || ['42883', 'PGRST202'].includes(error?.code)) return cueErrorStatus(error);
+  const message = error?.message || '';
+  if (/not found|Assigned workout/i.test(message)) return 404;
+  if (/not active|cannot be changed|logged changes/i.test(message)) return 409;
+  if (/required|Complete at least one set/i.test(message)) return 400;
+  return 500;
+}
+
+function canReadLog(user, log) {
+  if (!user || !log || log.archived) return false;
+  if (user.role === 'client') return log.client_id === user.client?.id;
+  return canAccessClient(user, log.client);
+}
+
+/**
+ * Write access to a workout log (roadmap D1/D2): the owning client, or a
+ * coach/admin authorized for the log's client. Coaches cannot write for
+ * archived clients.
+ */
+function canWriteLog(user, log) {
+  if (!user || !log || log.archived) return false;
+  if (user.role === 'client') return log.client_id === user.client?.id;
+  return Boolean(log.client && !log.client.archived && canAccessClient(user, log.client));
+}
+
+/**
+ * Attribution stamp derived ONLY from the authenticated actor — never from
+ * the request body, so a client cannot claim coach-entered data (D5).
+ */
+function actorStamp(user) {
+  if (user?.role === 'coach' || user?.role === 'admin') {
+    return { entered_by: 'coach', entered_by_coach_id: user.coach.id };
+  }
+  return { entered_by: 'client', entered_by_coach_id: null };
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Session linkage: a workout started without an explicit session context
+// links to the client's scheduled session on the same Denver day, preferring
+// a session whose attached plan is the workout being started, then the one
+// closest to now. Best-effort — resolution must never block a start.
+async function startedWorkoutId({ programDayId, workoutAssignmentId }) {
+  const table = workoutAssignmentId ? 'workout_assignments' : programDayId ? 'program_days' : null;
+  if (!table) return null;
+  const { data } = await supabaseAdmin.from(table).select('workout_id')
+    .eq('id', workoutAssignmentId || programDayId).maybeSingle();
+  return data?.workout_id || null;
+}
+
+async function resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId, now = new Date() }) {
+  try {
+    // 36h window bounds the scan; the Denver-day filter below is what decides.
+    const windowStart = new Date(now.getTime() - 36 * 3600 * 1000).toISOString();
+    const windowEnd = new Date(now.getTime() + 36 * 3600 * 1000).toISOString();
+    const { data: rows, error } = await supabaseAdmin.from('sessions')
+      .select('id, scheduled_at, workout_id')
+      .eq('client_id', clientId).eq('status', 'scheduled').eq('archived', false)
+      .gte('scheduled_at', windowStart).lte('scheduled_at', windowEnd);
+    if (error) throw error;
+    const today = dateInTz(now);
+    const sameDay = (rows || []).filter((session) => dateInTz(session.scheduled_at) === today);
+    if (!sameDay.length) return null;
+    let candidates = sameDay;
+    if (sameDay.some((session) => session.workout_id)) {
+      const workoutId = await startedWorkoutId({ programDayId, workoutAssignmentId });
+      const planned = workoutId ? sameDay.filter((session) => session.workout_id === workoutId) : [];
+      if (planned.length) candidates = planned;
+    }
+    return candidates.reduce((best, session) => (
+      Math.abs(new Date(session.scheduled_at) - now) < Math.abs(new Date(best.scheduled_at) - now) ? session : best
+    )).id;
+  } catch (error) {
+    logError('session link resolution error', error);
+    return null;
+  }
+}
+
+// Program 011 A: one in-app notification per workout event to the owning
+// coach and every admin (mirrors the completion trigger's recipient set).
+// Idempotent via the (recipient, event_type, workout_log_id) unique key.
+async function notifyCoachesOfWorkoutEvent(eventType, log) {
+  const { data: coaches, error } = await supabaseAdmin.from('coaches')
+    .select('id').eq('archived', false)
+    .or(`id.eq.${log.coach_id},is_admin.eq.true`);
+  if (error) throw error;
+  const rows = (coaches || []).map((coach) => ({
+    recipient_coach_id: coach.id, event_type: eventType, workout_log_id: log.id,
+  }));
+  if (!rows.length) return;
+  const { error: insertErr } = await supabaseAdmin.from('notifications')
+    .upsert(rows, { onConflict: 'recipient_coach_id,event_type,workout_log_id', ignoreDuplicates: true });
+  if (insertErr) throw insertErr;
+  const clientName = log.client?.name || 'A client';
+  dispatchPush(() => sendToCoaches(rows.map((row) => row.recipient_coach_id), {
+    title: eventType === 'workout_started' ? 'In the gym now' : 'Workout completed',
+    body: eventType === 'workout_started'
+      ? `${clientName} started ${log.workout_name || 'a workout'}.`
+      : `${clientName} completed ${log.workout_name || 'a workout'}.`,
+    url: '/coach/notifications',
+  }));
+}
+
+// Completed-workout notification rows come from the completion RPC; this
+// only adds the matching lock-screen push to the same recipient set.
+function completedWorkoutPush(log) {
+  dispatchPush(async () => {
+    const { data: coaches, error } = await supabaseAdmin.from('coaches')
+      .select('id').eq('archived', false)
+      .or(`id.eq.${log.coach_id},is_admin.eq.true`);
+    if (error) throw error;
+    await sendToCoaches((coaches || []).map((coach) => coach.id), {
+      title: 'Workout completed',
+      body: `${log.client?.name || 'A client'} completed ${log.workout_name || 'a workout'}${log.quick_completed || log.not_set_tracked ? ' (not tracked)' : ''}.`,
+      url: '/coach/notifications',
+    });
+  });
+}
+
+// When a workout is finished, its "started" notifications become stale —
+// mark them read so a coach never sees a started/finished pair one tap apart.
+async function markStartedNotificationsRead(logId) {
+  await supabaseAdmin.from('notifications')
+    .update({ read_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('event_type', 'workout_started').eq('workout_log_id', logId).is('read_at', null);
+}
+
+function canAuthorCoachResponse(user, log) {
+  return Boolean(
+    (user?.role === 'coach' || user?.role === 'admin')
+    && log?.client
+    && !log.client.archived
+    && canAccessClient(user, log.client),
+  );
+}
+
+function validateCoachResponseContent(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.content !== 'string') {
+    return { ok: false, error: 'Coach response must be text' };
+  }
+  const content = body.content.trim();
+  if (!content) return { ok: false, error: 'Coach response is required' };
+  if (Array.from(content).length > 4000) return { ok: false, error: 'Coach response must be 4,000 characters or fewer' };
+  return { ok: true, content };
+}
+
+function newestCoachResponseFirst(a, b) {
+  const activityDelta = new Date(b.edited_at || b.created_at).getTime() - new Date(a.edited_at || a.created_at).getTime();
+  return activityDelta || String(b.id).localeCompare(String(a.id));
+}
+
+
+/**
+ * Log-level attribution derived from completed, non-archived sets only:
+ * untouched prescribed sets carry the schema default and skipped sets were
+ * never entered by anyone, so neither is evidence of who logged data. A log
+ * with no completed sets falls back to who started it (D5, docs/roadmap.md).
+ */
+function computeLogAttribution(log) {
+  const entries = new Set(
+    (log.exercises || [])
+      .flatMap((exercise) => exercise.sets || [])
+      .filter((set) => !set.archived && set.status === 'completed')
+      .map((set) => (set.entered_by === 'coach' ? 'coach' : 'client')),
+  );
+  if (entries.size === 0) return log.started_by === 'coach' ? 'coach' : 'client';
+  if (entries.size === 1) return entries.values().next().value;
+  return 'mixed';
+}
+
+// Demo for each logged exercise, resolved LIVE from the source workout row's
+// reference mode (docs/exercise-guides/design.md): 'inherit' follows the
+// current library link, 'override' keeps the coach's per-workout link, and
+// unclassified legacy rows keep the old precedence (nonempty safe workout
+// link, then the library). Only http(s) links are ever returned. The snapshot
+// has no video column and is never rewritten; `demo` is the current guide.
+function resolveExerciseVideos(exercises, workoutExercises = [], libraryExercises = []) {
+  const bySource = new Map(workoutExercises.map((row) => [row.id, row]));
+  const library = new Map(libraryExercises.map((row) => [row.id, row]));
+  return exercises.map((exercise) => {
+    const source = bySource.get(exercise.source_workout_exercise_id) || null;
+    const libraryId = exercise.exercise_library_id || source?.exercise_library_id;
+    const reference = { workoutExercise: source, libraryExercise: library.get(libraryId) || null };
+    return { ...exercise, video_url: resolvedVideoUrl(reference), demo: resolveExerciseDemo(reference) };
+  });
+}
+
+async function withExerciseVideos(exercises, { media = true } = {}) {
+  if (!exercises.length) return exercises;
+  const sourceIds = [...new Set(exercises.map((row) => row.source_workout_exercise_id).filter(Boolean))];
+  let sources = [];
+  if (sourceIds.length) {
+    const { data, error } = await supabaseAdmin.from('workout_exercises')
+      .select('id, video_url, video_link_mode, exercise_library_id').in('id', sourceIds);
+    if (error) throw error;
+    sources = data || [];
+  }
+  const libraryIds = [...new Set([
+    ...exercises.map((row) => row.exercise_library_id),
+    ...sources.map((row) => row.exercise_library_id),
+  ].filter(Boolean))];
+  let library = [];
+  if (libraryIds.length) {
+    const { data, error } = await supabaseAdmin.from('exercise_library')
+      .select('id, video_url').in('id', libraryIds);
+    if (error) throw error;
+    library = data || [];
+  }
+  const resolved = resolveExerciseVideos(exercises, sources, library);
+  if (!media) return resolved;
+  // Current exercise guide (live by design; never part of the log snapshot).
+  const sourceLibrary = new Map(sources.map((row) => [row.id, row.exercise_library_id]));
+  return attachExerciseMedia(resolved, (row) => row.exercise_library_id || sourceLibrary.get(row.source_workout_exercise_id));
+}
+
+async function workoutLogWithDetails(id, { media = true } = {}) {
+  const { data: log, error } = await supabaseAdmin.from('workout_logs')
+    .select('*, client:clients(id, name, coach_id, archived)')
+    .eq('id', id).eq('archived', false).maybeSingle();
+  if (error) throw error;
+  if (!log) return null;
+  const { data: coachResponses, error: responseError } = await supabaseAdmin.from('workout_coach_responses')
+    .select('*').eq('workout_log_id', id).eq('archived', false);
+  if (responseError) throw responseError;
+  const { data: loggedExercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
+    .select('*').eq('workout_log_id', id).eq('archived', false).order('position').order('created_at');
+  if (exerciseError) throw exerciseError;
+  const exercises = await withExerciseVideos(loggedExercises || [], { media });
+  const exerciseIds = exercises.map((exercise) => exercise.id);
+  let sets = [];
+  if (exerciseIds.length) {
+    const { data, error: setError } = await supabaseAdmin.from('workout_log_sets')
+      .select('*').in('workout_log_exercise_id', exerciseIds).eq('archived', false).order('set_number');
+    if (setError) throw setError;
+    sets = data || [];
+  }
+  const setsByExercise = new Map();
+  sets.forEach((set) => {
+    const rows = setsByExercise.get(set.workout_log_exercise_id) || [];
+    rows.push(set);
+    setsByExercise.set(set.workout_log_exercise_id, rows);
+  });
+  const kinds = await quickLogKinds([log], { db: supabaseAdmin });
+  const detailed = {
+    ...log,
+    // Safe provenance enum ('quick' | 'assigned' | null); distinct from quick_completed.
+    workout_assignment_kind: kinds.get(log.id) ?? null,
+    coach_responses: (coachResponses || []).sort(newestCoachResponseFirst),
+    exercises: (exercises || []).map((exercise) => ({
+      ...exercise,
+      sets: setsByExercise.get(exercise.id) || [],
+    })),
+  };
+  return { ...detailed, attribution: computeLogAttribution(detailed) };
+}
+
+/**
+ * Bulk variant of workoutLogWithDetails for the history lists: a constant
+ * four queries (logs, responses, exercises, sets) however many logs are
+ * expanded — the sequential per-log loop was ~4 queries × 50 logs for a
+ * single page view. Per-log shape is identical to the single builder, and
+ * the input id order (completed_at desc) is preserved.
+ */
+async function workoutLogsWithDetailsBulk(ids) {
+  if (!ids.length) return [];
+  const { data: logs, error } = await supabaseAdmin.from('workout_logs')
+    .select('*, client:clients(id, name, coach_id, archived)')
+    .in('id', ids).eq('archived', false);
+  if (error) throw error;
+  const logIds = (logs || []).map((log) => log.id);
+  if (!logIds.length) return [];
+  const { data: coachResponses, error: responseError } = await supabaseAdmin.from('workout_coach_responses')
+    .select('*').in('workout_log_id', logIds).eq('archived', false);
+  if (responseError) throw responseError;
+  const { data: exercises, error: exerciseError } = await supabaseAdmin.from('workout_log_exercises')
+    .select('*').in('workout_log_id', logIds).eq('archived', false).order('position');
+  if (exerciseError) throw exerciseError;
+  const exerciseIds = (exercises || []).map((exercise) => exercise.id);
+  let sets = [];
+  if (exerciseIds.length) {
+    const { data, error: setError } = await supabaseAdmin.from('workout_log_sets')
+      .select('*').in('workout_log_exercise_id', exerciseIds).eq('archived', false).order('set_number');
+    if (setError) throw setError;
+    sets = data || [];
+  }
+  const setsByExercise = new Map();
+  for (const set of sets) {
+    const rows = setsByExercise.get(set.workout_log_exercise_id) || [];
+    rows.push(set);
+    setsByExercise.set(set.workout_log_exercise_id, rows);
+  }
+  const exercisesByLog = new Map();
+  for (const exercise of exercises || []) {
+    const rows = exercisesByLog.get(exercise.workout_log_id) || [];
+    rows.push({ ...exercise, sets: setsByExercise.get(exercise.id) || [] });
+    exercisesByLog.set(exercise.workout_log_id, rows);
+  }
+  const responsesByLog = new Map();
+  for (const response of coachResponses || []) {
+    const rows = responsesByLog.get(response.workout_log_id) || [];
+    rows.push(response);
+    responsesByLog.set(response.workout_log_id, rows);
+  }
+  const kinds = await quickLogKinds(logs || [], { db: supabaseAdmin });
+  const position = new Map(ids.map((id, index) => [id, index]));
+  return (logs || [])
+    .map((log) => {
+      const detailed = {
+        ...log,
+        workout_assignment_kind: kinds.get(log.id) ?? null,
+        coach_responses: (responsesByLog.get(log.id) || []).sort(newestCoachResponseFirst),
+        exercises: exercisesByLog.get(log.id) || [],
+      };
+      return { ...detailed, attribution: computeLogAttribution(detailed) };
+    })
+    .sort((a, b) => position.get(a.id) - position.get(b.id));
+}
+
+async function clientActiveLog(clientId) {
+  const { data, error } = await supabaseAdmin.from('workout_logs')
+    .select('id').eq('client_id', clientId).eq('status', 'active').eq('archived', false).maybeSingle();
+  if (error) throw error;
+  return data?.id ? workoutLogWithDetails(data.id) : null;
+}
+
+async function requireWritableActiveLog(req, res) {
+  const log = await workoutLogWithDetails(req.params.id, { media: false });
+  if (!canWriteLog(req.user, log)) {
+    res.status(404).json({ error: 'Workout log not found' });
+    return null;
+  }
+  if (log.status !== 'active') {
+    res.status(409).json({ error: 'Completed workouts cannot be changed' });
+    return null;
+  }
+  return log;
+}
+
+function createExerciseHistoryHandler({
+  findLog = workoutLogWithDetails,
+  // Look A: v3 adds the prescription each occurrence was logged against;
+  // before that migration the v2 rows are used and those facts are absent.
+  runHistory = async (args) => {
+    const v3 = await supabaseAdmin.rpc('get_workout_exercise_history_v3', args);
+    if (v3.error && ['PGRST202', '42883'].includes(v3.error.code)) return supabaseAdmin.rpc('get_workout_exercise_history_v2', args);
+    return v3;
+  },
+} = {}) {
+  return async function exerciseHistoryHandler(req, res) {
+    let cursor;
+    try {
+      cursor = decodeHistoryCursor(req.query.cursor);
+    } catch {
+      return res.status(400).json({ error: 'Invalid history cursor' });
+    }
+    try {
+      const log = await findLog(req.params.id);
+      // Client on their own active log, or coach/admin on an active log of a
+      // client they own (matrix rows 1-4, docs/roadmap.md) — reads are scoped
+      // exactly like writes, and archived clients stay off-limits.
+      const allowed = Boolean(log) && !log.archived && log.status === 'active' && (
+        (req.user.role === 'client' && log.client_id === req.user.client?.id)
+        || ((req.user.role === 'coach' || req.user.role === 'admin')
+          && log.client && !log.client.archived && canAccessClient(req.user, log.client))
+      );
+      if (!allowed) {
+        return res.status(404).json({ error: 'Workout log not found' });
+      }
+      const exercise = log.exercises.find((row) => row.id === req.params.exerciseId && !row.archived);
+      if (!exercise) return res.status(404).json({ error: 'Workout exercise not found' });
+
+      const { data, error } = await runHistory({
+        // Always the log's own client: history is the client's, whoever reads it.
+        p_client_id: log.client_id,
+        p_exercise_library_id: exercise.exercise_library_id || null,
+        p_source_workout_exercise_id: exercise.source_workout_exercise_id || null,
+        p_before_completed_at: cursor?.completed_at || null,
+        p_before_log_id: cursor?.id || null,
+        p_occurrence_limit: 11,
+      });
+      if (error) throw error;
+      const grouped = new Map();
+      for (const row of data || []) {
+        const occurrenceId = `${row.workout_log_id}:${row.workout_log_exercise_id || 'legacy'}`;
+        if (!grouped.has(occurrenceId)) grouped.set(occurrenceId, {
+          occurrence_id: occurrenceId,
+          workout_log_exercise_id: row.workout_log_exercise_id ?? null,
+          workout_log_id: row.workout_log_id,
+          completed_at: row.completed_at,
+          exercise_name: row.exercise_name,
+          tracking_type: row.tracking_type ?? 'reps_weight',
+          // What this occurrence was prescribed (null when unknown: rows from
+          // before Look A). Shown as context; never substituted for performed values.
+          prescribed: 'per_side' in row ? {
+            load_value: row.prescribed_load_value == null ? null : Number(row.prescribed_load_value),
+            load_unit: row.prescribed_load_unit ?? null,
+            load_max: row.prescribed_load_max == null ? null : Number(row.prescribed_load_max),
+            per_side: row.per_side === true,
+          } : null,
+          sets: [],
+        });
+        grouped.get(occurrenceId).sets.push({
+          set_number: row.set_number,
+          actual_load_value: row.actual_load_value,
+          actual_load_unit: row.actual_load_unit,
+          actual_reps: row.actual_reps,
+          actual_rpe: row.actual_rpe,
+          actual_duration_value: row.actual_duration_value ?? null,
+          actual_duration_unit: row.actual_duration_unit ?? null,
+          actual_distance_value: row.actual_distance_value ?? null,
+          actual_distance_unit: row.actual_distance_unit ?? null,
+        });
+      }
+      const allOccurrences = [...grouped.values()]
+        .map((occurrence) => ({ ...occurrence, sets: occurrence.sets.sort((a, b) => a.set_number - b.set_number) }))
+        .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)
+          || b.workout_log_id.localeCompare(a.workout_log_id)
+          || b.occurrence_id.localeCompare(a.occurrence_id));
+      // The SQL lookahead and cursor count workouts, so keep every matching
+      // exercise in each selected workout instead of splitting a cursor group.
+      const logIds = [...new Set(allOccurrences.map((row) => row.workout_log_id))];
+      const selectedLogIds = new Set(logIds.slice(0, 10));
+      const occurrences = allOccurrences.filter((row) => selectedLogIds.has(row.workout_log_id));
+      return res.json({
+        occurrences,
+        next_cursor: logIds.length > 10 ? encodeHistoryCursor(occurrences[occurrences.length - 1]) : null,
+      });
+    } catch (error) {
+      logError('exercise history error', error);
+      return res.status(500).json({ error: 'Failed to load exercise history' });
+    }
+  };
+}
+
+router.post('/start', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const programAssignmentId = body.program_assignment_id || null;
+    const programDayId = body.program_day_id || null;
+    const workoutAssignmentId = body.workout_assignment_id || null;
+    const programSource = Boolean(programAssignmentId || programDayId);
+    if ((programSource && (!programAssignmentId || !programDayId || workoutAssignmentId))
+      || (!programSource && !workoutAssignmentId)) {
+      return res.status(400).json({ error: 'Choose one assigned workout' });
+    }
+    const rescue = body.rescue == null ? null : normalizeRescueStart(body.rescue);
+    if (rescue && (!RESCUE_UUID.test(programAssignmentId || '') || !RESCUE_UUID.test(programDayId || '') || workoutAssignmentId)) return res.status(400).json({ error: 'Invalid Rescue assignment' });
+    const explicitSessionId = body.session_id || null;
+    if (explicitSessionId !== null && (typeof explicitSessionId !== 'string' || !UUID_RE.test(explicitSessionId))) {
+      return res.status(400).json({ error: 'Invalid session' });
+    }
+
+    // Resolve which client this workout belongs to from the authenticated
+    // actor — coaches name a client they own; clients are always themselves.
+    let clientId;
+    if (req.user.role === 'client') {
+      clientId = req.user.client.id;
+    } else {
+      const targetClientId = body.client_id;
+      if (typeof targetClientId !== 'string' || !UUID_RE.test(targetClientId)) {
+        return res.status(400).json({ error: 'Choose a client' });
+      }
+      const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+        .eq('id', targetClientId).eq('archived', false).maybeSingle();
+      if (!clientRow || !canAccessClient(req.user, clientRow)) {
+        return res.status(404).json({ error: 'Client not found' });
+      }
+      clientId = clientRow.id;
+    }
+
+    const sessionId = explicitSessionId
+      ?? await resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId });
+
+    const stamp = actorStamp(req.user);
+    const { data, error } = await supabaseAdmin.rpc(rescue ? 'start_workout_rescue_with_cues' : 'start_workout_log_with_cues', rescue ? {
+      p_auth_id: req.user.authUserId, p_client_id: clientId, p_assignment_id: programAssignmentId, p_day_id: programDayId, p_request: rescue, p_session_id: sessionId,
+    } : {
+      p_client_id: clientId,
+      p_program_assignment_id: programAssignmentId,
+      p_program_day_id: programDayId,
+      p_workout_assignment_id: workoutAssignmentId,
+      p_auth_user_id: req.user.authUserId,
+      p_started_by: stamp.entered_by,
+      p_started_by_coach_id: stamp.entered_by_coach_id,
+      p_session_id: sessionId,
+    });
+    if (error) throw error;
+    const log = await workoutLogWithDetails(data.workout_log_id);
+    if (data.outcome === 'conflict') {
+      return res.status(409).json({ error: 'Finish or abandon your active workout first', active_workout: log });
+    }
+    if (data.outcome === 'already_completed') {
+      return res.status(409).json({ error: 'This dated workout has already been completed', workout_log: log });
+    }
+    // Client-started, fully-tracked workouts tell the coach "in the gym now".
+    // One-tap quick-complete suppresses this (see /quick-complete) so the
+    // coach never gets a started/finished pair a second apart.
+    if (data.outcome === 'started' && req.user.role === 'client' && !body.suppress_start_notification) {
+      try { await notifyCoachesOfWorkoutEvent('workout_started', log); } catch (e) { logError('workout started notify error', e); }
+    }
+    return res.status(data.outcome === 'started' ? 201 : 200).json({ outcome: data.outcome, workout_log: log });
+  } catch (error) {
+    logError('start workout log error', error);
+    const status = req.body?.rescue != null ? rescueErrorStatus(error) : workoutRpcStatus(error);
+    return res.status(status).json({ error: status === 503 ? 'Workout start is currently unavailable.' : status === 500 ? 'Failed to start workout' : error.message });
+  }
+});
+
+router.get('/active', requireClient, async (req, res) => {
+  try {
+    return res.json(await clientActiveLog(req.user.client.id));
+  } catch (error) {
+    logError('active workout log error', error);
+    return res.status(500).json({ error: 'Failed to load active workout' });
+  }
+});
+
+router.get('/mine', requireClient, async (req, res) => {
+  try {
+    return await sendCompletedLogs(req, res, req.user.client.id);
+  } catch (error) {
+    logError('client workout history error', error);
+    return res.status(500).json({ error: 'Failed to load workout history' });
+  }
+});
+
+// Lightweight companion to /mine for the progress-chart markers: one query,
+// dates only — never the full 50-log detail expansion.
+router.get('/mine/completed-dates', requireClient, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('workout_logs')
+      .select('completed_at').eq('client_id', req.user.client.id)
+      .eq('status', 'completed').eq('archived', false)
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false }).limit(500);
+    if (error) throw error;
+    return res.json({ dates: (data || []).map((row) => row.completed_at) });
+  } catch (error) {
+    logError('client workout completed-dates error', error);
+    return res.status(500).json({ error: 'Failed to load workout dates' });
+  }
+});
+
+// Program 011 A: dated-assignment week at a glance + catch-up + streak.
+async function weekRhythmForClient(clientId) {
+  const today = todayDateInTz();
+  const since = addDays(today, -186);
+  const { data: assignments, error } = await supabaseAdmin.from('workout_assignments')
+    .select('id, assigned_for, workout:workouts!workout_assignments_workout_id_fkey(name)')
+    .eq('client_id', clientId).eq('assignment_mode', 'dated').eq('archived', false)
+    .gte('assigned_for', since);
+  if (error) throw error;
+  const ids = (assignments || []).map((a) => a.id);
+  let completedIds = new Set();
+  if (ids.length) {
+    const { data: logs, error: logErr } = await supabaseAdmin.from('workout_logs')
+      .select('workout_assignment_id').eq('client_id', clientId)
+      .eq('status', 'completed').eq('archived', false)
+      .in('workout_assignment_id', ids);
+    if (logErr) throw logErr;
+    completedIds = new Set((logs || []).map((l) => l.workout_assignment_id));
+  }
+  return buildWeekRhythm({
+    assignments: (assignments || []).map((a) => ({
+      id: a.id, assigned_for: a.assigned_for, workout_name: a.workout?.name || null,
+    })),
+    completedIds,
+    today,
+  });
+}
+
+router.get('/week-rhythm', requireClient, async (req, res) => {
+  try {
+    return res.json(await weekRhythmForClient(req.user.client.id));
+  } catch (error) {
+    logError('client week rhythm error', error);
+    return res.status(500).json({ error: 'Failed to load your week' });
+  }
+});
+
+router.get('/clients/:clientId/week-rhythm', requireCoach, async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.clientId)) return res.status(400).json({ error: 'Invalid client' });
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
+    if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
+    return res.json(await weekRhythmForClient(clientRow.id));
+  } catch (error) {
+    logError('coach week rhythm error', error);
+    return res.status(500).json({ error: 'Failed to load the client week' });
+  }
+});
+
+router.get('/coach-feedback/unread-count', requireClient, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('workout_coach_responses')
+      .select('id').eq('client_id', req.user.client.id).eq('archived', false).is('read_at', null);
+    if (error) throw error;
+    return res.json({ unread: (data || []).length });
+  } catch (error) {
+    logError('coach feedback unread count error', error);
+    return res.status(500).json({ error: 'Failed to load coach feedback count' });
+  }
+});
+
+router.patch('/:id/coach-feedback/read', requireClient, async (req, res) => {
+  try {
+    const log = await workoutLogWithDetails(req.params.id, { media: false });
+    if (!log || log.client_id !== req.user.client.id) return res.status(404).json({ error: 'Workout log not found' });
+    const unreadIds = (log.coach_responses || []).filter((response) => !response.read_at).map((response) => response.id);
+    if (!unreadIds.length) return res.json({ updated: 0, read_at: null });
+    const now = new Date().toISOString();
+    const { data, error } = await supabaseAdmin.from('workout_coach_responses')
+      .update({ read_at: now, updated_at: now })
+      .in('id', unreadIds)
+      .eq('workout_log_id', log.id)
+      .eq('client_id', req.user.client.id)
+      .eq('archived', false)
+      .is('read_at', null)
+      .select('id');
+    if (error) throw error;
+    return res.json({ updated: (data || []).length, read_at: now });
+  } catch (error) {
+    logError('mark coach feedback read error', error);
+    return res.status(500).json({ error: 'Failed to mark coach feedback read' });
+  }
+});
+
+router.get('/client/:clientId', requireCoach, async (req, res) => {
+  try {
+    const { data: client } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
+    if (!client || !canAccessClient(req.user, client)) return res.status(404).json({ error: 'Client not found' });
+    return await sendCompletedLogs(req, res, client.id);
+  } catch (error) {
+    logError('coach workout history error', error);
+    return res.status(500).json({ error: 'Failed to load workout history' });
+  }
+});
+
+router.put('/:id/coach-response', requireCoach, async (req, res) => {
+  const validation = validateCoachResponseContent(req.body);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  try {
+    const log = await workoutLogWithDetails(req.params.id, { media: false });
+    if (!canAuthorCoachResponse(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
+    if (log.status !== 'completed') return res.status(409).json({ error: 'Only completed workouts accept coach responses' });
+    const { data, error } = await supabaseAdmin.rpc('save_workout_coach_response', {
+      p_workout_log_id: log.id,
+      p_author_coach_id: req.user.coach.id,
+      p_content: validation.content,
+    });
+    if (error) throw error;
+    return res.status(data?.outcome === 'created' ? 201 : 200).json(data);
+  } catch (error) {
+    logError('save coach response error', error);
+    return res.status(500).json({ error: 'Failed to save coach response' });
+  }
+});
+
+// Role logic lives in the handler: client on own log, coach/admin via ownership.
+router.get('/:id/exercises/:exerciseId/history', createExerciseHistoryHandler());
+
+router.get('/:id', async (req, res) => {
+  try {
+    const log = await workoutLogWithDetails(req.params.id);
+    if (!canReadLog(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
+    return res.json(await sessionExtras(log));
+  } catch (error) {
+    logError('workout log detail error', error);
+    return res.status(500).json({ error: 'Failed to load workout' });
+  }
+});
+
+router.patch('/:id/sets/:setId', async (req, res) => {
+  try {
+    // pt-session-events/v1: a contract write (event_id) also reaches a log that
+    // was finished meanwhile, where the database keeps it as a disagreement for
+    // the coach instead of losing it (review P2-1); legacy writes stay 409.
+    const envelope = setEventEnvelope(req.body || {});
+    const log = envelope ? await sessionRoutes.writableLogAnyStatus(req, res) : await requireWritableActiveLog(req, res);
+    if (!log) return undefined;
+    const exerciseIds = new Set(log.exercises.map((exercise) => exercise.id));
+    const set = log.exercises.flatMap((exercise) => exercise.sets).find((row) => row.id === req.params.setId);
+    if (!set || !exerciseIds.has(set.workout_log_exercise_id)) return res.status(404).json({ error: 'Workout set not found' });
+    // An event_id makes the write idempotent and revision-checked
+    // (L12/CONTRACT.md); without one the legacy path below runs.
+    // Awaited so a failing event RPC reaches this handler's catch (Express 4
+    // does not handle a rejected route promise).
+    if (envelope) return await sessionRoutes.applySetEvent(req, res, set, log.exercises.find((row) => row.id === set.workout_log_exercise_id), envelope);
+    const { data, error } = await updateSetAtHandlerBoundary({
+      body: req.body || {}, set, exercise: log.exercises.find((row) => row.id === set.workout_log_exercise_id),
+      mutate: (payload) => supabaseAdmin.from('workout_log_sets').update({ ...payload, ...actorStamp(req.user) })
+        .eq('id', set.id).eq('archived', false).select().single(),
+    });
+    if (error) throw error;
+    return res.json(data);
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    logError('update workout set error', error);
+    return res.status(500).json({ error: 'Failed to save set' });
+  }
+});
+
+router.post('/:id/exercises/:exerciseId/sets', async (req, res) => {
+  try {
+    const log = await requireWritableActiveLog(req, res);
+    if (!log) return undefined;
+    const exercise = log.exercises.find((row) => row.id === req.params.exerciseId);
+    if (!exercise) return res.status(404).json({ error: 'Workout exercise not found' });
+    const operationId = String(req.body?.client_operation_id || '');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)) {
+      return res.status(400).json({ error: 'A valid operation ID is required' });
+    }
+    const { data: existing, error: existingError } = await supabaseAdmin.from('workout_log_sets').select('*')
+      .eq('workout_log_exercise_id', exercise.id)
+      .eq('client_operation_id', operationId)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (existing) return res.json(existing);
+    const nextNumber = Math.max(0, ...exercise.sets.map((set) => set.set_number)) + 1;
+    if (nextNumber > 50) return res.status(400).json({ error: 'This exercise has reached the set limit' });
+    const { data, error } = await supabaseAdmin.from('workout_log_sets').insert({
+      workout_log_exercise_id: exercise.id,
+      client_operation_id: operationId,
+      set_number: nextNumber,
+      set_origin: 'extra',
+      actual_load_value: exercise.prescribed_load_value,
+      actual_load_unit: exercise.prescribed_load_unit,
+      ...actorStamp(req.user),
+    }).select().single();
+    if (error?.code === '23505') {
+      const { data: duplicate, error: duplicateError } = await supabaseAdmin.from('workout_log_sets').select('*')
+        .eq('workout_log_exercise_id', exercise.id)
+        .eq('client_operation_id', operationId)
+        .maybeSingle();
+      if (duplicateError) throw duplicateError;
+      if (duplicate) return res.json(duplicate);
+    }
+    // 20261114170000: the exercise left the workout (a swap was undone) after
+    // this request checked it.
+    if (error?.code === 'P0410') return res.status(409).json({ error: 'This exercise is no longer in the workout.' });
+    if (error) throw error;
+    return res.status(201).json(data);
+  } catch (error) {
+    logError('add workout set error', error);
+    return res.status(500).json({ error: 'Failed to add set' });
+  }
+});
+
+router.patch('/:id/sets/:setId/archive', async (req, res) => {
+  try {
+    const log = await requireWritableActiveLog(req, res);
+    if (!log) return undefined;
+    const set = log.exercises.flatMap((exercise) => exercise.sets).find((row) => row.id === req.params.setId);
+    if (!set || set.set_origin !== 'extra') return res.status(404).json({ error: 'Extra set not found' });
+    const { data, error } = await supabaseAdmin.from('workout_log_sets')
+      .update({ archived: true, updated_at: new Date().toISOString() })
+      .eq('id', set.id).eq('set_origin', 'extra').eq('archived', false).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (error) {
+    logError('archive workout set error', error);
+    return res.status(500).json({ error: 'Failed to remove set' });
+  }
+});
+
+router.patch('/:id/exercises/:exerciseId/notes', async (req, res) => {
+  try {
+    const log = await requireWritableActiveLog(req, res);
+    if (!log) return undefined;
+    const exercise = log.exercises.find((row) => row.id === req.params.exerciseId);
+    if (!exercise) return res.status(404).json({ error: 'Workout exercise not found' });
+    const notes = String(req.body?.client_notes || '').trim().slice(0, 2000);
+    const { data, error } = await supabaseAdmin.from('workout_log_exercises')
+      .update({ client_notes: notes || null, updated_at: new Date().toISOString() })
+      .eq('id', exercise.id).eq('archived', false).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (error) {
+    logError('update workout exercise notes error', error);
+    return res.status(500).json({ error: 'Failed to save notes' });
+  }
+});
+
+router.post('/:id/complete-all', async (req, res) => {
+  try {
+    const log = await requireWritableActiveLog(req, res);
+    if (!log) return undefined;
+    const stamp = actorStamp(req.user);
+    const { error } = await supabaseAdmin.rpc('complete_all_workout_sets_v2', {
+      p_workout_log_id: log.id,
+      p_client_id: log.client_id,
+      p_entered_by: stamp.entered_by,
+      p_entered_by_coach_id: stamp.entered_by_coach_id,
+    });
+    if (error) throw error;
+    return res.json(await workoutLogWithDetails(log.id));
+  } catch (error) {
+    logError('complete all workout sets error', error);
+    return res.status(500).json({ error: 'Failed to complete remaining sets' });
+  }
+});
+
+// Program 011 A: one-tap "I did it" for clients who won't track sets.
+// Open app → tap → done. Starts the assigned workout and finishes it as
+// done, not set-tracked (Look A, 2026-11-14): one workout flag, every set row
+// left exactly as started, so exercise history and records never gain
+// phantom values. quick_completed is also set (nothing was logged), so it
+// counts toward adherence and the coach gets a single "completed (not
+// tracked)" signal. An optional client event_id makes a retry replay.
+router.post('/quick-complete', requireClient, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const programAssignmentId = body.program_assignment_id || null;
+    const programDayId = body.program_day_id || null;
+    const workoutAssignmentId = body.workout_assignment_id || null;
+    const programSource = Boolean(programAssignmentId || programDayId);
+    if ((programSource && (!programAssignmentId || !programDayId || workoutAssignmentId))
+      || (!programSource && !workoutAssignmentId)) {
+      return res.status(400).json({ error: 'Choose one assigned workout' });
+    }
+    const clientId = req.user.client.id;
+    // One database transaction (quick_complete_workout_v3, local migration
+    // 20261114120000): a retry with the same event id replays the first
+    // answer before any start runs again, and the id is bound to this client
+    // and this assignment/day. Home only finishes an untouched workout: any
+    // recorded data (another device logging) keeps it active to resume.
+    const eventId = typeof body.event_id === 'string' && UUID_RE.test(body.event_id) ? body.event_id.toLowerCase() : randomUUID();
+    const { data: result, error: rpcErr } = await supabaseAdmin.rpc('quick_complete_workout_v3', {
+      p_client_id: clientId,
+      p_event_id: eventId,
+      p_program_assignment_id: programAssignmentId,
+      p_program_day_id: programDayId,
+      p_workout_assignment_id: workoutAssignmentId,
+      p_auth_user_id: req.user.authUserId,
+      p_session_id: await resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId }),
+    });
+    if (rpcErr) {
+      if (/event_id_reused/.test(rpcErr.message || '')) return res.status(409).json({ error: 'That change id was already used for a different change.' });
+      throw rpcErr;
+    }
+    const logId = result?.workout_log_id || null;
+    if (result?.outcome === 'not_started') {
+      if (result.start_outcome === 'already_completed') return res.status(409).json({ error: 'This workout is already done for today' });
+      const active = logId ? await workoutLogWithDetails(logId) : null;
+      return res.status(409).json({ error: 'Finish or abandon your active workout first', active_workout: active });
+    }
+    const outcome = result?.outcome === 'replayed' ? result.original_outcome : result?.outcome;
+    if (outcome !== 'applied') {
+      if (result?.reason === 'already_completed') return res.status(409).json({ error: 'This workout is already done for today' });
+      const active = logId ? await workoutLogWithDetails(logId) : null;
+      return res.status(409).json({ error: 'This workout has logged changes. Open it to finish.', active_workout: active });
+    }
+
+    const completed = await workoutLogWithDetails(logId);
+    if (result.outcome === 'applied' && result.notified === true && completed) completedWorkoutPush(completed);
+    return res.status(result.outcome === 'replayed' ? 200 : 201).json({
+      ...completed,
+      change: { id: eventId, kind: 'finish', undoable: result.undoable === true },
+    });
+  } catch (error) {
+    logError('quick complete workout error', error);
+    const status = workoutRpcStatus(error);
+    return res.status(status).json({ error: status === 503 ? 'Workout start is currently unavailable.' : status === 500 ? 'Could not mark the workout done' : error.message });
+  }
+});
+
+router.post('/:id/abandon', async (req, res) => {
+  try {
+    const log = await requireWritableActiveLog(req, res);
+    if (!log) return undefined;
+    const { data, error } = await supabaseAdmin.from('workout_logs')
+      .update({ status: 'abandoned', updated_at: new Date().toISOString() })
+      .eq('id', log.id).eq('status', 'active').select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (error) {
+    logError('abandon workout error', error);
+    return res.status(500).json({ error: 'Failed to abandon workout' });
+  }
+});
+
+router.post('/:id/complete', async (req, res) => {
+  try {
+    const log = await workoutLogWithDetails(req.params.id, { media: false });
+    if (!canWriteLog(req.user, log)) return res.status(404).json({ error: 'Workout log not found' });
+    // Performance-time completion (docs/offline-workout-completion.md):
+    // a queued offline finish carries the locally-confirmed timestamp. Only
+    // a parseable ISO string is forwarded; the RPC clamps to
+    // (started_at, now()] and falls back to sync time otherwise.
+    const rawCompletedAt = req.body?.completed_at_local;
+    const completedAt = typeof rawCompletedAt === 'string' && rawCompletedAt.length <= 40
+      && !Number.isNaN(Date.parse(rawCompletedAt))
+      ? new Date(rawCompletedAt).toISOString() : null;
+    const { error } = await supabaseAdmin.rpc('complete_workout_log_v2', {
+      p_workout_log_id: log.id,
+      p_client_id: log.client_id,
+      p_notes: String(req.body?.notes || '').slice(0, 4000),
+      p_feedback: String(req.body?.feedback || '').slice(0, 4000),
+      p_completed_at: completedAt,
+    });
+    if (error) {
+      if (/Complete at least one set/i.test(error.message || '')) return res.status(400).json({ error: 'Complete at least one set' });
+      throw error;
+    }
+    await markStartedNotificationsRead(log.id);
+    const completed = await workoutLogWithDetails(log.id);
+    completedWorkoutPush(completed);
+    return res.json(completed);
+  } catch (error) {
+    logError('complete workout error', error);
+    const status = workoutRpcStatus(error);
+    return res.status(status).json({ error: status === 500 ? 'Failed to finish workout' : error.message });
+  }
+});
+
+const sessionRoutes = registerSessionRoutes(router, {
+  workoutLogWithDetails, requireWritableActiveLog, canWriteLog, canReadLog, actorStamp, workoutSetUpdatePayload, validLoad,
+});
+registerLookARoutes(router, {
+  workoutLogWithDetails, canWriteLog, actorStamp, sessionExtras, completedWorkoutPush, markStartedNotificationsRead,
+});
+
+module.exports = router;
+module.exports.workoutLogWithDetails = workoutLogWithDetails;
+module.exports.workoutLogsWithDetailsBulk = workoutLogsWithDetailsBulk;
+module.exports.resolveExerciseVideos = resolveExerciseVideos;
+module.exports.canReadLog = canReadLog;
+module.exports.sessionExtras = sessionExtras;
+module.exports.canWriteLog = canWriteLog;
+module.exports.actorStamp = actorStamp;
+module.exports.computeLogAttribution = computeLogAttribution;
+module.exports.workoutRpcStatus = workoutRpcStatus;
+module.exports.canAuthorCoachResponse = canAuthorCoachResponse;
+module.exports.newestCoachResponseFirst = newestCoachResponseFirst;
+module.exports.validateCoachResponseContent = validateCoachResponseContent;
+module.exports.validPerformedReps = validPerformedReps;
+module.exports.validPerformedRpe = validPerformedRpe;
+module.exports.decodeHistoryCursor = decodeHistoryCursor;
+module.exports.decodeLogListCursor = decodeLogListCursor;
+module.exports.encodeLogListCursor = encodeLogListCursor;
+module.exports.logPageSize = logPageSize;
+module.exports.completedLogsPage = completedLogsPage;
+module.exports.workoutSetUpdatePayload = workoutSetUpdatePayload;
+module.exports.updateSetAtHandlerBoundary = updateSetAtHandlerBoundary;
+module.exports.createExerciseHistoryHandler = createExerciseHistoryHandler;

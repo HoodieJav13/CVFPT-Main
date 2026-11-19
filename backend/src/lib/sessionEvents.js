@@ -83,40 +83,6 @@ function normalizeTargets(input = {}) {
     out.load_value = load;
     out.load_unit = unit;
   }
-  // Look A: the replacement's own upper load (same unit, above the load) and
-  // per side. Never inferred from the exercise being replaced.
-  if (input.load_max !== undefined && input.load_max !== null && input.load_max !== '') {
-    const max = Number(input.load_max);
-    if (!Number.isFinite(max) || max < 0 || max > 2000) throw invalid('Upper load must be a number');
-    if (out.load_value === undefined || !(max >= out.load_value)) throw invalid('The upper load must be higher than the load it starts from.');
-    if (max > out.load_value) out.load_max = max;
-  }
-  if (input.per_side !== undefined && input.per_side !== null) {
-    if (typeof input.per_side !== 'boolean') throw invalid('Per side must be on or off');
-    if (input.per_side) out.per_side = true;
-  }
-  return out;
-}
-
-// Look A, integration review 4: a coach backup swap keeps the backup's saved
-// replacement facts. `normalized` is normalizeTargets(raw); `saved` is the
-// backup row. Only what the client could not express is recovered: an older
-// client omitted the upper load and per side, and always labelled the load
-// "lb" (no screen ever let anyone choose the unit for a backup). An explicit
-// key in the request always wins, an adjusted load is a single number (the
-// saved range is not stretched over it), and nothing is invented for a
-// backup that saved no load.
-function backupTargets(saved, normalized, raw = {}) {
-  const out = { ...normalized };
-  const has = (key) => Object.prototype.hasOwnProperty.call(raw || {}, key);
-  const savedLoad = saved?.target_load_value == null ? null : Number(saved.target_load_value);
-  const savedUnit = saved?.target_load_unit || null;
-  if (out.load_value !== undefined && savedLoad !== null && savedUnit) out.load_unit = savedUnit;
-  if (!has('load_max') && saved?.target_load_max != null && out.load_value !== undefined
-      && out.load_value === savedLoad && out.load_unit === savedUnit && Number(saved.target_load_max) > savedLoad) {
-    out.load_max = Number(saved.target_load_max);
-  }
-  if (!has('per_side') && saved?.target_per_side === true) out.per_side = true;
   return out;
 }
 
@@ -193,7 +159,6 @@ function triggerLabel(trigger) {
 }
 
 module.exports = {
-  backupTargets,
   UUID_RE, TRIGGERS, isUuid, setEventEnvelope, normalizeTargets, substitutionRequest, substitutionPolicy,
   rankSuggestions, equipmentItems, triggerLabel, cleanText,
 };

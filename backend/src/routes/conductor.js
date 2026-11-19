@@ -261,9 +261,7 @@ programSub.post('/workout-exercises/:workoutExerciseId/backups', requireAuth, re
     if (library.id === row.exercise_library_id) return res.status(422).json({ error: 'A backup must be a different exercise.' });
     const { data, error } = await supabaseAdmin.from('workout_exercise_backups').insert({
       workout_exercise_id: row.id, backup_exercise_library_id: library.id, target_sets: targets.sets ?? null, target_reps: targets.reps ?? null,
-      target_load_value: targets.load_value ?? null, target_load_unit: targets.load_unit ?? null,
-      target_load_max: targets.load_max ?? null, target_per_side: targets.per_side === true,
-      client_note: note, created_by_coach_id: req.user.coach.id,
+      target_load_value: targets.load_value ?? null, target_load_unit: targets.load_unit ?? null, client_note: note, created_by_coach_id: req.user.coach.id,
     }).select().single();
     if (error?.code === '23505') return res.status(409).json({ error: 'That backup is already planned.' });
     if (error) throw error;

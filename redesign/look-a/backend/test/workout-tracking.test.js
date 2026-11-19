@@ -1,0 +1,105 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.join(__dirname, '..', '..');
+const migration = fs.readFileSync(
+  path.join(root, 'supabase', 'migrations', '20260717043317_workout_tracking_notifications.sql'),
+  'utf8',
+);
+const workoutRoutes = fs.readFileSync(path.join(root, 'backend', 'src', 'routes', 'workoutLogs.js'), 'utf8');
+const notificationRoutes = fs.readFileSync(path.join(root, 'backend', 'src', 'routes', 'notifications.js'), 'utf8');
+const programRoutes = fs.readFileSync(path.join(root, 'backend', 'src', 'routes', 'programs.js'), 'utf8');
+
+test('workout tracking tables stay locked behind the service role', () => {
+  for (const table of [
+    'program_assignment_exercise_loads',
+    'workout_assignment_exercise_loads',
+    'workout_logs',
+    'workout_log_exercises',
+    'workout_log_sets',
+    'notifications',
+  ]) {
+    assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security;`));
+    assert.match(migration, new RegExp(`revoke all privileges on table public\\.${table} from public, anon, authenticated, service_role;`));
+    assert.match(migration, new RegExp(`grant select, insert, update on table public\\.${table} to service_role;`));
+  }
+});
+
+test('transactional workout RPCs are invoker-security and service-role-only', () => {
+  for (const [name, signature] of [
+    ['save_program_assignment_with_loads', 'uuid, uuid, uuid, text, jsonb'],
+    ['save_workout_assignment_with_loads', 'uuid, uuid, uuid, text, date, text, jsonb'],
+    ['start_workout_log', 'uuid, uuid, uuid, uuid'],
+    ['complete_all_workout_sets', 'uuid, uuid'],
+    ['complete_workout_log', 'uuid, uuid, text, text'],
+  ]) {
+    assert.match(migration, new RegExp(`create or replace function public\\.${name}[\\s\\S]*?security invoker[\\s\\S]*?set search_path = ''`));
+    assert.match(migration, new RegExp(`revoke execute on function public\\.${name}\\(${signature}\\) from public, anon, authenticated;`));
+    assert.match(migration, new RegExp(`grant execute on function public\\.${name}\\(${signature}\\) to service_role;`));
+  }
+});
+
+test('workout integrity is encoded in database constraints and triggers', () => {
+  assert.match(migration, /idx_workout_logs_one_active_per_client[\s\S]*?where status = 'active' and archived = false/);
+  assert.match(migration, /idx_workout_logs_one_dated_completion[\s\S]*?status in \('active', 'completed'\)/);
+  assert.match(migration, /exception when unique_violation[\s\S]*?'outcome', 'resumed'[\s\S]*?'outcome', 'conflict'/);
+  assert.match(migration, /unique\(recipient_coach_id, event_type, workout_log_id\)/);
+  assert.match(migration, /prevent_completed_workout_log_change/);
+  assert.match(migration, /prevent_completed_workout_child_change/);
+  assert.match(migration, /on conflict \(recipient_coach_id, event_type, workout_log_id\) do nothing/);
+});
+
+test('snapshot load precedence and completion remain server-owned', () => {
+  assert.match(migration, /from public\.program_assignment_exercise_loads[\s\S]*?if v_load_value is null then[\s\S]*?v_exercise\.default_load_value/);
+  assert.match(migration, /insert into public\.workout_log_exercises/);
+  assert.match(migration, /v_completed_count < 1/);
+  assert.match(migration, /set status = 'skipped'/);
+  assert.doesNotMatch(migration, /client_credits/);
+  assert.doesNotMatch(workoutRoutes, /client_credits/);
+});
+
+test('HTTP surfaces require role checks and mask inaccessible workout data', () => {
+  // /start is actor-aware since PR-B: clients start for themselves, coaches
+  // name a client they own (canAccessClient) and call the v2 RPC.
+  assert.match(workoutRoutes, /router\.post\('\/start', async/);
+  assert.match(workoutRoutes, /clientId = req\.user\.client\.id/);
+  assert.match(workoutRoutes, /if \(!clientRow \|\| !canAccessClient\(req\.user, clientRow\)\)/);
+  // Look A (2026-11-14): the literal rpc('start_workout_log_with_cues' was the
+  // Home Quick Complete call, now inside quick_complete_workout_v3; /start
+  // still calls it (through the Rescue choice).
+  assert.match(workoutRoutes, /rescue \? 'start_workout_rescue_with_cues' : 'start_workout_log_with_cues'/);
+  // Home Quick Complete's start and finish are one database call.
+  assert.match(workoutRoutes, /rpc\('quick_complete_workout_v3'/);
+  assert.match(workoutRoutes, /router\.get\('\/client\/:clientId', requireCoach/);
+  assert.match(workoutRoutes, /return res\.status\(404\)\.json\(\{ error: 'Workout log not found' \}\)/);
+  assert.match(workoutRoutes, /if \(\/not found\|Assigned workout\/i\.test\(message\)\) return 404/);
+  assert.match(notificationRoutes, /router\.use\(requireAuth, requireCoach\)/);
+  assert.match(notificationRoutes, /eq\('recipient_coach_id', user\.coach\.id\)/);
+  assert.match(programRoutes, /rpc\('save_program_assignment_with_loads'/);
+  assert.match(programRoutes, /rpc\('save_workout_assignment_with_loads'/);
+});
+
+test('extra-set idempotency is scoped and recovers a concurrent duplicate insert', () => {
+  assert.match(
+    workoutRoutes,
+    /select\('\*'\)[\s\S]*?eq\('workout_log_exercise_id', exercise\.id\)[\s\S]*?eq\('client_operation_id', operationId\)[\s\S]*?maybeSingle\(\)/,
+  );
+  assert.match(
+    workoutRoutes,
+    /error\?\.code === '23505'[\s\S]*?eq\('workout_log_exercise_id', exercise\.id\)[\s\S]*?eq\('client_operation_id', operationId\)[\s\S]*?if \(duplicate\) return res\.json\(duplicate\)/,
+  );
+});
+
+test('history lists expand logs in bulk, never a per-log query loop', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../src/routes/workoutLogs.js'), 'utf8');
+  assert.match(source, /async function workoutLogsWithDetailsBulk/);
+  // Both list endpoints share sendCompletedLogs, whose unpaged and paged
+  // forms both expand through the constant-query bulk builder.
+  assert.equal((source.match(/await sendCompletedLogs\(req, res, /g) || []).length, 2);
+  assert.match(source, /return res\.json\(await workoutLogsWithDetailsBulk\(\(data \|\| \[\]\)\.map\(\(row\) => row\.id\)\)\);/);
+  assert.match(source, /details = workoutLogsWithDetailsBulk/);
+  // The ~4-queries-per-log sequential expansion must not come back.
+  assert.doesNotMatch(source, /for \(const row of data \|\| \[\]\) result\.push\(await workoutLogWithDetails/);
+});

@@ -4,14 +4,6 @@ export function metricWriteAcknowledged(request, response = {}) {
   return ['actual_duration_value', 'actual_duration_unit', 'actual_distance_value', 'actual_distance_unit']
     .every((field) => !Object.hasOwn(request, field) || (Object.hasOwn(response, field) && response[field] === request[field]));
 }
-// The server row's last write is exactly this queued set event, and the row
-// holds the metrics it asked for (the same protection as a sent write:
-// an older backend can stamp the event id yet ignore duration/distance).
-// LOOK-A-INTEGRATION-REVIEW residual case 1; LOOK-A-OUTBOX-ACK-REVIEW.md.
-export function deliveredBy(row, operation) {
-  return operation?.kind === 'set' && Boolean(operation.data?.event_id) && row?.last_event_id === operation.data.event_id
-    && metricWriteAcknowledged(operation.data, row);
-}
 /**
  * Pure reconciliation rules for the workout outbox and tracker
  * (docs/offline-workout-completion.md). No app imports, so the rules are
@@ -50,9 +42,7 @@ export function rewritePendingSetId(operation, pendingId, realId) {
  */
 export function isWriteBlocked(queue, operation) {
   if (operation.kind === 'complete') return false;
-  // The one exception (Look A): the Undo of that very Finish, queued behind it.
-  return queue.some((queued) => queued.kind === 'complete'
-    && !(operation.undoOf?.kind === 'finish' && queued.data?.event_id && operation.undoOf.change_id === queued.data.event_id));
+  return queue.some((queued) => queued.kind === 'complete');
 }
 
 function isBlank(value) {
@@ -261,9 +251,7 @@ export function nextSendable(queue) {
   for (const operation of queue) {
     if (operation.parked) { if (operation.setId) waiting.add(operation.setId); continue; }
     if (operation.setId && waiting.has(operation.setId)) continue;
-    // A Finish or a Look A change (Done, Undo) waits for every parked write:
-    // it is decided against everything before it, in order.
-    if ((operation.kind === 'complete' || operation.kind === 'material') && queue.some((queued) => queued.parked)) return null;
+    if (operation.kind === 'complete' && queue.some((queued) => queued.parked)) return null;
     return operation;
   }
   return null;

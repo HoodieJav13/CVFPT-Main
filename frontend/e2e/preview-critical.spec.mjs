@@ -116,8 +116,6 @@ test('coach preview covers dashboard, clients, sessions, builder, resources, and
   await expect(page.getByTestId('program-import-exercise-sets-input').nth(4)).toHaveValue('2');
   await expect(page.getByTestId('program-import-exercise-reps-input').nth(4)).toHaveValue('7');
   await expect(page.getByTestId('program-import-exercise-client-notes-input').nth(4)).toHaveValue('to true failure');
-  // Read-only prescription line: nothing authored in this paste, so a blank (em dash), never an invented load.
-  await expect(page.getByTestId('program-import-exercise-load-line').nth(4)).toHaveText('Prescribed load: —');
   await page.getByTestId('program-import-paste-textarea').fill(`${FLAT_PASTE}\nEdited after parsing`);
   await expect(page.getByTestId('program-import-review')).toHaveCount(0);
   await page.getByTestId('program-import-paste-textarea').fill(FLAT_PASTE);
@@ -429,9 +427,7 @@ test('shared dialogs, selects, and dropdowns use fade-only reduced motion', asyn
   expect(dialogMotion.transform).not.toBe('none');
   await page.keyboard.press('Escape');
 
-  // The tracker has no app header (its copy stays hidden); the account menu is
-  // in the tracker's own Workout options.
-  await page.getByTestId('workout-options').getByTestId('user-menu-trigger').click();
+  await page.getByTestId('mobile-header-actions').getByTestId('user-menu-trigger').click();
   const menu = page.getByRole('menu');
   await expect(menu).toBeVisible();
   await expect.poll(async () => reducedFade(menu)).toMatchObject({
@@ -570,8 +566,7 @@ test('client workout completion creates a coach notification with immutable resu
   await squat.getByRole('button', { name: 'Remove extra set' }).click();
   await expect(squat.getByRole('button', { name: 'Remove extra set' })).toHaveCount(0);
   await expect(page.getByTestId('workout-save-state')).toContainText('Not saved yet');
-  // Look A: the tracker offers no bulk set completion at all.
-  await expect(page.getByRole('button', { name: 'Complete all remaining' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Complete all remaining' })).toBeDisabled();
   // Offline completion (docs/offline-workout-completion.md, PR #16): finishing
   // is now allowed offline — the completion queues behind pending writes.
   await expect(page.getByRole('button', { name: 'Finish workout' })).toBeEnabled();

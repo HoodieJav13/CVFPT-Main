@@ -31,11 +31,7 @@ test('typed metrics stay blank until performed, survive offline edits, and appea
   await page.evaluate(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true }); window.dispatchEvent(new Event('online')); });
   await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('cvf_workout_outbox_')).length)).toBe(0);
   // A route remount tests resuming the stored snapshot, without resetting preview fixtures.
-  // The tracker has no app navigation: its Home link leaves, then the app's own Programs link.
-  await page.getByTestId('workout-home-link').click();
-  await expect(page).toHaveURL(/\/client$/);
   await page.getByRole('link', { name: 'Programs', exact: true }).first().click();
-  await expect(page).toHaveURL(/\/client\/programs$/);
   await page.getByRole('link', { name: 'Resume', exact: true }).click();
   await expect(page.getByLabel('Run set 1 performed duration', { exact: true })).toHaveValue('12.5');
   await expect(page.getByLabel('Run set 1 performed distance', { exact: true })).toHaveValue('1.25');

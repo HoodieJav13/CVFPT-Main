@@ -66,12 +66,7 @@ test('HTTP surfaces require role checks and mask inaccessible workout data', () 
   assert.match(workoutRoutes, /router\.post\('\/start', async/);
   assert.match(workoutRoutes, /clientId = req\.user\.client\.id/);
   assert.match(workoutRoutes, /if \(!clientRow \|\| !canAccessClient\(req\.user, clientRow\)\)/);
-  // Look A (2026-11-14): the literal rpc('start_workout_log_with_cues' was the
-  // Home Quick Complete call, now inside quick_complete_workout_v3; /start
-  // still calls it (through the Rescue choice).
-  assert.match(workoutRoutes, /rescue \? 'start_workout_rescue_with_cues' : 'start_workout_log_with_cues'/);
-  // Home Quick Complete's start and finish are one database call.
-  assert.match(workoutRoutes, /rpc\('quick_complete_workout_v3'/);
+  assert.match(workoutRoutes, /rpc\('start_workout_log_with_cues'/);
   assert.match(workoutRoutes, /router\.get\('\/client\/:clientId', requireCoach/);
   assert.match(workoutRoutes, /return res\.status\(404\)\.json\(\{ error: 'Workout log not found' \}\)/);
   assert.match(workoutRoutes, /if \(\/not found\|Assigned workout\/i\.test\(message\)\) return 404/);

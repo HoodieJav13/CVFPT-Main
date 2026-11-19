@@ -164,20 +164,6 @@ async function install(page, backend) {
         Object.assign(row, body);
         return json(row);
       }
-      // Reads added since this fixture was written (cue panel, Look A Undo).
-      if (/^\/exercises\/[^/]+\/cue-retry$/.test(rest) && method === 'GET') return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
-      if (rest === '/undo' && method === 'GET') return json({ undo: null });
-      // Look A Finish: applied once per event id (a resend replays); /complete stays for older queued entries.
-      if (rest === '/finish' && method === 'POST') {
-        log.finish_events = log.finish_events || [];
-        if (log.finish_events.includes(body.event_id)) return json({ result: { outcome: 'replayed', original_outcome: 'applied' }, log, undo: null });
-        if (log.status !== 'active') return json({ result: { outcome: 'refused', reason: 'already_completed' }, log, undo: null });
-        if (body.mode === 'finish' && !log.exercises.some((exercise) => exercise.sets.some((s) => s.status === 'completed'))) return json({ error: 'Complete at least one set', result: { outcome: 'refused', reason: 'complete_at_least_one_set' } }, 400);
-        log.finish_events.push(body.event_id);
-        backend.finishApplied = (backend.finishApplied || 0) + 1;
-        Object.assign(log, { status: 'completed', completed_at: now(), notes: body?.notes || null, feedback: body?.feedback || null });
-        return json({ result: { outcome: 'applied' }, log, undo: null });
-      }
       if (rest === '/complete' && method === 'POST') {
         if (log.status !== 'active') return json({ error: 'This workout is no longer active' }, 409);
         if (!log.exercises.some((exercise) => exercise.sets.some((s) => s.status === 'completed'))) return json({ error: 'Complete at least one set' }, 400);
@@ -325,9 +311,7 @@ for (const [label, viewport] of [['phone', { width: 390, height: 844 }], ['deskt
     await expect(page).toHaveURL(new RegExp(`/client/workouts/${logId}$`));
     await expect(page.getByTestId('workout-completion-summary')).toHaveAttribute('data-completion-motion', 'active');
     expect(backend.logs[0].status).toBe('completed');
-    // One APPLIED completion (Look A /finish; a resend replays), not one HTTP attempt.
-    expect(backend.finishApplied).toBe(1);
-    expect(backend.writes.filter((w) => w.path === `/workout-logs/${logId}/complete`)).toHaveLength(0);
+    expect(backend.writes.filter((w) => w.path === `/workout-logs/${logId}/complete`)).toHaveLength(1);
     await page.goto('/client/programs?view=history');
     await expect(page.getByTestId('workout-history-row').filter({ hasText: 'Synthetic Journey Lower' })).toBeVisible();
 

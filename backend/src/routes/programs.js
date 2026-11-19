@@ -50,7 +50,6 @@ const {
 } = require('../lib/programPdf');
 
 const { historyHandler } = require('../lib/programHistory');
-const { normalizeLookAPrescription, isLoadRangeError } = require('../lib/lookAPrescription');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -513,7 +512,7 @@ router.post('/workouts', requireCoach, async (req, res) => {
     const { name, description, goal, exercises } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Workout name is required' });
     if (unsafeExternalVideoUrls(exercises).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
-    const rows = normalizeLookAPrescription(normalizeDemoModes(exercises));
+    const rows = normalizeDemoModes(exercises);
     const hiddenPicked = await newHiddenLibraryExercises(rows);
     if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
     // Templates are shared, so the creator is always recorded as the author.
@@ -525,7 +524,6 @@ router.post('/workouts', requireCoach, async (req, res) => {
       p_goal: goal || null,
       p_exercises: Array.isArray(rows) ? trackingExercises(rows) : [],
     });
-    if (isLoadRangeError(error)) return res.status(400).json({ error: error.message });
     if (error) throw error;
     return res.status(201).json(await workoutWithDetails(workoutId));
   } catch (e) {
@@ -558,7 +556,7 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
       return res.status(400).json({ error: UNSAFE_MESSAGE });
     }
     const rows = Array.isArray(body.exercises)
-      ? normalizeLookAPrescription(normalizeDemoModes(body.exercises, new Map((workout.exercises || []).map((row) => [row.id, row]))))
+      ? normalizeDemoModes(body.exercises, new Map((workout.exercises || []).map((row) => [row.id, row])))
       : workout.exercises;
     const hiddenPicked = await newHiddenLibraryExercises(rows, workout);
     if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
@@ -572,7 +570,6 @@ router.put('/workouts/:id', requireCoach, async (req, res) => {
     });
     if (error && isQuickSessionStarted(error)) return sendQuickSessionStarted(res);
     if (error?.message === 'Workout not found') return res.status(404).json({ error: 'Workout not found' });
-    if (isLoadRangeError(error)) return res.status(400).json({ error: error.message });
     if (error) throw error;
     if (!workoutId) return res.status(404).json({ error: 'Workout not found' });
     return res.json(await workoutWithDetails(workoutId));
@@ -718,7 +715,6 @@ router.post('/import/commit', requireCoach, programCommitLimiter, async (req, re
       p_source: source,
       p_draft: validation.draft,
     });
-    if (isLoadRangeError(error)) return res.status(400).json({ error: error.message });
     if (error) {
       logError('commit program import rpc error', error);
       return res.status(500).json({ error: 'Program import could not be saved. Confirm the latest database migration has been applied.' });

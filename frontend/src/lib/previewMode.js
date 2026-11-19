@@ -56,10 +56,6 @@ const PREVIEW_SAVE_ROUTES = [
   ['patch', /^\/workout-logs\/([^/]+)\/coach-feedback\/read$/],
   ['put', /^\/workout-logs\/([^/]+)\/coach-response$/],
   ['post', /^\/workout-logs\/([^/]+)\/complete$/],
-  ['post', /^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/done$/],
-  ['post', /^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/skip-rest$/],
-  ['post', /^\/workout-logs\/([^/]+)\/finish$/],
-  ['post', /^\/workout-logs\/([^/]+)\/undo$/],
   ['post', /^\/announcements$/],
   ['patch', /^\/announcements\/([^/]+)\/read$/],
   ['patch', /^\/announcements\/([^/]+)\/archive$/],
@@ -955,49 +951,6 @@ function previewLogAssignmentKind(log) {
   return assignment ? (assignment.kind === 'quick' ? 'quick' : 'assigned') : null;
 }
 
-// One coach notification per recipient per completed workout (never repeated by a re-finish).
-function notifyWorkoutCompleted(log) {
-  const recipients = new Set([clientById(log.client_id)?.coach_id, ...state.coaches.filter((coach) => coach.is_admin && !coach.archived).map((coach) => coach.id)]);
-  recipients.forEach((recipientCoachId) => {
-    if (!recipientCoachId || state.notifications.some((row) => row.recipient_coach_id === recipientCoachId && row.workout_log_id === log.id && row.event_type === 'workout_completed')) return;
-    const createdAt = new Date().toISOString();
-    state.notifications.unshift({ id: id('notification'), recipient_coach_id: recipientCoachId, event_type: 'workout_completed', workout_log_id: log.id, read_at: null, archived: false, created_at: createdAt, updated_at: createdAt });
-  });
-}
-
-// ---------- Look A one-step Undo (preview mirror, fictional, memory only) ----------
-// Same rules the page relies on (supabase 20261114 migrations): an event id is
-// the change id and replays its first answer; Undo inverts only the newest
-// applied change and only while nothing material changed since.
-function lookALedger() {
-  if (!state.lookAChanges) state.lookAChanges = { byId: new Map(), order: new Map() };
-  return state.lookAChanges;
-}
-function lookAMaterial(logId) {
-  const log = state.workoutLogs.find((row) => row.id === logId);
-  const exercises = state.workoutLogExercises.filter((row) => row.workout_log_id === logId && !row.archived);
-  return JSON.stringify([log?.status, exercises.map((exercise) => [exercise.id, Boolean(exercise.not_set_tracked),
-    state.workoutLogSets.filter((set) => set.workout_log_exercise_id === exercise.id && !set.archived)
-      .map((set) => [set.id, set.status, set.actual_load_value, set.actual_load_unit, set.actual_reps, set.actual_rpe, set.actual_duration_value, set.actual_distance_value])])]);
-}
-function lookARecord(logId, changeId, kind, inverse, result = {}, outcome = 'applied', reason = null) {
-  const ledger = lookALedger();
-  const change = { logId, kind, inverse, result, outcome, reason, undone: false, after: outcome === 'applied' ? lookAMaterial(logId) : null };
-  ledger.byId.set(changeId, change);
-  if (outcome === 'applied') ledger.order.set(logId, [...(ledger.order.get(logId) || []), changeId]);
-  return change;
-}
-const EMPTY_LEDGER = { byId: new Map(), order: new Map() };
-// Reads never create the ledger (a GET must not change fixture state).
-function lookACurrent(logId) {
-  const ledger = state.lookAChanges || EMPTY_LEDGER;
-  const changeId = (ledger.order.get(logId) || []).at(-1);
-  const change = changeId && ledger.byId.get(changeId);
-  if (!change || change.undone || !change.inverse || change.after !== lookAMaterial(logId)) return null;
-  return { change_id: changeId, kind: change.kind, result: change.result };
-}
-const SET_RESTORE = ['status', 'actual_load_value', 'actual_load_unit', 'actual_reps', 'actual_rpe', 'actual_duration_value', 'actual_duration_unit', 'actual_distance_value', 'actual_distance_unit', 'completed_at'];
-
 function workoutLogDetails(logId) {
   const log = state.workoutLogs.find((row) => row.id === logId && !row.archived);
   if (!log) return null;
@@ -1664,12 +1617,6 @@ export async function installPreviewApi(api) {
     }
     if (path === '/workout-logs/quick-complete' && method === 'post') {
       if (role !== 'client') return fail(config, 403, 'Client access required');
-      // Look A: the same event id replays its first answer, with the log as it is NOW.
-      const quickKnown = typeof payload.event_id === 'string' && lookALedger().byId.get(payload.event_id);
-      if (quickKnown) {
-        const replayed = workoutLogDetails(quickKnown.logId);
-        return ok({ ...replayed, change: { id: payload.event_id, kind: 'finish', undoable: Boolean(lookACurrent(quickKnown.logId)?.change_id === payload.event_id) } }, config);
-      }
       const existingActive = state.workoutLogs.find((row) => row.client_id === client.id && row.status === 'active' && !row.archived);
       if (existingActive) return Promise.reject({ response: { data: { error: 'Finish or abandon your active workout first', active_workout: workoutLogDetails(existingActive.id) }, status: 409, statusText: 'Conflict', headers: {}, config }, config });
       const result = startPreviewWorkout(client.id, payload);
@@ -1677,11 +1624,9 @@ export async function installPreviewApi(api) {
       if (result.error) return fail(config, 409, result.error);
       if (result.outcome !== 'started') return fail(config, 409, 'This workout is already done for today');
       const log = state.workoutLogs.find((row) => row.id === result.workout_log.id);
-      if (log) { log.status = 'completed'; log.quick_completed = true; log.not_set_tracked = true; log.completed_at = iso(0, 12); }
-      const quickEvent = typeof payload.event_id === 'string' ? payload.event_id : id('quick_event');
-      if (log) lookARecord(log.id, quickEvent, 'finish', { finish: true }, {});
+      if (log) { log.status = 'completed'; log.quick_completed = true; log.completed_at = iso(0, 12); }
       emitChange();
-      return ok({ ...workoutLogDetails(result.workout_log.id), change: { id: quickEvent, kind: 'finish', undoable: true } }, config, 201);
+      return ok(workoutLogDetails(result.workout_log.id), config, 201);
     }
     if (path === '/workout-logs/active' && method === 'get') {
       const active = state.workoutLogs.find((row) => row.client_id === client.id && row.status === 'active' && !row.archived);
@@ -1786,11 +1731,6 @@ export async function installPreviewApi(api) {
       const validRpe = payload.actual_rpe == null || (typeof payload.actual_rpe === 'number' && payload.actual_rpe >= 1 && payload.actual_rpe <= 10 && Number.isInteger(payload.actual_rpe * 2));
       if (!validReps) return fail(config, 400, 'Reps must be a nonnegative whole number or null');
       if (!validRpe) return fail(config, 400, 'RPE must be 1 through 10 in 0.5 increments or null');
-      const eventId = typeof payload.event_id === 'string' ? payload.event_id : null;
-      const known = eventId && lookALedger().byId.get(eventId);
-      if (known) return ok({ ...set, event: { id: eventId, outcome: 'replayed', original_outcome: known.outcome, change: known.inverse ? { id: eventId, undoable: !known.undone } : null } }, config);
-      const before = Object.fromEntries(SET_RESTORE.map((key) => [key, set[key] ?? null]));
-      const materialBefore = lookAMaterial(log.id);
       Object.assign(set, {
         ...metrics,
         status: payload.status === 'completed' ? 'completed' : 'pending',
@@ -1801,12 +1741,7 @@ export async function installPreviewApi(api) {
         completed_at: payload.status === 'completed' ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
       });
-      set.revision = (set.revision || 0) + 1;
-      if (!eventId) return ok(set, config);
-      const changed = lookAMaterial(log.id) !== materialBefore;
-      if (changed) lookARecord(log.id, eventId, 'set', { set: set.id, before }, { set_id: set.id });
-      else lookALedger().byId.set(eventId, { logId: log.id, kind: 'set', inverse: null, outcome: 'applied', undone: false });
-      return ok({ ...set, event: { id: eventId, outcome: 'applied', change: changed ? { id: eventId, undoable: true } : null } }, config);
+      return ok(set, config);
     }
     const workoutExtraSet = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/sets$/);
     if (workoutExtraSet && method === 'post') {
@@ -1899,97 +1834,6 @@ export async function installPreviewApi(api) {
       emitChange();
       return ok({ outcome: 'created', response }, config, 201);
     }
-    // Look A: Done (flag only), Skip the rest, Finish and the one Undo.
-    const lookALog = (logId, { active = true } = {}) => state.workoutLogs.find((row) => row.id === logId && row.client_id === client.id && !row.archived && (!active || row.status === 'active'));
-    const lookAReply = (logId, result, status = 200) => ok({ result, log: workoutLogDetails(logId), undo: lookACurrent(logId) }, config, status);
-    const lookAReplay = (logId, eventId) => {
-      const known = lookALedger().byId.get(eventId);
-      return known ? lookAReply(logId, { outcome: 'replayed', original_outcome: known.outcome, undone: known.undone, reason: known.reason, change_id: eventId }) : null;
-    };
-    const exerciseDone = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/done$/);
-    if (exerciseDone && method === 'post') {
-      if (role !== 'client') return fail(config, 403, 'Client access required');
-      const replay = lookAReplay(exerciseDone[1], payload.event_id);
-      if (replay) return replay;
-      const log = lookALog(exerciseDone[1]);
-      const exercise = log && state.workoutLogExercises.find((row) => row.id === exerciseDone[2] && row.workout_log_id === log.id && !row.archived);
-      if (!exercise) return fail(config, 404, 'Workout exercise not found');
-      if (exercise.not_set_tracked) return lookAReply(log.id, { outcome: 'refused', reason: 'This exercise is already done.' });
-      exercise.not_set_tracked = true;
-      lookARecord(log.id, payload.event_id, 'exercise_done', { exercise: exercise.id }, { exercise_id: exercise.id });
-      emitChange();
-      return lookAReply(log.id, { outcome: 'applied', change_id: payload.event_id });
-    }
-    const exerciseSkipRest = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/skip-rest$/);
-    if (exerciseSkipRest && method === 'post') {
-      if (role !== 'client') return fail(config, 403, 'Client access required');
-      const replay = lookAReplay(exerciseSkipRest[1], payload.event_id);
-      if (replay) return replay;
-      const log = lookALog(exerciseSkipRest[1]);
-      if (!log) return fail(config, 404, 'Workout log not found');
-      const sets = (payload.sets || []).map((row) => state.workoutLogSets.find((set) => set.id === row.id && set.workout_log_id === log.id && !set.archived));
-      if (!sets.length || sets.some((set) => !set || set.status !== 'pending')) {
-        lookARecord(log.id, payload.event_id, 'exercise_skip', null, {}, 'refused', 'A set changed. Check it, then try again.');
-        return lookAReply(log.id, { outcome: 'refused', reason: 'A set changed. Check it, then try again.' });
-      }
-      sets.forEach((set) => { set.status = 'skipped'; set.revision = (set.revision || 0) + 1; set.updated_at = new Date().toISOString(); });
-      lookARecord(log.id, payload.event_id, 'exercise_skip', { skipped: sets.map((set) => set.id) }, { exercise_id: exerciseSkipRest[2], set_ids: sets.map((set) => set.id) });
-      emitChange();
-      return lookAReply(log.id, { outcome: 'applied' });
-    }
-    const finishWorkout = path.match(/^\/workout-logs\/([^/]+)\/finish$/);
-    if (finishWorkout && method === 'post') {
-      if (role !== 'client') return fail(config, 403, 'Client access required');
-      const replay = lookAReplay(finishWorkout[1], payload.event_id);
-      if (replay) return replay;
-      const log = lookALog(finishWorkout[1], { active: false });
-      if (!log) return fail(config, 404, 'Workout log not found');
-      if (!['finish', 'not_set_tracked'].includes(payload.mode)) return fail(config, 400, 'Choose how to finish');
-      if (log.status !== 'active') return lookAReply(log.id, { outcome: 'refused', reason: 'already_completed' });
-      const sets = state.workoutLogSets.filter((set) => set.workout_log_id === log.id && !set.archived);
-      if (payload.mode === 'finish' && !sets.some((set) => set.status === 'completed')) {
-        lookARecord(log.id, payload.event_id, 'finish', null, {}, 'refused', 'complete_at_least_one_set');
-        return Promise.reject({ response: { data: { error: 'Complete at least one set', result: { outcome: 'refused', reason: 'complete_at_least_one_set' } }, status: 400, statusText: 'Bad Request', headers: {}, config }, config });
-      }
-      // Same rule as the SQL: mode 'finish' skips the pending sets of exercises
-      // not marked done; 'not_set_tracked' writes no set at all.
-      const flagged = new Set(state.workoutLogExercises.filter((row) => row.workout_log_id === log.id && row.not_set_tracked).map((row) => row.id));
-      const skipped = payload.mode === 'finish' ? sets.filter((set) => set.status === 'pending' && !flagged.has(set.workout_log_exercise_id)) : [];
-      skipped.forEach((set) => { set.status = 'skipped'; set.revision = (set.revision || 0) + 1; set.updated_at = new Date().toISOString(); });
-      Object.assign(log, { status: 'completed', not_set_tracked: payload.mode === 'not_set_tracked', notes: String(payload.notes || '') || null, feedback: String(payload.feedback || '') || null, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-      notifyWorkoutCompleted(log);
-      lookARecord(log.id, payload.event_id, 'finish', { finish: true, skipped: skipped.map((set) => set.id) }, {});
-      emitChange();
-      return lookAReply(log.id, { outcome: 'applied' });
-    }
-    const workoutUndo = path.match(/^\/workout-logs\/([^/]+)\/undo$/);
-    if (workoutUndo && method === 'get') {
-      const log = state.workoutLogs.find((row) => row.id === workoutUndo[1] && row.client_id === client.id && !row.archived);
-      if (!log) return fail(config, 404, 'Workout log not found');
-      return ok({ undo: lookACurrent(log.id) }, config);
-    }
-    if (workoutUndo && method === 'post') {
-      if (role !== 'client') return fail(config, 403, 'Client access required');
-      const replay = lookAReplay(workoutUndo[1], payload.event_id);
-      if (replay) return replay;
-      const log = lookALog(workoutUndo[1], { active: false });
-      if (!log) return fail(config, 404, 'Workout log not found');
-      const current = lookACurrent(log.id);
-      const target = lookALedger().byId.get(payload.change_id);
-      if (!target || current?.change_id !== payload.change_id) {
-        lookARecord(log.id, payload.event_id, 'undo', null, {}, 'refused', 'Something changed since, so this cannot be undone.');
-        return lookAReply(log.id, { outcome: 'refused', reason: 'Something changed since, so this cannot be undone.' });
-      }
-      const inverse = target.inverse;
-      if (inverse.set) Object.assign(state.workoutLogSets.find((set) => set.id === inverse.set), inverse.before, { updated_at: new Date().toISOString() });
-      if (inverse.exercise) state.workoutLogExercises.find((row) => row.id === inverse.exercise).not_set_tracked = false;
-      if (inverse.skipped) inverse.skipped.forEach((setId) => { const set = state.workoutLogSets.find((row) => row.id === setId); set.status = 'pending'; set.revision = (set.revision || 0) + 1; });
-      if (inverse.finish) Object.assign(log, { status: 'active', completed_at: null, not_set_tracked: false });
-      target.undone = true;
-      lookARecord(log.id, payload.event_id, 'undo', null, { undoes: payload.change_id });
-      emitChange();
-      return lookAReply(log.id, { outcome: 'applied', undoes: payload.change_id });
-    }
     const completeWorkout = path.match(/^\/workout-logs\/([^/]+)\/complete$/);
     if (completeWorkout && method === 'post') {
       const log = state.workoutLogs.find((row) => row.id === completeWorkout[1] && row.client_id === client.id && !row.archived);
@@ -1999,7 +1843,12 @@ export async function installPreviewApi(api) {
       if (!sets.some((set) => set.status === 'completed')) return fail(config, 400, 'Complete at least one set');
       sets.filter((set) => set.status === 'pending').forEach((set) => { set.status = 'skipped'; set.updated_at = new Date().toISOString(); });
       Object.assign(log, { status: 'completed', notes: String(payload.notes || '') || null, feedback: String(payload.feedback || '') || null, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-      notifyWorkoutCompleted(log);
+      const recipients = new Set([clientById(log.client_id)?.coach_id, ...state.coaches.filter((coach) => coach.is_admin && !coach.archived).map((coach) => coach.id)]);
+      recipients.forEach((recipientCoachId) => {
+        if (!recipientCoachId || state.notifications.some((row) => row.recipient_coach_id === recipientCoachId && row.workout_log_id === log.id && row.event_type === 'workout_completed')) return;
+        const createdAt = new Date().toISOString();
+        state.notifications.unshift({ id: id('notification'), recipient_coach_id: recipientCoachId, event_type: 'workout_completed', workout_log_id: log.id, read_at: null, archived: false, created_at: createdAt, updated_at: createdAt });
+      });
       emitChange();
       return ok(workoutLogDetails(log.id), config);
     }

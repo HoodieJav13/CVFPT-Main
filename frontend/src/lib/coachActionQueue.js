@@ -6,35 +6,7 @@ const REASON_TARGETS = {
   session_gap: (clientId) => ({ href: `/coach/clients/${clientId}?tab=sessions`, action: 'View sessions' }),
 };
 
-export const QUEUE_LIMIT = 12;
-
 export function buildCoachActionQueue(dashboard = {}, attention = []) {
-  return allCoachActions(dashboard, attention).slice(0, QUEUE_LIMIT);
-}
-
-// Look A coach queue groups, from real facts only (LOOK-A-COACH-DATA-GUIDE):
-// - missed: attention rows whose reasons include low_adherence (past-due
-//   dated workouts over the analytics window, only with >= 3 eligible). Its
-//   own reason text is kept.
-// - needsLook: every other action (sessions, bookings, messages, check-ins
-//   and the other attention reasons), in the existing priority order.
-// - onTrack is never derived: there is no measure that proves a client is on
-//   track, and missing data must not read as on track.
-// Counts are items shown, not clients (a client can appear under two kinds);
-// `total` is before the 12-item cut so the page can say some are not shown.
-export function buildCoachQueueGroups(dashboard = {}, attention = []) {
-  const all = allCoachActions(dashboard, attention);
-  const shown = all.slice(0, QUEUE_LIMIT);
-  const isMissed = (row) => row.kind === 'attention' && row.reasons.some((reason) => reason.code === 'low_adherence');
-  const missed = shown.filter(isMissed).map((row) => ({
-    ...row,
-    // The missed reason leads; the other reasons follow unchanged.
-    reasons: [...row.reasons.filter((reason) => reason.code === 'low_adherence'), ...row.reasons.filter((reason) => reason.code !== 'low_adherence')],
-  }));
-  return { needsLook: shown.filter((row) => !isMissed(row)), missed, onTrack: null, shown: shown.length, total: all.length };
-}
-
-function allCoachActions(dashboard = {}, attention = []) {
   const rows = [];
   const bookingClients = new Set();
   const unreadClients = new Set();
@@ -105,5 +77,5 @@ function allCoachActions(dashboard = {}, attention = []) {
     });
   }
 
-  return rows.sort((a, b) => a.priority - b.priority);
+  return rows.sort((a, b) => a.priority - b.priority).slice(0, 12);
 }

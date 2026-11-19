@@ -34,16 +34,11 @@ export function WorkoutViewport({ children, controls, header = null, headerStick
       // row (inputs, labels and the repeat action), or a revealed row would be
       // clipped; shorter windows use the document-scroll fallback instead.
       const headerHeight = headerRef.current ? headerRef.current.offsetHeight + gap : 0;
-      // Pinning must also leave the entries a real share of the screen: with
-      // enlarged text the header and dock grow, and a sliver of entries can be
-      // shorter than one Log action. Then the page scrolls normally instead.
-      const minEntries = Math.max(headerRef.current ? 176 : 120, Math.round(visibleHeight * 0.45));
+      const minEntries = headerRef.current ? 176 : 120;
       // In the fallback the outline sticks only while a whole set row still
       // fits between it and the bottom clearance; on very short windows it
       // scrolls away instead of covering the focused field.
-      // A header grown by enlarged text (over a quarter of the window) scrolls
-      // away instead of covering the entries.
-      setRoomToStick(visibleHeight - shellBottom - bottom - headerHeight >= minEntries && headerHeight <= visibleHeight * 0.25);
+      setRoomToStick(visibleHeight - shellBottom - bottom - headerHeight >= minEntries);
       setViewport({ height: visibleTop <= top && available >= footer.current.offsetHeight + headerHeight + gap + minEntries ? available : null, viewportHeight: visibleHeight, viewportTop: visibleTop });
     };
     measure();
@@ -109,10 +104,7 @@ export function WorkoutViewport({ children, controls, header = null, headerStick
         </div>
       )}
       <div ref={entries} data-testid="workout-scroll-region" role="region" aria-label="Workout entries" tabIndex={0}
-        // relative: screen-reader-only (absolute) helpers deep in the list stay
-        // inside the region instead of stretching the page, which let a tap
-        // scroll the whole page under the pinned dock.
-        className={height === null ? 'min-h-0' : 'relative min-h-0 flex-1 overflow-y-auto'}>
+        className={height === null ? 'min-h-0' : 'min-h-0 flex-1 overflow-y-auto'}>
         {children}
       </div>
       <div ref={footer} className="shrink-0">{controls}</div>

@@ -79,17 +79,6 @@ async function setup(page, { role = 'client', online = true, historyHold = null,
       Object.assign(set, body);
       return json(set);
     }
-    // Look A reads the one Undo on load. This fixture answers set writes in the
-    // legacy shape (no change envelope), so there is no undoable change: null.
-    if (path === '/workout-logs/lt-log/undo' && method === 'GET') return json({ undo: null });
-    // The durable cue panel reads each exercise's cues (inherited omission since
-    // the cue-retry release); this fixture has none: the exact empty answer.
-    if (method === 'GET' && /^\/workout-logs\/lt-log\/exercises\/(ex-goblet|ex-deadbug)\/cue-retry$/.test(path)) return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
-    // Look A Finish: {result, log, undo}; the older /complete stays for queued entries.
-    if (path === '/workout-logs/lt-log/finish' && method === 'POST') {
-      Object.assign(state.log, { status: 'completed', completed_at: new Date().toISOString() });
-      return json({ result: { outcome: 'applied', change_id: request.postDataJSON().event_id }, log: state.log, undo: null });
-    }
     if (path === '/workout-logs/lt-log/complete' && method === 'POST') {
       Object.assign(state.log, { status: 'completed', completed_at: new Date().toISOString() });
       return json(state.log);

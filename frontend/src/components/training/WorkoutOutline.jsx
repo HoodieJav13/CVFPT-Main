@@ -32,13 +32,12 @@ export function WorkoutOutline({ blocks, next, expanded, onToggle, onJump, seale
                   <li key={item.id}>
                     <button type="button" onClick={() => onJump(item.id)} data-testid="workout-outline-item" data-status={item.status}
                       className={cn('flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        item.status === 'next' && 'font-semibold text-primary', (item.status === 'done' || item.status === 'swapped') && 'text-muted-foreground')}
+                        item.status === 'next' && 'font-semibold text-primary', item.status === 'done' && 'text-muted-foreground')}
                       aria-current={item.status === 'next' ? 'step' : undefined}>
                       <span className="w-7 shrink-0 tabular-nums text-xs text-muted-foreground">{item.marker}</span>
                       <span className="min-w-0 flex-1 break-words">{item.name}</span>
                       {item.status === 'done' && <><Check className="h-4 w-4 shrink-0 text-success" aria-hidden /><span className="sr-only">done</span></>}
                       {item.status === 'next' && <span className="sr-only">next</span>}
-                      {item.status === 'swapped' && <span className="shrink-0 text-xs">swapped</span>}
                     </button>
                   </li>
                 ))}

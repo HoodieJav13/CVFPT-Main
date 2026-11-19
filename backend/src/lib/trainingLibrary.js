@@ -26,8 +26,6 @@ const CLIENT_EXERCISE_FIELDS = [
   'id', 'workout_id', 'exercise_library_id', 'custom_name', 'sets', 'reps', 'rest', 'rest_seconds',
   'tempo', 'target_rpe', 'default_load_value', 'default_load_unit', 'notes', 'client_notes',
   'video_url', 'position', 'archived', 'created_at',
-  // Look A prescription facts the client's tracker shows (20261114120000).
-  'prescribed_load_max', 'per_side',
   // Current exercise guide: an explicit DTO built by lib/exerciseMedia/serialization.js.
   'media', 'media_status',
   // Current demo: an explicit DemoDTO built by lib/exerciseDemo.js. The internal

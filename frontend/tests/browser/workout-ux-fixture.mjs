@@ -29,9 +29,6 @@ export async function setupWorkoutUx(page, role = 'client') {
   if(path.startsWith('/workout-logs/ux-log/sets/')&&method==='PATCH') { const set=fixture.log.exercises.flatMap(e=>e.sets).find(s=>s.id===path.split('/').at(-1));results.writes.push(r.postDataJSON());Object.assign(set,r.postDataJSON());return json(set); }
   // The tracker previews the active exercise's last time (one read per exercise per visit).
   if(/^\/workout-logs\/ux-log\/exercises\/[^/]+\/history$/.test(path)&&method==='GET') return json({occurrences:[],next_cursor:null});
-  // Look A: the server's current Undo (none in this fixture) and the cue retry read.
-  if(path==='/workout-logs/ux-log/undo'&&method==='GET') return json({undo:null});
-  if(/^\/workout-logs\/ux-log\/exercises\/[^/]+\/cue-retry$/.test(path)&&method==='GET') return json({source_version:null,can_create:false,can_recheck:false,outgoing:[],incoming:[]});
   if(path==='/programs/exercise-library') return json([]);
   if(path==='/exercise-media/library-status'&&method==='GET') return json({enabled:false,items:[],summary:null});
   if(path==='/programs/workouts') return json([fixture.workout]);

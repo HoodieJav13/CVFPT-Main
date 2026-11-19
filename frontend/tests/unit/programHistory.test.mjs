@@ -82,15 +82,3 @@ test('intervening unobserved edits receive unknown metadata rather than being at
  assert.equal(rows[3].author.name,'B');assert.equal(rows[3].snapshot.name,'Next save');
  assert.deepEqual(diffProgramRevisions(rows[2].snapshot,rows[3].snapshot).map(c=>c.field),['name']);
 });
-test('Look A: upper load and per side are compared; off and absent are the same', () => {
-  const a = clone(before);
-  const b = clone(a);
-  Object.assign(b.days[0].workout.exercises[0], { default_load_value: 170, default_load_unit: 'lb', prescribed_load_max: 180, per_side: true });
-  const changes = diffProgramRevisions(snapshotProgram(a), snapshotProgram(b));
-  assert.deepEqual(changes.filter(c => c.field === 'prescribed_load_max').map(c => [c.before, c.after]), [[null, 180]]);
-  assert.deepEqual(changes.filter(c => c.field === 'per_side').map(c => [c.before, c.after]), [[null, true]]);
-  // A stored SQL snapshot omits per_side when off; a live row says false. No change.
-  const stored = snapshotProgram(a); delete stored.days[0].workout.exercises[0].per_side;
-  const live = clone(a); live.days[0].workout.exercises[0].per_side = false;
-  assert.equal(diffProgramRevisions(stored, snapshotProgram(live)).filter(c => c.field === 'per_side').length, 0);
-});

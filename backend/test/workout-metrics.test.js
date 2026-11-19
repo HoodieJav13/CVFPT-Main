@@ -103,19 +103,6 @@ test('offline add reconciliation keeps typed duration and distance with units', 
   assert.equal(fills[0].data.actual_distance_value, 100);
 });
 
-test('load unit default is lb in both deploy roots; a recorded kg stays kg; a blank weight is a blank pair', async () => {
-  const backend = require('../src/lib/workoutMetrics');
-  const frontend = await import('../../frontend/src/lib/workoutMetrics.js');
-  const typed = { status: 'completed', actual_load_value: '45', actual_load_unit: null, actual_reps: '6', actual_rpe: null };
-  const kgPlan = { tracking_type: 'reps_weight', prescribed_load_value: 40, prescribed_load_unit: 'kg' };
-  for (const lib of [backend, frontend]) {
-    assert.equal(lib.performedSet(typed, kgPlan).actual_load_unit, 'lb');
-    assert.equal(lib.performedSet(typed, kgPlan).actual_load_value, 45);
-    assert.equal(lib.performedSet({ ...typed, actual_load_unit: 'kg' }, kgPlan).actual_load_unit, 'kg');
-    assert.deepEqual([lib.performedSet({ ...typed, actual_load_value: '' }, kgPlan).actual_load_value, lib.performedSet({ ...typed, actual_load_value: '' }, kgPlan).actual_load_unit], [null, null]);
-  }
-});
-
 test('coach tracking validation is explicit and identical across deploy roots', async () => {
   const backend = require('../src/lib/workoutMetrics');
   const frontend = await import('../../frontend/src/lib/workoutMetrics.js');

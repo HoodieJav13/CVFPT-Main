@@ -25,9 +25,6 @@ function resetState() {
   state.notificationUpdates = [];
   state.startOutcome = 'started';
   state.startError = null;
-  state.quickError = null;
-  state.quickResult = null;
-  state.pushes = 0;
 }
 
 const logRow = {
@@ -71,12 +68,6 @@ require.cache[supabasePath] = {
         state.rpcCalls.push({ name, args });
         if (name === 'start_workout_log_with_cues' && state.startError) return Promise.resolve({data:null,error:state.startError});
         if (name === 'start_workout_log_with_cues') return Promise.resolve({ data: { outcome: state.startOutcome, workout_log_id: LOG_ID }, error: null });
-        if (name === 'finish_workout_log_v3') return Promise.resolve({ data: { outcome: 'applied', mode: args.p_mode, notified: true, change_id: args.p_event_id }, error: null });
-        if (name === 'quick_complete_workout_v3') {
-          if (state.startError) return Promise.resolve({ data: null, error: state.startError });
-          if (state.quickError) return Promise.resolve({ data: null, error: state.quickError });
-          return Promise.resolve({ data: state.quickResult || { outcome: 'applied', start_outcome: 'started', workout_log_id: LOG_ID, notified: true, quick_completed: true, undoable: true, change_id: args.p_event_id }, error: null });
-        }
         return Promise.resolve({ data: LOG_ID, error: null });
       },
     },
@@ -118,82 +109,29 @@ async function post(path, body) {
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
-// Look A (2026-11-14) supersedes the start + quick_complete_workout_log_v2
-// pair: one transaction (quick_complete_workout_v3) replays a retry before any
-// start, binds the event id to the target, and keeps Home's untouched guard.
-const TARGET = { workout_assignment_id: '11111111-1111-1111-1111-111111111111' };
-const client = () => { currentUser = { role: 'client', authUserId: 'verified-test-auth', client: { id: CLIENT_ID, coach_id: COACH_ID } }; };
-
-test('quick-complete runs one atomic database call bound to client, target and event', async () => {
-  resetState(); client();
-  const { status, body } = await post('/api/workout-logs/quick-complete', TARGET);
+test('quick-complete starts then delegates untracked completion to one atomic RPC', async () => {
+  resetState();
+  currentUser = { role: 'client', client: { id: CLIENT_ID, coach_id: COACH_ID } };
+  const { status } = await post('/api/workout-logs/quick-complete', { workout_assignment_id: '11111111-1111-1111-1111-111111111111' });
   assert.equal(status, 201);
-  assert.deepEqual(state.rpcCalls.map((c) => c.name), ['quick_complete_workout_v3'], 'no separate start call');
-  const args = state.rpcCalls[0].args;
-  assert.equal(args.p_client_id, CLIENT_ID);
-  assert.equal(args.p_workout_assignment_id, TARGET.workout_assignment_id);
-  assert.equal(args.p_program_assignment_id, null);
-  assert.equal(args.p_auth_user_id, 'verified-test-auth');
-  assert.match(args.p_event_id, /^[0-9a-f-]{36}$/);
-  assert.equal(body.change.id, args.p_event_id, 'the reply names the change its Undo targets');
-  assert.equal(body.change.undoable, true);
+  const rpcNames = state.rpcCalls.map((c) => c.name);
+  assert.deepEqual(rpcNames, ['start_workout_log_with_cues', 'quick_complete_workout_log_v2']);
+  // The atomic RPC clears only untouched defaults and delegates completion.
+  const completeArgs = state.rpcCalls.find((c) => c.name === 'quick_complete_workout_log_v2').args;
+  assert.deepEqual(completeArgs, { p_client_id: CLIENT_ID, p_workout_log_id: LOG_ID });
   assert.equal(state.workoutUpdates.length, 0);
 });
 
-test('quick-complete forwards a client event id; an invalid one is never forwarded', async () => {
-  resetState(); client();
-  const eventId = '9a9a9a9a-0000-4000-8000-000000000001';
-  await post('/api/workout-logs/quick-complete', { ...TARGET, event_id: eventId });
-  assert.equal(state.rpcCalls[0].args.p_event_id, eventId);
-  resetState(); client();
-  await post('/api/workout-logs/quick-complete', { ...TARGET, event_id: 'not-a-uuid' });
-  assert.notEqual(state.rpcCalls[0].args.p_event_id, 'not-a-uuid');
-});
-
-test('quick-complete retry replays the first answer with 200 and no second push', async () => {
-  resetState(); client();
-  state.quickResult = { outcome: 'replayed', original_outcome: 'applied', workout_log_id: LOG_ID, notified: false, undoable: true };
-  const { status, body } = await post('/api/workout-logs/quick-complete', { ...TARGET, event_id: '9a9a9a9a-0000-4000-8000-000000000002' });
-  assert.equal(status, 200);
-  assert.equal(body.id, LOG_ID);
-  assert.equal(body.change.id, '9a9a9a9a-0000-4000-8000-000000000002');
-});
-
-test('quick-complete with an id used for another target or change is 409, not 500', async () => {
-  resetState(); client();
-  state.quickError = { message: 'event_id_reused' };
-  const { status, body } = await post('/api/workout-logs/quick-complete', { ...TARGET, event_id: '9a9a9a9a-0000-4000-8000-000000000003' });
-  assert.equal(status, 409);
-  assert.match(body.error, /already used/);
-});
-
-test('quick-complete keeps the Home guard: logged changes stay active (409 with the workout)', async () => {
-  resetState(); client();
-  state.quickResult = { outcome: 'refused', reason: 'logged_changes', workout_log_id: LOG_ID, start_outcome: 'started' };
-  const { status, body } = await post('/api/workout-logs/quick-complete', TARGET);
-  assert.equal(status, 409);
-  assert.match(body.error, /logged changes/);
-  assert.equal(body.active_workout.id, LOG_ID);
-  state.quickResult = { outcome: 'replayed', original_outcome: 'refused', reason: 'logged_changes', workout_log_id: LOG_ID };
-  assert.equal((await post('/api/workout-logs/quick-complete', TARGET)).status, 409, 'a replayed refusal stays a refusal');
-});
-
-test('quick-complete does not finish an active or already-done workout', async () => {
-  resetState(); client();
-  state.quickResult = { outcome: 'not_started', start_outcome: 'resumed', workout_log_id: LOG_ID };
-  let r = await post('/api/workout-logs/quick-complete', TARGET);
-  assert.equal(r.status, 409); assert.equal(r.body.active_workout.id, LOG_ID);
-  state.quickResult = { outcome: 'not_started', start_outcome: 'already_completed', workout_log_id: null };
-  r = await post('/api/workout-logs/quick-complete', TARGET);
-  assert.equal(r.status, 409); assert.match(r.body.error, /already done/);
-});
-
 test('quick-complete emits a completed signal but no started twin', async () => {
-  resetState(); client();
-  await post('/api/workout-logs/quick-complete', TARGET);
+  resetState();
+  currentUser = { role: 'client', client: { id: CLIENT_ID, coach_id: COACH_ID } };
+  await post('/api/workout-logs/quick-complete', { workout_assignment_id: '11111111-1111-1111-1111-111111111111' });
+  // Started notification is never inserted on the quick path...
   const startedUpserts = state.notificationUpserts.flat().filter((n) => n.event_type === 'workout_started');
   assert.equal(startedUpserts.length, 0);
-  assert.equal(state.rpcCalls.filter((c) => c.name === 'quick_complete_workout_v3').length, 1);
+  // The atomic RPC delegates the existing completed notification once.
+  // Its real notification behavior is verified in the synthetic SQL suite.
+  assert.equal(state.rpcCalls.filter((c) => c.name === 'quick_complete_workout_log_v2').length, 1);
 });
 
 test('tracked client start notifies coaches with a started event', async () => {

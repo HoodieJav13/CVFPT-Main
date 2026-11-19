@@ -55,7 +55,7 @@ async function database(mode) {
     alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
     alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
     create publication supabase_realtime;`);
-  const names = (await readdir(migrations)).filter((n) => n.endsWith('.sql') && (mode === 'new' || n < ORIGIN_MIGRATION)).sort();
+  const names = (await readdir(migrations)).filter((n) => n.endsWith('.sql') && (mode === 'new' || n !== ORIGIN_MIGRATION)).sort();
   for (const name of names) await db.exec(await readFile(path.join(migrations, name), 'utf8'));
   await db.exec(await readFile(path.join(here, '../pr120_repairs/fixtures.sql'), 'utf8'));
   await db.exec(await readFile(path.join(here, 'fixtures.sql'), 'utf8'));

@@ -27,17 +27,6 @@ async function setupTracker(page, { sessionDead = false, rejectComplete = false 
       state.received.push('set');
       return json(set);
     }
-    // Reads added since this fixture was written (cue panel, Look A Undo).
-    if (path === '/workout-logs/log-r/exercises/ex-1/cue-retry' && method === 'GET') return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
-    if (path === '/workout-logs/log-r/undo' && method === 'GET') return json({ undo: null });
-    // Look A Finish: a refusal is a 400 carrying the refused result (backend workoutLookA.js).
-    if (path === '/workout-logs/log-r/finish' && method === 'POST') {
-      if (state.rejectComplete) { state.received.push('complete-400'); return json({ error: 'Synthetic refusal: complete at least one set', result: { outcome: 'refused', reason: 'complete_at_least_one_set' } }, 400); }
-      const body = request.postDataJSON();
-      state.finishes = state.finishes || new Set();
-      if (!state.finishes.has(body.event_id)) { state.finishes.add(body.event_id); Object.assign(log, { status: 'completed', completed_at: new Date().toISOString() }); state.received.push('complete'); }
-      return json({ result: { outcome: 'applied' }, log, undo: null });
-    }
     if (path === '/workout-logs/log-r/complete' && method === 'POST') {
       if (state.rejectComplete) { state.received.push('complete-400'); return json({ error: 'Synthetic refusal: complete at least one set' }, 400); }
       Object.assign(log, { status: 'completed', completed_at: new Date().toISOString() });

@@ -47,12 +47,6 @@ async function setup(page, width, height, options = {}) {
     if (path === '/workout-logs/p1-log' && method === 'GET') return json({ ...log, server_time: new Date().toISOString() });
     if (/^\/workout-logs\/p1-log\/exercises\/[^/]+\/history$/.test(path)) return json({ occurrences: [], next_cursor: null });
     if (/^\/workout-logs\/p1-log\/exercises\/[^/]+\/substitution-options$/.test(path)) return json({ backups: [], suggestions: [], catalog_reason: null, server_time: new Date().toISOString() });
-    // Look A reads the one Undo on load. This fixture's set replies carry no
-    // change envelope, so there is no undoable change: null.
-    if (path === '/workout-logs/p1-log/undo' && method === 'GET') return json({ undo: null });
-    // The durable cue panel reads each exercise's cues (inherited omission since
-    // the cue-retry release); this fixture has none: the exact empty answer.
-    if (method === 'GET' && /^\/workout-logs\/p1-log\/exercises\/(a1|a2|b|c)\/cue-retry$/.test(path)) return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
     const patch = path.match(/^\/workout-logs\/p1-log\/sets\/([^/]+)$/);
     if (patch && method === 'PATCH') {
       const body = r.postDataJSON();
@@ -72,18 +66,24 @@ async function setup(page, width, height, options = {}) {
 
 const card = (page, name) => page.getByTestId('tracker-exercise-card').filter({ has: page.getByText(name, { exact: true }) }).first();
 const activeId = (page) => page.locator('[data-active="true"]').getAttribute('data-set-id');
-// Look A Focus (approved layout, LOOK-A-FOCUS-ACCEPTANCE-TEST-DIRECTION): the
-// active set is presented first by the Focus panel (its "Set N of M · Coach
-// asked" line, the prescription and one truthful Log/Enter action); the
-// editable controls open inline only when asked. The lower "All sets" rows are
-// no longer what lands in view. Natural state: measured where the tracker puts
-// things, with no test scrolling. Visible = viewport ∩ scrolling region ∩
-// below a sticky outline ∩ above the control dock.
-async function focusView(page) {
-  return page.evaluate(() => {
+async function inView(page, setId) {
+  const row = page.locator(`[data-set-id="${setId}"]`);
+  const box = await row.boundingBox();
+  const region = await page.getByTestId('workout-scroll-region').boundingBox();
+  const vh = page.viewportSize().height;
+  return Boolean(box) && box.y >= Math.max(0, region?.y ?? 0) - 1 && box.y + Math.min(box.height, 48) <= Math.min(vh, (region?.y ?? 0) + (region?.height ?? vh)) + 1;
+}
+
+// Bounds of the primary controls (weight, reps, Complete) against what is
+// actually visible: viewport ∩ scrolling region ∩ below a sticky outline ∩
+// above the control dock. Returns each control's rect and whether it is whole.
+async function primaryControls(page, name, n) {
+  return page.evaluate(({ name, n }) => {
     const q = (sel) => document.querySelector(sel);
-    const panels = document.querySelectorAll('[data-testid="focus-panel"]');
-    const panel = panels[0];
+    const weightEl = q(`input[aria-label="${name} set ${n} weight"]`);
+    const repsEl = q(`input[aria-label="${name} set ${n} performed reps"]`);
+    const row = weightEl?.closest('.grid');
+    const completeEl = row ? [...row.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === `Complete set ${n}`) : null;
     const region = q('[data-testid="workout-scroll-region"]');
     const dock = q('[data-testid="workout-control-dock"]');
     const outline = q('[data-testid="workout-outline-row"]');
@@ -92,52 +92,10 @@ async function focusView(page) {
     const top = Math.max(r.top, 0, outline && getComputedStyle(outline).position === 'sticky' ? outline.getBoundingClientRect().bottom : 0);
     const dockTop = dock ? dock.getBoundingClientRect().top : innerHeight;
     const bottom = Math.min(r.bottom, innerHeight, dockTop > top ? dockTop : innerHeight);
-    const rect = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), whole: b.height > 0 && b.top >= top - 1 && b.bottom <= bottom + 1 && b.left >= -1 && b.right <= innerWidth + 1 }; };
-    const log = panel?.querySelector('[data-testid="focus-log"]');
-    const prescription = panel?.querySelector('[data-testid="focus-prescription"]');
-    return {
-      panels: panels.length, set: panel?.dataset.focusSet ?? null, label: panel?.getAttribute('aria-label') ?? null,
-      heading: [...(panel?.querySelectorAll('p') || [])].map((el) => el.textContent).find((t) => /· Coach asked$/.test(t)) ?? null,
-      // Each figure and its label, node by node (value, label, value, unit).
-      prescription: prescription ? [...prescription.querySelectorAll('p')].map((el) => el.textContent.trim()) : null,
-      prescriptionRect: rect(prescription),
-      kind: log?.dataset.kind ?? null, logName: log?.getAttribute('aria-label') ?? null, log: rect(log),
-      editor: Boolean(panel?.querySelector('[data-testid="focus-editor"]')),
-      visibleTop: Math.round(top), visibleBottom: Math.round(bottom),
-    };
-  });
-}
-// Natural state after load, an advance or a resume: exactly that set in Focus,
-// its prescription shown whole and unobstructed, and the whole Log/Enter action in view.
-async function expectFocus(page, { name, n, of, reps, load, unit }) {
-  // Focus shows the one active set (the same set the All sets list marks active).
-  await expect.poll(async () => (await focusView(page)).set === await activeId(page)).toBe(true);
-  let view = null;
-  await expect.poll(async () => { view = await focusView(page); return view.log?.whole === true && view.prescriptionRect?.whole === true; }).toBe(true);
-  expect(view.panels).toBe(1);
-  expect(view.label).toBe(`Now: ${name} set ${n}`);
-  expect(view.heading).toBe(`Set ${n} of ${of} · Coach asked`);
-  expect(view.prescription).toEqual([reps, 'Reps', load, unit]);
-  expect(view.editor).toBe(false);
-  expect(['log', 'repeat', 'enter']).toContain(view.kind);
-  return view;
-}
-// Explicit editing: the person asks to enter/adjust this set; its own controls
-// open inline with focus on the weight field, the saved values and unit kept,
-// and the whole Log reachable. Opening the editor writes nothing.
-async function openEditor(page, results, { name, n, weight, unit }) {
-  const writes = results.writes.length;
-  const panel = page.getByTestId('focus-panel');
-  if (await panel.getByTestId('focus-adjust').count()) await panel.getByTestId('focus-adjust').click();
-  else await panel.getByTestId('focus-log').click();
-  const editor = panel.getByTestId('focus-editor');
-  const weightField = editor.getByLabel(`${name} set ${n} weight`, { exact: true });
-  await expect(weightField).toBeFocused();
-  await expect(weightField).toHaveValue(weight);
-  await expect(editor.getByRole('combobox', { name: `${name} set ${n} weight unit` })).toHaveText(unit);
-  await expect.poll(async () => (await focusView(page)).log?.whole).toBe(true);
-  expect(results.writes.length).toBe(writes);
-  return editor;
+    const rect = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right), whole: b.top >= top - 1 && b.bottom <= bottom + 1 && b.left >= -1 && b.right <= innerWidth + 1 }; };
+    const controls = { weight: rect(weightEl), reps: rect(repsEl), complete: rect(completeEl) };
+    return { visibleTop: Math.round(top), visibleBottom: Math.round(bottom), regionScrolls: Boolean(scrolls), controls, allWhole: Object.values(controls).every((c) => c && c.whole) };
+  }, { name, n });
 }
 
 for (const [width, height] of [[390, 844], [320, 700], [1280, 900], [390, 500]]) {
@@ -145,30 +103,20 @@ for (const [width, height] of [[390, 844], [320, 700], [1280, 900], [390, 500]])
     const { results } = await setup(page, width, height);
     expect(await page.locator('[data-active="true"]').count()).toBe(1);
     expect(await activeId(page)).toBe('a1-s1');
-    await expectFocus(page, { name: 'Incline Press', n: 1, of: 2, reps: '8', load: '50', unit: 'lb' });
-    // Explicit entry for A1 set 1, then its Log (one completion write).
-    let editor = await openEditor(page, results, { name: 'Incline Press', n: 1, weight: '50', unit: 'lb' });
-    await editor.getByLabel('Incline Press set 1 performed reps').fill('8');
-    await expect(page.getByTestId('focus-log')).toHaveAccessibleName('Log Incline Press set 1 as 50 lb × 8');
-    await page.getByTestId('focus-log').click();
-    // Round order: A2 set 1 is next, presented in Focus with no extra action.
+    const a1 = card(page, 'Incline Press');
+    await a1.getByLabel('Incline Press set 1 performed reps').fill('8');
+    await a1.getByRole('button', { name: 'Complete set 1' }).click();
     await expect.poll(() => activeId(page)).toBe('a2-s1');
-    expect(await page.locator('[data-active="true"]').count()).toBe(1);
-    await expectFocus(page, { name: 'Chest-supported Row', n: 1, of: 2, reps: '10', load: '40', unit: 'lb' });
+    await expect.poll(() => inView(page, 'a2-s1')).toBe(true);
+    await expect.poll(async () => (await primaryControls(page, 'Chest-supported Row', 1)).allWhole).toBe(true);
     await expect(page.getByTestId('next-set-announcement')).toHaveText('Next: Chest-supported Row, set 1');
-    editor = await openEditor(page, results, { name: 'Chest-supported Row', n: 1, weight: '40', unit: 'lb' });
-    await editor.getByLabel('Chest-supported Row set 1 performed reps').fill('10');
-    await page.getByTestId('focus-log').click();
+    const a2 = card(page, 'Chest-supported Row');
+    await a2.getByLabel('Chest-supported Row set 1 performed reps').fill('10');
+    await a2.getByRole('button', { name: 'Complete set 1' }).click();
     await expect.poll(() => activeId(page)).toBe('a1-s2');
-    await expectFocus(page, { name: 'Incline Press', n: 2, of: 2, reps: '8', load: '50', unit: 'lb' });
+    await expect.poll(() => inView(page, 'a1-s2')).toBe(true);
+    await expect.poll(async () => (await primaryControls(page, 'Incline Press', 2)).allWhole).toBe(true);
     expect(await page.locator('[data-active="true"]').count()).toBe(1);
-    // One completion write per set, each its own event; actuals as entered, prescription untouched.
-    await expect.poll(() => results.writes.filter((w) => w.status === 'completed').map((w) => [w.setId, w.actual_load_value, w.actual_reps])).toEqual([['a1-s1', 50, 8], ['a2-s1', 40, 10]]);
-    expect(new Set(results.writes.filter((w) => w.status === 'completed').map((w) => w.event_id)).size).toBe(2);
-    // Incline Press is next again, so its prescription is in Focus (checked above);
-    // the row's card still shows its own prescribed load, and no write carried a prescription.
-    await expect(card(page, 'Chest-supported Row').getByTestId('prescribed-load')).toHaveText('Load 40 lb');
-    expect(results.writes.every((w) => Object.keys(w).every((k) => !k.startsWith('prescribed_')))).toBe(true);
     // The collapsed outline names the exercise only (no set numbers or reps).
     await expect(page.getByTestId('workout-outline-summary')).toHaveText('Next: A1 · Incline Press');
     expect(results.unexpected).toEqual([]);
@@ -203,60 +151,12 @@ for (const [width, height] of [[390, 844], [320, 700], [1280, 900], [390, 500]])
   });
 }
 
-// After a reveal the tracker re-lands Focus on a layout change until the person
-// acts. Deterministic order inside the page: a probe ResizeObserver created
-// after the tracker's own runs after it in the same notification step, so the
-// tracker's follow-up landing is already queued for the next frame when the
-// probe moves the scroll position (with or without an intent event). The
-// scroll position is then read three frames and 100 ms later.
-async function resizeThenIntent(page, intent) {
-  return page.evaluate((kind) => new Promise((resolve) => {
-    const tracker = document.querySelector('[data-testid="workout-tracker"]');
-    const region = document.querySelector('[data-testid="workout-scroll-region"]');
-    const scroller = getComputedStyle(region).overflowY !== 'visible' ? region : document.scrollingElement;
-    let seen = false;
-    const probe = new ResizeObserver(() => {
-      if (!seen) { seen = true; requestAnimationFrame(() => { tracker.style.paddingBottom = '2px'; }); return; }
-      probe.disconnect();
-      const before = scroller.scrollTop;
-      if (kind === 'wheel') region.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, bubbles: true }));
-      if (kind === 'keydown') region.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
-      if (kind === 'pointerdown') region.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-      scroller.scrollTop = 0;
-      const at = scroller.scrollTop;
-      requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => {
-        tracker.style.paddingBottom = '';
-        resolve({ before, at, after: scroller.scrollTop });
-      }, 100))));
-    });
-    probe.observe(tracker);
-  }), intent);
-}
-
-for (const intent of [null, 'wheel', 'keydown', 'pointerdown']) {
-  test(`390×844: after a reveal, a layout change ${intent ? `then the person's ${intent} leaves their scroll position alone` : 'with no action from the person lands Focus again'}`, async ({ page }) => {
-    const { results } = await setup(page, 390, 844);
-    const editor = await openEditor(page, results, { name: 'Incline Press', n: 1, weight: '50', unit: 'lb' });
-    await editor.getByLabel('Incline Press set 1 performed reps').fill('8');
-    await page.getByTestId('focus-log').click();
-    await expect.poll(() => activeId(page)).toBe('a2-s1');
-    await expectFocus(page, { name: 'Chest-supported Row', n: 1, of: 2, reps: '10', load: '40', unit: 'lb' });
-    const { before, at, after } = await resizeThenIntent(page, intent);
-    // The Focus landing put A2 below the top, so moving to the top is a real change.
-    expect(before).toBeGreaterThan(0);
-    expect(at).toBe(0);
-    if (intent) expect(after).toBe(0);
-    else expect(after).toBe(before);
-    expect(results.unexpected).toEqual([]);
-    expect(results.errors).toEqual([]);
-  });
-}
-
 for (const [width, height] of [[390, 844], [320, 700], [1280, 900]]) {
-  test(`${width}×${height}: a fresh workout opens with the first set in Focus and its whole Log/Enter action; no focus move, no writes`, async ({ page }) => {
+  test(`${width}×${height}: a fresh workout opens with the first set's weight, reps and Complete whole; no focus move, no writes`, async ({ page }) => {
     const { results } = await setup(page, width, height);
     await page.waitForTimeout(300);
-    await expectFocus(page, { name: 'Incline Press', n: 1, of: 2, reps: '8', load: '50', unit: 'lb' });
+    const view = await primaryControls(page, 'Incline Press', 1);
+    expect(view.allWhole, JSON.stringify(view)).toBe(true);
     // Save status: visible at 390 and desktop. At 320 there is no room for the
     // title, status, prescription and a whole set together (the baseline showed
     // no set controls there); the set wins and the status stays announced
@@ -264,13 +164,11 @@ for (const [width, height] of [[390, 844], [320, 700], [1280, 900]]) {
     const save = page.getByTestId('workout-save-state');
     await expect(save).toHaveAttribute('aria-live', 'polite');
     if (width >= 390) await expect(save).toBeInViewport();
+    await expect(page.getByTestId('tracker-exercise-card').first().getByText('Load 50 lb')).toBeInViewport();
     expect(await page.evaluate(() => document.activeElement?.tagName)).toBe('BODY');
     await expect(page.getByTestId('next-set-announcement')).toHaveText('');
     expect(results.writes).toEqual([]);
     await page.screenshot({ path: test.info().outputPath(`initial-${width}x${height}.png`) });
-    // Asking to enter the set opens its own controls inline; nothing is written or logged.
-    await openEditor(page, results, { name: 'Incline Press', n: 1, weight: '50', unit: 'lb' });
-    expect(results.writes).toEqual([]);
   });
 }
 
@@ -311,12 +209,12 @@ test('repeat while offline queues one event, survives reload, and replays it onc
   await expect.poll(() => page.evaluate(() => localStorage.getItem('cvf_workout_outbox_p1-log'))).toBeNull();
 });
 
-test('Resume presents the next unfinished set in Focus without moving focus or writing', async ({ page }) => {
-  const { results } = await setup(page, 390, 844, { resumed: true });
+test('Resume lands on the next unfinished set without moving focus', async ({ page }) => {
+  await setup(page, 390, 844, { resumed: true });
   await expect.poll(() => activeId(page)).toBe('a1-s2');
-  await expectFocus(page, { name: 'Incline Press', n: 2, of: 2, reps: '8', load: '50', unit: 'lb' });
+  await expect.poll(() => inView(page, 'a1-s2')).toBe(true);
+  await expect.poll(async () => (await primaryControls(page, 'Incline Press', 2)).allWhole).toBe(true);
   expect(await page.evaluate(() => document.activeElement?.tagName)).toBe('BODY');
-  expect(results.writes).toEqual([]);
 });
 
 test('outline: compact names and group labels only; a jump reveals without changing anything; collapse returns the space', async ({ page }) => {

@@ -18,7 +18,6 @@ const KNOWN_CSV_COLUMNS = [
   'sets',
   'reps',
   'tracking_type', 'duration_value', 'duration_unit', 'distance_value', 'distance_unit',
-  'load_value', 'load_unit', 'load_max', 'per_side',
   'rest',
   'tempo',
   'client_notes',
@@ -54,50 +53,6 @@ function draftDemoReference(exercise) {
     return { video_url: videoUrl, video_link_mode: exercise.video_link_mode ?? null };
   }
   return { video_url: videoUrl, video_link_mode: videoUrl ? 'override' : 'inherit' };
-}
-
-// Look A: the load, its unit (lb unless given), an optional upper load in the
-// same unit and per side. A key appears only when it has a value, so drafts
-// without loads keep their exact shape. Values that are not numbers stay as
-// typed so validateDraft can point at them.
-const PER_SIDE_TRUE = new Set(['true', 'yes', 'y', '1', 'per side']);
-const PER_SIDE_FALSE = new Set(['', 'false', 'no', 'n', '0']);
-function loadNumber(value) {
-  if (typeof value === 'number') return value;
-  const text = String(value).trim();
-  return /^\d+(\.\d+)?$/.test(text) ? Number(text) : text;
-}
-function present(value) {
-  return value !== undefined && value !== null && String(value).trim() !== '';
-}
-function draftLoad(exercise) {
-  const out = {};
-  const value = exercise.default_load_value ?? exercise.load_value;
-  if (present(value)) {
-    out.default_load_value = loadNumber(value);
-    out.default_load_unit = nullableString(exercise.default_load_unit ?? exercise.load_unit)?.toLowerCase() || 'lb';
-  }
-  const max = exercise.prescribed_load_max ?? exercise.load_max;
-  if (present(max)) out.prescribed_load_max = loadNumber(max);
-  const perSide = exercise.per_side;
-  if (perSide === true || (typeof perSide === 'string' && PER_SIDE_TRUE.has(perSide.trim().toLowerCase()))) out.per_side = true;
-  else if (!(perSide === undefined || perSide === null || perSide === false || (typeof perSide === 'string' && PER_SIDE_FALSE.has(perSide.trim().toLowerCase())))) out.per_side = perSide;
-  return out;
-}
-function loadErrors(exercise, path) {
-  const errors = [];
-  const hasLoad = 'default_load_value' in exercise;
-  if (hasLoad && !(Number.isFinite(exercise.default_load_value) && exercise.default_load_value >= 0)) {
-    errors.push({ path: `${path}.default_load_value`, message: 'Enter the load as a number' });
-  }
-  if (hasLoad && !['lb', 'kg'].includes(exercise.default_load_unit)) errors.push({ path: `${path}.default_load_unit`, message: 'Load unit must be lb or kg' });
-  if ('prescribed_load_max' in exercise) {
-    const max = exercise.prescribed_load_max;
-    if (!(Number.isFinite(max) && max >= 0)) errors.push({ path: `${path}.prescribed_load_max`, message: 'Enter the upper load as a number' });
-    else if (!hasLoad || !(max >= exercise.default_load_value)) errors.push({ path: `${path}.prescribed_load_max`, message: 'The upper load must be higher than the load it starts from.' });
-  }
-  if ('per_side' in exercise && exercise.per_side !== true) errors.push({ path: `${path}.per_side`, message: 'Per side must be yes or no' });
-  return errors;
 }
 
 function parseCsv(text) {
@@ -164,8 +119,6 @@ function csvTemplate() {
       exercise_name: 'Goblet Squat',
       sets: '3',
       reps: '8-10',
-      load_value: '35',
-      load_unit: 'lb',
       rest: '90s',
       tempo: '3-1-1',
       client_notes: 'Slow lower, tall chest.',
@@ -208,10 +161,6 @@ function csvTemplate() {
       exercise_name: 'Incline Dumbbell Press',
       sets: '3',
       reps: '8-10',
-      load_value: '30',
-      load_unit: 'lb',
-      load_max: '35',
-      per_side: 'yes',
       rest: '90s',
       tempo: '2-0-1',
       client_notes: 'Control the lower and keep shoulder blades set.',
@@ -280,7 +229,6 @@ function draftFromCsvRows(rows, options = {}) {
       sets: nullableString(row.sets),
       reps: nullableString(row.reps),
       tracking_type: row.tracking_type || 'reps_weight', duration_value: row.duration_value, duration_unit: row.duration_unit, distance_value: row.distance_value, distance_unit: row.distance_unit,
-      load_value: row.load_value, load_unit: row.load_unit, load_max: row.load_max, per_side: row.per_side,
       rest: nullableString(row.rest),
       tempo: nullableString(row.tempo),
       client_notes: nullableString(row.client_notes || row.notes),
@@ -465,7 +413,6 @@ function normalizeDraft(input = {}) {
         tracking_type: exercise.tracking_type ?? 'reps_weight',
         duration_value: exercise.duration_value ?? null, duration_unit: exercise.duration_unit || null,
         distance_value: exercise.distance_value ?? null, distance_unit: exercise.distance_unit || null,
-        ...draftLoad(exercise),
         rest: nullableString(exercise.rest),
         tempo: nullableString(exercise.tempo),
         client_notes: nullableString(exercise.client_notes || exercise.notes),
@@ -512,7 +459,6 @@ function validateDraft(input) {
     day.exercises.forEach((exercise, exerciseIndex) => {
       try { normalizeTracking(exercise); } catch (error) { errors.push({ path: `days.${dayIndex}.exercises.${exerciseIndex}.tracking_type`, message: error.message }); }
       if (!exercise.name) errors.push({ path: `days.${dayIndex}.exercises.${exerciseIndex}.name`, message: 'Exercise name is required' });
-      errors.push(...loadErrors(exercise, `days.${dayIndex}.exercises.${exerciseIndex}`));
       const demoPath = `days.${dayIndex}.exercises.${exerciseIndex}.video_link_mode`;
       if (![null, 'inherit', 'override'].includes(exercise.video_link_mode)) errors.push({ path: demoPath, message: 'Choose the library demo or a custom link' });
       else if (exercise.video_link_mode === 'inherit' && exercise.video_url) errors.push({ path: demoPath, message: 'Use the library demo or a custom link, not both' });
@@ -540,8 +486,6 @@ function draftFromProgram(program) {
         sets: exercise.sets,
         reps: exercise.reps,
         tracking_type: exercise.tracking_type, duration_value: exercise.duration_value, duration_unit: exercise.duration_unit, distance_value: exercise.distance_value, distance_unit: exercise.distance_unit,
-        default_load_value: exercise.default_load_value, default_load_unit: exercise.default_load_unit,
-        prescribed_load_max: exercise.prescribed_load_max, per_side: exercise.per_side,
         rest: exercise.rest,
         tempo: exercise.tempo,
         client_notes: exercise.client_notes || exercise.notes || '',

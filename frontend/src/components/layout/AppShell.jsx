@@ -56,7 +56,7 @@ const COACH_EXTRA = [
 
 
 
-export function BrandLogo({ size = 'desktop' }) {
+function BrandLogo({ size = 'desktop' }) {
   const [logoBroken, setLogoBroken] = useState(false);
   const classes = size === 'mobile'
     ? 'h-8 w-8 rounded-lg text-xs'
@@ -103,10 +103,6 @@ export default function AppShell() {
   const isCoach = user.role === 'coach' || user.role === 'admin';
   const analyticsCoach = user.role === 'coach';
   const [jumpOpen, setJumpOpen] = useState(false);
-  // Look A: an active workout gets the whole phone screen. The tracker's own
-  // compact header carries the logo (home link), save state and account menu,
-  // so the shell's phone header and bottom tabs step aside on the tracker only.
-  const workoutFocus = /\/workouts\/[^/]+\/track$/.test(location.pathname);
   const analyticsPath = useRef(null);
   // Skip StrictMode effect replays; emit only when the coarse screen changes.
   const analyticsScreen = useRef(null);
@@ -242,7 +238,7 @@ export default function AppShell() {
           {/* Mobile top bar */}
           {/* pt-safe: standalone iOS draws the page under the status bar
               (black-translucent), so the sticky header pads itself below it. */}
-          <header className={cn('lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur', workoutFocus && 'hidden')} data-testid="mobile-header">
+          <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur" data-testid="mobile-header">
             <Link to={isCoach ? '/coach' : '/client'} className="flex items-center gap-2" data-testid="mobile-brand">
               <BrandLogo size="mobile" />
               <span className="font-display font-semibold">CVF PT</span>
@@ -275,9 +271,7 @@ export default function AppShell() {
             </div>
           </header>
 
-          <main className={cn('px-4 lg:px-8 lg:pb-10 lg:pt-8 max-w-5xl mx-auto w-full', workoutFocus
-            ? 'pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))]'
-            : 'pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5')}>
+          <main className="px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 lg:px-8 lg:pb-10 lg:pt-8 max-w-5xl mx-auto w-full">
             <Outlet />
           </main>
         </div>
@@ -285,7 +279,7 @@ export default function AppShell() {
 
       {/* Mobile bottom tabs */}
       {/* pb-safe keeps the tab row above the iPhone home indicator. */}
-      <nav className={cn('lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/85 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70', workoutFocus && 'hidden')} data-testid="mobile-bottom-navigation">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/85 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70" data-testid="mobile-bottom-navigation">
         <div className="grid grid-cols-6 h-16">
           {nav.map((item) => (
             <NavLink
@@ -323,7 +317,7 @@ export default function AppShell() {
   );
 }
 
-export function UserMenu({ user, logout, compact }) {
+function UserMenu({ user, logout, compact }) {
   const navigate = useNavigate();
   const location = useLocation();
   const isClient = user.role === 'client';

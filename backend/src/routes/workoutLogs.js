@@ -13,8 +13,6 @@ const { quickLogKinds } = require('../lib/quickSessionReads');
 const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
 const { resolveExerciseDemo, resolvedVideoUrl } = require('../lib/exerciseDemo');
 const { registerSessionRoutes, sessionExtras, setEventEnvelope } = require('./workoutLogSession');
-const { registerLookARoutes } = require('./workoutLookA');
-const { randomUUID } = require('node:crypto');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -261,7 +259,7 @@ function completedWorkoutPush(log) {
     if (error) throw error;
     await sendToCoaches((coaches || []).map((coach) => coach.id), {
       title: 'Workout completed',
-      body: `${log.client?.name || 'A client'} completed ${log.workout_name || 'a workout'}${log.quick_completed || log.not_set_tracked ? ' (not tracked)' : ''}.`,
+      body: `${log.client?.name || 'A client'} completed ${log.workout_name || 'a workout'}${log.quick_completed ? ' (not tracked)' : ''}.`,
       url: '/coach/notifications',
     });
   });
@@ -488,13 +486,7 @@ async function requireWritableActiveLog(req, res) {
 
 function createExerciseHistoryHandler({
   findLog = workoutLogWithDetails,
-  // Look A: v3 adds the prescription each occurrence was logged against;
-  // before that migration the v2 rows are used and those facts are absent.
-  runHistory = async (args) => {
-    const v3 = await supabaseAdmin.rpc('get_workout_exercise_history_v3', args);
-    if (v3.error && ['PGRST202', '42883'].includes(v3.error.code)) return supabaseAdmin.rpc('get_workout_exercise_history_v2', args);
-    return v3;
-  },
+  runHistory = (args) => supabaseAdmin.rpc('get_workout_exercise_history_v2', args),
 } = {}) {
   return async function exerciseHistoryHandler(req, res) {
     let cursor;
@@ -539,14 +531,6 @@ function createExerciseHistoryHandler({
           completed_at: row.completed_at,
           exercise_name: row.exercise_name,
           tracking_type: row.tracking_type ?? 'reps_weight',
-          // What this occurrence was prescribed (null when unknown: rows from
-          // before Look A). Shown as context; never substituted for performed values.
-          prescribed: 'per_side' in row ? {
-            load_value: row.prescribed_load_value == null ? null : Number(row.prescribed_load_value),
-            load_unit: row.prescribed_load_unit ?? null,
-            load_max: row.prescribed_load_max == null ? null : Number(row.prescribed_load_max),
-            per_side: row.per_side === true,
-          } : null,
           sets: [],
         });
         grouped.get(occurrenceId).sets.push({
@@ -887,9 +871,6 @@ router.post('/:id/exercises/:exerciseId/sets', async (req, res) => {
       if (duplicateError) throw duplicateError;
       if (duplicate) return res.json(duplicate);
     }
-    // 20261114170000: the exercise left the workout (a swap was undone) after
-    // this request checked it.
-    if (error?.code === 'P0410') return res.status(409).json({ error: 'This exercise is no longer in the workout.' });
     if (error) throw error;
     return res.status(201).json(data);
   } catch (error) {
@@ -953,12 +934,11 @@ router.post('/:id/complete-all', async (req, res) => {
 });
 
 // Program 011 A: one-tap "I did it" for clients who won't track sets.
-// Open app → tap → done. Starts the assigned workout and finishes it as
-// done, not set-tracked (Look A, 2026-11-14): one workout flag, every set row
-// left exactly as started, so exercise history and records never gain
-// phantom values. quick_completed is also set (nothing was logged), so it
-// counts toward adherence and the coach gets a single "completed (not
-// tracked)" signal. An optional client event_id makes a retry replay.
+// Open app → tap → done. Starts the assigned workout, marks every set
+// completed WITHOUT set detail (actual load/reps stay null so exercise
+// history is never polluted with phantom prescribed weights), flags the
+// log quick_completed, and finishes it — counting toward adherence and
+// notifying the coach with a single "completed (not tracked)" signal.
 router.post('/quick-complete', requireClient, async (req, res) => {
   try {
     const body = req.body || {};
@@ -971,44 +951,37 @@ router.post('/quick-complete', requireClient, async (req, res) => {
       return res.status(400).json({ error: 'Choose one assigned workout' });
     }
     const clientId = req.user.client.id;
-    // One database transaction (quick_complete_workout_v3, local migration
-    // 20261114120000): a retry with the same event id replays the first
-    // answer before any start runs again, and the id is bound to this client
-    // and this assignment/day. Home only finishes an untouched workout: any
-    // recorded data (another device logging) keeps it active to resume.
-    const eventId = typeof body.event_id === 'string' && UUID_RE.test(body.event_id) ? body.event_id.toLowerCase() : randomUUID();
-    const { data: result, error: rpcErr } = await supabaseAdmin.rpc('quick_complete_workout_v3', {
+
+    const { data: started, error: startErr } = await supabaseAdmin.rpc('start_workout_log_with_cues', {
       p_client_id: clientId,
-      p_event_id: eventId,
       p_program_assignment_id: programAssignmentId,
       p_program_day_id: programDayId,
       p_workout_assignment_id: workoutAssignmentId,
       p_auth_user_id: req.user.authUserId,
+      p_started_by: 'client',
+      p_started_by_coach_id: null,
       p_session_id: await resolveSessionIdForStart({ clientId, programDayId, workoutAssignmentId }),
     });
-    if (rpcErr) {
-      if (/event_id_reused/.test(rpcErr.message || '')) return res.status(409).json({ error: 'That change id was already used for a different change.' });
-      throw rpcErr;
-    }
-    const logId = result?.workout_log_id || null;
-    if (result?.outcome === 'not_started') {
-      if (result.start_outcome === 'already_completed') return res.status(409).json({ error: 'This workout is already done for today' });
-      const active = logId ? await workoutLogWithDetails(logId) : null;
+    if (startErr) throw startErr;
+    if (started.outcome === 'conflict' || started.outcome === 'resumed') {
+      const active = await workoutLogWithDetails(started.workout_log_id);
       return res.status(409).json({ error: 'Finish or abandon your active workout first', active_workout: active });
     }
-    const outcome = result?.outcome === 'replayed' ? result.original_outcome : result?.outcome;
-    if (outcome !== 'applied') {
-      if (result?.reason === 'already_completed') return res.status(409).json({ error: 'This workout is already done for today' });
-      const active = logId ? await workoutLogWithDetails(logId) : null;
-      return res.status(409).json({ error: 'This workout has logged changes. Open it to finish.', active_workout: active });
+    if (started.outcome === 'already_completed') {
+      return res.status(409).json({ error: 'This workout is already done for today' });
     }
+    const logId = started.workout_log_id;
+
+    // Atomic and guarded: discard only untouched prescription defaults.
+    // Concurrently logged values remain active for the client to resume.
+    const { error: completeErr } = await supabaseAdmin.rpc('quick_complete_workout_log_v2', {
+      p_workout_log_id: logId, p_client_id: clientId,
+    });
+    if (completeErr) throw completeErr;
 
     const completed = await workoutLogWithDetails(logId);
-    if (result.outcome === 'applied' && result.notified === true && completed) completedWorkoutPush(completed);
-    return res.status(result.outcome === 'replayed' ? 200 : 201).json({
-      ...completed,
-      change: { id: eventId, kind: 'finish', undoable: result.undoable === true },
-    });
+    completedWorkoutPush(completed);
+    return res.status(201).json(completed);
   } catch (error) {
     logError('quick complete workout error', error);
     const status = workoutRpcStatus(error);
@@ -1067,9 +1040,6 @@ router.post('/:id/complete', async (req, res) => {
 
 const sessionRoutes = registerSessionRoutes(router, {
   workoutLogWithDetails, requireWritableActiveLog, canWriteLog, canReadLog, actorStamp, workoutSetUpdatePayload, validLoad,
-});
-registerLookARoutes(router, {
-  workoutLogWithDetails, canWriteLog, actorStamp, sessionExtras, completedWorkoutPush, markStartedNotificationsRead,
 });
 
 module.exports = router;

@@ -35,18 +35,6 @@ async function setupTracker(page) {
       state.received.push('set');
       return json(set);
     }
-    if (path === '/workout-logs/log-r/undo' && method === 'GET') return json({ undo: null });
-    // Look A Finish: applied once per event id (a resend replays); /complete stays for older queued entries.
-    if (path === '/workout-logs/log-r/finish' && method === 'POST') {
-      if (state.failWrites) return route.abort('failed');
-      const body = request.postDataJSON();
-      state.finishes = state.finishes || new Set();
-      if (state.finishes.has(body.event_id)) { state.received.push('complete-replayed'); return json({ result: { outcome: 'replayed', original_outcome: 'applied' }, log, undo: null }); }
-      state.finishes.add(body.event_id);
-      Object.assign(log, { status: 'completed', completed_at: new Date().toISOString() });
-      state.received.push('complete');
-      return json({ result: { outcome: 'applied' }, log, undo: null });
-    }
     if (path === '/workout-logs/log-r/complete' && method === 'POST') {
       if (state.failWrites) return route.abort('failed');
       Object.assign(log, { status: 'completed', completed_at: new Date().toISOString() });

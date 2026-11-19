@@ -190,9 +190,7 @@ export function canMoveExercise(exercises, index, direction) {
 // superset/giant set the client alternates rounds, so the member with the
 // fewest completed sets (earliest on a tie) is next.
 export function nextExercise(exercises) {
-  // An exercise marked done without set tracking (Look A) has nothing left
-  // to do, whatever its untouched set rows say; its sets are not counted.
-  const pending = (exercise) => !exercise.not_set_tracked && (exercise.sets || []).some((set) => set.status !== 'completed');
+  const pending = (exercise) => (exercise.sets || []).some((set) => set.status !== 'completed');
   const done = (exercise) => (exercise.sets || []).filter((set) => set.status === 'completed').length;
   const block = supersetBlocks(exercises).find((candidate) => candidate.items.some(({ exercise }) => pending(exercise)));
   if (!block) return null;
@@ -226,7 +224,6 @@ export function restAfterSet(exercises, exerciseId, setId) {
   const current = members.find((exercise) => exercise.id === exerciseId);
   const round = doneCount(current);
   const roundDone = members.every((exercise) => {
-    if (exercise.not_set_tracked) return true;
     const done = doneCount(exercise);
     return done >= round || done >= (exercise.sets || []).length;
   });

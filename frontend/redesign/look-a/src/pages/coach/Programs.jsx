@@ -1,0 +1,2139 @@
+import RescuePreviewEntry from '@/components/training/RescuePreviewEntry';
+import { prescribedLoadText } from '@/lib/lookA';
+import { ProgramHistoryButton } from '@/components/training/ProgramHistory';
+import { exerciseSummary } from '@/lib/builderMetrics';
+import { ExerciseRemovalNotice, useExerciseRemoval } from '@/components/training/ExerciseRemoval';
+import { ExerciseCatalogAction, useBuilderCatalog } from '@/components/training/ExerciseCatalogAction';
+import { useDiscardChanges, useFormChanges } from '@/context/UnsavedChangesContext';
+import { matchCatalogExercise } from '@/lib/trainingLibrary';
+import { setPrescription } from '@/lib/workoutMetrics';
+import { ExerciseTrackingFields } from '@/components/training/ExerciseTrackingFields';
+import { trackingType } from '@/lib/workoutMetrics';
+import { cloneElement, useId, Fragment, useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { api, errMsg } from '@/lib/api';
+import { PageHeader, LoadingScreen, LoadErrorState, EmptyState, IconButton } from '@/components/common';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+  AlertTriangle, Archive, ArrowDown, ArrowUp, BookOpen, CalendarDays, CheckCircle2, CircleAlert, Copy, Download,
+  Dumbbell, Eye, EyeOff, FileText, FileUp, GripVertical, Link2, Loader2, Pencil, Plus, Trash2, Unlink, UserPlus,
+} from 'lucide-react';
+import {
+  DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import draftTools from '@/lib/programDraft.js';
+import { parseRestSeconds } from '@/lib/rest';
+import { safeHttpUrl } from '@/lib/safeUrl';
+import {
+  canMoveExercise, dropExercise, duplicateExercise, exerciseMarkers, groupKindLabel, isLinkedWithNext, moveBlock, moveExercise,
+  supersetBlocks, toggleLinkWithNext, ungroupBlock,
+} from '@/lib/supersets';
+import { downloadBlob } from '@/lib/download';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { recheckBeforeCommit, verifyOfflineProposal } from '@/lib/offlineDraftImport.js';
+import { useAuth } from '@/context/AuthContext';
+import {
+  AuthorByline, AuthorFilter, HiddenBadge, LegacyLockDialog,
+} from '@/components/training/TemplateBits';
+import { SupersetGroups } from '@/components/training/SupersetGroups';
+import {
+  ExerciseMediaBadge, ExerciseMediaButton, ExerciseMediaDialog, LibraryMediaSummary, MediaReadinessFilter, matchesMediaFilter, useLibraryMediaStatus,
+} from '@/components/training/media/LibraryMediaControls';
+import {
+  authorOptions, chooseLibraryExercise, settleCatalogName, demoFieldsForCopy, demoFieldsFromRow, demoProblem, exerciseFilterOptions, filterByAuthor, filterExercises,
+  groupVariations, isLegacyLockError,
+} from '@/lib/trainingLibrary';
+import { DemoLinkField } from '@/components/training/DemoLinkField';
+
+const {
+  normalizeDraft,
+  normalizeName,
+  parseCsv,
+  validateDraft,
+} = draftTools;
+
+const EMPTY_LIBRARY = { name: '', category: '', equipment: '', primary_muscle: '', secondary_muscles: '', video_url: '', notes: '' };
+const EMPTY_EXERCISE = { tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null, id: '', exercise_library_id: '', custom_name: '', sets: '', reps: '', rest: '', tempo: '', target_rpe: '', default_load_value: '', default_load_unit: 'lb', prescribed_load_max: '', per_side: false, client_notes: '', coach_notes: '', video_url: '', video_link_mode: null, superset_group: null };
+// Builder rows carry a client-only _uid so accordion state follows an
+// exercise when it is reordered (the save RPC ignores unknown keys).
+let exerciseUid = 0;
+const newExerciseRow = (fields = {}) => ({ ...EMPTY_EXERCISE, ...fields, _uid: `exercise-${++exerciseUid}` });
+const emptyWorkout = () => ({ name: '', description: '', goal: '', exercises: [newExerciseRow()] });
+const EMPTY_DRAFT_EXERCISE = {
+  tracking_type: 'reps_weight', duration_value: '', duration_unit: null, distance_value: '', distance_unit: null,
+  name: '',
+  sets: '',
+  reps: '',
+  rest: '',
+  tempo: '',
+  client_notes: '',
+  coach_notes: '',
+  video_url: '',
+  category: '',
+  equipment: '',
+  primary_muscle: '',
+};
+const PROGRAM_FREQUENCIES = ['1', '2', '3', '4', '5'];
+const IMPORT_FREQUENCIES = ['3', '4', '5'];
+const PASTE_NO_EXERCISES_MESSAGE = "Couldn't find any exercises in this text.";
+
+// Keep a name the coach typed; otherwise mark the copy so it reads apart from the original.
+function variationName(formName, originalName) {
+  const typed = String(formName || '').trim();
+  return !typed || typed === originalName ? `${originalName} (variation)` : typed;
+}
+
+function frequencyLabel(value) {
+  return `${value} ${String(value) === '1' ? 'day' : 'days'}/week`;
+}
+
+export default function Programs() {
+  const confirmDiscard = useDiscardChanges();
+  const [tab, setTab] = useState('library');
+  const [library, setLibrary] = useState(null);
+  const [workouts, setWorkouts] = useState(null);
+  const [programs, setPrograms] = useState(null);
+  const [clients, setClients] = useState([]);
+  const [loadError, setLoadError] = useState(null);
+  // Only the most recently started load may apply its results, so a slow
+  // earlier response can't overwrite newer data (e.g. a just-saved workout).
+  const loadSeq = useRef(0);
+
+  const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
+    try {
+      const [lib, w, p, c] = await Promise.all([
+        api.get('/programs/exercise-library?include_hidden=true'),
+        api.get('/programs/workouts'),
+        api.get('/programs'),
+        api.get('/clients'),
+      ]);
+      if (seq !== loadSeq.current) return;
+      setLibrary(lib.data);
+      setWorkouts(w.data);
+      setPrograms(p.data);
+      setClients(c.data);
+      setLoadError(null);
+    } catch (e) {
+      if (seq !== loadSeq.current) return;
+      const message = errMsg(e, 'Failed to load training builder');
+      setLoadError(message);
+      toast.error(message);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // A save response is the freshest copy of that workout: show it right away
+  // instead of waiting for the list reload (keeps list-derived fields).
+  const catalogCreated = useCallback((item) => setLibrary((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item]), []);
+  const mergeSavedWorkout = useCallback((saved) => {
+    if (!saved?.id) return;
+    setWorkouts((current) => (current || []).map((workout) => (workout.id === saved.id ? { ...workout, ...saved } : workout)));
+  }, []);
+
+  const awaitingInitialData = !library || !workouts || !programs;
+  if (awaitingInitialData && loadError) return <LoadErrorState message={loadError} scope="coach-programs" onRetry={() => { setLoadError(null); load(); }} />;
+  if (awaitingInitialData) return <LoadingScreen />;
+
+  // Hidden exercises stay manageable on the library tab but cannot be added to workouts.
+  const pickerLibrary = library.filter((exercise) => !exercise.hidden);
+
+  return (
+    <div>
+      <PageHeader title="Training builder" />
+      <Tabs value={tab} onValueChange={(next) => { if (next === tab || confirmDiscard()) setTab(next); }}>
+        <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl tab-overflow-fade">
+          <TabsTrigger className="min-h-11" value="library" data-testid="training-builder-tab-library">Exercise Library</TabsTrigger>
+          <TabsTrigger className="min-h-11" value="workouts" data-testid="training-builder-tab-workouts">Workout Days</TabsTrigger>
+          <TabsTrigger className="min-h-11" value="programs" data-testid="training-builder-tab-programs">Programs</TabsTrigger>
+          <TabsTrigger className="min-h-11" value="assignments" data-testid="training-builder-tab-assignments">Assignments</TabsTrigger>
+        </TabsList>
+        <TabsContent value="library"><ExerciseLibraryTab library={library} reload={load} /></TabsContent>
+        <TabsContent value="workouts"><WorkoutsTab onCatalogCreated={catalogCreated} workouts={workouts} library={pickerLibrary} reload={load} onSaved={mergeSavedWorkout} /></TabsContent>
+        <TabsContent value="programs"><StructuredProgramsTab onCatalogCreated={catalogCreated} programs={programs} workouts={workouts} library={pickerLibrary} reload={load} /></TabsContent>
+        <TabsContent value="assignments"><AssignmentsTab programs={programs} workouts={workouts} clients={clients} reload={load} /></TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function LibraryFilter({ label, allLabel, value, onChange, options, testId }) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="h-11 w-full rounded-xl" aria-label={`Filter by ${label.toLowerCase()}`} data-testid={testId}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="max-h-72">
+        <SelectItem value="all">{allLabel}</SelectItem>
+        {options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function ExerciseLibraryTab({ library, reload }) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(EMPTY_LIBRARY);
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('all');
+  const [muscle, setMuscle] = useState('all');
+  const [equipment, setEquipment] = useState('all');
+  const [saving, setSaving] = useState(false);
+
+  const media = useLibraryMediaStatus();
+  const [mediaFilter, setMediaFilter] = useState('all');
+  const [mediaExercise, setMediaExercise] = useState(null);
+  const options = useMemo(() => exerciseFilterOptions(library), [library]);
+  const filtered = useMemo(
+    () => filterExercises(library, { search, category, muscle, equipment })
+      .filter((exercise) => !media.enabled || matchesMediaFilter(media.byExercise.get(exercise.id), mediaFilter)),
+    [library, search, category, muscle, equipment, media.enabled, media.byExercise, mediaFilter],
+  );
+  const filtersActive = category !== 'all' || muscle !== 'all' || equipment !== 'all' || mediaFilter !== 'all' || search.trim() !== '';
+  const clearFilters = () => {
+    setSearch('');
+    setCategory('all');
+    setMuscle('all');
+    setEquipment('all');
+    setMediaFilter('all');
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(EMPTY_LIBRARY);
+    setOpen(true);
+  };
+
+  const openEdit = (exercise) => {
+    setEditing(exercise);
+    setForm({
+      name: exercise.name || '',
+      category: exercise.category || '',
+      equipment: exercise.equipment || '',
+      primary_muscle: exercise.primary_muscle || '',
+      secondary_muscles: exercise.secondary_muscles || '',
+      video_url: exercise.video_url || '',
+      notes: exercise.notes || '',
+    });
+    setOpen(true);
+  };
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      if (editing) {
+        await api.put(`/programs/exercise-library/${editing.id}`, form);
+        toast.success('Exercise updated');
+      } else {
+        await api.post('/programs/exercise-library', form);
+        toast.success('Exercise added');
+      }
+      setOpen(false);
+      reload();
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const archive = async (exercise) => {
+    try {
+      await api.patch(`/programs/exercise-library/${exercise.id}/archive`);
+      toast.success('Exercise archived');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const toggleHidden = async (exercise) => {
+    try {
+      await api.put(`/programs/exercise-library/${exercise.id}`, { hidden: !exercise.hidden });
+      toast.success(exercise.hidden ? 'Exercise is available again' : 'Exercise hidden from workout builders');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const [importing, setImporting] = useState(false);
+
+  const importCsv = async (file, inputElement) => {
+    if (!file || importing) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const { rows } = parseCsv(text);
+      const { data } = await api.post('/programs/exercise-library/import', { rows });
+      toast.success(`Imported ${data.imported} exercises`);
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not import CSV'));
+    } finally {
+      setImporting(false);
+      // Without a reset, re-selecting the same file (a natural retry after
+      // a failure) fires no change event and the import silently no-ops.
+      if (inputElement) inputElement.value = '';
+    }
+  };
+
+  return (
+    <div className="space-y-4 mt-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search exercises..." className="h-11 rounded-xl sm:max-w-sm" data-testid="exercise-library-search-input" />
+        <div className="flex gap-2">
+          <label
+            aria-disabled={importing || undefined}
+            className={cn(
+              'inline-flex h-11 cursor-pointer items-center rounded-xl border border-border px-3 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+              importing && 'pointer-events-none opacity-50',
+            )}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.currentTarget.querySelector('input')?.click();
+              }
+            }}
+          >
+            {importing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileUp className="h-4 w-4 mr-1.5" />} Import CSV
+            <input type="file" accept=".csv,text/csv" className="hidden" disabled={importing} onChange={(e) => importCsv(e.target.files?.[0], e.target)} data-testid="exercise-library-import-input" />
+          </label>
+          <Button size="touch" className="rounded-xl" onClick={openCreate} data-testid="exercise-library-create-button">
+            <Plus className="h-4 w-4 mr-1.5" /> Add exercise
+          </Button>
+        </div>
+      </div>
+      <div className={cn('grid grid-cols-1 gap-2', media.enabled ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3')} data-testid="exercise-library-filters">
+        <LibraryFilter label="Category" allLabel="All categories" value={category} onChange={setCategory} options={options.categories} testId="exercise-library-filter-category" />
+        <LibraryFilter label="Muscle" allLabel="All muscles" value={muscle} onChange={setMuscle} options={options.muscles} testId="exercise-library-filter-muscle" />
+        <LibraryFilter label="Equipment" allLabel="All equipment" value={equipment} onChange={setEquipment} options={options.equipment} testId="exercise-library-filter-equipment" />
+        {media.enabled && <MediaReadinessFilter value={mediaFilter} onChange={setMediaFilter} />}
+      </div>
+      {media.enabled && <LibraryMediaSummary summary={media.summary} />}
+      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <p aria-live="polite" data-testid="exercise-library-count">
+          {filtersActive ? `Showing ${filtered.length} of ${library.length} exercises` : `${library.length} exercises`}
+        </p>
+        {filtersActive && (
+          <Button type="button" variant="ghost" size="sm" className="h-8 rounded-lg px-2 text-xs" onClick={clearFilters} data-testid="exercise-library-clear-filters">Clear filters</Button>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">CSV columns: name, category, equipment, primary_muscle, secondary_muscles, video_url, notes</p>
+      {filtered.length === 0 && (
+        <EmptyState
+          icon={BookOpen}
+          title="No exercises found"
+          subtitle={library.length ? 'Nothing matches these filters. Try clearing them.' : 'Import a CSV or add an exercise manually.'}
+        />
+      )}
+      <div className="grid gap-3 md:grid-cols-2">
+        {filtered.map((exercise) => (
+          <Card key={exercise.id} className="min-w-0" data-testid="exercise-library-card">
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 font-medium [overflow-wrap:anywhere]">{exercise.name}{exercise.hidden && <HiddenBadge />}{media.enabled && <ExerciseMediaBadge item={media.byExercise.get(exercise.id)} />}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {[exercise.category, exercise.equipment, exercise.primary_muscle].filter(Boolean).join(' - ') || 'No tags'}
+                  </p>
+                  {safeHttpUrl(exercise.video_url) && <a href={safeHttpUrl(exercise.video_url)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">External video</a>}
+                </div>
+                <div className="flex gap-1.5">
+                  {media.enabled && <ExerciseMediaButton exercise={exercise} onOpen={setMediaExercise} />}
+                  <IconButton label={exercise.hidden ? `Unhide ${exercise.name}` : `Hide ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(exercise)} data-testid="exercise-library-hide-button">{exercise.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</IconButton>
+                  <IconButton label={`Edit ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(exercise)} data-testid="exercise-library-edit-button"><Pencil className="h-3.5 w-3.5" /></IconButton>
+                  <IconButton label={`Archive ${exercise.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(exercise)} data-testid="exercise-library-archive-button"><Archive className="h-3.5 w-3.5" /></IconButton>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-lg grid-cols-1 overflow-y-auto [&>button]:h-11 [&>button]:w-11">
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Edit exercise' : 'Add exercise'}</DialogTitle>
+                      </DialogHeader>
+          <form onSubmit={save} className="space-y-3.5">
+            <LabeledField label="Exercise name"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Exercise name" data-testid="exercise-library-name-input" /></LabeledField>
+            <div className="grid grid-cols-2 gap-3">
+              <LabeledField label="Category"><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Category" data-testid="exercise-library-category-input" /></LabeledField>
+              <LabeledField label="Equipment"><Input value={form.equipment} onChange={(e) => setForm({ ...form, equipment: e.target.value })} placeholder="Equipment" data-testid="exercise-library-equipment-input" /></LabeledField>
+              <LabeledField label="Primary muscle"><Input value={form.primary_muscle} onChange={(e) => setForm({ ...form, primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="exercise-library-primary-muscle-input" /></LabeledField>
+              <LabeledField label="Secondary muscles"><Input value={form.secondary_muscles} onChange={(e) => setForm({ ...form, secondary_muscles: e.target.value })} placeholder="Secondary muscles" data-testid="exercise-library-secondary-muscles-input" /></LabeledField>
+            </div>
+            <LabeledField label="External video link (optional)"><Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="https://… (opens in a new tab)" data-testid="exercise-library-video-input" /></LabeledField>
+            <LabeledField label="Notes"><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" data-testid="exercise-library-notes-input" /></LabeledField>
+            <DialogFooter><Button size="touch" disabled={saving} className="rounded-xl" data-testid="exercise-library-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save exercise'}</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <ExerciseMediaDialog exercise={mediaExercise} onClose={() => setMediaExercise(null)} onChanged={media.reload} />
+    </div>
+  );
+}
+
+function LabeledField({ label, children }) {
+  const id = useId();
+  return <div className="min-w-0 flex-1 space-y-1"><Label htmlFor={id}>{label}</Label>{cloneElement(children, { id, className: cn('min-h-11', children.props.className) })}</div>;
+}
+
+export function workoutToForm(workout) {
+  return {
+    name: workout.name || '',
+    description: workout.description || '',
+    goal: workout.goal || '',
+    exercises: workout.exercises.length ? workout.exercises.map((ex) => newExerciseRow({
+      id: ex.id || '',
+      exercise_library_id: ex.exercise_library_id || '',
+      custom_name: ex.custom_name || ex.library_exercise?.name || '',
+      sets: ex.sets || '',
+      reps: ex.reps || '',
+      tracking_type: trackingType(ex), duration_value: ex.duration_value ?? '', duration_unit: ex.duration_unit,
+      distance_value: ex.distance_value ?? '', distance_unit: ex.distance_unit,
+      rest: ex.rest || '',
+      tempo: ex.tempo || '',
+      target_rpe: ex.target_rpe || '',
+      default_load_value: ex.default_load_value ?? '',
+      default_load_unit: ex.default_load_unit || 'lb',
+      prescribed_load_max: ex.prescribed_load_max ?? '',
+      per_side: ex.per_side === true,
+      client_notes: ex.client_notes || ex.notes || '',
+      coach_notes: ex.coach_notes || '',
+      // Never the library link: an inheriting row follows the library live.
+      ...demoFieldsFromRow(ex),
+      superset_group: ex.superset_group || null,
+    })) : [newExerciseRow()],
+  };
+}
+
+function WorkoutsTab({ workouts, library, reload, onSaved, onCatalogCreated }) {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(emptyWorkout);
+  const [saving, setSaving] = useState(false);
+  const [author, setAuthor] = useState('all');
+  const [lock, setLock] = useState(null);
+  const groups = groupVariations(filterByAuthor(workouts, author, user?.profile?.id));
+  const liveEditing = editing ? (workouts.find((w) => w.id === editing.id) || editing) : null;
+  // Desktop two-pane (UI-6): the editor lives beside the list instead of
+  // in the dialog; mobile keeps the dialog flow with the same state.
+  const [paneActive, setPaneActive] = useState(false);
+  // Bumped on every selection change. A save response may only touch the
+  // editor if nothing was selected while it was in flight; otherwise it
+  // would retarget the editor (or reset the form) under another workout.
+  const selectionSeq = useRef(0);
+  // Forms of saves still in flight, by workout id. Until a save lands the
+  // list still holds the pre-save copy, so re-opening that workout must
+  // show what is being saved, not the stale list row.
+  const inFlightForms = useRef(new Map());
+  const formFor = (workout) => inFlightForms.current.get(workout.id) || workoutToForm(workout);
+  const changes = useFormChanges(form, `${editing?.id || 'new'}:${open || paneActive}`, open || paneActive);
+
+  const openCreate = () => {
+    if (!changes.confirmDiscard()) return;
+    selectionSeq.current += 1;
+    setEditing(null);
+    setForm(emptyWorkout());
+    setOpen(true);
+  };
+
+  const openEdit = (workout) => {
+    if (!changes.confirmDiscard()) return;
+    selectionSeq.current += 1;
+    setEditing(workout);
+    setForm(formFor(workout));
+    setOpen(true);
+  };
+
+  const selectCreate = () => {
+    if (!changes.confirmDiscard()) return;
+    selectionSeq.current += 1;
+    setEditing(null);
+    setForm(emptyWorkout());
+    setPaneActive(true);
+  };
+
+  const selectEdit = (workout) => {
+    if (!changes.confirmDiscard()) return;
+    selectionSeq.current += 1;
+    setEditing(workout);
+    setForm(formFor(workout));
+    setPaneActive(true);
+  };
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (!form.exercises.some((ex) => ex.exercise_library_id || ex.custom_name.trim())) {
+      toast.error('Add at least one exercise');
+      return;
+    }
+    const demoIssue = form.exercises.map(demoProblem).find(Boolean);
+    if (demoIssue) {
+      toast.error(`Demo video: ${demoIssue}`);
+      return;
+    }
+    setSaving(true);
+    const seq = selectionSeq.current;
+    const stillSelected = () => selectionSeq.current === seq;
+    const savingId = editing?.id;
+    if (savingId) inFlightForms.current.set(savingId, form);
+    try {
+      if (editing) {
+        const { data: saved } = await api.put(`/programs/workouts/${editing.id}`, form);
+        // Re-selecting this workout before the reload lands must open the
+        // saved version, or a second save would write the stale form back.
+        onSaved?.(saved);
+        // Only the workout that was saved may absorb the response.
+        setEditing((current) => (current?.id === saved.id ? { ...current, ...saved } : current));
+        toast.success('Workout updated');
+      } else {
+        await api.post('/programs/workouts', form);
+        toast.success('Workout created');
+        // A second submit of the same pane form would create a duplicate —
+        // but don't wipe another workout the coach opened meanwhile.
+        if (stillSelected()) {
+          setForm(emptyWorkout());
+          setPaneActive(false);
+        }
+      }
+      if (stillSelected()) { changes.markSaved(); setOpen(false); }
+      reload();
+    } catch (err) {
+      if (isLegacyLockError(err)) setLock({ message: err.response.data.error });
+      else toast.error(errMsg(err));
+    } finally {
+      // Settled: the list now holds the saved copy (or, on failure, the
+      // server's unchanged one), so re-opens read the list again.
+      if (savingId && inFlightForms.current.get(savingId) === form) inFlightForms.current.delete(savingId);
+      setSaving(false);
+    }
+  };
+
+  // The original is live-assigned, so the edits go to a new hidden variation instead.
+  const saveVariationFromLock = async () => {
+    setSaving(true);
+    const seq = selectionSeq.current;
+    try {
+      const { data: copy } = await api.post(`/programs/workouts/${editing.id}/save-as-template`, {});
+      await api.put(`/programs/workouts/${copy.id}`, { ...form, name: variationName(form.name, editing.name) });
+      toast.success('Saved as a hidden variation. Unhide it when it is ready to assign.');
+      setLock(null);
+      if (selectionSeq.current === seq) {
+        setOpen(false);
+        setPaneActive(false);
+      }
+      reload();
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleHidden = async (workout) => {
+    try {
+      await api.patch(`/programs/workouts/${workout.id}/hidden`, { hidden: !workout.hidden });
+      toast.success(workout.hidden ? 'Workout is available to assign' : 'Workout hidden from assignment');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  // One copy per tap: a double tap (or a second tap while the first is in
+  // flight) must not create a second hidden variation.
+  const duplicating = useRef(new Set());
+  const duplicate = async (workout) => {
+    if (duplicating.current.has(workout.id)) return;
+    duplicating.current.add(workout.id);
+    try {
+      await api.post(`/programs/workouts/${workout.id}/save-as-template`, {});
+      toast.success('Saved a hidden variation. Unhide it when it is ready to assign.');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      duplicating.current.delete(workout.id);
+    }
+  };
+
+  const archive = async (workout) => {
+    try {
+      await api.patch(`/programs/workouts/${workout.id}/archive`);
+      toast.success('Workout archived');
+      if (editing?.id === workout.id) setPaneActive(false);
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  return (
+    <div className="space-y-4 mt-1">
+      <div className="flex justify-end lg:hidden">
+        <Button size="touch" className="rounded-xl" onClick={openCreate} data-testid="workout-create-button"><Plus className="h-4 w-4 mr-1.5" /> New workout day</Button>
+      </div>
+      {workouts.length > 0 && (
+        <AuthorFilter value={author} onChange={setAuthor} options={authorOptions(workouts)} testId="workout-author-filter" />
+      )}
+      {workouts.length === 0 && <EmptyState icon={Dumbbell} title="No workout days yet" subtitle="Create reusable day templates from library exercises or custom movements." />}
+
+      {/* ---------- Desktop: list rail + persistent editor pane ---------- */}
+      <div className="hidden lg:grid lg:h-[calc(100dvh-320px)] lg:min-h-[480px] lg:grid-cols-[300px_1fr] lg:gap-6">
+        <aside className="min-h-0 space-y-2 overflow-y-auto pr-1" data-testid="workout-rail">
+          <Button size="touch" className="w-full rounded-xl" onClick={selectCreate} data-testid="workout-rail-create">
+            <Plus className="h-4 w-4 mr-1.5" /> New workout day
+          </Button>
+          {groups.map(({ item, children }) => (
+            <div key={item.id} className="space-y-2" data-testid="workout-rail-group">
+              <WorkoutRailRow workout={item} active={paneActive && editing?.id === item.id} onSelect={selectEdit} />
+              {children.length > 0 && (
+                <div className="ml-4 space-y-2 border-l border-border pl-3" data-testid="workout-variations">
+                  {children.map((child) => (
+                    <WorkoutRailRow key={child.id} workout={child} active={paneActive && editing?.id === child.id} onSelect={selectEdit} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </aside>
+        <section className="flex min-h-0 min-w-0 flex-col overflow-y-auto rounded-2xl border border-border bg-card/40 p-5" data-testid="workout-editor-pane">
+          {!paneActive ? (
+            <div className="flex flex-1 items-center justify-center">
+              <EmptyState icon={Dumbbell} title="Select a workout day" subtitle="Pick a day from the list to edit it here, or start a new one." testId="workout-editor-empty" />
+            </div>
+          ) : (
+            <>
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-primary/[0.08] px-4 py-3" data-testid="workout-editor-header">
+                <div className="min-w-0">
+                  <h3 className="truncate font-display text-xl font-semibold">{editing ? editing.name : 'New workout day'}</h3>
+                  {liveEditing && <div className="flex items-center gap-2"><AuthorByline author={liveEditing.author} />{liveEditing.hidden && <HiddenBadge />}</div>}
+                </div>
+                {editing && (
+                  <div className="flex shrink-0 gap-1">
+                    <IconButton label={`Save a variation of ${editing.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => duplicate(editing)} data-testid="workout-editor-duplicate">
+                      <Copy className="h-4 w-4" />
+                    </IconButton>
+                    <IconButton label={liveEditing.hidden ? `Unhide ${editing.name}` : `Hide ${editing.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(liveEditing)} data-testid="workout-editor-hide">
+                      {liveEditing.hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                    </IconButton>
+                    <IconButton label={`Archive ${editing.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(editing)} data-testid="workout-editor-archive">
+                      <Archive className="h-4 w-4" />
+                    </IconButton>
+                  </div>
+                )}
+              </div>
+              <WorkoutFormFields onCatalogCreated={onCatalogCreated} key={selectionSeq.current} form={form} setForm={setForm} library={library} saving={saving} onSubmit={save} />
+            </>
+          )}
+        </section>
+      </div>
+
+      {/* ---------- Mobile: card grid + dialog (unchanged flow) ---------- */}
+      <div className="grid gap-3 md:grid-cols-2 lg:hidden">
+        {groups.map(({ item, children }) => (
+          <div key={item.id} className="min-w-0 space-y-2">
+            {[item, ...children].map((workout, position) => (
+          <Card key={workout.id} data-testid="workout-card" className={position > 0 ? 'ml-4 border-l-2 border-l-primary/30' : undefined}>
+            <CardHeader className="pb-2">
+              <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                <div className="min-w-0 flex-1 basis-40">
+                  <CardTitle className="text-base font-display">{workout.name}</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">{workout.goal || workout.description || 'Workout day template'}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"><AuthorByline author={workout.author} className="whitespace-nowrap" />{workout.hidden && <HiddenBadge />}</div>
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  <IconButton label={`Save a variation of ${workout.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => duplicate(workout)} data-testid="workout-duplicate-button"><Copy className="h-3.5 w-3.5" /></IconButton>
+                  <IconButton label={workout.hidden ? `Unhide ${workout.name}` : `Hide ${workout.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(workout)} data-testid="workout-hide-button">{workout.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</IconButton>
+                  <IconButton label={`Edit ${workout.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(workout)} data-testid="workout-edit-button"><Pencil className="h-3.5 w-3.5" /></IconButton>
+                  <IconButton label={`Archive ${workout.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(workout)} data-testid="workout-archive-button"><Archive className="h-3.5 w-3.5" /></IconButton>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="exercises" className="last:border-b-0">
+                  <AccordionTrigger className="min-h-11 py-2 hover:no-underline">
+                    <span className="flex items-center gap-2">
+                      Exercises
+                      <Badge variant="outline" className="text-muted-foreground">{workout.exercise_count}</Badge>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-1">
+                    <div className="space-y-1.5">
+                      <SupersetGroups exercises={workout.exercises} innerClassName="space-y-1.5">{(ex, { marker }) => (
+                        <p className="text-sm text-muted-foreground"><span className="tabular-nums">{marker}.</span> {exerciseName(ex)}</p>
+                      )}</SupersetGroups>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </CardContent>
+          </Card>
+            ))}
+          </div>
+        ))}
+      </div>
+      <WorkoutDialog onCatalogCreated={onCatalogCreated} open={open} onOpenChange={setOpen} form={form} setForm={setForm} library={library} saving={saving} onSubmit={save} editing={editing} />
+      <LegacyLockDialog open={Boolean(lock)} message={lock?.message} busy={saving} onCancel={() => setLock(null)} onSaveVariation={saveVariationFromLock} />
+    </div>
+  );
+}
+
+function WorkoutRailRow({ workout, active, onSelect }) {
+  return (
+    <button
+      onClick={() => onSelect(workout)}
+      aria-current={active ? 'true' : undefined}
+      className={cn(
+        'w-full rounded-xl border px-4 py-3 text-left transition-colors',
+        active
+          ? 'border-l-[3px] border-l-primary border-primary/40 bg-primary/15'
+          : 'border-border bg-card/60 hover:bg-card',
+      )}
+      data-testid="workout-rail-row"
+    >
+      <p className="truncate font-medium">{workout.name}</p>
+      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+        {workout.goal || workout.description || 'Workout day'} · {workout.exercise_count} exercise{workout.exercise_count === 1 ? '' : 's'}
+      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <AuthorByline author={workout.author} className="whitespace-nowrap" />
+        {workout.hidden && <HiddenBadge />}
+      </div>
+    </button>
+  );
+}
+
+function StructuredProgramsTab({ programs, workouts, library, reload, onCatalogCreated }) {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ name: '', description: '', frequency_days: '3', days: [] });
+  const [saving, setSaving] = useState(false);
+  const [author, setAuthor] = useState('all');
+  const [lock, setLock] = useState(null);
+  const changes = useFormChanges(form, `${editing?.id || "new"}:${open}`, open);
+  const groups = groupVariations(filterByAuthor(programs, author, user?.profile?.id));
+
+  const resetDays = (frequency, existing = []) => Array.from({ length: Number(frequency) }, (_, i) => ({
+    day_number: i + 1,
+    workout_id: existing.find((d) => Number(d.day_number) === i + 1)?.workout_id || '',
+    notes: existing.find((d) => Number(d.day_number) === i + 1)?.notes || '',
+  }));
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ name: '', description: '', frequency_days: '3', days: resetDays(3) });
+    setOpen(true);
+  };
+
+  const openEdit = (program) => {
+    setEditing(program);
+    const frequency = String(program.frequency_days || 3);
+    setForm({
+      name: program.name || '',
+      description: program.description || '',
+      frequency_days: frequency,
+      days: resetDays(frequency, program.days || []),
+    });
+    setOpen(true);
+  };
+
+  const setFrequency = (frequency) => setForm({ ...form, frequency_days: frequency, days: resetDays(frequency, form.days) });
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (form.days.some((day) => !day.workout_id)) {
+      toast.error('Assign one workout to each program day');
+      return;
+    }
+    setSaving(true);
+    try {
+      if (editing) {
+        await api.put(`/programs/${editing.id}`, form);
+        toast.success('Program updated');
+      } else {
+        await api.post('/programs', form);
+        toast.success('Program created');
+      }
+      setOpen(false);
+      reload();
+    } catch (err) {
+      if (isLegacyLockError(err)) setLock({ message: err.response.data.error });
+      else toast.error(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // The original is live-assigned, so the edits go to a new hidden variation instead.
+  const saveVariationFromLock = async () => {
+    setSaving(true);
+    try {
+      const { data: copy } = await api.post(`/programs/${editing.id}/save-as-template`, {});
+      await api.put(`/programs/${copy.id}`, { ...form, name: variationName(form.name, editing.name) });
+      toast.success('Saved as a hidden variation. Unhide it when it is ready to assign.');
+      setLock(null);
+      setOpen(false);
+      reload();
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleHidden = async (program) => {
+    try {
+      await api.patch(`/programs/${program.id}/hidden`, { hidden: !program.hidden });
+      toast.success(program.hidden ? 'Program is available to assign' : 'Program hidden from assignment');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  // One copy per tap: a double tap (or a second tap while the first is in
+  // flight) must not create a second hidden variation.
+  const duplicating = useRef(new Set());
+  const duplicate = async (program) => {
+    if (duplicating.current.has(program.id)) return;
+    duplicating.current.add(program.id);
+    try {
+      await api.post(`/programs/${program.id}/save-as-template`, {});
+      toast.success('Saved a hidden variation. Unhide it when it is ready to assign.');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      duplicating.current.delete(program.id);
+    }
+  };
+
+  const archive = async (program) => {
+    try {
+      await api.patch(`/programs/${program.id}/archive`);
+      toast.success('Program archived');
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const exportPdf = async (program) => {
+    try {
+      const { data, headers } = await api.get(`/programs/${program.id}/export.pdf`, { responseType: 'blob' });
+      const disposition = headers?.['content-disposition'] || '';
+      const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `CVF-${program.name.replace(/[^a-z0-9]+/gi, '-')}.pdf`;
+      downloadBlob(data, filename, 'application/pdf');
+      toast.success('PDF export ready');
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not export PDF'));
+    }
+  };
+
+  return (
+    <div className="space-y-4 mt-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button variant="secondary" className="rounded-xl" onClick={() => setImportOpen(true)} data-testid="program-import-open-button"><FileUp className="h-4 w-4 mr-1.5" /> Import program</Button>
+        <Button className="rounded-xl" onClick={openCreate} data-testid="program-create-button"><Plus className="h-4 w-4 mr-1.5" /> New program</Button>
+      </div>
+      {programs.length > 0 && (
+        <AuthorFilter value={author} onChange={setAuthor} options={authorOptions(programs)} testId="program-author-filter" />
+      )}
+      {programs.length === 0 && <EmptyState icon={CalendarDays} title="No structured programs yet" subtitle="Build a 1-5 day weekly program from saved workout days." />}
+      <div className="space-y-3">
+        {groups.map(({ item, children }) => (
+          <div key={item.id} className="min-w-0 space-y-3" data-testid="program-group">
+            {[item, ...children].map((program, position) => (
+          <Card key={program.id} data-testid="program-card" className={position > 0 ? 'ml-4 border-l-2 border-l-primary/30' : undefined}>
+            <CardContent className="p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-display font-semibold">{program.name}</p>
+                  <RescuePreviewEntry programId={program.id} dayId={program.days?.[0]?.id} programName={program.name} />
+                  <p className="text-xs text-muted-foreground mt-1">{frequencyLabel(program.frequency_days)} - {program.exercise_count} total exercises</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"><AuthorByline author={program.author} className="whitespace-nowrap" />{program.hidden && <HiddenBadge />}</div>
+                  <Accordion
+                    type="multiple"
+                    defaultValue={(program.days || []).length ? [`day-${program.days[0].day_number}`] : []}
+                    className="mt-3 w-full"
+                  >
+                    {(program.days || []).map((day) => (
+                      <AccordionItem key={day.id || day.day_number} value={`day-${day.day_number}`} className="last:border-b-0">
+                        <AccordionTrigger className="min-h-11 py-2.5 hover:no-underline">
+                          <span className="text-left">
+                            <span className="block text-xs font-semibold text-muted-foreground">Day {day.day_number}</span>
+                            <span className="mt-0.5 block text-sm font-medium">{day.workout?.name || 'No workout'}</span>
+                          </span>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-3">
+                          {day.notes && <p className="mb-2 text-xs text-muted-foreground">{day.notes}</p>}
+                          {(day.workout?.exercises || []).length > 0 ? (
+                            <div className="space-y-1.5">
+                              <SupersetGroups exercises={day.workout.exercises} innerClassName="space-y-1.5">{(exercise, { marker }) => (
+                                <p className="text-sm text-muted-foreground">
+                                  <span className="mr-2 tabular-nums">{marker}.</span>{exerciseName(exercise)}
+                                </p>
+                              )}</SupersetGroups>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">No exercise details available.</p>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                </div>
+                <div className="flex flex-wrap gap-1.5 sm:shrink-0 sm:justify-end">
+                  <ProgramHistoryButton programId={program.id} programName={program.name} clientName={program.is_template === false ? 'Client program' : null} />
+                  <IconButton label={`Save a variation of ${program.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => duplicate(program)} data-testid="program-duplicate-button"><Copy className="h-3.5 w-3.5" /></IconButton>
+                  <IconButton label={program.hidden ? `Unhide ${program.name}` : `Hide ${program.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => toggleHidden(program)} data-testid="program-hide-button">{program.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</IconButton>
+                  <IconButton label={`Export ${program.name} as PDF`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => exportPdf(program)} data-testid="program-export-pdf-button"><Download className="h-3.5 w-3.5" /></IconButton>
+                  <IconButton label={`Edit ${program.name}`} size="touchIcon" variant="ghost" className="rounded-lg" onClick={() => openEdit(program)} data-testid="program-edit-button"><Pencil className="h-3.5 w-3.5" /></IconButton>
+                  <IconButton label={`Archive ${program.name}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => archive(program)} data-testid="program-archive-button"><Archive className="h-3.5 w-3.5" /></IconButton>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+            ))}
+          </div>
+        ))}
+      </div>
+      <LegacyLockDialog open={Boolean(lock)} message={lock?.message} busy={saving} onCancel={() => setLock(null)} onSaveVariation={saveVariationFromLock} />
+      <Dialog open={open} onOpenChange={(next) => { if (next || changes.confirmDiscard()) setOpen(next); }}>
+        <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Edit program' : 'New structured program'}</DialogTitle>
+                      </DialogHeader>
+          <form onSubmit={save} className="space-y-4">
+            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Program name" data-testid="program-name-input" />
+            <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Program description" data-testid="program-description-input" />
+            <div className="space-y-1.5">
+              <Label>Days per week</Label>
+              <Select value={form.frequency_days} onValueChange={setFrequency}>
+                <SelectTrigger className="rounded-xl" data-testid="program-frequency-select"><SelectValue /></SelectTrigger>
+                <SelectContent>{PROGRAM_FREQUENCIES.map((d) => <SelectItem key={d} value={d}>{frequencyLabel(d)}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-3">
+              {form.days.map((day, index) => (
+                <div key={day.day_number} className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
+                  <Label>Day {day.day_number}</Label>
+                  <Select value={day.workout_id} onValueChange={(workout_id) => setForm({ ...form, days: form.days.map((d, i) => i === index ? { ...d, workout_id } : d) })}>
+                    <SelectTrigger className="rounded-xl" data-testid="program-day-workout-select"><SelectValue placeholder="Choose workout day..." /></SelectTrigger>
+                    <SelectContent>{workouts.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Input value={day.notes} onChange={(e) => setForm({ ...form, days: form.days.map((d, i) => i === index ? { ...d, notes: e.target.value } : d) })} placeholder="Day notes" data-testid="program-day-notes-input" />
+                </div>
+              ))}
+            </div>
+            <DialogFooter><Button disabled={saving} className="rounded-xl" data-testid="program-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save program'}</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <ProgramImportDialog onCatalogCreated={onCatalogCreated} open={importOpen} onOpenChange={setImportOpen} library={library} reload={reload} />
+    </div>
+  );
+}
+
+// Proposal saves whose outcome is unknown (lost reply or 5xx), by canonical
+// proposal hash, for the rest of this page session: checking the same proposal
+// again keeps Save blocked. Nothing in the page lifts it; a reload forgets it.
+const unresolvedProposalSaves = new Map();
+
+// New programs with the same name as an unknown-outcome save: candidates for
+// the coach to inspect. A list read is not a write receipt, so a match never
+// confirms that this save was created, and no match never shows it failed.
+function findPossibleMatches(programs, outcome) {
+  const name = String(outcome.sent.program.name || '').trim().toLowerCase();
+  return (Array.isArray(programs) ? programs : [])
+    .filter((program) => !outcome.baselineIds.includes(program.id) && String(program.name || '').trim().toLowerCase() === name)
+    .map((program) => ({ id: program.id, name: program.name, days: Array.isArray(program.days) ? program.days.length : null }));
+}
+
+function ProgramImportDialog({ open, onOpenChange, library: initialLibrary, reload, onCatalogCreated: notifyCreated }) {
+  const [library, rememberCreated] = useBuilderCatalog(initialLibrary);
+  const onCatalogCreated = (item) => { rememberCreated(item); notifyCreated?.(item); };
+  const [sourceType, setSourceType] = useState('csv');
+  const [file, setFile] = useState(null);
+  const [pasteText, setPasteText] = useState('');
+  const [pasteError, setPasteError] = useState('');
+  const [draft, setDraft] = useState(null);
+  const [errors, setErrors] = useState([]);
+  const [openReviewDays, setOpenReviewDays] = useState([]);
+  const [parsing, setParsing] = useState(false);
+  // Bumped on close: a parse reply for a discarded import must not repopulate it.
+  const parseSeq = useRef(0);
+  const [saving, setSaving] = useState(false);
+  // Offline draft proposal (MOCK companion export): verified identity, refusal,
+  // the coach's explicit review confirmation, and an honest save failure.
+  const [proposal, setProposal] = useState(null);
+  const [proposalRefusal, setProposalRefusal] = useState(null);
+  const [proposalConfirmed, setProposalConfirmedState] = useState(false);
+  // How the last proposal save ended when it did not succeed:
+  // refused (definitely not written), stale (not sent: the draft changed during
+  // the final check) or unknown (sent; the reply was lost or a 5xx). Unknown is
+  // never resolved by a list read; it lasts for this page session.
+  const [saveOutcome, setSaveOutcome] = useState(null);
+  const [postPending, setPostPending] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
+  // One save per tap: a second tap during the re-check or write is ignored.
+  const committingProposal = useRef(false);
+  // While the POST is in flight the form is frozen and the dialog cannot close.
+  const postInFlight = useRef(false);
+  // Each edit makes a new draft revision; the coach's tick approves exactly one.
+  const draftRevision = useRef(0);
+  const approvedRevision = useRef(-1);
+  const setProposalConfirmed = (value) => {
+    approvedRevision.current = value ? draftRevision.current : -1;
+    setProposalConfirmedState(value);
+  };
+  // Ends an unsent proposal save (close, discard, source change, new file or
+  // check): bumping parseSeq makes its catalog reply a no-op.
+  const invalidateProposalSave = () => {
+    parseSeq.current += 1;
+    committingProposal.current = false;
+    setSaving(false);
+  };
+  const resetProposal = () => {
+    invalidateProposalSave();
+    setProposal(null);
+    setProposalRefusal(null);
+    setProposalConfirmed(false);
+    setSaveOutcome(null);
+    setReconciling(false);
+  };
+
+  const changes = useFormChanges({ pasteText, fileName: file?.name, draft }, open, open);
+  const validation = draft ? validateDraft(draft) : { valid: false, errors: [] };
+  const exercisePlan = draft ? summarizeExercisePlan(draft, library) : { reused: [], created: [] };
+  const requiredReviewDays = draft ? reviewAttentionDayValues(draft, [...errors, ...validation.errors], exercisePlan.created) : [];
+  const availableReviewDays = draft ? draft.days.map((_, index) => `day-${index}`) : [];
+  const reviewOpenValues = [...new Set([
+    ...openReviewDays.filter((value) => availableReviewDays.includes(value)),
+    ...requiredReviewDays,
+  ])];
+  if (draft && reviewOpenValues.length === 0 && availableReviewDays.length > 0) reviewOpenValues.push(availableReviewDays[0]);
+
+  const close = (value, saved = false) => {
+    // A sent save cannot be called off; the dialog stays until its reply.
+    if (!value && postInFlight.current) return;
+    if (!value && !saved && !changes.confirmDiscard()) return;
+    if (!value && !saved && saveOutcome?.kind === 'unknown') {
+      toast.warning(`Save outcome unknown: check Programs for "${saveOutcome.sent.program.name}" before importing it again.`, { duration: 10_000 });
+      reload();
+    }
+    onOpenChange(value);
+    if (!value) {
+      parseSeq.current += 1;
+      setParsing(false);
+      setFile(null);
+      setPasteText('');
+      setPasteError('');
+      setDraft(null);
+      setErrors([]);
+      setOpenReviewDays([]);
+      setSourceType('csv');
+      resetProposal();
+    }
+  };
+
+  const selectSource = (nextSource) => {
+    if (nextSource !== sourceType && !changes.confirmDiscard()) return;
+    if (sourceType === 'paste' || nextSource === 'paste' || sourceType === 'proposal' || nextSource === 'proposal') {
+      resetProposal();
+      parseSeq.current += 1;
+      setParsing(false);
+      setFile(null);
+      setPasteText('');
+      setPasteError('');
+      setDraft(null);
+      setErrors([]);
+      setOpenReviewDays([]);
+    }
+    setSourceType(nextSource);
+  };
+
+  const downloadTemplate = async () => {
+    try {
+      const { data } = await api.get('/programs/import/template.csv', { responseType: 'blob' });
+      downloadBlob(data, 'CVF-program-import-template.csv', 'text/csv');
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not download template'));
+    }
+  };
+
+  const parseFile = async () => {
+    if (!file) return toast.error('Choose a file to import');
+    const seq = ++parseSeq.current;
+    setParsing(true);
+    setErrors([]);
+    setOpenReviewDays([]);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const endpoint = sourceType === 'pdf' ? '/programs/import/parse-pdf' : '/programs/import/parse-csv';
+      const { data } = await api.post(endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (seq !== parseSeq.current) return;
+      setDraft(normalizeDraft(data.draft));
+      setErrors(data.errors || []);
+      toast.success(data.message || 'Import parsed. Review before saving.');
+    } catch (e) {
+      if (seq !== parseSeq.current) return;
+      const response = e.response?.data;
+      if (response?.draft) setDraft(normalizeDraft(response.draft));
+      setErrors(response?.errors || []);
+      toast.error(errMsg(e, 'Could not parse import'));
+    } finally {
+      if (seq === parseSeq.current) setParsing(false);
+    }
+  };
+
+  const loadLibraryRows = async () => (await api.get('/programs/exercise-library?include_hidden=true')).data;
+
+  const checkProposal = async () => {
+    if (!file) return toast.error('Choose a proposal file');
+    // A new check ends any unsent save of the previous one first.
+    resetProposal();
+    const seq = ++parseSeq.current;
+    setParsing(true);
+    setDraft(null);
+    setErrors([]);
+    setOpenReviewDays([]);
+    try {
+      let envelope;
+      try {
+        envelope = JSON.parse(await file.text());
+      } catch {
+        envelope = undefined;
+      }
+      const result = envelope === undefined
+        ? { ok: false, refusal: { code: 'invalid_proposal_file', message: 'This file is not JSON.', errors: [] } }
+        : await verifyOfflineProposal(envelope, await loadLibraryRows());
+      if (seq !== parseSeq.current) return;
+      if (!result.ok) {
+        setProposalRefusal(result.refusal);
+        return;
+      }
+      draftRevision.current += 1;
+      setProposal(result);
+      setDraft(normalizeDraft(result.draft));
+      const unresolved = unresolvedProposalSaves.get(result.identity.proposal_sha256);
+      if (unresolved) setSaveOutcome(unresolved);
+    } catch (e) {
+      if (seq !== parseSeq.current) return;
+      setProposalRefusal({ code: 'catalog_unavailable', message: errMsg(e, 'Could not load the exercise catalog to check this proposal.'), errors: [] });
+    } finally {
+      if (seq === parseSeq.current) setParsing(false);
+    }
+  };
+
+  const showPasteDraft = (response) => {
+    const nextDraft = normalizeDraft(response.draft);
+    setOpenReviewDays([]);
+    setDraft(nextDraft);
+    setErrors(response.errors || validateDraft(nextDraft).errors);
+    setPasteError('');
+    toast.success(response.message || 'Text parsed. Review before saving.');
+  };
+
+  const parsePaste = async () => {
+    if (!pasteText.trim()) {
+      setDraft(null);
+      setErrors([]);
+      setOpenReviewDays([]);
+      setPasteError(PASTE_NO_EXERCISES_MESSAGE);
+      return;
+    }
+    const seq = ++parseSeq.current;
+    setParsing(true);
+    setDraft(null);
+    setErrors([]);
+    setOpenReviewDays([]);
+    setPasteError('');
+    try {
+      const { data } = await api.post('/programs/import/parse-paste', { text: pasteText });
+      if (seq !== parseSeq.current) return;
+      showPasteDraft(data);
+    } catch (e) {
+      if (seq !== parseSeq.current) return;
+      const response = e.response?.data;
+      if (response?.draft) {
+        showPasteDraft(response);
+      } else {
+        const message = response?.error || errMsg(e, PASTE_NO_EXERCISES_MESSAGE);
+        setPasteError(message);
+      }
+    } finally {
+      if (seq === parseSeq.current) setParsing(false);
+    }
+  };
+
+  const updateDraft = (input) => {
+    const nextDraft = normalizeDraft(input);
+    setDraft(nextDraft);
+    if (sourceType === 'paste') setErrors(validateDraft(nextDraft).errors);
+    // The coach confirms the draft as it is now; any later edit needs a new confirmation.
+    if (sourceType === 'proposal') {
+      draftRevision.current += 1;
+      setProposalConfirmed(false);
+    }
+  };
+
+  const setProgram = (updates) => {
+    const nextFrequency = updates.frequency_days ? Number(updates.frequency_days) : draft.program.frequency_days;
+    updateDraft({
+      ...draft,
+      program: { ...draft.program, ...updates, frequency_days: nextFrequency },
+      days: updates.frequency_days ? resizeDraftDays(draft.days, nextFrequency) : draft.days,
+    });
+  };
+  const setDay = (dayIndex, updates) => updateDraft({
+    ...draft,
+    days: draft.days.map((day, i) => i === dayIndex ? { ...day, ...updates } : day),
+  });
+  const setExercise = (dayIndex, exerciseIndex, updates) => updateDraft({
+    ...draft,
+    days: draft.days.map((day, i) => i === dayIndex ? {
+      ...day,
+      exercises: day.exercises.map((exercise, j) => j === exerciseIndex ? { ...exercise, ...updates } : exercise),
+    } : day),
+  });
+  const addExercise = (dayIndex) => updateDraft({
+    ...draft,
+    days: draft.days.map((day, i) => i === dayIndex ? {
+      ...day,
+      exercises: [...day.exercises, { ...EMPTY_DRAFT_EXERCISE }],
+    } : day),
+  });
+  const removeExercise = (dayIndex, exerciseIndex) => updateDraft({
+    ...draft,
+    days: draft.days.map((day, i) => i === dayIndex ? {
+      ...day,
+      exercises: day.exercises.filter((_, j) => j !== exerciseIndex),
+    } : day),
+  });
+
+  const commit = async () => {
+    const checked = validateDraft(draft);
+    if (!checked.valid) {
+      setErrors(checked.errors);
+      toast.error('Fix draft errors before saving');
+      return;
+    }
+    if (sourceType === 'proposal') return commitProposal();
+    setSaving(true);
+    try {
+      const { data } = await api.post('/programs/import/commit', { draft: checked.draft });
+      toast.success('Program imported to vault', {
+        description: `${data.created_exercises?.length || 0} new exercises, ${data.reused_exercises?.length || 0} reused`,
+      });
+      close(false, true);
+      reload();
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not save imported program'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const loadProgramIds = async () => ((await api.get('/programs')).data || []).map((program) => program.id);
+
+  // Saves a reviewed proposal as a program template only (never assigned).
+  // Before anything is sent: the catalog is re-read and the draft re-checked,
+  // and the save goes ahead only if this import is still open (no close,
+  // discard, source change or new check) and the coach's tick still approves
+  // the current draft revision. Edits stay possible during that check; an edit
+  // stops this save and keeps the newer text. Once the POST is sent the form is
+  // frozen until its reply.
+  const commitProposal = async () => {
+    const seq = parseSeq.current;
+    const revision = draftRevision.current;
+    if (!proposal || !proposalConfirmed || approvedRevision.current !== revision || committingProposal.current) return;
+    if (saveOutcome?.kind === 'unknown') return;
+    committingProposal.current = true;
+    setSaving(true);
+    setSaveOutcome(null);
+    const approvedDraft = draft;
+    let rechecked;
+    let baselineIds;
+    try {
+      const [rows, ids] = await Promise.all([loadLibraryRows(), loadProgramIds()]);
+      baselineIds = ids;
+      rechecked = await recheckBeforeCommit(proposal, approvedDraft, rows);
+    } catch (e) {
+      rechecked = { ok: false, refusal: { code: 'catalog_unavailable', message: `${errMsg(e, 'Could not re-check the exercise catalog and vault')}. Nothing was saved.`, errors: [] } };
+    }
+    // Closed, discarded, source changed or a new check started: nothing is sent,
+    // and nothing here touches whatever the dialog shows now.
+    if (seq !== parseSeq.current) return;
+    if (draftRevision.current !== revision || approvedRevision.current !== revision) {
+      committingProposal.current = false;
+      setSaving(false);
+      setSaveOutcome({ kind: 'stale', message: 'Not sent: the draft changed during the final check. Your edits are kept; review them and confirm again to save.' });
+      return;
+    }
+    if (!rechecked.ok) {
+      committingProposal.current = false;
+      setSaving(false);
+      setProposalRefusal(rechecked.refusal);
+      setProposalConfirmed(false);
+      toast.error(`Not saved: ${rechecked.refusal.message}`);
+      return;
+    }
+    setProposalRefusal(null);
+    postInFlight.current = true;
+    setPostPending(true);
+    try {
+      const { data } = await api.post('/programs/import/commit', { draft: rechecked.draft });
+      postInFlight.current = false;
+      toast.success('Program saved to vault (not assigned)', {
+        description: `${data.created_exercises?.length || 0} new exercises, ${data.reused_exercises?.length || 0} reused. Assign it from Assignments when ready.`,
+      });
+      close(false, true);
+      reload();
+    } catch (e) {
+      postInFlight.current = false;
+      const status = e?.response?.status;
+      const message = errMsg(e, status ? `The server answered ${status}` : 'No reply from the server');
+      if (status >= 400 && status < 500) {
+        // The existing import route answers 4xx (validation, auth, rate limit)
+        // only before it writes, so this save definitely created nothing.
+        setSaveOutcome({ kind: 'refused', message });
+        setProposalConfirmed(false);
+        toast.error(`Not saved: ${message}`);
+      } else {
+        // A lost reply or a 5xx can follow a committed create: the outcome is
+        // unknown, so Save stays blocked until the vault is checked.
+        const outcome = { kind: 'unknown', message, sent: rechecked.draft, baselineIds };
+        unresolvedProposalSaves.set(proposal.identity.proposal_sha256, outcome);
+        setSaveOutcome(outcome);
+        toast.error('Save outcome unknown: the program may have been created. Saving this proposal again is blocked; check Programs.');
+      }
+    } finally {
+      postInFlight.current = false;
+      setPostPending(false);
+      committingProposal.current = false;
+      setSaving(false);
+    }
+  };
+
+  // Looks for possible matches in the existing program list. The outcome stays
+  // unknown either way: the reviewed draft is kept and saving this proposal
+  // again stays blocked, because the first request may still complete and a
+  // same-named program may come from elsewhere.
+  const lookForMatches = async () => {
+    if (saveOutcome?.kind !== 'unknown' || reconciling) return;
+    const seq = parseSeq.current;
+    const outcome = saveOutcome;
+    setReconciling(true);
+    try {
+      const { data } = await api.get('/programs');
+      if (seq !== parseSeq.current) return;
+      const next = { ...outcome, checkError: null, lookedAt: new Date().toISOString(), possibleMatches: findPossibleMatches(data, outcome) };
+      unresolvedProposalSaves.set(proposal.identity.proposal_sha256, next);
+      setSaveOutcome(next);
+    } catch (e) {
+      if (seq !== parseSeq.current) return;
+      setSaveOutcome({ ...outcome, checkError: errMsg(e, 'Could not read the vault') });
+    } finally {
+      if (seq === parseSeq.current) setReconciling(false);
+    }
+  };
+
+  // Refusals and save failures show where the coach is: above the inputs
+  // before a draft exists, next to Save once it does.
+  const proposalStatus = (
+    <>
+      {sourceType === 'proposal' && proposalRefusal && (
+        <Alert variant="destructive" aria-live="polite" data-testid="program-import-proposal-refusal" data-code={proposalRefusal.code}>
+          <CircleAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>Proposal refused ({proposalRefusal.code}). Nothing was saved.</AlertTitle>
+          <AlertDescription>
+            <p>{proposalRefusal.message}</p>
+            {proposalRefusal.errors?.length > 0 && (
+              <ul className="mt-2 list-disc pl-5">
+                {proposalRefusal.errors.map((error, i) => <li key={`${error.path}-${i}`}>{error.path ? `${error.path}: ` : ''}{error.message}</li>)}
+              </ul>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && postPending && (
+        <Alert aria-live="polite" data-testid="program-import-save-pending">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <AlertTitle>Saving: sent to the server</AlertTitle>
+          <AlertDescription>Waiting for its reply. The save cannot be called off now, so the form stays locked until the server answers.</AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveOutcome?.kind === 'stale' && (
+        <Alert aria-live="polite" className="border-gold/30 bg-gold/10" data-testid="program-import-save-stale">
+          <AlertTriangle className="h-4 w-4 text-gold" aria-hidden />
+          <AlertTitle>Not sent</AlertTitle>
+          <AlertDescription>{saveOutcome.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveOutcome?.kind === 'refused' && (
+        <Alert variant="destructive" aria-live="assertive" data-testid="program-import-save-refused">
+          <CircleAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>Not saved</AlertTitle>
+          <AlertDescription>{saveOutcome.message}. The server refused it before writing, so no program was created. Your reviewed draft is still here; confirm again to retry.</AlertDescription>
+        </Alert>
+      )}
+
+      {sourceType === 'proposal' && saveOutcome?.kind === 'unknown' && (
+        <Alert variant="destructive" aria-live="assertive" data-testid="program-import-save-failed" data-outcome="unknown">
+          <CircleAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>Save outcome unknown</AlertTitle>
+          <AlertDescription>
+            <p>{saveOutcome.message}. The program may have been created, or may still be created by the request already sent. Your reviewed draft is still here.</p>
+            <p className="mt-1">Saving this proposal again is blocked for the rest of this page session, so it cannot be created twice. Check Programs for &ldquo;{saveOutcome.sent.program.name}&rdquo;. If you are sure it was not created, reloading the page clears this guard and lets you import it again.</p>
+            {saveOutcome.checkError && <p className="mt-1">Could not check yet: {saveOutcome.checkError}.</p>}
+            {saveOutcome.lookedAt && !saveOutcome.checkError && (saveOutcome.possibleMatches.length > 0 ? (
+              <div className="mt-2" data-testid="program-import-save-possible-matches">
+                <p className="font-medium">Possible matches, not confirmed: new programs with this name.</p>
+                <ul className="mt-1 list-disc pl-5">
+                  {saveOutcome.possibleMatches.map((match) => <li key={match.id}>{match.name}{match.days != null ? ` · ${match.days} days` : ''} <span className="font-mono text-xs">({match.id})</span></li>)}
+                </ul>
+                <p className="mt-1">A program list cannot show which save created them. Open each in Programs and compare it with this draft; one may be this save or another one.</p>
+              </div>
+            ) : (
+              <p className="mt-2" data-testid="program-import-save-no-match-yet">No new program with this name was in the vault at {new Date(saveOutcome.lookedAt).toLocaleTimeString()}. That does not show the save failed: the request may still finish.</p>
+            ))}
+            <Button type="button" size="sm" variant="outline" className="mt-2 rounded-xl" disabled={reconciling} onClick={lookForMatches} data-testid="program-import-save-reconcile">
+              {reconciling ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Look for possible matches'}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+    </>
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={close}>
+      <DialogContent aria-describedby={undefined} className="max-h-[92dvh] max-w-4xl overflow-y-auto" data-testid="program-import-dialog">
+        <DialogHeader>
+          <DialogTitle>Import program</DialogTitle>
+                  </DialogHeader>
+        <div className="space-y-5">
+          <div className="grid gap-3 lg:grid-cols-[180px_1fr_auto] lg:items-end">
+            <div className="space-y-1.5">
+              <Label>Source</Label>
+              <Select value={sourceType} onValueChange={selectSource} disabled={postPending}>
+                <SelectTrigger className="h-11 rounded-xl" data-testid="program-import-source-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="csv">CSV template</SelectItem>
+                  <SelectItem value="paste">Paste program</SelectItem>
+                  <SelectItem value="pdf">PDF extraction</SelectItem>
+                  <SelectItem value="proposal">Offline draft proposal (MOCK)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {sourceType === 'paste' ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="program-import-paste-textarea">Program text</Label>
+                  <Textarea
+                    id="program-import-paste-textarea"
+                    rows={8}
+                    value={pasteText}
+                    disabled={parsing}
+                    onChange={(e) => {
+                      setPasteText(e.target.value);
+                      setPasteError('');
+                      setDraft(null);
+                      setErrors([]);
+                    }}
+                    placeholder="Paste workout days and exercises here..."
+                    data-testid="program-import-paste-textarea"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="touch" className="rounded-xl" type="button" onClick={parsePaste} disabled={parsing} data-testid="program-import-paste-parse-button">
+                    {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Parse'}
+                  </Button>
+                </div>
+              </>
+            ) : sourceType === 'proposal' ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="program-import-proposal-file-input">Proposal file (.json)</Label>
+                  <Input id="program-import-proposal-file-input" size="touch" type="file" accept=".json,application/json" disabled={parsing || postPending}
+                    onChange={(e) => { resetProposal(); setFile(e.target.files?.[0] || null); setDraft(null); setErrors([]); }}
+                    data-testid="program-import-proposal-file-input" />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="touch" className="rounded-xl" type="button" onClick={checkProposal} disabled={parsing || postPending || !file} data-testid="program-import-proposal-check-button">
+                    {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check proposal'}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label>{sourceType === 'pdf' ? 'PDF file' : 'CSV file'}</Label>
+                  <Input size="touch" type="file" accept={sourceType === 'pdf' ? '.pdf,application/pdf' : '.csv,text/csv'} onChange={(e) => setFile(e.target.files?.[0] || null)} data-testid="program-import-file-input" />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="touch" variant="outline" className="rounded-xl" type="button" onClick={downloadTemplate} data-testid="program-import-template-button"><FileText className="h-4 w-4 mr-1.5" /> Template</Button>
+                  <Button size="touch" className="rounded-xl" type="button" onClick={parseFile} disabled={parsing || !file} data-testid="program-import-parse-button">{parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Parse'}</Button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {sourceType === 'paste' && pasteError && (
+            <Alert className="border-primary/30 bg-primary/10" aria-live="polite" data-testid="program-import-paste-empty-state">
+              <CircleAlert className="h-4 w-4 text-primary" aria-hidden />
+              <AlertTitle>Could not parse program</AlertTitle>
+              <AlertDescription>{pasteError}</AlertDescription>
+            </Alert>
+          )}
+
+          {sourceType === 'proposal' && (
+            <Alert className="border-gold/30 bg-gold/10" data-testid="program-import-proposal-mock-banner">
+              <AlertTriangle className="h-4 w-4 text-gold" aria-hidden />
+              <AlertTitle>MOCK offline draft. Not a prescription, not assigned.</AlertTitle>
+              <AlertDescription>
+                Optional. The file comes from the offline drafting companion (provider disabled, fictional fixtures). It is checked against the current exercise catalog, then you review and edit it here. Saving creates a program template only; assigning stays a separate step.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {!draft && proposalStatus}
+
+          {draft?.import_meta?.warnings?.length > 0 && (
+            <div className="rounded-xl border border-gold/30 bg-gold/10 p-3 text-sm text-gold">
+              <div className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" /> Warnings</div>
+              <ul className="mt-2 list-disc pl-5">
+                {draft.import_meta.warnings.map((warning, i) => <li key={`${warning}-${i}`}>{warning}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {errors.length > 0 && (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="font-medium">Fix before saving</div>
+              <ul className="mt-2 list-disc pl-5">
+                {errors.map((error, i) => <li key={`${error.path}-${i}`}>{error.path ? `${error.path}: ` : ''}{error.message}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {draft && (
+            <div className="space-y-4" data-testid="program-import-review">
+              <fieldset disabled={postPending} aria-busy={postPending} className="m-0 min-w-0 space-y-4 border-0 p-0">
+              {sourceType === 'proposal' && proposal && <ProposalIdentityPanel proposal={proposal} draft={draft} />}
+              <div className="rounded-xl border border-border bg-card/50 p-4 space-y-3">
+                <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
+                  <Input value={draft.program.name} onChange={(e) => setProgram({ name: e.target.value })} placeholder="Program name" data-testid="program-import-name-input" />
+                  <Select value={String(draft.program.frequency_days)} onValueChange={(value) => setProgram({ frequency_days: Number(value) })} disabled={sourceType === 'proposal'}>
+                    <SelectTrigger className="rounded-xl" data-testid="program-import-frequency-select"><SelectValue /></SelectTrigger>
+                    <SelectContent>{(sourceType === 'paste' ? PROGRAM_FREQUENCIES : IMPORT_FREQUENCIES).map((d) => <SelectItem key={d} value={d}>{frequencyLabel(d)}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <Textarea rows={2} value={draft.program.description} onChange={(e) => setProgram({ description: e.target.value })} placeholder="Program description" data-testid="program-import-description-input" />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-success/25 bg-success/10 p-3 text-sm">
+                  <div className="flex items-center gap-2 font-medium text-success-foreground"><CheckCircle2 className="h-4 w-4" /> Reused exercises</div>
+                  <p className="mt-1 text-muted-foreground">{exercisePlan.reused.length ? exercisePlan.reused.map((x) => x.name).join(', ') : 'None yet'}</p>
+                </div>
+                <div className="rounded-xl border border-gold/25 bg-gold/10 p-3 text-sm">
+                  <div className="font-medium text-gold">New exercises needing review</div>
+                  <p className="mt-1 text-muted-foreground">{exercisePlan.created.length ? exercisePlan.created.map((x) => x.name).join(', ') : 'None'}</p>
+                </div>
+              </div>
+
+              <Accordion
+                type="multiple"
+                value={reviewOpenValues}
+                onValueChange={(values) => setOpenReviewDays([...new Set([...values, ...requiredReviewDays])])}
+                className="space-y-3"
+                data-testid="program-import-days-accordion"
+              >
+                {draft.days.map((day, dayIndex) => {
+                  const dayValue = `day-${dayIndex}`;
+                  const needsAttention = requiredReviewDays.includes(dayValue);
+                  return (
+                    <AccordionItem key={`${day.day_number}-${dayIndex}`} value={dayValue} className="rounded-xl border border-border bg-card px-4 shadow-sm" data-testid="program-import-day-card">
+                      <AccordionTrigger className="min-h-11 py-3 hover:no-underline">
+                        <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                          <span className="font-display font-semibold">Day {day.day_number}</span>
+                          <span className="truncate text-sm text-muted-foreground">{day.name || 'Untitled workout day'}</span>
+                          {needsAttention && <Badge variant="outline" className="shrink-0 border-gold/25 bg-gold/10 text-gold">Needs review</Badge>}
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-3 pb-4">
+                        <div className="grid gap-2 sm:grid-cols-[90px_1fr_1fr]">
+                          <Input type="number" min="1" max="5" value={day.day_number} disabled={sourceType === 'proposal'} onChange={(e) => setDay(dayIndex, { day_number: Number(e.target.value) })} data-testid="program-import-day-number-input" />
+                          <Input value={day.name} onChange={(e) => setDay(dayIndex, { name: e.target.value })} placeholder="Workout day name" data-testid="program-import-day-name-input" />
+                          <Input value={day.goal} onChange={(e) => setDay(dayIndex, { goal: e.target.value })} placeholder="Goal/focus" data-testid="program-import-day-goal-input" />
+                        </div>
+                        <Input value={day.notes} onChange={(e) => setDay(dayIndex, { notes: e.target.value })} placeholder="Day notes" data-testid="program-import-day-notes-input" />
+                        {day.exercises.map((exercise, exerciseIndex) => (
+                          <div key={`${day.day_number}-${exerciseIndex}`} className="space-y-2 rounded-xl border border-border bg-card/50 p-3" data-testid="program-import-exercise-card">
+                            <div className="flex gap-2">
+                              <Input value={exercise.name} onChange={(e) => setExercise(dayIndex, exerciseIndex, { name: e.target.value })} placeholder={`Exercise ${exerciseIndex + 1}`} data-testid="program-import-exercise-name-input" />
+                              <IconButton
+                                label={`Remove ${exercise.name || `exercise ${exerciseIndex + 1}`}`}
+                                variant="ghost"
+                                size="touchIcon"
+                                className="shrink-0 rounded-xl text-muted-foreground"
+                                onClick={() => removeExercise(dayIndex, exerciseIndex)}
+                                disabled={sourceType === 'proposal'}
+                                data-testid="program-import-exercise-remove-button"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </IconButton>
+                            </div>
+                            <ExerciseCatalogAction linkMatches={false} exercise={{ ...exercise, custom_name: exercise.name }} library={library} onCreated={onCatalogCreated} disabled={saving || parsing}
+                              onChange={(fields) => setExercise(dayIndex, exerciseIndex, { name: fields.custom_name })} />
+                            <ExerciseTrackingFields exercise={exercise} onChange={(fields) => setExercise(dayIndex, exerciseIndex, fields)} />
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                              <Input value={exercise.sets} onChange={(e) => setExercise(dayIndex, exerciseIndex, { sets: e.target.value })} placeholder="Sets" data-testid="program-import-exercise-sets-input" />
+                              {trackingType(exercise) === 'reps_weight' && <Input value={exercise.reps} onChange={(e) => setExercise(dayIndex, exerciseIndex, { reps: e.target.value })} placeholder="Reps" data-testid="program-import-exercise-reps-input" />}
+                              <Input value={exercise.rest} onChange={(e) => setExercise(dayIndex, exerciseIndex, { rest: e.target.value })} placeholder="Rest" data-testid="program-import-exercise-rest-input" />
+                              <Input value={exercise.tempo} onChange={(e) => setExercise(dayIndex, exerciseIndex, { tempo: e.target.value })} placeholder="Tempo" data-testid="program-import-exercise-tempo-input" />
+                            </div>
+                            {/* Read-only: the authored load this import commits (prescription, not performed data). */}
+                            <p className="text-xs text-muted-foreground" data-testid="program-import-exercise-load-line">
+                              Prescribed load: <span className="tabular-nums text-foreground">{prescribedLoadText({
+                                prescribed_load_value: exercise.default_load_value ?? null,
+                                prescribed_load_unit: exercise.default_load_unit,
+                                prescribed_load_max: exercise.prescribed_load_max ?? null,
+                                per_side: exercise.per_side === true,
+                              }) ?? '—'}</span>
+                            </p>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <Input value={exercise.client_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { client_notes: e.target.value })} placeholder="Client notes" data-testid="program-import-exercise-client-notes-input" />
+                              <Input value={exercise.coach_notes} onChange={(e) => setExercise(dayIndex, exerciseIndex, { coach_notes: e.target.value })} placeholder="Coach notes" data-testid="program-import-exercise-coach-notes-input" />
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-4">
+                              <Input value={exercise.video_url} onChange={(e) => setExercise(dayIndex, exerciseIndex, { video_url: e.target.value, video_link_mode: e.target.value.trim() ? 'override' : 'inherit' })} placeholder="Video URL (optional; blank uses the library demo)" aria-label="Video URL" className="sm:col-span-2" data-testid="program-import-exercise-video-input" />
+                              <Input value={exercise.equipment} onChange={(e) => setExercise(dayIndex, exerciseIndex, { equipment: e.target.value })} placeholder="Equipment" data-testid="program-import-exercise-equipment-input" />
+                              <Input value={exercise.primary_muscle} onChange={(e) => setExercise(dayIndex, exerciseIndex, { primary_muscle: e.target.value })} placeholder="Primary muscle" data-testid="program-import-exercise-primary-muscle-input" />
+                            </div>
+                          </div>
+                        ))}
+                        <Button type="button" variant="outline" className="rounded-xl" disabled={sourceType === 'proposal'} onClick={() => addExercise(dayIndex)} data-testid="program-import-exercise-add-button">
+                          <Plus className="h-4 w-4 mr-1.5" /> Add exercise
+                        </Button>
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
+
+              {proposalStatus}
+              {sourceType === 'proposal' && proposal && (
+                <div className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-3">
+                  <Checkbox id="program-import-proposal-confirm" checked={proposalConfirmed} disabled={saving}
+                    onCheckedChange={(value) => setProposalConfirmed(value === true)} className="mt-0.5" data-testid="program-import-proposal-confirm" />
+                  <Label htmlFor="program-import-proposal-confirm" className="text-sm font-normal leading-snug">
+                    I reviewed every day and exercise of this MOCK proposal and want to save it as a program template. It will not be assigned to anyone.
+                  </Label>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" className="rounded-xl" onClick={() => close(false)}>Cancel</Button>
+                <Button className="rounded-xl" disabled={saving || !validation.valid || (sourceType === 'proposal' && (!proposal || !proposalConfirmed || saveOutcome?.kind === 'unknown'))} onClick={commit} data-testid="program-import-save-button">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save to vault'}
+                </Button>
+              </DialogFooter>
+              </fieldset>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Identity of a verified offline proposal and its stable exercise bindings,
+// with each bound row's current name so a coach edit is visible before saving.
+function ProposalIdentityPanel({ proposal, draft }) {
+  const { identity, bindings } = proposal;
+  const rowAt = (path) => {
+    const [, day, exercise] = /^days\.(\d+)\.exercises\.(\d+)$/.exec(path) || [];
+    return draft.days[Number(day)]?.exercises?.[Number(exercise)];
+  };
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4 text-sm" data-testid="program-import-proposal-panel">
+      <div className="font-medium">Offline proposal identity</div>
+      <dl className="grid gap-x-3 gap-y-1 [overflow-wrap:anywhere] sm:grid-cols-[170px_1fr]">
+        <dt className="text-muted-foreground">Proposal SHA-256 (canonical)</dt><dd className="font-mono text-xs" data-testid="program-import-proposal-sha">{identity.proposal_sha256}</dd>
+        <dt className="text-muted-foreground">Catalog revision</dt><dd className="font-mono text-xs" data-testid="program-import-proposal-catalog">{identity.catalog_revision}</dd>
+        <dt className="text-muted-foreground">Accepted snapshot</dt><dd className="font-mono text-xs">r{identity.accepted_revision} · {identity.accepted_sha256}</dd>
+        <dt className="text-muted-foreground">Request</dt><dd>{identity.request_id} · accepted offline by {identity.accepted_by}</dd>
+      </dl>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[320px] text-left text-xs" data-testid="program-import-proposal-bindings">
+          <thead className="text-muted-foreground"><tr><th className="py-1 pr-2 font-medium">Row</th><th className="py-1 pr-2 font-medium">Bound exercise</th><th className="py-1 font-medium">Catalog id</th></tr></thead>
+          <tbody>
+            {bindings.map((binding) => {
+              const row = rowAt(binding.program_draft_path);
+              const changed = !row || row.name !== binding.catalog_name_at_snapshot;
+              return (
+                <tr key={binding.program_draft_path} className="border-t border-border" data-testid="program-import-proposal-binding-row">
+                  <td className="py-1 pr-2">Day {binding.day_number} · {binding.weekday}</td>
+                  <td className="py-1 pr-2">{binding.catalog_name_at_snapshot}{changed && <Badge variant="outline" className="ml-2 border-destructive/30 text-destructive">edited: {row?.name || 'removed'}</Badge>}</td>
+                  <td className="py-1 font-mono">{binding.exercise_id}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-muted-foreground">Bindings are checked again against the catalog when you save. Prescriptions can be edited; a bound exercise cannot be swapped, and rows cannot be added, removed or renumbered.</p>
+    </div>
+  );
+}
+
+function AssignmentsTab({ programs, workouts, clients, reload }) {
+  const [type, setType] = useState('program');
+  const [clientId, setClientId] = useState('');
+  const [programId, setProgramId] = useState('');
+  const [workoutId, setWorkoutId] = useState('');
+  const [mode, setMode] = useState('active');
+  const [date, setDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!clientId) return toast.error('Choose a client');
+    setSaving(true);
+    try {
+      if (type === 'program') {
+        if (!programId) throw new Error('Choose a program');
+        await api.post(`/programs/${programId}/assign`, { client_id: clientId, notes });
+        toast.success('Program assigned');
+      } else {
+        if (!workoutId) throw new Error('Choose a workout');
+        await api.post('/programs/workout-assignments', {
+          client_id: clientId,
+          workout_id: workoutId,
+          assignment_mode: mode,
+          assigned_for: mode === 'dated' ? date : null,
+          notes,
+        });
+        toast.success('Workout assigned');
+      }
+      setNotes('');
+      reload();
+    } catch (err) {
+      toast.error(errMsg(err, err.message || 'Assignment failed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="mt-1">
+      <CardContent className="p-5">
+        <form onSubmit={submit} className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Assignment type</Label>
+              <Select value={type} onValueChange={setType}>
+                <SelectTrigger className="rounded-xl" data-testid="assignment-type-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="program">Long-term program</SelectItem>
+                  <SelectItem value="workout">Standalone workout</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Client</Label>
+              <Select value={clientId} onValueChange={setClientId}>
+                <SelectTrigger className="rounded-xl" data-testid="assignment-client-select"><SelectValue placeholder="Choose client..." /></SelectTrigger>
+                <SelectContent>{clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+          {type === 'program' ? (
+            <div className="space-y-1.5">
+              <Label>Program</Label>
+              <Select value={programId} onValueChange={setProgramId}>
+                <SelectTrigger className="rounded-xl" data-testid="assignment-program-select"><SelectValue placeholder="Choose program..." /></SelectTrigger>
+                <SelectContent>{programs.filter((p) => !p.hidden).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5 sm:col-span-1">
+                <Label>Workout</Label>
+                <Select value={workoutId} onValueChange={setWorkoutId}>
+                  <SelectTrigger className="rounded-xl" data-testid="assignment-workout-select"><SelectValue placeholder="Choose workout..." /></SelectTrigger>
+                  <SelectContent>{workouts.filter((w) => !w.hidden).map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Mode</Label>
+                <Select value={mode} onValueChange={setMode}>
+                  <SelectTrigger className="rounded-xl" data-testid="assignment-mode-select"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="active">Active template</SelectItem><SelectItem value="dated">Dated workout</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Date</Label>
+                <Input type="date" disabled={mode !== 'dated'} value={date} onChange={(e) => setDate(e.target.value)} data-testid="assignment-date-input" />
+              </div>
+            </div>
+          )}
+          <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Assignment notes" data-testid="assignment-notes-input" />
+          <Button disabled={saving} className="rounded-xl" data-testid="assignment-submit-button"><UserPlus className="h-4 w-4 mr-1.5" /> {saving ? 'Assigning...' : 'Assign'}</Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+// One draggable builder row. Only the grip starts a drag, so scrolling,
+// the accordion trigger, and inputs behave normally on touch screens.
+function SortableExerciseRow({ id, render }) {
+  const {
+    attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging,
+  } = useSortable({ id });
+  return render({
+    ref: setNodeRef,
+    style: { transform: CSS.Translate.toString(transform && { ...transform, x: 0 }), transition },
+    isDragging,
+    handle: { ref: setActivatorNodeRef, ...attributes, ...listeners },
+  });
+}
+
+// Shared editor body for the mobile dialog and the desktop pane. The
+// datalist id is prefixed so both mounts can coexist in the DOM.
+function WorkoutFormFields({ form, setForm, library: initialLibrary, saving, onSubmit, idPrefix = 'workout', onCatalogCreated: notifyCreated }) {
+  const [library, rememberCreated] = useBuilderCatalog(initialLibrary);
+  const onCatalogCreated = (item) => { rememberCreated(item); notifyCreated?.(item); };
+  const removal = useExerciseRemoval(setForm);
+  const setExercise = (index, updates) => {
+    setForm((current) => ({ ...current, exercises: current.exercises.map((ex, i) => i === index ? { ...ex, ...updates } : ex) }));
+  };
+
+  // Picking a library exercise inherits its demo live; the link is never copied.
+  const chooseExercise = (index, value) => {
+    const match = matchCatalogExercise(library, value) || null;
+    setExercise(index, chooseLibraryExercise(form.exercises[index], match, value));
+  };
+
+  const setExercises = (exercises) => setForm({ ...form, exercises });
+  const blocks = supersetBlocks(form.exercises);
+  const markers = exerciseMarkers(form.exercises);
+  const rowValue = (exercise, index) => exercise._uid || `exercise-${index}`;
+  const rowName = (exercise, index) => exercise.custom_name || `exercise ${index + 1}`;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const rowIds = form.exercises.map((exercise, index) => rowValue(exercise, index));
+  const nameForId = (rowId) => {
+    const index = rowIds.indexOf(rowId);
+    return index < 0 ? 'exercise' : rowName(form.exercises[index], index);
+  };
+  const onDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    const from = rowIds.indexOf(active.id);
+    const to = rowIds.indexOf(over.id);
+    if (from >= 0 && to >= 0) setExercises(dropExercise(form.exercises, from, to));
+  };
+  const announcements = {
+    onDragStart: ({ active }) => `Picked up ${nameForId(active.id)}. Use the arrow keys to move, space to drop.`,
+    onDragOver: ({ active, over }) => (over ? `${nameForId(active.id)} is over ${nameForId(over.id)}.` : `${nameForId(active.id)} is not over a drop position.`),
+    onDragEnd: ({ active, over }) => (over ? `Dropped ${nameForId(active.id)} at ${nameForId(over.id)}.` : `Dropped ${nameForId(active.id)}.`),
+    onDragCancel: ({ active }) => `Cancelled moving ${nameForId(active.id)}.`,
+  };
+
+  const renderRow = (exercise, index) => (
+    <SortableExerciseRow
+      id={rowValue(exercise, index)}
+      render={(drag) => (
+      <AccordionItem
+        ref={drag.ref}
+        style={drag.style}
+        value={rowValue(exercise, index)}
+        className={cn('rounded-xl border border-border bg-card/50 pl-1 pr-3', drag.isDragging && 'relative z-10 border-primary/50 shadow-[var(--app-elev-soft)]')}
+        data-testid="workout-exercise-row"
+      >
+        {/* The trigger's Radix header (h3) must grow so the chevron sits by the move buttons. */}
+        <div className="flex items-center gap-1 [&>h3]:min-w-0 [&>h3]:flex-1">
+          <button
+            type="button"
+            {...drag.handle}
+            aria-label={`Drag to reorder ${rowName(exercise, index)}`}
+            className="flex h-11 w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+            data-testid="workout-exercise-drag-handle"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <AccordionTrigger className="min-h-11 min-w-0 py-3 hover:no-underline">
+            <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+              <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md bg-primary/15 px-1.5 text-xs font-semibold tabular-nums text-primary" data-testid="workout-exercise-marker">{markers[index]}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{exercise.custom_name || `Exercise ${index + 1}`}</span>
+                <span className="block text-xs font-normal tabular-nums text-muted-foreground" data-testid="workout-exercise-summary">
+                  {exerciseSummary(exercise)}{parseRestSeconds(exercise.rest) != null ? `${exerciseSummary(exercise) ? ' · ' : ''}${parseRestSeconds(exercise.rest)} sec rest` : ''}
+                </span>
+              </span>
+            </span>
+          </AccordionTrigger>
+          <IconButton label={`Move ${rowName(exercise, index)} up`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" disabled={!canMoveExercise(form.exercises, index, -1)} onClick={() => setExercises(moveExercise(form.exercises, index, -1))} data-testid="workout-exercise-move-up-button"><ArrowUp className="h-4 w-4" /></IconButton>
+          <IconButton label={`Move ${rowName(exercise, index)} down`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" disabled={!canMoveExercise(form.exercises, index, 1)} onClick={() => setExercises(moveExercise(form.exercises, index, 1))} data-testid="workout-exercise-move-down-button"><ArrowDown className="h-4 w-4" /></IconButton>
+        </div>
+        <AccordionContent className="space-y-2 pb-3">
+          <div className="flex items-center gap-2">
+            <LabeledField label="Exercise name"><Input className="min-w-0" list={`${idPrefix}-exercise-options`} value={exercise.custom_name} onChange={(e) => chooseExercise(index, e.target.value)} onBlur={() => { const settled = settleCatalogName(exercise, library); if (settled) setExercise(index, settled); }} placeholder={`Exercise ${index + 1}`} data-testid="workout-exercise-name-input" /></LabeledField>
+            <IconButton label={`Duplicate ${rowName(exercise, index)}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => setExercises(duplicateExercise(form.exercises, index, { _uid: newExerciseRow()._uid, ...demoFieldsForCopy(exercise) }))} data-testid="workout-exercise-duplicate-button"><Copy className="h-4 w-4" /></IconButton>
+            <IconButton label={`Remove ${exercise.custom_name || `exercise ${index + 1}`}`} size="touchIcon" variant="ghost" className="shrink-0 rounded-lg text-muted-foreground" onClick={() => removal.remove(form.exercises, index)} data-testid="workout-exercise-remove-button"><Trash2 className="h-4 w-4" /></IconButton>
+          </div>
+          <ExerciseCatalogAction exercise={exercise} library={library} onCreated={onCatalogCreated} onChange={(fields) => setExercise(index, fields)} disabled={saving} />
+          <ExerciseTrackingFields exercise={exercise} onChange={(fields) => setExercise(index, fields)} />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <LabeledField label="Sets"><Input value={exercise.sets} onChange={(e) => setExercise(index, { sets: e.target.value })} placeholder="Sets" data-testid="workout-exercise-sets-input" /></LabeledField>
+            {trackingType(exercise) === 'reps_weight' && <LabeledField label="Reps (optional)"><Input value={exercise.reps} onChange={(e) => setExercise(index, { reps: e.target.value })} placeholder="Reps" data-testid="workout-exercise-reps-input" /></LabeledField>}
+            <div className="min-w-0 space-y-1">
+              {/* Numeric authoring, serialized as canonical "Ns" text; the
+                  DB fill trigger derives rest_seconds from it. */}
+              <Label htmlFor={`${idPrefix}-${rowValue(exercise, index)}-rest`}>Rest (seconds)</Label>
+              <Input
+                className="h-11"
+                id={`${idPrefix}-${rowValue(exercise, index)}-rest`}
+                type="number" min="0" step="5" inputMode="numeric"
+                value={parseRestSeconds(exercise.rest) ?? ''}
+                onChange={(e) => setExercise(index, { rest: e.target.value === '' ? '' : `${Math.max(0, Number(e.target.value))}s` })}
+                placeholder="Rest (sec)"
+                aria-label="Rest in seconds"
+                data-testid="workout-exercise-rest-input"
+              />
+              {exercise.rest && parseRestSeconds(exercise.rest) === null && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid="workout-exercise-rest-legacy">
+                  Unrecognized: “{exercise.rest}”
+                </p>
+              )}
+            </div>
+            <LabeledField label="Tempo"><Input value={exercise.tempo} onChange={(e) => setExercise(index, { tempo: e.target.value })} placeholder="Tempo" data-testid="workout-exercise-tempo-input" /></LabeledField>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5rem] items-end gap-2">
+            <LabeledField label="Target RPE"><Input value={exercise.target_rpe} onChange={(e) => setExercise(index, { target_rpe: e.target.value })} placeholder="Target RPE" data-testid="workout-exercise-rpe-input" /></LabeledField>
+            <LabeledField label="Default load"><Input type="number" min="0" step="any" inputMode="decimal" value={exercise.default_load_value} onChange={(e) => setExercise(index, { default_load_value: e.target.value })} placeholder="Default load" data-testid="workout-exercise-default-load-input" /></LabeledField>
+            <div className="space-y-1"><Label htmlFor={`${idPrefix}-${rowValue(exercise, index)}-load-unit`}>Unit</Label>
+            <Select value={exercise.default_load_unit || 'lb'} onValueChange={(value) => setExercise(index, { default_load_unit: value })}>
+              <SelectTrigger id={`${idPrefix}-${rowValue(exercise, index)}-load-unit`} className="h-11" aria-label="Default load unit"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
+            </Select>
+            </div>
+          </div>
+          {/* Look A: an optional upper load (same unit) and per side. Blank = a single load. */}
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-end gap-2">
+            <LabeledField label="Load up to (optional)"><Input type="number" min="0" step="any" inputMode="decimal" value={exercise.prescribed_load_max ?? ''} onChange={(e) => setExercise(index, { prescribed_load_max: e.target.value })} placeholder="Same as default" data-testid="workout-exercise-load-max-input" /></LabeledField>
+            <label htmlFor={`${idPrefix}-${rowValue(exercise, index)}-per-side`} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-1 text-sm">
+              <Checkbox id={`${idPrefix}-${rowValue(exercise, index)}-per-side`} checked={exercise.per_side === true} onCheckedChange={(checked) => setExercise(index, { per_side: checked === true })} data-testid="workout-exercise-per-side-input" />
+              Per side
+            </label>
+          </div>
+          <DemoLinkField
+            exercise={exercise}
+            libraryExercise={library.find((ex) => ex.id === exercise.exercise_library_id)}
+            onChange={(fields) => setExercise(index, fields)}
+          />
+          <LabeledField label="Client notes"><Input value={exercise.client_notes} onChange={(e) => setExercise(index, { client_notes: e.target.value })} placeholder="Client notes" data-testid="workout-exercise-client-notes-input" /></LabeledField>
+          <LabeledField label="Coach notes (internal)"><Input value={exercise.coach_notes} onChange={(e) => setExercise(index, { coach_notes: e.target.value })} placeholder="Coach notes (internal)" data-testid="workout-exercise-coach-notes-input" /></LabeledField>
+        </AccordionContent>
+      </AccordionItem>
+      )}
+    />
+  );
+
+  // Between every pair of neighbours: link them into a superset/giant set,
+  // or (inside a group) split the group at that point.
+  const renderConnector = (index) => {
+    const linked = isLinkedWithNext(form.exercises, index);
+    const pair = `${rowName(form.exercises[index], index)} and ${rowName(form.exercises[index + 1], index + 1)}`;
+    return (
+      <div className="flex justify-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="touch"
+          className={cn('rounded-full px-3 text-xs', linked ? 'text-primary' : 'text-muted-foreground hover:text-primary')}
+          onClick={() => setExercises(toggleLinkWithNext(form.exercises, index))}
+          aria-label={linked ? `Unlink ${pair}` : `Link ${pair} as a superset`}
+          data-testid={linked ? 'workout-exercise-unlink-button' : 'workout-exercise-link-button'}
+        >
+          {linked ? <><Unlink className="h-3.5 w-3.5" /> Unlink</> : <><Link2 className="h-3.5 w-3.5" /> Superset with next</>}
+        </Button>
+      </div>
+    );
+  };
+
+  return (
+        <form onSubmit={onSubmit} className="min-w-0 space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <LabeledField label="Workout day name"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Workout day name" data-testid="workout-name-input" /></LabeledField>
+            <LabeledField label="Goal/focus"><Input value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} placeholder="Goal/focus" data-testid="workout-goal-input" /></LabeledField>
+          </div>
+          <LabeledField label="Description"><Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" data-testid="workout-description-input" /></LabeledField>
+          <datalist id={`${idPrefix}-exercise-options`}>
+            {library.map((exercise) => <option key={exercise.id} value={exercise.name} />)}
+          </datalist>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} accessibility={{ announcements }}>
+          <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
+          <Accordion
+            type="multiple"
+            defaultValue={form.exercises.length ? [rowValue(form.exercises[0], 0)] : []}
+            className="space-y-1"
+            data-testid="workout-exercises-accordion"
+          >
+            {blocks.map((block, blockIndex) => {
+              const rows = block.items.map(({ exercise, index }) => (
+                <Fragment key={rowValue(exercise, index)}>
+                  {renderRow(exercise, index)}
+                  {index < block.end && renderConnector(index)}
+                </Fragment>
+              ));
+              const isLastBlock = blockIndex === blocks.length - 1;
+              const kindLabel = groupKindLabel(block.kind).toLowerCase();
+              return (
+                <Fragment key={rowValue(block.items[0].exercise, block.start)}>
+                  {block.kind === 'single' ? rows : (
+                    <div className="space-y-1 rounded-2xl border border-primary/40 bg-primary/5 p-2" data-testid="workout-superset-group">
+                      <div className="flex items-center justify-between gap-2 pl-1">
+                        <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary" data-testid="workout-superset-label">
+                          <Link2 className="h-3.5 w-3.5" aria-hidden />
+                          {groupKindLabel(block.kind)} · {block.items.length} exercises
+                        </span>
+                        <span className="flex items-center">
+                          <IconButton label={`Move ${kindLabel} up`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" disabled={blockIndex === 0} onClick={() => setExercises(moveBlock(form.exercises, block.start, -1))} data-testid="workout-superset-move-up-button"><ArrowUp className="h-4 w-4" /></IconButton>
+                          <IconButton label={`Move ${kindLabel} down`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" disabled={isLastBlock} onClick={() => setExercises(moveBlock(form.exercises, block.start, 1))} data-testid="workout-superset-move-down-button"><ArrowDown className="h-4 w-4" /></IconButton>
+                          <IconButton label={`Ungroup ${kindLabel}`} size="touchIcon" variant="ghost" className="rounded-lg text-muted-foreground" onClick={() => setExercises(ungroupBlock(form.exercises, block.start))} data-testid="workout-superset-ungroup-button"><Unlink className="h-4 w-4" /></IconButton>
+                        </span>
+                      </div>
+                      <p className="pb-1 pl-1 text-[11px] text-muted-foreground" data-testid="workout-superset-rest-hint">
+                        Clients go straight to the next exercise and rest after each round, using the longest rest set in the group.
+                      </p>
+                      {rows}
+                    </div>
+                  )}
+                  {!isLastBlock && renderConnector(block.end)}
+                </Fragment>
+              );
+            })}
+          </Accordion>
+          </SortableContext>
+          </DndContext>
+          <Button size="touch" type="button" variant="secondary" className="w-full rounded-xl" onClick={() => setExercises([...form.exercises, newExerciseRow()])} data-testid="workout-exercise-add-button">
+            <Plus className="h-4 w-4 mr-1.5" /> Add exercise
+          </Button>
+          <ExerciseRemovalNotice removal={removal} disabled={saving} />
+          <div className="flex justify-end">
+            <Button size="touch" disabled={saving} className="rounded-xl" data-testid="workout-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save workout'}</Button>
+          </div>
+        </form>
+  );
+}
+
+export function WorkoutDialog({ open, onOpenChange, form, setForm, library, saving, onSubmit, editing, onCatalogCreated }) {
+  const changes = useFormChanges(form, `${editing?.id || "new"}:${open}`, open);
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (next || changes.confirmDiscard()) onOpenChange(next); }}>
+      <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-2xl grid-cols-1 overflow-y-auto [&>button]:h-11 [&>button]:w-11">
+        <DialogHeader>
+          <DialogTitle>{editing ? 'Edit workout day' : 'New workout day'}</DialogTitle>
+                  </DialogHeader>
+        <WorkoutFormFields key={`${editing?.id || "new"}:${open}`} onCatalogCreated={onCatalogCreated} form={form} setForm={setForm} library={library} saving={saving} onSubmit={onSubmit} idPrefix="workout-dialog" />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function exerciseName(exercise) {
+  return exercise.library_exercise?.name || exercise.custom_name || 'Exercise';
+}
+
+function summarizeExercisePlan(draft, library) {
+  const existing = new Map((library || []).map((exercise) => [normalizeName(exercise.name), exercise]));
+  const seen = new Set();
+  const reused = [];
+  const created = [];
+  (draft.days || []).forEach((day) => {
+    (day.exercises || []).forEach((exercise) => {
+      const key = normalizeName(exercise.name);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      if (existing.has(key)) reused.push({ name: exercise.name, id: existing.get(key).id });
+      else created.push({ name: exercise.name });
+    });
+  });
+  return { reused, created };
+}
+
+function reviewAttentionDayValues(draft, errors, createdExercises) {
+  const attention = new Set();
+  (errors || []).forEach((error) => {
+    const match = String(error?.path || '').match(/^days\.(\d+)/);
+    if (match) attention.add(`day-${match[1]}`);
+  });
+
+  const createdNames = new Set((createdExercises || []).map((exercise) => normalizeName(exercise.name)));
+  (draft.days || []).forEach((day, dayIndex) => {
+    if ((day.exercises || []).some((exercise) => createdNames.has(normalizeName(exercise.name)))) {
+      attention.add(`day-${dayIndex}`);
+    }
+  });
+
+  return [...attention];
+}
+
+function resizeDraftDays(days, frequency) {
+  const nextDays = [...(days || [])].slice(0, frequency);
+  while (nextDays.length < frequency) {
+    const dayNumber = nextDays.length + 1;
+    nextDays.push({
+      day_number: dayNumber,
+      name: `Day ${dayNumber}`,
+      goal: '',
+      notes: '',
+      exercises: [{ ...EMPTY_DRAFT_EXERCISE }],
+    });
+  }
+  return nextDays.map((day, index) => ({ ...day, day_number: index + 1 }));
+}

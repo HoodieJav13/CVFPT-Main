@@ -88,8 +88,6 @@ require.cache[supabasePath] = {
       rpc(name, args) {
         state.rpcCalls.push({ name, args });
         if (name === 'start_workout_log_with_cues') return Promise.resolve({ data: { outcome: 'started', workout_log_id: LOG_ID }, error: null });
-        // Look A: Home Quick Complete starts inside one database call.
-        if (name === 'quick_complete_workout_v3') return Promise.resolve({ data: { outcome: 'applied', start_outcome: 'started', workout_log_id: LOG_ID, notified: true }, error: null });
         return Promise.resolve({ data: LOG_ID, error: null });
       },
     },
@@ -201,7 +199,5 @@ test('quick-complete links to the same-day session too', async () => {
   state.sessionRows = [{ id: SESSION_NOW, scheduled_at: sameDay(0), workout_id: null }];
   const { status } = await post('/api/workout-logs/quick-complete', { workout_assignment_id: ASSIGNMENT_ID });
   assert.equal(status, 201);
-  // Look A (2026-11-14): the start runs inside quick_complete_workout_v3,
-  // which receives the same resolved session.
-  assert.equal(state.rpcCalls.find((call) => call.name === 'quick_complete_workout_v3').args.p_session_id, SESSION_NOW);
+  assert.equal(startArgs().p_session_id, SESSION_NOW);
 });

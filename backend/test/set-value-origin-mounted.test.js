@@ -1,8 +1,7 @@
 // Set value origin (cross-device Undo, local migration 20261113000000): the
-// PATCH set route forwards a declared origin to apply_workout_set_event_v3
-// (Look A 20261114120000: v2's rule plus the one Undo record), falls back to
-// v2 on a database without v3 and to v1 without v2 (old schema), keeps
-// undeclared writes on the unchanged v1 RPC, and the coach plan edit propagates the new
+// PATCH set route forwards a declared origin to apply_workout_set_event_v2,
+// keeps undeclared writes on the unchanged v1 RPC, falls back to v1 when the
+// database has no v2 (old schema), and the coach plan edit propagates the new
 // prescription only to untouched sets under a fresh nonce, falling back to the
 // old revision-0 filter when the column is missing. Real Express router on a
 // loopback server; Supabase, auth and the logger are stubbed via the require
@@ -26,16 +25,12 @@ const dbPath = require.resolve('../src/supabase');
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { supabaseAdmin: {
   rpc(name, args) {
     rpcCalls.push({ name, args });
-    const v3Missing = ['no-v2', 'no-v2-sql', 'no-v3'].includes(rpcMode);
-    if (name === 'apply_workout_set_event_v3' && v3Missing) return Promise.resolve({ data: null, error: { code: rpcMode === 'no-v2-sql' ? '42883' : 'PGRST202', message: 'Could not find the function public.apply_workout_set_event_v3' } });
-    if (name === 'apply_workout_set_event_v3' && rpcMode === 'v2-error') return Promise.resolve({ data: null, error: { code: 'XX000', message: 'synthetic v3 failure' } });
     if (name === 'apply_workout_set_event_v2' && rpcMode === 'no-v2') return Promise.resolve({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.apply_workout_set_event_v2' } });
     if (name === 'apply_workout_set_event_v2' && rpcMode === 'no-v2-sql') return Promise.resolve({ data: null, error: { code: '42883', message: 'function public.apply_workout_set_event_v2 does not exist' } });
     if (name === 'apply_workout_set_event_v2' && rpcMode === 'v2-error') return Promise.resolve({ data: null, error: { code: 'XX000', message: 'synthetic v2 failure' } });
-    if (!['apply_workout_set_event', 'apply_workout_set_event_v2', 'apply_workout_set_event_v3'].includes(name)) return Promise.resolve({ data: null, error: null });
-    const origin = name === 'apply_workout_set_event' ? 'unknown' : args.p_value_origin;
-    const change = name === 'apply_workout_set_event_v3' ? { change: { id: args.p_event_id, undoable: true } } : {};
-    return Promise.resolve({ data: { outcome: 'applied', set: { ...set, ...args.p_payload, revision: set.revision + 1, value_origin: origin }, ...change }, error: null });
+    if (name !== 'apply_workout_set_event' && name !== 'apply_workout_set_event_v2') return Promise.resolve({ data: null, error: null });
+    const origin = name === 'apply_workout_set_event_v2' ? args.p_value_origin : 'unknown';
+    return Promise.resolve({ data: { outcome: 'applied', set: { ...set, ...args.p_payload, revision: set.revision + 1, value_origin: origin } }, error: null });
   },
   from(table) {
     const filters = []; const ors = []; let payload;
@@ -84,13 +79,12 @@ const undo = { event_id: EVENT, base_revision: 1, status: 'pending', actual_load
 const names = () => rpcCalls.map((row) => row.name).filter((name) => name.startsWith('apply_workout_set_event'));
 
 for (const origin of ['prefill', 'entered']) {
-  test(`a declared '${origin}' write goes to v3 with that origin and returns it with its Undo`, async () => {
+  test(`a declared '${origin}' write goes to v2 with that origin and returns it`, async () => {
     reset();
     const response = await call('PATCH', '/sets/set-a', { ...undo, value_origin: origin });
     assert.equal(response.status, 200);
-    assert.deepEqual(names(), ['apply_workout_set_event_v3']);
-    const args = rpcCalls.find((row) => row.name === 'apply_workout_set_event_v3').args;
-    assert.deepEqual(response.body.event.change, { id: EVENT, undoable: true });
+    assert.deepEqual(names(), ['apply_workout_set_event_v2']);
+    const args = rpcCalls.find((row) => row.name === 'apply_workout_set_event_v2').args;
     assert.equal(args.p_value_origin, origin);
     assert.equal(args.p_event_id, EVENT);
     assert.equal('value_origin' in args.p_payload, false, 'origin is not a set value');
@@ -122,27 +116,18 @@ for (const mode of ['no-v2', 'no-v2-sql']) {
     reset(); rpcMode = mode;
     const response = await call('PATCH', '/sets/set-a', { ...undo, value_origin: 'prefill' });
     assert.equal(response.status, 200);
-    assert.deepEqual(names(), ['apply_workout_set_event_v3', 'apply_workout_set_event_v2', 'apply_workout_set_event']);
-    assert.equal('p_value_origin' in rpcCalls[2].args, false);
-    assert.equal(rpcCalls[2].args.p_event_id, EVENT, 'same event id, so replay stays idempotent');
+    assert.deepEqual(names(), ['apply_workout_set_event_v2', 'apply_workout_set_event']);
+    assert.equal('p_value_origin' in rpcCalls[1].args, false);
+    assert.equal(rpcCalls[1].args.p_event_id, EVENT, 'same event id, so replay stays idempotent');
     assert.deepEqual(logged, []);
   });
 }
 
-test('a database without v3 uses v2 once, with the declaration, and offers no Undo record', async () => {
-  reset(); rpcMode = 'no-v3';
-  const response = await call('PATCH', '/sets/set-a', { ...undo, value_origin: 'prefill' });
-  assert.equal(response.status, 200);
-  assert.deepEqual(names(), ['apply_workout_set_event_v3', 'apply_workout_set_event_v2']);
-  assert.equal(rpcCalls[1].args.p_value_origin, 'prefill');
-  assert.equal(response.body.event.change, null);
-});
-
-test('any other v3 failure is not retried on v2 or v1 and stays a controlled, logged 500', async () => {
+test('any other v2 failure is not retried on v1 and stays a controlled, logged 500', async () => {
   reset(); rpcMode = 'v2-error';
   const response = await call('PATCH', '/sets/set-a', { ...undo, value_origin: 'entered' });
   assert.equal(response.status, 500);
-  assert.deepEqual(names(), ['apply_workout_set_event_v3']);
+  assert.deepEqual(names(), ['apply_workout_set_event_v2']);
   assert.deepEqual(logged.map((row) => row.context), ['update workout set error']);
 });
 
