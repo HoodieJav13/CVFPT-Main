@@ -29,7 +29,7 @@ const OUT = path.join(ROOT, '.redesign', NAME);
 const GATE_FILES = new Set(['.gitignore', 'CLAUDE.md', 'backend/src/app.js', 'frontend/eslint.config.mjs', 'frontend/tailwind.config.js', 'frontend/vite.config.js']);
 // Redesign files changed on the port branch after the move, each for a stated reason (docs/redesign-gate.md).
 // Test-only so far: the app files of the redesign must stay identical to the source branch.
-const PORT_EDITS = new Set(['frontend/tests/browser/workout-ux-look-a-focus.spec.mjs']);
+const PORT_EDITS = new Set(['look-a-server.mjs', 'workout-ux-look-a-focus.spec.mjs', 'workout-ux-look-a-swap-guidance.spec.mjs', 'workout-ux-quick-undo.spec.mjs'].map((name) => `frontend/tests/browser/${name}`));
 
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 const walk = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

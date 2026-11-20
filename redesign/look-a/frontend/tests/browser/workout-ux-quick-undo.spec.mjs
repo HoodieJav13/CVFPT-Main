@@ -9,7 +9,7 @@
 // legacy queued writes and markers (flag-only Done no longer produces them).
 // Normal mode, stateful synthetic API (look-a-server.mjs), fictional data only.
 import { test, expect } from '@playwright/test';
-import { makeServer, installServer, clone, held, sent, card, reps, settled, undoButton, open } from './look-a-server.mjs';
+import { makeServer, installServer, clone, held, sent, card, reps, settled, undoButton, open, undoAndSettle } from './look-a-server.mjs';
 
 const LOG = 'undo-log';
 const REST_KEY = `cvf_rest_timer_${LOG}`;
@@ -90,8 +90,7 @@ for (const [width, height] of [[390, 844], [320, 700]]) {
     await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
     await page.screenshot({ path: test.info().outputPath(`2-after-done-${width}x${height}.png`) });
 
-    await undoButton(page).click();
-    await settled(page, LOG);
+    await undoAndSettle(page, LOG);
     expect(flag(server, 'a')).toBe(false);
     expect(rows(server, 'a')).toEqual(before);
     // No set was written by Done or by its Undo; one Done, one Undo, aimed at it.
@@ -125,8 +124,7 @@ test('the Undo stays past six seconds and across a reload until it is used', asy
   await page.reload();
   await expect(page.getByTestId('workout-outline')).toBeVisible();
   await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
-  await undoButton(page).click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   expect(flag(server, 'a')).toBe(false);
   await noUndo(page);
   expect(results.errors).toEqual([]);
@@ -141,8 +139,7 @@ test('a newer successful set edit becomes the Undo; using it leaves Done in plac
   await reps(page, 'Goblet Squat', 1).blur();
   await settled(page, LOG);
   await expect(undoButton(page)).toHaveAccessibleName(/Undo set 1 of Goblet Squat/);
-  await undoButton(page).click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   // Only the set edit is undone; its row is back to its values; Done stays.
   const after = rows(server, 'b');
   expect(after.map(({ status, actual_reps: r, actual_load_value: l, value_origin: o }) => [status, r, l, o]))
@@ -166,8 +163,7 @@ test('a refused set write keeps the earlier Undo, which still works', async ({ p
   await expect.poll(() => setWrites(server).length).toBeGreaterThan(0);
   await settled(page, LOG);
   await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
-  await undoButton(page).click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   expect(flag(server, 'a')).toBe(false);
   expect([...server.changes.values()].filter((c) => c.kind === 'undo' && c.outcome === 'applied')).toHaveLength(1);
   expect(results.errors).toEqual([]);
@@ -181,8 +177,7 @@ test('a coach prescription change ends the Undo: a stale tap is refused and chan
   const before = rows(server, 'a');
   server.coachPrescription('a', { prescribed_load_value: 55 });
   // This page still offers its older Undo; the server refuses it.
-  await undoButton(page).click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   expect(flag(server, 'a')).toBe(true);
   expect(rows(server, 'a')).toEqual(before);
   expect([...server.changes.values()].filter((c) => c.kind === 'undo').map((c) => c.outcome)).toEqual(['refused']);
@@ -235,8 +230,7 @@ test('after Done, Undo and a reload the prefilled set is still untouched: a seco
   const { server, results } = await setup(page);
   await done(page, 'Incline Press').click();
   await settled(page, LOG);
-  await undoButton(page).click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   await page.reload();
   await expect(page.getByTestId('workout-outline')).toBeVisible();
   const before = rows(server, 'a');
@@ -379,8 +373,7 @@ test('a newer rest timer started after Done is kept by its Undo', async ({ page 
   await page.getByTestId('rest-timer').click();
   await page.getByTestId('rest-start').click();
   const newer = await restDeadline(page);
-  await undoButton(page).click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   expect(await restDeadline(page)).toBe(newer);
   await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state', 'running');
 });
@@ -400,8 +393,7 @@ test('a rest timer that already finished stays finished through Done and Undo, w
   });
   await done(page, 'Incline Press').click();
   await settled(page, LOG);
-  await undoButton(page).click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   await expect(page.getByTestId('rest-timer')).toHaveAttribute('data-rest-state', 'complete');
   expect(await restDeadline(page)).toBe(finished);
   await page.waitForTimeout(600);
@@ -571,8 +563,7 @@ test('no bulk "Complete all remaining": Done, Undo and Finish work and /complete
   await card(page, 'Goblet Squat').getByTestId('exercise-quick-complete').click();
   await settled(page, LOG);
   expect(flag(server, 'b')).toBe(true);
-  await undoButton(page).click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   expect(flag(server, 'b')).toBe(false);
   await card(page, 'Goblet Squat').getByTestId('exercise-quick-complete').click();
   await settled(page, LOG);

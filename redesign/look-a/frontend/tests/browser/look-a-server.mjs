@@ -180,6 +180,16 @@ export const card = (page, name) => page.getByTestId('tracker-exercise-card').fi
 export const reps = (page, name, n) => page.locator(`input[aria-label="${name} set ${n} performed reps"]`);
 export const settled = (page, logId) => page.waitForFunction((key) => !localStorage.getItem(key), `cvf_workout_outbox_${logId}`);
 export const undoButton = (page) => page.getByTestId('workout-undo-button');
+// Tap Undo and wait until it has really landed. "Outbox empty" alone is not
+// enough: the outbox reaches localStorage a moment after the tap (it waits for
+// the queue lock), so that check can be true before the Undo has even left.
+// So: the server's answer to this Undo first (applied or refused), then the outbox.
+export async function undoAndSettle(page, logId) {
+  const answered = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith(`/workout-logs/${logId}/undo`));
+  await undoButton(page).click();
+  await answered;
+  await settled(page, logId);
+}
 export async function open(page, logId) {
   await page.goto(`/client/workouts/${logId}/track`);
   await expect(page.getByTestId('workout-outline')).toBeVisible();

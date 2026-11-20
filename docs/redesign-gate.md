@@ -13,10 +13,13 @@ repo behind one switch that is **off by default**.
   (only the service worker's per-build id differs). The backend loads no Look A
   file and serves no Look A route.
 - **On:** the app is Look A, file for file the same as `da82ee8`.
-  One exception, test-only: `redesign/look-a/frontend/tests/browser/workout-ux-look-a-focus.spec.mjs`
-  was tightened on this branch (the duration-exercise Undo test now waits for the
-  server to hold the outcome before checking it; it used to pass or fail on timing).
-  `verify` lists it under `portEdits`. No app file of Look A is changed.
+  One exception, test-only: in `redesign/look-a/frontend/tests/browser/`, the
+  shared helper `look-a-server.mjs` gained `undoAndSettle`, and the 12 places in
+  three specs (`workout-ux-look-a-focus`, `workout-ux-look-a-swap-guidance`,
+  `workout-ux-quick-undo`) that tapped Undo and then only waited for an empty
+  outbox now wait for the server's answer to that Undo first. They used to pass
+  or fail on timing. `verify` lists the four files under `portEdits`.
+  No app file of Look A is changed.
 
 ## Where Look A lives
 

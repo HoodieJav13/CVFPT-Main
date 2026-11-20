@@ -5,7 +5,7 @@
 // makes the original next again. Normal mode, stateful synthetic API shaped
 // like the Look A routes (look-a-server.mjs), fictional data only.
 import { test, expect } from '@playwright/test';
-import { makeServer, installServer, card, settled, undoButton, open, routeSwap, reps, clone } from './look-a-server.mjs';
+import { makeServer, installServer, card, settled, undoButton, open, routeSwap, reps, clone, undoAndSettle } from './look-a-server.mjs';
 
 const LOG = 'sg-log';
 const row = (exercise, n, extra = {}) => ({
@@ -64,8 +64,7 @@ test('active backup swap: the replacement becomes Next and Focus; the original r
   await expect(page.getByTestId('workout-progress-bar')).toHaveAttribute('aria-valuemax', '5');
   expect(originalRows(server)).toBe(before);
   // Undo the swap (the newest change): the original is next again.
-  await undoButton(page).click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   await expect.poll(() => server.log.substitutions[0].status).toBe('undone');
   await expect(card(page, 'Step Up')).toHaveCount(0);
   await nextIs(page, 'Split Squat');

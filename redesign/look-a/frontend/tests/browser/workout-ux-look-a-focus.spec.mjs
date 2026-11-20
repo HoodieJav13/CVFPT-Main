@@ -5,7 +5,7 @@
 // logs nothing and only opens the set for entry. Normal mode, stateful
 // synthetic API, fictional data only.
 import { test, expect } from '@playwright/test';
-import { makeServer, installServer, sent, settled, open } from './look-a-server.mjs';
+import { makeServer, installServer, sent, settled, open, undoAndSettle } from './look-a-server.mjs';
 
 const LOG = 'focus-log';
 const row = (n, extra = {}) => ({
@@ -180,8 +180,7 @@ test('load-only entry in the inline editor: explicit Log keeps reps null, then o
   expect(server.find('a-s1')).toMatchObject({ status: 'completed', actual_load_value: 175, actual_reps: null, actual_rpe: null });
   const undo = page.getByTestId('workout-undo-button');
   await expect(undo).toBeEnabled();
-  await undo.click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_reps: null });
   await expect(panel(page)).toHaveAttribute('data-focus-set', 'a-s1');
   await expect(page.locator('[data-testid="workout-undo-button"]:not([disabled])')).toHaveCount(0);
@@ -211,8 +210,7 @@ test('RPE-only entry in the inline editor: explicit Log records RPE with load an
   expect(completions).toHaveLength(1);
   expect(completions[0].body).toMatchObject({ status: 'completed', actual_load_value: null, actual_reps: null, actual_rpe: 8 });
   expect(server.find('a-s1')).toMatchObject({ status: 'completed', actual_load_value: null, actual_reps: null, actual_rpe: 8 });
-  await page.getByTestId('workout-undo-button').click();
-  await settled(page, LOG);
+  await undoAndSettle(page, LOG);
   expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_load_value: null, actual_reps: null });
   await expect(panel(page)).toHaveAttribute('data-focus-set', 'a-s1');
   expect(results.errors).toEqual([]);
@@ -244,8 +242,7 @@ test('weight-only entry on a duration exercise: Log names the weight, keeps dura
   expect(completions[0].body).toMatchObject({ status: 'completed', actual_load_value: 24, actual_duration_value: null });
   expect(server.find('a-s1')).toMatchObject({ status: 'completed', actual_load_value: 24, actual_duration_value: null, actual_reps: null });
   const undosBefore = sent(server, /\/undo$/).length;
-  await page.getByTestId('workout-undo-button').click();
-  await landed(page, server, 'a-s1', 'pending');
+  await undoAndSettle(page, LOG);
   expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_duration_value: null });
   expect(sent(server, /\/undo$/).slice(undosBefore)).toHaveLength(1);
   expect(results.errors).toEqual([]);
