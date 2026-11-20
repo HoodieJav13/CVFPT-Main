@@ -27,6 +27,9 @@ export const OVERLAYS = [
 const OUT = path.join(ROOT, '.redesign', NAME);
 // The only files allowed to differ from the redesign's source branch: the gate itself.
 const GATE_FILES = new Set(['.gitignore', 'CLAUDE.md', 'backend/src/app.js', 'frontend/eslint.config.mjs', 'frontend/tailwind.config.js', 'frontend/vite.config.js']);
+// Redesign files changed on the port branch after the move, each for a stated reason (docs/redesign-gate.md).
+// Test-only so far: the app files of the redesign must stay identical to the source branch.
+const PORT_EDITS = new Set(['frontend/tests/browser/workout-ux-look-a-focus.spec.mjs']);
 
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 const walk = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -79,8 +82,8 @@ function verify(ref) {
     if (actual === hash) same += 1; else different.push(file);
   }
   const extra = walk(OUT).map((full) => path.relative(OUT, full)).filter((file) => !expected.has(file) && !file.includes('node_modules'));
-  const unexpected = different.filter((file) => !GATE_FILES.has(file));
-  console.log(JSON.stringify({ ref, same, gateFilesDiffering: different.filter((file) => GATE_FILES.has(file)), unexpected, missing, extra }, null, 1));
+  const unexpected = different.filter((file) => !GATE_FILES.has(file) && !PORT_EDITS.has(file));
+  console.log(JSON.stringify({ ref, same, gateFilesDiffering: different.filter((file) => GATE_FILES.has(file)), portEdits: different.filter((file) => PORT_EDITS.has(file)), unexpected, missing, extra }, null, 1));
   if (unexpected.length || missing.length) process.exitCode = 1;
 }
 

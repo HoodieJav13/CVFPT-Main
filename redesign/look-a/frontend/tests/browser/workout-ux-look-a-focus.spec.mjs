@@ -30,6 +30,13 @@ async function setup(page, sets) {
 }
 const panel = (page) => page.getByTestId('focus-panel');
 const setWrites = (server) => sent(server, /\/sets\//);
+// The outbox reaches localStorage a moment after the tap (it waits for the
+// queue lock), so "outbox empty" alone can be true before the write has even
+// left. Wait for the server to hold the outcome first, then for the outbox.
+async function landed(page, server, setId, status) {
+  await expect.poll(() => server.find(setId).status).toBe(status);
+  await settled(page, LOG);
+}
 
 test('the Focus panel shows same-set Last/Today, the prescription and lands in view', async ({ page }) => {
   const { results } = await setup(page, [DONE_1, row(2), row(3)]);
@@ -231,14 +238,16 @@ test('weight-only entry on a duration exercise: Log names the weight, keeps dura
   await expect(action).toContainText(/duration not recorded/i);
   const before = setWrites(server).length;
   await action.click();
-  await settled(page, LOG);
+  await landed(page, server, 'a-s1', 'completed');
   const completions = setWrites(server).slice(before).filter((write) => write.body.status === 'completed');
   expect(completions).toHaveLength(1);
   expect(completions[0].body).toMatchObject({ status: 'completed', actual_load_value: 24, actual_duration_value: null });
   expect(server.find('a-s1')).toMatchObject({ status: 'completed', actual_load_value: 24, actual_duration_value: null, actual_reps: null });
+  const undosBefore = sent(server, /\/undo$/).length;
   await page.getByTestId('workout-undo-button').click();
-  await settled(page, LOG);
+  await landed(page, server, 'a-s1', 'pending');
   expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_duration_value: null });
+  expect(sent(server, /\/undo$/).slice(undosBefore)).toHaveLength(1);
   expect(results.errors).toEqual([]);
 });
 
