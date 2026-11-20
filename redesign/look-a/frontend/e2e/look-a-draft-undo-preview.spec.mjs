@@ -1,0 +1,44 @@
+import { test, expect, usePreviewRole, callPreviewApi } from './preview-test.mjs';
+
+test('fictional preview preserves Set 1 Undo after typing into Set 2', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await usePreviewRole(page, 'client');
+  await page.goto('/client/programs');
+  await page.getByTestId('start-program-workout').first().click();
+  await expect(page).toHaveURL(/\/client\/workouts\/[^/]+\/track/);
+  const path = '/workout-logs/' + new URL(page.url()).pathname.split('/')[3];
+  const read = async () => (await callPreviewApi(page, 'get', path)).data.exercises[0].sets;
+  const panel = page.getByTestId('focus-panel');
+  const action = panel.getByTestId('focus-log');
+  const undo = page.getByTestId('workout-undo-button');
+  const editor = panel.getByTestId('focus-editor');
+  const openEditor = async () => {
+    const adjust = panel.getByTestId('focus-adjust');
+    if (await adjust.count()) await adjust.click();
+    else await action.click();
+    await expect(editor).toBeVisible();
+  };
+  await openEditor();
+  const reps = editor.getByLabel(/set 1 performed reps$/);
+  await reps.click();
+  await reps.fill('8');
+  await reps.blur();
+  await expect.poll(async () => (await read())[0].actual_reps).toBe(8);
+  await expect(undo).toHaveCount(0);
+  await action.click();
+  await expect.poll(async () => (await read())[0].status).toBe('completed');
+  await expect(undo).toHaveAccessibleName(/Undo set 1 of/);
+  await openEditor();
+  const weight = editor.getByLabel(/set 2 weight$/);
+  await weight.click();
+  await weight.fill('45');
+  await weight.blur();
+  await expect.poll(async () => (await read())[1].actual_load_value).toBe(45);
+  await expect(undo).toBeEnabled();
+  await expect(undo).toHaveAccessibleName(/Undo set 1 of/);
+  await undo.click();
+  await expect.poll(async () => (await read())[0].status).toBe('pending');
+  expect((await read())[1]).toMatchObject({ status: 'pending', actual_load_value: 45 });
+  await expect(undo).toBeDisabled();
+});

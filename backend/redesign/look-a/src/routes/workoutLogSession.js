@@ -133,9 +133,10 @@ function registerSessionRoutes(router, deps) {
       if (error.code === 'P0409') return res.status(503).json({ error: 'This workout is changing right now. Try again.' });
       throw error;
     }
-    // change: this write's own Undo, as the database answers it now (null when
-    // the write changed nothing material, or on a database without v3).
-    return res.json({ ...data.set, event: { id: envelope.eventId, outcome: data.outcome, original_outcome: data.original_outcome || null, conflict_id: data.conflict_id || null, change: data.change || null } });
+    // change describes this write's own Undo. A Look A draft can separately
+    // report the authoritative previous offer (including explicit null).
+    return res.json({ ...data.set, event: { id: envelope.eventId, outcome: data.outcome, original_outcome: data.original_outcome || null, conflict_id: data.conflict_id || null, change: data.change || null },
+      ...(Object.hasOwn(data, 'undo') ? { undo: data.undo } : {}) });
   }
 
   // Coach edit of UNFINISHED work: the log exercise prescription and the

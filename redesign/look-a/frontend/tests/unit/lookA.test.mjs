@@ -237,3 +237,13 @@ test('the client Undo is not offered for a typed, not yet logged set; logged and
   assert.deepEqual(clientUndoOffer(offer('gone'), log, new Set()), offer('gone'));
   assert.equal(clientUndoOffer(null, log, new Set()), null);
 });
+
+test('a queued draft save does not hide the saved Undo or a queued Log', () => {
+  const saved = { change_id: 'logged-1', kind: 'set', result: { set_id: 's1' } };
+  const draft = { ...setOp('q2', 's2', 'draft-2', { actual_reps: null }), data: { event_id: 'draft-2', status: 'pending' } };
+  assert.equal(undoOffer([draft], saved), saved);
+  const log = { ...setOp('q1', 's1', 'logged-1', { status: 'pending' }), data: { event_id: 'logged-1', status: 'completed' } };
+  assert.equal(undoOffer([log, draft], null).change_id, 'logged-1');
+  const reopen = { ...draft, edits: { status: 'completed' } };
+  assert.equal(undoOffer([reopen], saved).change_id, 'draft-2');
+});

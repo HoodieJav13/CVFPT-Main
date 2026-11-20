@@ -130,9 +130,8 @@ test('the Undo stays past six seconds and across a reload until it is used', asy
   expect(results.errors).toEqual([]);
 });
 
-// Port branch (fresh-eyes critique, problem 1): a typed edit to a set that is
-// not logged yet is saved and is the server's newest change (so Done's Undo is
-// gone, as before), but it is not offered as "Undo set 1": no set was logged.
+// Draft typing is saved but isn't an action. It can keep a prior different
+// Set Undo, not Done's fingerprint. Done still cannot be undone here.
 test('a newer typed edit to an unlogged set replaces Done\'s Undo but offers none of its own, before or after a reload', async ({ page }) => {
   const { server, results } = await setup(page);
   await done(page, 'Incline Press').click();
@@ -143,7 +142,7 @@ test('a newer typed edit to an unlogged set replaces Done\'s Undo but offers non
   await expect.poll(() => setWrites(server).length).toBe(1);
   await settled(page, LOG);
   expect(rows(server, 'b')[0]).toMatchObject({ status: 'pending', actual_reps: 9 });
-  expect(server.current()).toMatchObject({ kind: 'set' });
+  expect(server.current()).toBeNull();
   // The slot keeps its place, quiet.
   await expect(undoButton(page)).toBeDisabled();
   await expect(undoButton(page)).toHaveAccessibleName('Nothing to undo');

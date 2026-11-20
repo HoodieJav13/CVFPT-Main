@@ -34,7 +34,10 @@ require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
     if (name === 'apply_workout_set_event_v2' && rpcMode === 'v2-error') return Promise.resolve({ data: null, error: { code: 'XX000', message: 'synthetic v2 failure' } });
     if (!['apply_workout_set_event', 'apply_workout_set_event_v2', 'apply_workout_set_event_v3'].includes(name)) return Promise.resolve({ data: null, error: null });
     const origin = name === 'apply_workout_set_event' ? 'unknown' : args.p_value_origin;
-    const change = name === 'apply_workout_set_event_v3' ? { change: { id: args.p_event_id, undoable: true } } : {};
+    const draftModes = { 'draft-keep': { change_id: 'prior-log', kind: 'set', result: { set_id: 'prior-set' } }, 'draft-clear': null };
+    const change = name !== 'apply_workout_set_event_v3' ? {}
+      : Object.hasOwn(draftModes, rpcMode) ? { change: null, undo: draftModes[rpcMode] }
+        : { change: { id: args.p_event_id, undoable: true } };
     return Promise.resolve({ data: { outcome: 'applied', set: { ...set, ...args.p_payload, revision: set.revision + 1, value_origin: origin }, ...change }, error: null });
   },
   from(table) {
@@ -176,3 +179,21 @@ for (const mode of ['missing-column', 'missing-column-filter']) {
     assert.deepEqual(logged, []);
   });
 }
+
+test('Set draft HTTP replies forward the authoritative Undo, including explicit null, without inventing one for old RPCs', async () => {
+  for (const [mode, expected] of [
+    ['draft-keep', { change_id: 'prior-log', kind: 'set', result: { set_id: 'prior-set' } }],
+    ['draft-clear', null],
+  ]) {
+    reset(); rpcMode = mode;
+    const reply = await call('PATCH', '/sets/set-a', { ...undo, value_origin: 'entered' });
+    assert.equal(reply.status, 200);
+    assert.equal(reply.body.event.change, null);
+    assert.ok(Object.hasOwn(reply.body, 'undo'));
+    assert.deepEqual(reply.body.undo, expected);
+  }
+  reset(); rpcMode = 'no-v3';
+  const older = await call('PATCH', '/sets/set-a', { ...undo, value_origin: 'entered' });
+  assert.equal(older.status, 200);
+  assert.equal(Object.hasOwn(older.body, 'undo'), false);
+});

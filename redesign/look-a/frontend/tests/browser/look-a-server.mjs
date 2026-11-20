@@ -101,7 +101,8 @@ export async function installServer(page, server, { logId, profile = 'Fictional 
       const known = server.changes.get(body.event_id);
       const special = !known && server.setHook ? server.setHook(set, body) : null;
       const same = !known && !special && SET_FIELDS.every((k) => !(k in body) || body[k] === set[k]);
-      if (known) answer = { ...strip(set), event: { id: body.event_id, outcome: 'replayed', original_outcome: known.outcome, ...(legacySetReplies || !known.inverse ? {} : { change: { id: body.event_id, undoable: !known.undone } }) } };
+      if (known) answer = { ...strip(set), event: { id: body.event_id, outcome: 'replayed', original_outcome: known.outcome, ...(legacySetReplies || !known.inverse ? {} : { change: { id: body.event_id, undoable: server.current()?.change_id === body.event_id } }) },
+        ...(!legacySetReplies && !known.inverse && known.outcome === 'applied' && body.value_origin === 'entered' ? { undo: server.current() } : {}) };
       else if (special) {
         // Another writer got there first (the hook changed the row); nothing of this write is applied.
         server.record(body.event_id, 'set', body, special.outcome, null);
@@ -111,11 +112,22 @@ export async function installServer(page, server, { logId, profile = 'Fictional 
         server.changes.set(body.event_id, { kind: 'set', outcome: 'applied', inverse: null, undone: false });
         answer = { ...strip(set), event: { id: body.event_id, outcome: 'applied', change: null } };
       } else {
+        const current = server.current();
         const before = Object.fromEntries([...SET_FIELDS, 'value_origin', 'value_origin_nonce'].map((k) => [k, set[k]]));
         for (const k of SET_FIELDS) if (k in body) set[k] = body[k];
         Object.assign(set, { revision: set.revision + 1, last_actor_role: 'client', value_origin: oldServer ? 'unknown' : body.value_origin === 'prefill' ? 'prefill' : 'entered', value_origin_nonce: body.event_id, updated_at: server.stamp() });
-        server.record(body.event_id, 'set', body, 'applied', { set: setId, before }, { set_id: setId });
-        answer = { ...strip(set), event: { id: body.event_id, outcome: 'applied', ...(legacySetReplies ? {} : { change: { id: body.event_id, undoable: true } }) } };
+        const draft = before.status === 'pending' && set.status === 'pending' && body.value_origin === 'entered';
+        if (draft) {
+          server.changes.set(body.event_id, { kind: 'set', outcome: 'applied', inverse: null, undone: false });
+          if (current?.kind === 'set' && current.result.set_id !== setId) {
+            server.changes.get(current.change_id).after = material(server.log);
+          }
+        } else {
+          server.record(body.event_id, 'set', body, 'applied', { set: setId, before }, { set_id: setId });
+        }
+        answer = { ...strip(set), event: { id: body.event_id, outcome: 'applied',
+          ...(legacySetReplies ? {} : { change: draft ? null : { id: body.event_id, undoable: true } }) },
+          ...(!legacySetReplies && draft ? { undo: server.current() } : {}) };
       }
     } else if (method === 'POST' && /\/exercises\/[^/]+\/done$/.test(path)) {
       const exerciseId = path.split('/').at(-2);

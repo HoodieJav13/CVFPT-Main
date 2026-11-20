@@ -1788,7 +1788,10 @@ export async function installPreviewApi(api) {
       if (!validRpe) return fail(config, 400, 'RPE must be 1 through 10 in 0.5 increments or null');
       const eventId = typeof payload.event_id === 'string' ? payload.event_id : null;
       const known = eventId && lookALedger().byId.get(eventId);
-      if (known) return ok({ ...set, event: { id: eventId, outcome: 'replayed', original_outcome: known.outcome, change: known.inverse ? { id: eventId, undoable: !known.undone } : null } }, config);
+      if (known) return ok({ ...set, event: { id: eventId, outcome: 'replayed', original_outcome: known.outcome,
+        change: known.inverse ? { id: eventId, undoable: lookACurrent(log.id)?.change_id === eventId } : null },
+        ...(!known.inverse && payload.value_origin === 'entered' ? { undo: lookACurrent(log.id) } : {}) }, config);
+      const current = lookACurrent(log.id);
       const before = Object.fromEntries(SET_RESTORE.map((key) => [key, set[key] ?? null]));
       const materialBefore = lookAMaterial(log.id);
       Object.assign(set, {
@@ -1804,9 +1807,19 @@ export async function installPreviewApi(api) {
       set.revision = (set.revision || 0) + 1;
       if (!eventId) return ok(set, config);
       const changed = lookAMaterial(log.id) !== materialBefore;
-      if (changed) lookARecord(log.id, eventId, 'set', { set: set.id, before }, { set_id: set.id });
-      else lookALedger().byId.set(eventId, { logId: log.id, kind: 'set', inverse: null, outcome: 'applied', undone: false });
-      return ok({ ...set, event: { id: eventId, outcome: 'applied', change: changed ? { id: eventId, undoable: true } : null } }, config);
+      const draft = before.status === 'pending' && set.status === 'pending'
+        && payload.value_origin === 'entered';
+      const recordUndo = changed && !draft;
+      if (recordUndo) lookARecord(log.id, eventId, 'set', { set: set.id, before }, { set_id: set.id });
+      else {
+        const ledger = lookALedger();
+        ledger.byId.set(eventId, { logId: log.id, kind: 'set', inverse: null, outcome: 'applied', undone: false });
+        if (changed && draft && current?.kind === 'set' && current.result.set_id !== set.id) {
+          ledger.byId.get(current.change_id).after = lookAMaterial(log.id);
+        }
+      }
+      return ok({ ...set, event: { id: eventId, outcome: 'applied', change: recordUndo ? { id: eventId, undoable: true } : null },
+        ...(changed && draft ? { undo: lookACurrent(log.id) } : {}) }, config);
     }
     const workoutExtraSet = path.match(/^\/workout-logs\/([^/]+)\/exercises\/([^/]+)\/sets$/);
     if (workoutExtraSet && method === 'post') {

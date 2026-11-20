@@ -179,6 +179,9 @@ export function nextUndo(current, reply) {
 export function undoableOp(op) {
   if (!op || op.undoOf) return null;
   if (op.kind === 'set' && op.data?.event_id && op.setId && !String(op.setId).startsWith('pending-')) {
+    // A save of numbers on an unlogged set isn't a new action; reopening
+    // a logged set still is (its original status is part of the intent).
+    if (op.data.status === 'pending' && op.edits && !Object.hasOwn(op.edits, 'status')) return null;
     return { change_id: op.data.event_id, kind: 'set', result: { set_id: op.setId } };
   }
   if (op.kind === 'material' && op.optimistic === 'done' && op.data?.event_id) {
@@ -206,12 +209,9 @@ export function undoOffer(queue, saved) {
   return saved || null;
 }
 
-// The client's Undo is offered only when there is something to undo. Typing
-// into a set that is not logged yet is saved as a change (so the numbers
-// survive a reload), but it is not a logged set: offering "Undo set 1" for it
-// reads as taking back a set that was never logged. So a set change whose set
-// is still pending is not offered, unless that change is the one that reopened
-// a logged set (`reopened`: ids of sets this page just un-completed).
+// A pending set ordinarily has no Undo of its own. Restored state from older
+// servers may still name one, so hide it unless this page just un-completed
+// that set. A draft for another set leaves the prior Log's Undo offered.
 export function clientUndoOffer(offer, log, reopened) {
   if (!offer || offer.kind !== 'set') return offer || null;
   const setId = offer.result?.set_id || offer.set_id;

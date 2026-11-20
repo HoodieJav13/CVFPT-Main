@@ -380,8 +380,8 @@ test('typing into an unlogged set shows no Undo; Undo appears with the Log and t
   await expect.poll(() => server.find('a-s1').actual_reps).toBe(5);
   await settled(page, LOG);
   expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_load_value: 175, actual_reps: 5 });
-  // ... and the server does hold it as its newest change, yet the client offers no Undo for it.
-  expect(server.current()).toMatchObject({ kind: 'set', result: { set_id: 'a-s1' } });
+  // ... but the draft is not a logged action in the server Undo ledger.
+  expect(server.current()).toBeNull();
   await expect(undo).toHaveCount(0);
   await page.reload();
   await expect(page.getByTestId('workout-outline')).toBeVisible();
@@ -401,5 +401,35 @@ test('typing into an unlogged set shows no Undo; Undo appears with the Log and t
   // The slot keeps its place, quiet: nothing is left to undo.
   await expect(undo).toBeDisabled();
   await expect(undo).toHaveAccessibleName('Nothing to undo');
+  expect(results.errors).toEqual([]);
+});
+
+test('logging set 1 then typing set 2 still offers Undo set 1', async ({ page }) => {
+  const { server, results } = await setup(page, [row(1), row(2), row(3)]);
+  const undo = page.getByTestId('workout-undo-button');
+  let editor = await openSetEditor(page);
+  let input = editor.getByLabel('Back Squat set 1 performed reps');
+  await input.fill('5');
+  await input.blur();
+  await expect.poll(() => server.find('a-s1').actual_reps).toBe(5);
+  await settled(page, LOG);
+  await panel(page).getByTestId('focus-log').click();
+  await landed(page, server, 'a-s1', 'completed');
+  await expect(undo).toHaveAccessibleName('Undo set 1 of Back Squat');
+  editor = await openSetEditor(page);
+  input = editor.getByLabel('Back Squat set 2 weight', { exact: true });
+  await expect(input).toBeFocused();
+  await input.fill('185');
+  await input.blur();
+  await expect.poll(() => server.find('a-s2').actual_load_value).toBe(185);
+  await settled(page, LOG);
+  await expect(undo).toBeEnabled();
+  await expect(undo).toHaveAccessibleName('Undo set 1 of Back Squat');
+  await page.reload();
+  await expect(undo).toBeEnabled();
+  await expect(undo).toHaveAccessibleName('Undo set 1 of Back Squat');
+  await undoAndSettle(page, LOG);
+  expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_reps: 5 });
+  expect(server.find('a-s2')).toMatchObject({ status: 'pending', actual_load_value: 185 });
   expect(results.errors).toEqual([]);
 });
