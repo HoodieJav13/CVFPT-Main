@@ -55,6 +55,10 @@ export default defineConfig(({ mode }) => {
       // Explicit production-coach mode is independent of the locked fixture/demo gate.
       __CVF_POSTHOG_PRODUCTION_ALLOWED__: JSON.stringify(vercelEnvironment === 'production' && mode === 'production'),
       ...hostedDemoDefines,
+      // A compile-time false in production and by default eliminates the fictional chunks.
+      __CVF_COCKPIT_BUILD__: JSON.stringify(
+        vercelEnvironment !== 'production' && process.env.REACT_APP_PT_COCKPIT === 'true',
+      ),
     },
     resolve: {
       alias: {

@@ -1,3 +1,4 @@
+import { COCKPIT_CONTROLS_EVENT, isCockpitPreview } from '@/lib/cockpitFlag';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { ChevronDown, Settings2 } from 'lucide-react';
@@ -95,7 +96,15 @@ export default function PreviewToolbar() {
     setFailMode(getPreviewFailMode());
   }), []);
 
-  if (!isPreviewMode) return null;
+  const compactCockpit = isCockpitPreview && /^\/coach\/cockpit\/?$/.test(location.pathname);
+  const [cockpitOpen, setCockpitOpen] = useState(false);
+  useEffect(() => {
+    if (!compactCockpit) { setCockpitOpen(false); return undefined; }
+    const toggle = () => setCockpitOpen((open) => !open);
+    window.addEventListener(COCKPIT_CONTROLS_EVENT, toggle);
+    return () => window.removeEventListener(COCKPIT_CONTROLS_EVENT, toggle);
+  }, [compactCockpit]);
+  if (!isPreviewMode || (isCockpitPreview && /^\/(coach\/cockpit\/phone\/[^/]+|client\/cockpit-view)\/?$/.test(location.pathname))) return null;
 
   const changeRole = (nextRole) => {
     setPreviewRole(nextRole);
@@ -143,6 +152,7 @@ export default function PreviewToolbar() {
     <div
       className={cn(
         'fixed z-50 rounded-xl border border-border bg-muted/95 p-1 shadow-xl backdrop-blur lg:bottom-4 lg:left-auto lg:right-4 lg:top-auto lg:w-[520px] lg:translate-x-0 lg:p-2',
+        compactCockpit && !cockpitOpen ? 'lg:hidden' : null,
         expanded ? 'left-3 right-3 top-[68px]' : 'left-1/2 right-auto top-2 -translate-x-1/2'
       )}
       data-testid="preview-toolbar"
@@ -159,6 +169,7 @@ export default function PreviewToolbar() {
         {expanded ? <ChevronDown className="h-5 w-5" aria-hidden /> : <Settings2 className="h-5 w-5" aria-hidden />}
         {modified && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary" aria-hidden data-testid="preview-modified-marker" />}
       </button>
+      {compactCockpit && <button type="button" className="hidden min-h-11 items-center px-3 lg:inline-flex" data-testid="preview-toolbar-desktop-toggle" onClick={() => setCockpitOpen(false)} aria-controls="preview-toolbar-controls">Hide preview controls</button>}
       <div id="preview-toolbar-controls" className={cn(expanded ? 'block' : 'hidden', 'lg:block')}>
         <div className="flex flex-wrap items-center gap-2">
           <span className="hidden rounded-lg bg-secondary px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-secondary-foreground lg:inline-flex">

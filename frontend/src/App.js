@@ -1,3 +1,5 @@
+/* global __CVF_COCKPIT_BUILD__ */
+import { isCockpitPreview } from '@/lib/cockpitFlag';
 import { Suspense, lazy } from 'react';
 import { createBrowserRouter, RouterProvider, Routes, Route, Navigate, useLocation } from 'react-router';
 import { domAnimation, LazyMotion } from 'framer-motion';
@@ -42,6 +44,8 @@ const CoachAnalytics = lazy(() => import('@/pages/coach/Analytics'));
 const GroupSession = lazy(() => import('@/pages/coach/GroupSession'));
 const AdminPage = lazy(() => import('@/pages/admin/Admin'));
 // Dev/preview only: never even fetched in production builds.
+const Cockpit = __CVF_COCKPIT_BUILD__ && isCockpitPreview ? lazy(() => import('@/pages/cockpit/Cockpit')) : null;
+const CockpitPhone = __CVF_COCKPIT_BUILD__ && isCockpitPreview ? lazy(() => import('@/pages/cockpit/CockpitPhone')) : null;
 const PreviewToolbar = isPreviewMode ? lazy(() => import('@/components/PreviewToolbar')) : () => null;
 // Agentation click-to-annotate overlay (docs/design-reference-links.md):
 // dev and preview/demo builds only, and never under test automation —
@@ -112,6 +116,7 @@ function AppRoutes() {
             <Route path="analytics" element={<CoachAnalytics />} />
             <Route path="group-session" element={<GroupSession />} />
             <Route path="programs" element={<Programs />} />
+            {Cockpit && <Route path="cockpit" element={<Cockpit />} />}
             <Route path="resources" element={<CoachResources />} />
             <Route path="messages" element={<CoachMessages />} />
             <Route path="messages/:clientId" element={<CoachMessages />} />
@@ -152,6 +157,8 @@ function AppRoutes() {
             <Route index element={<AdminPage />} />
           </Route>
 
+            {CockpitPhone && <Route path="/coach/cockpit/phone/:clientId" element={<Protected roles={['coach', 'admin']}><CockpitPhone view="coach" /></Protected>} />}
+            {CockpitPhone && <Route path="/client/cockpit-view" element={<Protected roles={['client']}><CockpitPhone view="client" /></Protected>} />}
             <Route path="*" element={<RoleRedirect />} />
           </Routes>
           <PreviewToolbar />
