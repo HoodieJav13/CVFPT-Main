@@ -82,6 +82,8 @@ test.describe('gate on (REACT_APP_PT_REDESIGN=look-a)', () => {
       await expect.poll(() => outboxEmpty(page)).toBe(true);
       const beforeLog = { ...server.find('a-s1') };
       expect(beforeLog).toMatchObject({ status: 'pending', actual_load_value: 175, actual_reps: 6 });
+      // Typed and saved, but not logged: nothing to undo yet, so no Undo is shown.
+      await expect(page.getByTestId('workout-undo-button')).toHaveCount(0);
       await action.click();
       await expect.poll(() => server.find('a-s1').status).toBe('completed');
       await expect.poll(() => outboxEmpty(page)).toBe(true);

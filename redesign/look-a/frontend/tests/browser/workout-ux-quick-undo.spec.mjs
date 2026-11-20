@@ -130,26 +130,28 @@ test('the Undo stays past six seconds and across a reload until it is used', asy
   expect(results.errors).toEqual([]);
 });
 
-test('a newer successful set edit becomes the Undo; using it leaves Done in place and offers no older Undo, before or after a reload', async ({ page }) => {
+// Port branch (fresh-eyes critique, problem 1): a typed edit to a set that is
+// not logged yet is saved and is the server's newest change (so Done's Undo is
+// gone, as before), but it is not offered as "Undo set 1": no set was logged.
+test('a newer typed edit to an unlogged set replaces Done\'s Undo but offers none of its own, before or after a reload', async ({ page }) => {
   const { server, results } = await setup(page);
   await done(page, 'Incline Press').click();
   await settled(page, LOG);
-  const goblet = rows(server, 'b');
+  await expect(undoButton(page)).toHaveAccessibleName(/Undo Incline Press done/);
   await reps(page, 'Goblet Squat', 1).fill('9');
   await reps(page, 'Goblet Squat', 1).blur();
+  await expect.poll(() => setWrites(server).length).toBe(1);
   await settled(page, LOG);
-  await expect(undoButton(page)).toHaveAccessibleName(/Undo set 1 of Goblet Squat/);
-  await undoAndSettle(page, LOG);
-  // Only the set edit is undone; its row is back to its values; Done stays.
-  const after = rows(server, 'b');
-  expect(after.map(({ status, actual_reps: r, actual_load_value: l, value_origin: o }) => [status, r, l, o]))
-    .toEqual(goblet.map(({ status, actual_reps: r, actual_load_value: l, value_origin: o }) => [status, r, l, o]));
+  expect(rows(server, 'b')[0]).toMatchObject({ status: 'pending', actual_reps: 9 });
+  expect(server.current()).toMatchObject({ kind: 'set' });
+  // The slot keeps its place, quiet.
+  await expect(undoButton(page)).toBeDisabled();
+  await expect(undoButton(page)).toHaveAccessibleName('Nothing to undo');
   expect(flag(server, 'a')).toBe(true);
-  expect(undos(server).map((r) => r.body.change_id)).toEqual([setWrites(server)[0].body.event_id]);
-  await noUndo(page);
   await page.reload();
   await expect(page.getByTestId('workout-outline')).toBeVisible();
   await noUndo(page);
+  expect(undos(server)).toHaveLength(0);
   expect(results.errors).toEqual([]);
 });
 

@@ -206,6 +206,20 @@ export function undoOffer(queue, saved) {
   return saved || null;
 }
 
+// The client's Undo is offered only when there is something to undo. Typing
+// into a set that is not logged yet is saved as a change (so the numbers
+// survive a reload), but it is not a logged set: offering "Undo set 1" for it
+// reads as taking back a set that was never logged. So a set change whose set
+// is still pending is not offered, unless that change is the one that reopened
+// a logged set (`reopened`: ids of sets this page just un-completed).
+export function clientUndoOffer(offer, log, reopened) {
+  if (!offer || offer.kind !== 'set') return offer || null;
+  const setId = offer.result?.set_id || offer.set_id;
+  const set = (log?.exercises || []).flatMap((row) => row.sets || []).find((row) => row.id === setId);
+  if (!set || set.status !== 'pending') return offer;
+  return reopened?.has?.(setId) ? offer : null;
+}
+
 // ---------- x_client_plan: today's adjustment (this device only) ----------
 export const planStorageKey = (logId) => `cvf_look_a_plan:v1:${logId}`;
 

@@ -362,3 +362,44 @@ test('no prescription: a new unitless weight defaults to lb; a deliberately chos
   expect(completions[0].body).toMatchObject({ status: 'completed', actual_load_value: 50, actual_load_unit: 'kg', actual_reps: 5 });
   expect(results.errors).toEqual([]);
 });
+
+// Fresh-eyes critique, problem 1 (port branch): before any set is logged there
+// is nothing to undo, so no Undo is shown, even though the typed numbers are
+// saved. Undo first appears with the Log, takes back only the Log, and the
+// typed numbers stay.
+test('typing into an unlogged set shows no Undo; Undo appears with the Log and takes back only the Log', async ({ page }) => {
+  const { server, results } = await setup(page, [row(1), row(2), row(3)]);
+  const undo = page.getByTestId('workout-undo-button');
+  await expect(undo).toHaveCount(0);
+  const editor = await openSetEditor(page);
+  await editor.locator('input[aria-label="Back Squat set 1 weight"]').fill('175');
+  const repsInput = editor.locator('input[aria-label="Back Squat set 1 performed reps"]');
+  await repsInput.fill('5');
+  await repsInput.blur();
+  // The typing is saved (it survives a reload) ...
+  await expect.poll(() => server.find('a-s1').actual_reps).toBe(5);
+  await settled(page, LOG);
+  expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_load_value: 175, actual_reps: 5 });
+  // ... and the server does hold it as its newest change, yet the client offers no Undo for it.
+  expect(server.current()).toMatchObject({ kind: 'set', result: { set_id: 'a-s1' } });
+  await expect(undo).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId('workout-outline')).toBeVisible();
+  await expect(panel(page)).toBeVisible();
+  await expect(undo).toHaveCount(0);
+  expect(sent(server, /\/undo$/)).toHaveLength(0);
+  // Log: now there is something to undo.
+  const action = panel(page).getByTestId('focus-log');
+  await expect(action).toHaveAttribute('data-kind', 'log');
+  await action.click();
+  await landed(page, server, 'a-s1', 'completed');
+  await expect(undo).toBeEnabled();
+  await expect(undo).toHaveAccessibleName(/Undo set 1 of Back Squat/);
+  await undoAndSettle(page, LOG);
+  expect(server.find('a-s1')).toMatchObject({ status: 'pending', actual_load_value: 175, actual_reps: 5 });
+  expect(sent(server, /\/undo$/)).toHaveLength(1);
+  // The slot keeps its place, quiet: nothing is left to undo.
+  await expect(undo).toBeDisabled();
+  await expect(undo).toHaveAccessibleName('Nothing to undo');
+  expect(results.errors).toEqual([]);
+});

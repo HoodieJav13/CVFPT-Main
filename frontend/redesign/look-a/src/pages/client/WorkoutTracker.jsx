@@ -44,7 +44,7 @@ import { nextPosterTargets } from '@/lib/exerciseMedia';
 import { CHOICE_SET_REASON, HELD_SET_REASON, ackPrefillMarker, annotateValueViews, setValueView } from '@/lib/exerciseQuickComplete';
 import {
   exerciseMark, finishModeFor, lastTimeSet, nextUndo, restOverrunSeconds, planFromSet, planPayload, planTargets, planText, prescribedLoadText, progressText,
-  quickDoneGate, readPlans, readStoredUndo, storePlans, storeUndo, undoLabel, undoOffer, undoParts,
+  quickDoneGate, readPlans, readStoredUndo, storePlans, storeUndo, undoLabel, undoOffer, undoParts, clientUndoOffer,
 } from '@/lib/lookA';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
@@ -375,6 +375,8 @@ export default function WorkoutTracker() {
   const completeRejection = useRef(null);
   // Sets being typed into (not yet saved): refresh keeps their typed values.
   const draftIds = useRef(new Set());
+  // Sets this page just un-completed: their Undo is a real one (see clientUndoOffer).
+  const reopenedSets = useRef(new Set());
   // Which fields of each draft the person edited, with their values from
   // before the first edit (independent review of f284a1e6, 2026-11-12): a
   // refresh keeps only those, so an untouched field never carries an older
@@ -1003,7 +1005,7 @@ export default function WorkoutTracker() {
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
       data: payload,
     });
-    if (queued) clearDraft(set.id);
+    if (queued) { clearDraft(set.id); reopenedSets.current.delete(set.id); }
   };
 
   const toggleSet = (exercise, set) => {
@@ -1018,6 +1020,7 @@ export default function WorkoutTracker() {
       data: payload,
     });
     if (!queued) return;
+    if (status === 'pending') reopenedSets.current.add(set.id); else reopenedSets.current.delete(set.id);
     clearDraft(set.id);
     if (status === 'completed') afterCompletion(exercise, set);
   };
@@ -1179,10 +1182,10 @@ export default function WorkoutTracker() {
   // A change still on its way can be undone too (offline as well): the Undo
   // is queued behind it and targets its id (lifecycle 4). One tap queues one
   // Undo; nothing more is offered until the server answers it.
-  const undoOffered = undoOffer(outbox.queue, undo);
+  const undoOffered = clientUndoOffer(undoOffer(outbox.queue, undo), log, reopenedSets.current);
   if (undoOffered && !undoSlot) setUndoSlot(true);
   const undoNow = async () => {
-    const target = undoOffer(outbox.queue, undo);
+    const target = clientUndoOffer(undoOffer(outbox.queue, undo), log, reopenedSets.current);
     if (!target) return;
     // A Finish still on its way: taken out of the queue if it never left this
     // phone, otherwise undone right after the server has it.
@@ -1248,6 +1251,7 @@ export default function WorkoutTracker() {
       data: payload,
     });
     if (!queued) return;
+    reopenedSets.current.delete(set.id);
     clearDraft(set.id);
     afterCompletion(exercise, set);
   };

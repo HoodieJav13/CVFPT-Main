@@ -28,8 +28,9 @@ const OUT = path.join(ROOT, '.redesign', NAME);
 // The only files allowed to differ from the redesign's source branch: the gate itself.
 const GATE_FILES = new Set(['.gitignore', 'CLAUDE.md', 'backend/src/app.js', 'frontend/eslint.config.mjs', 'frontend/tailwind.config.js', 'frontend/vite.config.js']);
 // Redesign files changed on the port branch after the move, each for a stated reason (docs/redesign-gate.md).
-// Test-only so far: the app files of the redesign must stay identical to the source branch.
-const PORT_EDITS = new Set(['look-a-server.mjs', 'workout-ux-look-a-focus.spec.mjs', 'workout-ux-look-a-swap-guidance.spec.mjs', 'workout-ux-quick-undo.spec.mjs'].map((name) => `frontend/tests/browser/${name}`));
+// Tests (Undo waits; hidden-Undo tests) and two app files (Undo hidden until a set is logged).
+const PORT_EDITS = new Set(['look-a-server.mjs', 'workout-ux-look-a-focus.spec.mjs', 'workout-ux-look-a-swap-guidance.spec.mjs', 'workout-ux-quick-undo.spec.mjs'].map((name) => `frontend/tests/browser/${name}`)
+  .concat(['frontend/src/lib/lookA.js', 'frontend/src/pages/client/WorkoutTracker.jsx', 'frontend/tests/unit/lookA.test.mjs']));
 
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 const walk = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

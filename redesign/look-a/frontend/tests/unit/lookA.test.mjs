@@ -1,7 +1,7 @@
 // Look A tracker facts (local, 2026-11-14).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { finishReply, undoOffer, undoableOp, planFromSet, planPayload, planTargets, planText, exerciseMark, progressText, quickDoneGate, finishModeFor, restOverrunSeconds, prescribedLoadText, lastTimeSet, swappedFrom, undoLabel, undoParts, nextUndo } from '../../src/lib/lookA.js';
+import { finishReply, undoOffer, undoableOp, planFromSet, planPayload, planTargets, planText, exerciseMark, progressText, quickDoneGate, finishModeFor, restOverrunSeconds, prescribedLoadText, lastTimeSet, swappedFrom, undoLabel, undoParts, nextUndo, clientUndoOffer } from '../../src/lib/lookA.js';
 
 const set = (n, status = 'pending', extra = {}) => ({ id: `s${n}`, set_number: n, status, ...extra });
 const ex = (sets, extra = {}) => ({ id: 'e1', exercise_name: 'Fictional Press', sets, ...extra });
@@ -219,4 +219,21 @@ test('home pointer swap: replaces only the pointer the operation started from', 
     assert.equal(swapHomeUndo('saved:c2', older), true);
     assert.deepEqual(readHomeUndo(), older);
   } finally { delete globalThis.localStorage; }
+});
+
+// Critique fix (port branch): typing into a set that is not logged yet is saved,
+// but it is not something to undo.
+test('the client Undo is not offered for a typed, not yet logged set; logged and reopened sets keep theirs', () => {
+  const log = { exercises: [ex([{ ...set(1), status: 'pending' }, { ...set(2), status: 'completed' }, { ...set(3), status: 'skipped' }])] };
+  const offer = (setId) => ({ change_id: 'c', kind: 'set', result: { set_id: setId } });
+  assert.equal(clientUndoOffer(offer('s1'), log, new Set()), null);
+  assert.equal(clientUndoOffer(offer('s1'), log), null);
+  assert.deepEqual(clientUndoOffer(offer('s2'), log, new Set()), offer('s2'));
+  assert.deepEqual(clientUndoOffer(offer('s3'), log, new Set()), offer('s3'));
+  // The change that reopened a logged set is a real Undo.
+  assert.deepEqual(clientUndoOffer(offer('s1'), log, new Set(['s1'])), offer('s1'));
+  // Other kinds and unknown sets are left to the server's word.
+  for (const kind of ['exercise_done', 'exercise_skip', 'finish', 'swap']) assert.deepEqual(clientUndoOffer({ change_id: 'c', kind }, log, new Set()), { change_id: 'c', kind });
+  assert.deepEqual(clientUndoOffer(offer('gone'), log, new Set()), offer('gone'));
+  assert.equal(clientUndoOffer(null, log, new Set()), null);
 });

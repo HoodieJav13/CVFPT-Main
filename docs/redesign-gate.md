@@ -13,13 +13,20 @@ repo behind one switch that is **off by default**.
   (only the service worker's per-build id differs). The backend loads no Look A
   file and serves no Look A route.
 - **On:** the app is Look A, file for file the same as `da82ee8`.
-  One exception, test-only: in `redesign/look-a/frontend/tests/browser/`, the
-  shared helper `look-a-server.mjs` gained `undoAndSettle`, and the 12 places in
-  three specs (`workout-ux-look-a-focus`, `workout-ux-look-a-swap-guidance`,
-  `workout-ux-quick-undo`) that tapped Undo and then only waited for an empty
-  outbox now wait for the server's answer to that Undo first. They used to pass
-  or fail on timing. `verify` lists the four files under `portEdits`.
-  No app file of Look A is changed.
+  Two exceptions, both made on this branch and listed by `verify` under `portEdits`:
+  1. Test-only: in `redesign/look-a/frontend/tests/browser/`, the shared helper
+     `look-a-server.mjs` gained `undoAndSettle`, and the 13 places in three specs
+     that tapped Undo and then only waited for an empty outbox now wait for the
+     server's answer to that Undo first. They used to pass or fail on timing.
+  2. One behaviour fix (owner request after the fresh-eyes critique): the client
+     tracker no longer offers "Undo set N" for numbers typed into a set that is
+     not logged yet. `clientUndoOffer` in `frontend/redesign/look-a/src/lib/lookA.js`,
+     used by `pages/client/WorkoutTracker.jsx`; tests in `tests/unit/lookA.test.mjs`,
+     `workout-ux-look-a-focus.spec.mjs` and `workout-ux-quick-undo.spec.mjs`.
+     Client-side only: the server still records the typed edit as its newest
+     change, so an earlier Undo (for example of the previous set's Log) is still
+     replaced by it. Keeping that earlier Undo needs a database change and is
+     left for the Look A builder.
 
 ## Where Look A lives
 
