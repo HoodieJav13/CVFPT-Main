@@ -5,7 +5,7 @@
 // makes the original next again. Normal mode, stateful synthetic API shaped
 // like the Look A routes (look-a-server.mjs), fictional data only.
 import { test, expect } from '@playwright/test';
-import { makeServer, installServer, card, settled, undoButton, open, routeSwap, reps, clone, undoAndSettle } from './look-a-server.mjs';
+import { makeServer, installServer, card, settled, open, routeSwap, reps, clone, undoAndSettle } from './look-a-server.mjs';
 
 const LOG = 'sg-log';
 const row = (exercise, n, extra = {}) => ({
