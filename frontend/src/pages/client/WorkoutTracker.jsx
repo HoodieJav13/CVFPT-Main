@@ -1424,7 +1424,6 @@ export default function WorkoutTracker() {
               />
             </CardHeader>
             <CardContent className="space-y-3">
-              <CueRetryEntry log={log} exercise={exercise} />
               <LastTimeLine
                 state={lastTimeState[exercise.id]}
                 occurrence={lastTimeCache.current[exercise.id]}
@@ -1636,6 +1635,7 @@ export default function WorkoutTracker() {
                   </>
                 );
               })()}
+              <CueRetryEntry log={log} exercise={exercise} />
             </CardContent>
           </Card>
         )}</SupersetGroups>
