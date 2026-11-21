@@ -56,6 +56,7 @@ async function setup(page, width, height, options = {}) {
       Object.assign(row, fields, { revision: row.revision + 1, last_actor_role: 'client' });
       return json({ ...row, event: { id: body.event_id, outcome: 'applied' } });
     }
+    if (method === 'GET' && /^\/workout-logs\/p1-log\/exercises\/(a1|a2|b|c)\/cue-retry$/.test(path)) return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
     results.unexpected.push(`${method} ${path}`);
     return json({ error: 'Unexpected synthetic route' }, 404);
   });

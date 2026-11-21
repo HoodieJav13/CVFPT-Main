@@ -33,6 +33,7 @@ async function setupTracker(page, { sessionDead = false, rejectComplete = false 
       state.received.push('complete');
       return json(log);
     }
+    if (path === '/workout-logs/log-r/exercises/ex-1/cue-retry' && method === 'GET') return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
     state.unexpected.push(`${method} ${path}`);
     return json({ error: 'Unexpected synthetic route' }, 404);
   });

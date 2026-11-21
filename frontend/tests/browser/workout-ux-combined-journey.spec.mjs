@@ -202,6 +202,7 @@ async function install(page, backend) {
         Object.assign(log, { status: 'completed', completed_at: now(), notes: body?.notes || null, feedback: body?.feedback || null });
         return json(log);
       }
+      if (/^\/exercises\/[^/]+\/cue-retry$/.test(rest) && method === 'GET') return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
     }
     backend.unexpected.push(`${role} ${method} ${path}`);
     return json({ error: 'Unexpected synthetic route' }, 404);

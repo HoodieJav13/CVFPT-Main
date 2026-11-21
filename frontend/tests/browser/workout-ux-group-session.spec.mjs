@@ -183,8 +183,9 @@ for (const width of [390, 1280]) {
     expect(assignmentOf(logsOf(server, ELI)[2]).exercises[0].exercise_library_id).toBe('fict-lib-bench');
     expect(logsOf(server, ANA)[1].exercises[0].sets.filter((set) => set.set_origin === 'extra').length).toBe(1);
     expect(completedSets(logsOf(server, CAM)[0]).map((set) => set.actual_reps)).toEqual([12]);
-    for (const write of server.db.requests.filter((r) => r.method === 'PATCH')) {
+    for (const write of server.db.requests.filter((r) => r.method === 'PATCH' && /^\/workout-logs\/[^/]+\/sets\/[^/]+$/.test(r.path))) {
       const log = server.db.logs.find((row) => write.path.startsWith(`/workout-logs/${row.id}/`));
+      expect(log, `Unknown workout log for ${write.path}`).toBeDefined();
       expect(log.exercises[0].sets.some((set) => write.path.endsWith(`/sets/${set.id}`))).toBe(true);
     }
     expect(unexpected).toEqual([]);
