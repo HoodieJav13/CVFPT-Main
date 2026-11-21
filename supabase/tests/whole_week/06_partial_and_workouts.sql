@@ -1,0 +1,17 @@
+set role service_role;
+select pg_temp.act(111,11,null,pg_temp.create_req(801,'{"activity_type":"run","occurred_on":"2026-03-03","label":"Original","duration_seconds":600,"note":"Initial"}'));
+select pg_temp.act(111,11,pg_temp.aid(801),jsonb_build_object('action','update','request_id',pg_temp.id(802),'revision',1,'fields','{"note":null,"label":"Corrected"}'::jsonb));
+select pg_temp.check((pg_temp.row_of(pg_temp.aid(801))).duration_seconds=600 and (pg_temp.row_of(pg_temp.aid(801))).occurred_on='2026-03-03' and (pg_temp.row_of(pg_temp.aid(801))).note is null,'partial omission retained date/duration; explicit null cleared note');
+select pg_temp.check((pg_temp.act(111,11,pg_temp.aid(801),jsonb_build_object('action','update','request_id',pg_temp.id(802),'revision',1,'fields','{"label":"Corrected","note":null}'::jsonb))->>'replayed')::boolean,'partial replay canonicalizes key order');
+select pg_temp.expect_error($$select pg_temp.act(111,11,pg_temp.aid(801),jsonb_build_object('action','update','request_id',pg_temp.id(802),'revision',1,'fields','{"label":"Corrected","note":null,"duration_seconds":null}'::jsonb))$$,'P0409','request_mismatch');
+select pg_temp.act(111,11,pg_temp.aid(801),jsonb_build_object('action','update','request_id',pg_temp.id(803),'revision',2,'fields','{"duration_seconds":null}'::jsonb));
+select pg_temp.check((pg_temp.row_of(pg_temp.aid(801))).duration_seconds is null and (pg_temp.row_of(pg_temp.aid(801))).label='Corrected','partial clear leaves other values intact');
+select pg_temp.check((pg_temp.week(111,11,'2026-03-02')->'pt_workouts')='{"status":"available","completed_count":0,"by_day":{"2026-03-02":0,"2026-03-03":0,"2026-03-04":0,"2026-03-05":0,"2026-03-06":0,"2026-03-07":0,"2026-03-08":0}}'::jsonb,'PT count supplied by authorized transaction');
+select pg_temp.check(extract(epoch from (timestamp '2026-03-09' at time zone 'America/Denver')-(timestamp '2026-03-02' at time zone 'America/Denver'))/3600=167,'spring-forward week167hours');
+select pg_temp.check(extract(epoch from (timestamp '2025-11-03' at time zone 'America/Denver')-(timestamp '2025-10-27' at time zone 'America/Denver'))/3600=169,'fall-back week169hours');
+reset role;
+alter table public.workout_logs rename to whole_week_test_hidden_workouts;
+set role service_role;
+select pg_temp.check((pg_temp.week(111,11,'2026-03-02')->'pt_workouts')='{"status":"unavailable","completed_count":null,"by_day":null}'::jsonb,'secondary read error is unavailable instead of empty');
+reset role;
+alter table public.whole_week_test_hidden_workouts rename to workout_logs;

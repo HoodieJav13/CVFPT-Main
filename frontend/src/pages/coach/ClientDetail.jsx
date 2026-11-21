@@ -36,6 +36,7 @@ import { toast } from 'sonner';
 import { trackProductEvent } from '@/lib/telemetry';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { CoachClientWeek } from '@/components/WeekRhythm';
+import WholeWeekEntry from '@/components/context/WholeWeekEntry';
 import { SaveTemplateDialog } from '@/components/training/TemplateBits';
 import { SupersetGroups } from '@/components/training/SupersetGroups';
 import { HistoryShowMore } from '@/components/training/HistoryShowMore';
@@ -367,6 +368,10 @@ function OverviewTab({ client, waiver, reload, user, onInviteIntent, onInviteCur
       <CoachNotes client={client} coachId={user.profile?.id} />
 
       <CoachClientWeek clientId={client.id} />
+
+      {!client.archived && (
+        <WholeWeekEntry to={`/coach/clients/${client.id}/week`} description="PT workouts, client-shared outside activity and check-ins" testId="coach-whole-week-entry" />
+      )}
 
       <Card>
         <CardContent className="p-4 space-y-3">

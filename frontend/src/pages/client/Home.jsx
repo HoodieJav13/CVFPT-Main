@@ -24,6 +24,7 @@ import { WeekStrip, StreakPill } from '@/components/WeekRhythm';
 import { trackProductEvent } from '@/lib/telemetry';
 import { useShowInstallCard } from '@/lib/pwa';
 import { InstallCard } from '@/components/InstallGuide';
+import WholeWeekEntry from '@/components/context/WholeWeekEntry';
 
 export default function ClientHome() {
   const { user } = useAuth();
@@ -320,6 +321,8 @@ export default function ClientHome() {
         </CardContent>
       </Card>
       )}
+
+      <WholeWeekEntry to="/client/week" className="mt-4" description="Workouts, outside activity and check-ins together" testId="client-whole-week-entry" />
 
       <div className="grid grid-cols-2 gap-3 mt-4">
         <StatTile label="Programs" value={data.program_count} icon={Dumbbell} testId="program-count-tile" />

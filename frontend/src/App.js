@@ -21,6 +21,7 @@ import ClientPrograms from '@/pages/client/Programs';
 import ClientResources from '@/pages/client/Resources';
 import ClientMessages from '@/pages/client/Messages';
 import ClientWaiver from '@/pages/client/Waiver';
+import ClientWeek from '@/pages/client/Week';
 import WorkoutLogDetail from '@/pages/WorkoutLogDetail';
 import WorkoutTracker from '@/pages/client/WorkoutTracker';
 import '@/App.css';
@@ -33,6 +34,8 @@ import { UnsavedChangesProvider } from '@/context/UnsavedChangesContext';
 const CoachDashboard = lazy(() => import('@/pages/coach/Dashboard'));
 const Clients = lazy(() => import('@/pages/coach/Clients'));
 const ClientDetail = lazy(() => import('@/pages/coach/ClientDetail'));
+const CoachWholeWeek = lazy(() => import('@/pages/coach/ClientWeek'));
+const WeeklyReview = lazy(() => import('@/pages/coach/WeeklyReview'));
 const CoachSessions = lazy(() => import('@/pages/coach/Sessions'));
 const CoachSessionDetail = lazy(() => import('@/pages/coach/SessionDetail'));
 const CoachCalendar = lazy(() => import('@/pages/coach/Calendar'));
@@ -110,6 +113,8 @@ function AppRoutes() {
             <Route index element={<CoachDashboard />} />
             <Route path="clients" element={<Clients />} />
             <Route path="clients/:id" element={<ClientDetail />} />
+            <Route path="clients/:id/week" element={<CoachWholeWeek />} />
+            <Route path="clients/:id/week/review" element={<WeeklyReview />} />
             <Route path="sessions" element={<CoachSessions />} />
             <Route path="sessions/:id" element={<CoachSessionDetail />} />
             <Route path="calendar" element={<CoachCalendar />} />
@@ -141,6 +146,7 @@ function AppRoutes() {
             <Route path="resources" element={<ClientResources />} />
             <Route path="messages" element={<ClientMessages />} />
             <Route path="waiver" element={<ClientWaiver />} />
+            <Route path="week" element={<ClientWeek />} />
             <Route path="packages" element={<Navigate to="/client" replace />} />
             <Route path="workouts/:id" element={<WorkoutLogDetail />} />
             <Route path="workouts/:id/track" element={<WorkoutTracker />} />

@@ -71,6 +71,7 @@
     "test:e2e:series": "playwright test --config playwright.series.config.mjs",
     "test:e2e:quick-sessions": "playwright test --config playwright.quick-sessions.config.mjs",
     "test:e2e:preview": "playwright test",
+    "test:e2e:pt-release-normal": "playwright test --config playwright.pt-release-normal.config.mjs",
     "test:e2e:live": "playwright test --config playwright.live.config.mjs",
     "test:e2e:analytics": "playwright test --config playwright.analytics.config.mjs",
     "test:e2e:invites": "playwright test --config playwright.invites.config.mjs",

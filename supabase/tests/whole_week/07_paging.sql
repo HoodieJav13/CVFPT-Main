@@ -1,0 +1,21 @@
+set role service_role;
+insert into public.outside_activities(id,client_id,activity_type,occurred_on,duration_seconds,created_by_role,created_by_id,updated_by_role,updated_by_id)
+select pg_temp.id(1000+i),pg_temp.id(11),'other','2026-03-03',60,'client',pg_temp.id(11),'client',pg_temp.id(11) from generate_series(1,215) i;
+create temp table paging_pages(n integer,w jsonb);
+insert into paging_pages values(1,pg_temp.week(111,11,'2026-03-02'));
+select pg_temp.check(jsonb_array_length(w->'activities')=100 and (w->'summary'->>'activity_count')::int=215,'first bounded page has100; total covers wholeweek') from paging_pages where n=1;
+insert into paging_pages select 2,public.read_whole_week(pg_temp.id(111),pg_temp.id(11),'2026-03-02',w->'next_cursor') from paging_pages where n=1;
+insert into paging_pages select 3,public.read_whole_week(pg_temp.id(111),pg_temp.id(11),'2026-03-02',w->'next_cursor') from paging_pages where n=2;
+select pg_temp.check(jsonb_array_length(w->'activities')=15 and w->'next_cursor'='null'::jsonb,'last page includes row201 and exhausts215') from paging_pages where n=3;
+select pg_temp.check((select count(*) from paging_pages p cross join lateral jsonb_array_elements(p.w->'activities') a)=215 and (select count(distinct a->>'id') from paging_pages p cross join lateral jsonb_array_elements(p.w->'activities') a)=215,'same-date paging has no duplicate or missing row');
+select pg_temp.check((select array_agg((a->>'id')::uuid order by p.n, ord) from paging_pages p cross join lateral jsonb_array_elements(p.w->'activities') with ordinality x(a,ord))=(select array_agg(id order by occurred_on,id) from public.outside_activities where client_id=pg_temp.id(11)),'pages use stable date/id order');
+select pg_temp.expect_error($$select public.read_whole_week(pg_temp.id(112),pg_temp.id(11),'2026-03-02',(select w->'next_cursor' from paging_pages where n=1))$$,'P0404');
+select pg_temp.expect_error($$select public.read_whole_week(pg_temp.id(111),pg_temp.id(11),'2026-03-02','{"client_id":"00000000-0000-4000-8000-000000000012","week_start":"2026-03-02","occurred_on":"2026-03-03","id":"00000000-0000-4000-8000-000000001100"}')$$,'P0400');
+select pg_temp.expect_error($$select public.read_whole_week(pg_temp.id(111),pg_temp.id(11),'2026-03-02','{"bad":true}')$$,'P0400');
+select pg_temp.act(111,11,pg_temp.id(1201),jsonb_build_object('action','update','request_id',pg_temp.id(901),'revision',1,'fields','{"label":"Row201 corrected"}'::jsonb));
+select pg_temp.check((pg_temp.row_of(pg_temp.id(1201))).label='Row201 corrected','row201 is correctable with normal guarded writer');
+reset role;
+update public.clients set coach_id=pg_temp.id(2) where id=pg_temp.id(11);
+set role service_role;
+select pg_temp.expect_error($$select public.read_whole_week(pg_temp.id(101),pg_temp.id(11),'2026-03-02',(select w->'next_cursor' from paging_pages where n=1))$$,'P0404');
+reset role;
