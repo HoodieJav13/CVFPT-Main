@@ -11,7 +11,12 @@ const TRIGGER_LABELS = {
   location: 'training elsewhere',
   other: 'other reason',
 };
-const CONTRACT_FIELDS = ['event_id', 'base_revision', 'local_seq', 'offline', 'plan_revision_seen'];
+const CONTRACT_FIELDS = ['event_id', 'base_revision', 'local_seq', 'offline', 'plan_revision_seen', 'value_origin'];
+// What the written values mean (local migration 20261113000000): 'prefill' is
+// the untouched prescription restored by Undo (validated by the database
+// against its snapshot), 'entered' a value a person entered. Absent means the
+// writer does not declare one; the database then records the set as unknown.
+const DECLARABLE_ORIGINS = ['prefill', 'entered'];
 
 function invalid(message) {
   return Object.assign(new Error(message), { status: 400 });
@@ -27,6 +32,12 @@ function optionalCount(value, name) {
   return value;
 }
 
+function declaredOrigin(body) {
+  if (!Object.hasOwn(body, 'value_origin') || body.value_origin === undefined || body.value_origin === null) return null;
+  if (!DECLARABLE_ORIGINS.includes(body.value_origin)) throw invalid('value_origin must be prefill or entered');
+  return body.value_origin;
+}
+
 // Splits a set PATCH body into the contract envelope and the ordinary fields.
 function setEventEnvelope(body = {}) {
   if (!Object.hasOwn(body, 'event_id')) return null;
@@ -39,6 +50,7 @@ function setEventEnvelope(body = {}) {
     localSeq: optionalCount(body.local_seq, 'local_seq'),
     offline: body.offline === true,
     planRevisionSeen: optionalCount(body.plan_revision_seen, 'plan_revision_seen'),
+    valueOrigin: declaredOrigin(body),
     fields,
   };
 }

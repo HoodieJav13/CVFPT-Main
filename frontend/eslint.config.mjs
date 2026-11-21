@@ -10,7 +10,7 @@ import importPlugin from 'eslint-plugin-import';
 
 export default [
   {
-    ignores: ['dist/**', 'build/**', 'node_modules/**', 'playwright-report/**', 'test-results/**'],
+    ignores: ['dist/**', 'build/**', 'node_modules/**', 'playwright-report/**', 'test-results/**', 'redesign/look-a/**'],
   },
   js.configs.recommended,
   react.configs.flat.recommended,

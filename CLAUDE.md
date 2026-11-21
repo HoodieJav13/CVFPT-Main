@@ -144,7 +144,30 @@ of unreleased features and UI on Vercel preview links, design QA, and the
 - Design tokens only — no hardcoded hex colors in components (PDF export and email-client-compatible HTML use backend-local literals with parity checks — see Brand system above).
 - Cross-project code/assets get duplicated, never shared via a path that crosses the frontend/backend deploy boundary.
 
+## Open gates
+
+[Older completed status history](docs/STATUS.md) is archived verbatim from
+this branch. The retained dated status notes below are evidence at the time
+of each entry, not permission to push, apply migrations, deploy, or use
+hosted data. Check the latest approved rollout receipt before a release.
+
+- Local main integration is not a hosted release. Keep Look A default-off;
+  hosted activation and its SQL overlay are separate decisions. Keep the
+  fictional Cockpit switch default-off and out of live workouts and databases.
+- The hosted Development and Production databases remain separate. Preserve
+  their migration verification and merge-label gates above; no hosted
+  migrations, deployments, or production data access are authorized here.
+  Applied migrations are forward-only and `backend/migration.sql` stays frozen.
+- Hosted keys are owner-only. Keep test data fictional and confined to the
+  approved preview or disposable local environment. Hosted auth and device
+  evidence are release-specific; fixture results do not substitute for them.
+- Do not reopen retired payments, waivers awaiting approved legal text,
+  AI-assisted PDF parsing, or My PT Hub migration. Keep the accepted
+  no-photo default until consented photography is available.
+
 ## Status (updated as of this session)
+
+- Look A behind the redesign gate (2026-11-19): **local branch `claude/pt-look-a-port-20261119` only; not pushed, merged, applied or deployed.** Look A (`da82ee8`) is carried as overlay folders and is off by default; with the gate off every runtime file equals main `fb0c8dd`. Switches, layout, tests and open hosted steps: `docs/redesign-gate.md`. Look A's six migrations sit in `redesign/look-a/supabase/migrations/`, outside `supabase/migrations/`, and are unapplied everywhere.
 
 - PT Development acceptance setup (2026-10-28): owner-approved draft PR #125 publishes the isolated combined candidate; only Development received the four canonical PT migrations and passed the53-entry/22-function/five-table catalog verification. Production and main merge remain excluded. CI exposed missing cue-context reads in two existing metric/outbox mock fixtures; the scoped follow-up supplies empty contexts for those exact paths without changing application code or migration bytes. Actual synthetic sessions/fixture acceptance still wait for immutable target checks and hidden owner entry. Preserve deployment/build/history artifacts; remove only newly owned branch-setting rows during approved cleanup.
 
@@ -188,21 +211,7 @@ of unreleased features and UI on Vercel preview links, design QA, and the
 - PostHog coach usage/error first slice (2026-10-05): **completed fictional proof, production collection off**. Fixture-only coarse navigation/session/workout outcomes and scrubbed errors tested; nine fictional events received and one scrubbed issue verified in Default project509463. Owner-approved IP discard enabled/verified. Corrected offline recorder passed full decoded packet/privacy and four-route playback checks; one fictional recording (two packets, 388119 bytes, 2495ms activity) acknowledged once and indexed; hosted visual playback and usage checks passed at approximately 18:27 UTC: all four routes masked, no canaries; displayed usage 8 analytics / 1 replay / 1 error within free allocations. Production collection remains hard-disabled; no app recorder or real-user collection is enabled. See `docs/analytics/proof-checkpoint-2026-10-05.md`.
 
 - Duration/distance workout logging (2026-10-05): **implemented; both hosted schemas verified**. Coaches explicitly configure reps/weight, duration, distance, or duration + distance per workout exercise. Targets and modes snapshot at start; actual duration/distance stay blank until entered, retain s/min or m/km/mi/yd, and survive offline/reload/retry, copies, import, history, and PDF flows. Legacy logs retain reps/weight. See `docs/workout-metrics/design.md` and `docs/workout-metrics/validation.md`; owner-approved additive migration `20261005165134` is applied and independently verified in development and Production (41/41, no pending migration); PR #107 merged as `cda1bea` after all required checks and both migration labels; both Production projects were verified READY at that exact merge. See `docs/workout-metrics/hosted-release-2026-10-05.md`.
-- Toolchain/scaffolding cleanup, brand token foundation, and visual elevation pass: **done**.
-- High Desert visual system: **implemented and passed the visual-quality gate
-  for the no-photo target** (see `docs/design-principles.md` and
-  `design-qa.md`). The owner's first cold-baseline review classified all six
-  signature surfaces UNDERPOWERED; the selected Poster, Medal, and Surge
-  corrections then passed paired desktop/mobile comparison and preview
-  regression. The implementation retains the shared BrandBackdrop and its
-  restrained/cinematic/spectacle recipes, spectacle fixed as the active
-  runtime intensity, one-time reduced-motion-safe dashboard/auth
-  choreography, data-keyed Progress chart drawing, and genuine
-  direction-aware PR celebration. Optional consented photography remains
-  intentionally absent and is documented in `frontend/src/assets/photos/README.md`.
-- Session "past"-bucketing bug (client + coach Sessions pages): **fixed**.
-- Training Builder import/export (deterministic pasted text, CSV/PDF import, `commit_program_import` transactional RPC, branded PDF export): **done for the approved deterministic scope**. Paste import uses the same Program Draft review/edit and atomic commit path, supports one to five days, reuses normalized exercise matches, and tags new exercises `source='manual'` with `review_status='needs_review'`. CSV/PDF draft behavior remains three to five days. AI-assisted PDF parsing is explicitly deferred and remains safely disabled without OpenAI preview configuration.
-- Resource Library: **done** — coaches/admins globally manage private-bucket PDF handouts, categories, public visibility, and soft-state client assignments; clients can list/download only public or actively assigned resources through 60-second signed URLs. Storage paths remain backend-only, uploads require PDF MIME plus signature and are capped/rate-limited at 10 MB/10 per 15 minutes, and preview mode contains deterministic public/assigned fixtures.
+
 - Hosted development schema: **34 migrations on `main`** (as of `c8adc6d`, latest `20260811090000_push_subscriptions.sql`). The last hosted ledger record in the repo is 2026-07-22 (16/16 through `20260720173000_exercise_performance_history.sql`, `docs/hardening/2026-07-22-pr5-hosted-release.md`); every later migration was applied per-PR under the `migration-applied` label (`migration-guard.yml`), and the repo holds no consolidated ledger after that date — run `supabase migration list --linked` before assuming hosted state. The applied history includes the Stripe/credit and dormant payment-era migrations already on `main`; do not edit, remove, reorder, or roll back those applied migrations. Any correction requires explicit owner approval and a new forward-only migration. See `docs/hardening/2026-07-22-pr5-hosted-release.md`.
 - Coach feedback v3 (2026-07-22): **implemented, hosted, and verified** as separate soft-state records with one response per authorized coach/admin author per completed workout, immutable author-name snapshots, client unread/read state, assignment-aware server authorization, deterministic preview fixtures, and client Programs badges/history markers. Hosted schema/grant checks and rollback-only create/update probes passed; existing completion notifications, completed-workout snapshots, and credit-independent behavior remain unchanged.
 - Client exercise history (2026-07-22): **implemented, hosted, and verified** for the active workout tracker with optional performed reps/RPE, snapshotted library identity (and complete hosted legacy backfill), exact-source custom matching, completed-set-only cursor pagination, network-only inline retry states, and preview coverage. Hosted schema/grant checks and a rollback-only completed-history probe passed. Prescribed reps/RPE remain instructions and are never substituted for performed history.

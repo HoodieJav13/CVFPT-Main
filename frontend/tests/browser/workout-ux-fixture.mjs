@@ -34,6 +34,7 @@ export async function setupWorkoutUx(page, role = 'client') {
   if(path==='/programs/workouts') return json([fixture.workout]);
   if(path==='/programs/workouts/ux-workout') return json(fixture.workout);
   if(path==='/programs'||path==='/clients') return json([]);
+  if(/^\/workout-logs\/ux-log\/exercises\/[^/]+\/cue-retry$/.test(path)&&method==='GET') return json({source_version:null,can_create:false,can_recheck:false,outgoing:[],incoming:[]});
   results.unexpected.push(`${role}: ${method} ${path}`);return json({error:'Unexpected synthetic route'},404);
  });
  return { fixture, results };

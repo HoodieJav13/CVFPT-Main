@@ -76,7 +76,9 @@ test('outbox and tracker wire the rules in', () => {
   assert.match(tracker, /logRef\.current\?\.exercises\.find\(\(row\) => row\.id === exercise\.id\)/);
   assert.match(tracker, /lastTimeFills\(current\.sets, occurrence, current\)/);
   // Every mutation control honours the sealed state.
-  assert.match(tracker, /<Select disabled=\{sealed\}/);
+  // Mapped (F3, 2026-11-12): was /<Select disabled=\{sealed\}/. The unit control is also locked while a
+  // set is held after a replayed reply; the sealed condition is unchanged.
+  assert.match(tracker, /<Select disabled=\{sealed \|\| held\}/);
   assert.match(tracker, /disabled=\{sealed\} onClick=\{\(\) => removeSet\(exercise, set\)\}/);
   assert.match(tracker, /value=\{exercise\.client_notes \|\| ''\} disabled=\{sealed\}/);
   // Preview responses are copies, like real HTTP bodies.

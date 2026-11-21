@@ -1,9 +1,10 @@
+import { isCockpitPreview } from '@/lib/cockpitFlag';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate, Link } from 'react-router';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard, Users, CalendarDays, Dumbbell, MessageSquare,
-  TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search, BarChart3, UsersRound,
+  TrendingUp, FileSignature, ShieldCheck, LogOut, Home, Library, Bell, Search, BarChart3, UsersRound, Gauge,
   Download,
   Mail, KeyRound, Loader2,
 } from 'lucide-react';
@@ -51,6 +52,7 @@ const CLIENT_NAV = [
 
 const COACH_EXTRA = [
   { to: '/coach/analytics', label: 'Analytics', icon: BarChart3 },
+  ...(isCockpitPreview ? [{ to: '/coach/cockpit', label: 'Cockpit', icon: Gauge }] : []),
   { to: '/coach/group-session', label: 'Small group', icon: UsersRound },
 ];
 

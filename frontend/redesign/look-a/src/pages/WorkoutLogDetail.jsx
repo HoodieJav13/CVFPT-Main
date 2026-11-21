@@ -1,0 +1,563 @@
+import { CueRetryEntry } from '@/components/training/CueRetryEntry';
+import { tracks, trackingType } from '@/lib/workoutMetrics';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { m, useReducedMotion } from 'framer-motion';
+import { ArrowLeft, BookOpen, Check, CircleCheck, CircleSlash2, Clock3, MessageSquare, ShieldCheck, TrendingDown, TrendingUp, Undo2, Users } from 'lucide-react';
+import { api, errMsg } from '@/lib/api';
+import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
+import { fmtDateTime, initials } from '@/lib/format';
+import { LoadingScreen, LoadErrorState, PageHeader } from '@/components/common';
+import { Badge } from '@/components/ui/badge';
+import { QuickSessionBadge } from '@/components/training/QuickSessionBadge';
+import { isQuickSessionLog } from '@/lib/quickSessions';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { MOTION_EASINGS, WORKOUT_COMPLETION_MOTION, msToSeconds } from '@/lib/motion';
+import { useVisualIntensity } from '@/lib/visualIntensity';
+import { useNotifications } from '@/context/NotificationsContext';
+import { hasParkedFor, hasQueuedCompleteFor, makeId, useWorkoutOutbox } from '@/lib/workoutOutbox';
+import { exerciseMark, nextUndo, prescribedLoadText, readStoredUndo, storeUndo, undoOffer } from '@/lib/lookA';
+import { ExerciseMarker, SupersetGroups } from '@/components/training/SupersetGroups';
+import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseInstructionDialog';
+import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
+import { demoForRow } from '@/lib/exerciseDemo';
+import { SetConflictNotice, SwapStatus, UndeliveredEntries } from '@/components/training/SessionCorrections';
+import { CoachConflictActions, CoachSwapActions } from '@/components/group/CoachSessionActions';
+
+// Same identity rule as the exercise-history RPC: match by library exercise
+// when linked, otherwise by the source workout exercise.
+function exerciseMatchKey(exercise) {
+  return exercise.exercise_library_id
+    ? `lib:${exercise.exercise_library_id}`
+    : `src:${exercise.source_workout_exercise_id}`;
+}
+
+// Per-unit training volume (load × reps) across completed sets.
+function completedVolume(exercise) {
+  const totals = {};
+  for (const set of exercise.sets || []) {
+    if (set.status !== 'completed' || set.actual_load_value == null || set.actual_reps == null) continue;
+    const unit = set.actual_load_unit || 'lb';
+    totals[unit] = (totals[unit] || 0) + (set.actual_load_value * set.actual_reps);
+  }
+  return totals;
+}
+
+function formatVolume(totals) {
+  return Object.entries(totals)
+    .map(([unit, value]) => `${Math.round(value).toLocaleString()} ${unit}`)
+    .join(' + ');
+}
+
+// D5 (docs/roadmap.md): coach-entered data displays as verified; the
+// log-level badge is derived server-side from per-set attribution.
+const ATTRIBUTION_BADGES = {
+  coach: { label: 'Coach verified', Icon: ShieldCheck, className: 'border-primary/40 bg-primary/10 text-primary' },
+  mixed: { label: 'Coach + client logged', Icon: Users, className: 'border-gold/40 bg-gold/10 text-gold' },
+  client: { label: 'Self-reported', Icon: null, className: 'text-muted-foreground' },
+};
+
+export default function WorkoutLogDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const [log, setLog] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [readError, setReadError] = useState(null);
+  const [responseContent, setResponseContent] = useState('');
+  const [responseError, setResponseError] = useState(null);
+  const [savingResponse, setSavingResponse] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
+  const readAttemptedFor = useRef(null);
+  const isClient = user.role === 'client';
+  const isCoach = user.role === 'coach' || user.role === 'admin';
+  const { refresh: refreshUnread } = useNotifications();
+  const reducedMotion = useReducedMotion();
+  const intensity = useVisualIntensity();
+  const [completionSignalId, setCompletionSignalId] = useState(() => (
+    isClient && location.state?.completedWorkoutId === id ? id : null
+  ));
+  const [waitingToSync, setWaitingToSync] = useState(() => hasQueuedCompleteFor(id));
+  // A queued set write is parked for the person's choice (F6): waiting for a
+  // connection cannot resolve it; only the tracker can.
+  const [needsChoice, setNeedsChoice] = useState(() => hasParkedFor(id));
+  const [syncError, setSyncError] = useState(null);
+  const [previousByExercise, setPreviousByExercise] = useState({});
+  // Today's guide for an exercise, opened on demand (never preloaded here).
+  const [guide, setGuide] = useState(null);
+  // Today's demo for an exercise (live by design), never presented as the
+  // instruction that was shown when this workout happened.
+  const [demoFor, setDemoFor] = useState(null);
+  const previousFetchedFor = useRef(null);
+  // Look A: Undo finish, here too. The tracker's saved Undo for this workout
+  // (checked with the server), or a Finish still on its way (offline or
+  // waiting for its reply), which is cancelled or undone in order.
+  const [savedUndo, setSavedUndoState] = useState(() => readStoredUndo(id));
+  const setSavedUndo = useCallback((value) => { storeUndo(id, value); setSavedUndoState(value); }, [id]);
+  const [undoNote, setUndoNote] = useState(null);
+  const trackPath = `${isClient ? '/client' : '/coach'}/workouts/${id}/track`;
+  // Drains a completion queued by the tracker before navigation
+  // (docs/offline-workout-completion.md). The celebration fires only once
+  // the server confirms — never for unsynced data.
+  const outbox = useWorkoutOutbox(id, () => {}, {
+    onCompleteSynced: (freshLog) => {
+      setWaitingToSync(false);
+      setSyncError(null);
+      setLog(freshLog);
+      if (isClient) setCompletionSignalId(id);
+    },
+    onCompleteRejected: (message, freshLog, kind) => {
+      setWaitingToSync(false);
+      // A late reply for a Finish undone since: the workout is open; go back to it.
+      if (kind === 'reopened') { navigate(trackPath, { replace: true }); return; }
+      setSyncError(message);
+      if (freshLog) setLog(freshLog);
+    },
+    onParked: () => setNeedsChoice(true),
+    onUndo: (reply) => setSavedUndo(nextUndo(readStoredUndo(id), reply)),
+    onMaterial: (operation, data) => {
+      if (operation.undoOf?.kind !== 'finish') return;
+      const result = data?.result;
+      const outcome = result?.outcome === 'replayed' ? result.original_outcome : result?.outcome;
+      if (outcome === 'applied') { navigate(trackPath, { replace: true }); return; }
+      setUndoNote(null);
+      toast.message(result?.reason || 'The finish could not be undone.');
+      if (data?.log) setLog(data.log);
+    },
+  });
+  const finishUndo = (() => {
+    const offer = undoOffer(outbox.queue, savedUndo);
+    return offer?.kind === 'finish' ? offer : null;
+  })();
+  const undoFinish = async () => {
+    if (!finishUndo) return;
+    if (finishUndo.pending) {
+      const how = await outbox.undoQueuedFinish(makeId, 'Finish undone.');
+      if (how === 'cancelled') navigate(trackPath, { replace: true });
+      else if (how === 'queued') setUndoNote('Undo is sent right after the finish is confirmed.');
+      return;
+    }
+    outbox.enqueue({
+      kind: 'material', method: 'post', url: `/workout-logs/${id}/undo`,
+      data: { event_id: makeId(), change_id: finishUndo.change_id },
+      undoOf: { change_id: finishUndo.change_id, kind: 'finish', result: {} },
+    });
+    setUndoNote(outbox.online ? 'Undoing the finish.' : 'Undo is sent when you are back online.');
+  };
+  const queueStillWaiting = waitingToSync && outbox.queuedComplete;
+  const celebrateCompletion = isClient && completionSignalId === id;
+  const completionRecipe = WORKOUT_COMPLETION_MOTION[intensity];
+
+  // Is the saved Undo still the server's current one?
+  useEffect(() => {
+    if (!savedUndo || outbox.hasPending()) return undefined;
+    let live = true;
+    api.get(`/workout-logs/${id}/undo`).then(({ data }) => {
+      if (live && !outbox.hasPending() && data && Object.hasOwn(data, 'undo')) setSavedUndo(data.undo || null);
+    }).catch(() => { /* kept; the server still decides the Undo */ });
+    return () => { live = false; };
+    // Checked once per page visit and saved Undo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, savedUndo?.change_id]);
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get(`/workout-logs/${id}`);
+      setLog(data);
+      setLoadError(null);
+      if (isCoach) {
+        const ownResponse = (data.coach_responses || []).find((response) => response.author_coach_id === user.profile?.id);
+        setResponseContent(ownResponse?.content || '');
+      }
+      if (isClient && readAttemptedFor.current !== id && (data.coach_responses || []).some((response) => !response.read_at)) {
+        readAttemptedFor.current = id;
+        try {
+          const { data: readResult } = await api.patch(`/workout-logs/${id}/coach-feedback/read`);
+          const readAt = readResult.read_at;
+          setLog((current) => ({
+            ...current,
+            coach_responses: (current.coach_responses || []).map((response) => (
+              response.read_at || !readAt ? response : { ...response, read_at: readAt }
+            )),
+          }));
+          setReadError(null);
+          setAnnouncement('Coach feedback marked read');
+          await refreshUnread();
+        } catch {
+          setReadError("Couldn't mark coach feedback read. It will stay new until a retry succeeds.");
+        }
+      } else if (isClient) {
+        setReadError(null);
+      }
+    } catch (error) {
+      setLoadError(errMsg(error, 'Failed to load workout'));
+    }
+  }, [id, isClient, isCoach, refreshUnread, user.profile?.id]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    setCompletionSignalId((current) => (current === id ? current : null));
+  }, [id]);
+  useEffect(() => {
+    if (!log || log.status !== 'completed' || previousFetchedFor.current === log.id) return undefined;
+    previousFetchedFor.current = log.id;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get(isClient ? '/workout-logs/mine' : `/workout-logs/client/${log.client_id}`);
+        const older = (data || [])
+          .filter((row) => row.id !== log.id && row.completed_at
+            && new Date(row.completed_at) < new Date(log.completed_at))
+          .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at));
+        const map = {};
+        for (const exercise of log.exercises) {
+          const key = exerciseMatchKey(exercise);
+          for (const prior of older) {
+            const match = (prior.exercises || []).find((row) => exerciseMatchKey(row) === key);
+            if (match) {
+              map[key] = { totals: completedVolume(match), completed_at: prior.completed_at };
+              break;
+            }
+          }
+        }
+        if (!cancelled) setPreviousByExercise(map);
+      } catch {
+        // The comparison is an enhancement; the review page stands without it.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isClient, log]);
+  useEffect(() => {
+    if (!isClient || !location.state?.completedWorkoutId) return;
+    if (location.state.completedWorkoutId === id) setCompletionSignalId(id);
+    navigate(
+      { pathname: location.pathname, search: location.search, hash: location.hash },
+      { replace: true, state: null },
+    );
+  }, [id, isClient, location.hash, location.pathname, location.search, location.state, navigate]);
+  const waitingBanner = queueStillWaiting && (needsChoice ? (
+    <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
+      <span className="flex items-start gap-2"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
+        Finished on this phone, but a set was also changed on another device and needs your choice before this workout can sync. Your results are safe.</span>
+      <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0" onClick={() => navigate(`${isClient ? '/client' : '/coach'}/workouts/${id}/track`)}>
+        Back to tracking
+      </Button>
+    </div>
+  ) : (
+    <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-sm" role="status" aria-live="polite" data-testid="waiting-to-sync-banner">
+      <Clock3 className="h-4 w-4 shrink-0 text-gold" />
+      Finished on this phone — syncing when a connection returns. Your results are safe.
+    </div>
+  ));
+  // Undo finish shows even before the workout loads (offline, Finish queued).
+  const undoPanel = (finishUndo || undoNote) && (finishUndo?.pending || log?.status === 'completed') && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2" data-testid="detail-undo-finish">
+            <span className="min-w-0 break-words text-sm" aria-live="polite">
+              {undoNote || (finishUndo?.pending ? 'Finish saved on this phone.' : 'Finished just now.')}
+            </span>
+            {finishUndo && (
+              <Button type="button" variant="outline" className="h-auto min-h-11 whitespace-normal" onClick={undoFinish} data-testid="detail-undo-finish-button">
+                <Undo2 className="mr-1.5 h-4 w-4 shrink-0" aria-hidden /> Undo finish
+              </Button>
+            )}
+          </div>
+        );
+  if (!log && loadError) return <div>{waitingBanner}{undoPanel}<LoadErrorState message={loadError} scope="workout-detail" onRetry={load} /></div>;
+  if (!log) return <div>{waitingBanner}{undoPanel}<LoadingScreen /></div>;
+
+  const completed = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'completed').length;
+  const skipped = log.exercises.flatMap((exercise) => exercise.sets).filter((set) => set.status === 'skipped').length;
+  const hasGroups = log.exercises.some((exercise) => exercise.superset_group);
+  const ownResponse = (log.coach_responses || []).find((response) => response.author_coach_id === user.profile?.id);
+  const responseLength = Array.from(responseContent.trim()).length;
+
+  const saveResponse = async (event) => {
+    event.preventDefault();
+    const content = responseContent.trim();
+    if (!content) {
+      setResponseError('Enter a response for your client.');
+      return;
+    }
+    if (Array.from(content).length > 4000) {
+      setResponseError('Coach response must be 4,000 characters or fewer.');
+      return;
+    }
+    setSavingResponse(true);
+    setResponseError(null);
+    try {
+      const { data } = await api.put(`/workout-logs/${id}/coach-response`, { content });
+      await load();
+      setAnnouncement(data.outcome === 'created' ? 'Coach response added' : 'Coach response updated');
+    } catch (error) {
+      setResponseError(errMsg(error, 'Failed to save coach response'));
+    } finally {
+      setSavingResponse(false);
+    }
+  };
+
+  const retryMarkRead = () => {
+    readAttemptedFor.current = null;
+    load();
+  };
+
+  return (
+    <div>
+      <button
+        type="button"
+        // Deep links (e.g. from a notification email) have no in-app history —
+        // navigate(-1) would exit the app, so fall back to a role-aware home.
+        onClick={() => {
+          if (window.history.state?.idx > 0) navigate(-1);
+          else navigate(user?.role === 'client' ? '/client/programs?view=history' : '/coach');
+        }}
+        className="mb-3 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" /> Back
+      </button>
+      {waitingBanner}
+      {undoPanel}
+      {syncError && (
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="completion-sync-error">
+          <span>{syncError} The workout is active again.</span>
+          <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => navigate(`/client/workouts/${id}/track`)}>
+            Back to tracking
+          </Button>
+        </div>
+      )}
+      <m.section
+        initial={celebrateCompletion && !reducedMotion
+          ? { opacity: 0, transform: `translateY(${completionRecipe.distance}px) scale(${completionRecipe.initialScale})` }
+          : false}
+        animate={{ opacity: 1, transform: 'translateY(0px) scale(1)' }}
+        transition={{ duration: msToSeconds(completionRecipe.durationMs), ease: MOTION_EASINGS.expressiveOut }}
+        data-testid="workout-completion-summary"
+        data-completion-motion={celebrateCompletion ? 'active' : 'none'}
+        data-motion-duration-ms={celebrateCompletion ? completionRecipe.durationMs : undefined}
+        data-motion-distance={celebrateCompletion ? completionRecipe.distance : undefined}
+        data-motion-initial-scale={celebrateCompletion ? completionRecipe.initialScale : undefined}
+        data-motion-reduced={reducedMotion ? 'true' : 'false'}
+      >
+        {celebrateCompletion && <div className="sr-only" role="status" aria-live="polite">Workout complete</div>}
+        <PageHeader title={log.workout_name} subtitle={log.completed_at ? `Completed ${fmtDateTime(log.completed_at)}` : `Started ${fmtDateTime(log.started_at)}`} />
+        <div className="mb-4 flex flex-wrap gap-2">
+          {isQuickSessionLog(log) && <QuickSessionBadge testId="log-detail-quick-session" />}
+          {log.not_set_tracked && (
+            <Badge variant="outline" className="border-primary/40 text-primary" data-testid="log-not-set-tracked">
+              <CircleCheck className="mr-1 h-3.5 w-3.5" aria-hidden /> Done, sets not logged
+            </Badge>
+          )}
+          <Badge variant="outline" className="bg-success/10 text-success-foreground"><Check className="mr-1 h-3.5 w-3.5" /> {completed} completed</Badge>
+          {skipped > 0 && <Badge variant="outline"><CircleSlash2 className="mr-1 h-3.5 w-3.5" /> {skipped} skipped</Badge>}
+          <Badge variant="outline"><Clock3 className="mr-1 h-3.5 w-3.5" /> {log.status}</Badge>
+          {ATTRIBUTION_BADGES[log.attribution] && (
+            <Badge
+              variant="outline"
+              className={ATTRIBUTION_BADGES[log.attribution].className}
+              data-testid="attribution-badge"
+              data-attribution={log.attribution}
+            >
+              {(() => {
+                const { Icon } = ATTRIBUTION_BADGES[log.attribution];
+                return Icon ? <Icon className="mr-1 h-3.5 w-3.5" /> : null;
+              })()}
+              {ATTRIBUTION_BADGES[log.attribution].label}
+            </Badge>
+          )}
+        </div>
+      </m.section>
+      <div className="space-y-3">
+        <SupersetGroups exercises={log.exercises}>{(exercise, { marker }) => {
+          const hasTarget = exercise.prescribed_sets || exercise.prescribed_load_value != null
+            || exercise.prescribed_duration_value || exercise.prescribed_distance_value || exercise.prescribed_reps || exercise.prescribed_rpe || exercise.prescribed_rest || exercise.prescribed_tempo;
+          const totals = completedVolume(exercise);
+          const units = Object.keys(totals);
+          const previous = previousByExercise[exerciseMatchKey(exercise)];
+          let delta = null;
+          if (units.length === 1 && previous) {
+            const prevUnits = Object.keys(previous.totals);
+            if (prevUnits.length === 1 && prevUnits[0] === units[0] && previous.totals[units[0]] > 0) {
+              delta = {
+                pct: ((totals[units[0]] - previous.totals[units[0]]) / previous.totals[units[0]]) * 100,
+                when: new Date(previous.completed_at).toLocaleDateString(),
+              };
+            }
+          }
+          return (
+            <Card key={exercise.id}>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex min-w-0 items-center gap-2 font-display text-lg">
+                  {hasGroups && <ExerciseMarker marker={marker} />}
+                  <span className="min-w-0">{exercise.exercise_name}</span>
+                </CardTitle>
+                {exerciseMark(exercise) === 'not_set_tracked' && (
+                  <p className="flex items-center gap-1.5 text-xs text-primary" data-testid="history-not-set-tracked">
+                    <CircleCheck className="h-4 w-4 shrink-0" aria-hidden /> Done without set tracking. Nothing was recorded as lifted.
+                  </p>
+                )}
+                {log.server_time && <SwapStatus exercise={exercise} log={log} />}
+                {exercise.media && (
+                  <Button
+                    type="button" variant="ghost" size="sm" className="min-h-11 w-fit px-2 text-primary"
+                    onClick={() => setGuide({ media: exercise.media, exerciseName: exercise.exercise_name })}
+                    data-testid="history-current-guide"
+                  >
+                    <BookOpen className="h-4 w-4" aria-hidden /> Current exercise guide
+                  </Button>
+                )}
+                <ExerciseDemoAction demo={demoForRow(exercise)} exerciseName={exercise.exercise_name} variant="history"
+                  onView={() => setDemoFor(exercise)} />
+              </CardHeader>
+              <CardContent>
+                <CueRetryEntry log={log} exercise={exercise} />
+                {hasTarget && (
+                  <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" data-testid="exercise-target-line">
+                    <span className="font-medium">Target</span>
+                    {exercise.prescribed_sets && <span>Sets {exercise.prescribed_sets}</span>}
+                    {prescribedLoadText(exercise) && <span data-testid="prescribed-load">Load {prescribedLoadText(exercise)}</span>}
+                    {trackingType(exercise) === 'reps_weight' && exercise.prescribed_reps && <span>Reps {exercise.prescribed_reps}</span>}
+                    {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => exercise[`prescribed_${metric}_value`] != null && <span key={metric}>{metric === 'duration' ? 'Duration' : 'Distance'} {exercise[`prescribed_${metric}_value`]} {exercise[`prescribed_${metric}_unit`]}</span>)}
+                    {exercise.prescribed_rpe && <span>RPE {exercise.prescribed_rpe}</span>}
+                    {exercise.prescribed_rest && <span>Rest {exercise.prescribed_rest}</span>}
+                    {exercise.prescribed_tempo && <span>Tempo {exercise.prescribed_tempo}</span>}
+                  </div>
+                )}
+                <div className="grid grid-cols-[2rem_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 pb-1 text-xs font-medium text-muted-foreground">
+                  <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span><span>RPE</span><span className="sr-only">Status</span>
+                </div>
+                <div className="divide-y divide-border/70">
+                  {exercise.sets.map((set) => (
+                    <div key={set.id} className="grid min-h-11 grid-cols-[2rem_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 py-2 text-sm" data-testid="review-set-row">
+                      <span className="tabular-nums text-muted-foreground">{set.set_number}</span>
+                      <span className="tabular-nums">{set.actual_load_value === null ? <span aria-label="No weight logged">—</span> : `${set.actual_load_value} ${set.actual_load_unit}`}</span>
+                      <span className="tabular-nums">{trackingType(exercise) === 'reps_weight' ? (set.actual_reps ?? <span aria-label="No reps logged">—</span>) : '—'}</span>
+                      <span className="tabular-nums">{set.actual_rpe ?? <span aria-label="No RPE logged">—</span>}</span>
+                      {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => <span key={metric} className="col-span-full tabular-nums">{metric === 'duration' ? 'Duration' : 'Distance'}: {set[`actual_${metric}_value`] == null ? <span aria-label={`No ${metric} logged`}>—</span> : `${set[`actual_${metric}_value`]} ${set[`actual_${metric}_unit`]}`}</span>)}
+                      <Badge className="col-start-5 row-start-1" variant={set.status === 'completed' ? 'default' : 'outline'}>{set.status}</Badge>
+                      {set.status === 'completed' && Number.isInteger(set.completed_plan_revision) && set.completed_plan_revision < (exercise.plan_revision || 0) && (
+                        <span className="col-span-full text-xs text-muted-foreground" data-testid="earlier-plan-note">Done to the earlier plan (the plan was changed while this was being logged).</span>
+                      )}
+                      {(log.conflicts || []).filter((conflict) => conflict.workout_log_set_id === set.id).map((conflict) => (
+                        <div key={conflict.id} className="col-span-full space-y-2">
+                          <SetConflictNotice conflict={conflict} logId={log.id} viewer={isCoach ? 'coach' : 'client'} onChanged={load} />
+                          {isCoach && <CoachConflictActions conflict={conflict} logId={log.id} onDone={() => load()} />}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                {units.length > 0 && (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-testid="exercise-volume">
+                    <span className="text-muted-foreground">Volume</span>
+                    <span className="font-medium tabular-nums">{formatVolume(totals)}</span>
+                    {delta && Math.abs(delta.pct) < 0.5 && (
+                      <span className="text-muted-foreground" data-testid="volume-delta">even with {delta.when}</span>
+                    )}
+                    {delta && delta.pct >= 0.5 && (
+                      <span className="inline-flex items-center gap-1 tabular-nums text-success" data-testid="volume-delta">
+                        <TrendingUp className="h-3.5 w-3.5" /> +{Math.round(delta.pct)}% vs {delta.when}
+                      </span>
+                    )}
+                    {delta && delta.pct <= -0.5 && (
+                      <span className="inline-flex items-center gap-1 tabular-nums text-muted-foreground" data-testid="volume-delta">
+                        <TrendingDown className="h-3.5 w-3.5" /> −{Math.abs(Math.round(delta.pct))}% vs {delta.when}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {exercise.client_notes && <p className="mt-3 rounded-md bg-secondary px-3 py-2 text-sm">{exercise.client_notes}</p>}
+              </CardContent>
+            </Card>
+          );
+        }}</SupersetGroups>
+      </div>
+      {readError && (
+        <div className="mt-4 flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="coach-feedback-read-error">
+          <span>{readError}</span>
+          <Button type="button" variant="outline" size="sm" onClick={retryMarkRead}>Retry</Button>
+        </div>
+      )}
+      {(log.feedback || log.notes) && (
+        <Card className="mt-4"><CardContent className="space-y-3 p-4">
+          {log.feedback && <div><p className="text-xs font-medium uppercase text-muted-foreground">{isClient ? 'Your feedback to your coach' : 'Client feedback'}</p><p className="mt-1 whitespace-pre-wrap text-sm">{log.feedback}</p></div>}
+          {log.notes && <div><p className="text-xs font-medium uppercase text-muted-foreground">Workout notes</p><p className="mt-1 text-sm">{log.notes}</p></div>}
+        </CardContent></Card>
+      )}
+      <ExerciseInstructionDialog
+        media={guide?.media}
+        exerciseName={guide?.exerciseName}
+        context={{ type: 'workout_log', id }}
+        open={Boolean(guide)}
+        onOpenChange={(open) => { if (!open) setGuide(null); }}
+        historical
+      />
+      <ExerciseDemoDialog
+        demo={demoFor ? demoForRow(demoFor) : null}
+        exerciseName={demoFor?.exercise_name}
+        media={demoFor?.media || null}
+        context={{ type: 'workout_log', id }}
+        open={Boolean(demoFor)}
+        onOpenChange={(open) => { if (!open) setDemoFor(null); }}
+        historical
+      />
+      <Card className="mt-4" data-testid="coach-responses-card">
+        <CardHeader className="pb-2"><CardTitle className="font-display text-lg">Coach responses</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          {(log.coach_responses || []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">No coach response yet.</p>
+          ) : (log.coach_responses || []).map((response) => (
+            <article key={response.id} className="rounded-md border border-border bg-card/60 p-3" data-testid="coach-response">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary">
+                    {initials(response.author_name_snapshot)}
+                  </span>
+                  {response.author_name_snapshot}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {fmtDateTime(response.created_at)}
+                  {response.edited_at && <span className="ml-2" data-testid="coach-response-edited">Edited</span>}
+                </p>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-sm">{response.content}</p>
+            </article>
+          ))}
+          <UndeliveredEntries logId={log.id} log={log} />
+          {isCoach && log.server_time && <CoachSwapActions log={log} onDone={() => load()} />}
+          {isCoach && log.status === 'completed' && (
+            <form className="space-y-2 border-t border-border pt-4" onSubmit={saveResponse} data-testid="coach-response-form">
+              <Label htmlFor="coach-response-content">{ownResponse ? 'Edit your response' : 'Add your response'}</Label>
+              <Textarea
+                id="coach-response-content"
+                rows={4}
+                maxLength={4000}
+                value={responseContent}
+                onChange={(event) => setResponseContent(event.target.value)}
+                aria-describedby="coach-response-help"
+                aria-invalid={Boolean(responseError)}
+                data-testid="coach-response-input"
+              />
+              <div id="coach-response-help" className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>Visible to this client.</span><span>{responseLength}/4,000</span>
+              </div>
+              {responseError && <p className="text-sm text-destructive" role="alert">{responseError}</p>}
+              <Button type="submit" disabled={savingResponse} className="min-h-11" data-testid="coach-response-save">
+                {savingResponse ? 'Saving…' : ownResponse ? 'Update response' : 'Add response'}
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+      <div className="sr-only" role="status" aria-live="polite" data-testid="coach-feedback-announcement">{announcement}</div>
+      {!isClient && log.client && (
+        <Button asChild className="mb-16 mt-5 min-h-11 w-full sm:mb-0 sm:w-auto">
+          <Link to={`/coach/messages/${log.client.id}`}><MessageSquare className="mr-2 h-4 w-4" /> Message client</Link>
+        </Button>
+      )}
+    </div>
+  );
+}

@@ -49,10 +49,17 @@ test('tracker videos are resolved live for the single-log read and rendered safe
   // Read-only lookups; no writes to the snapshot.
   // The source row's reference mode decides inherit/override/legacy (exercise guides).
   assert.match(routes, /from\('workout_exercises'\)\s*\.select\('id, video_url, video_link_mode, exercise_library_id'\)/);
-  assert.match(routes, /from\('exercise_library'\)\s*\.select\('id, video_url'\)/);
+  assert.match(routes, /from\('exercise_library'\)\s*\.select\('id, video_url, category, equipment'\)/);
   // Exercise guides: the tracker renders the re-derived current demo; YouTube
   // demos open a click-to-load dialog, other safe links stay external.
   const dialog = read('frontend/src/components/training/media/ExerciseDemoDialog.jsx');
   assert.match(tracker, /<ExerciseDemoAction\s+demo=\{demoForRow\(exercise\)\}/);
   assert.match(dialog, /target="_blank" rel="noopener noreferrer"/);
+});
+
+
+test('live log resolves exercise type from catalog or source; custom unknown remains unknown', () => {
+  const rows = resolveExerciseVideos([{ exercise_library_id:'bw' }, { source_workout_exercise_id:'src' }, {}],
+    [{id:'src', exercise_library_id:'bw'}], [{id:'bw', category:'Mobility',equipment:'Bodyweight'}]);
+  assert.deepEqual(rows.map(({category,equipment})=>[category,equipment]), [['Mobility','Bodyweight'],['Mobility','Bodyweight'],[null,null]]);
 });

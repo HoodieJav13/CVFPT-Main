@@ -1,0 +1,1324 @@
+const express = require('express');
+const multer = require('multer');
+const { supabaseAdmin } = require('../supabase');
+const { logError } = require('../utils/logger');
+const { requireAuth, requireCoach, requireClient, canAccessClient } = require('../middleware/auth');
+const {
+  canAccessProgram,
+  canAccessWorkout,
+  canAccessWorkoutAssignment,
+  canAssignTemplate,
+  canManageWorkout,
+  isTemplate,
+  programDaysUseAccessibleWorkouts,
+} = require('../security/access');
+const {
+  clientSafeProgramAssignment,
+  clientSafeWorkoutAssignment,
+  filterByAuthor,
+  withAuthor,
+} = require('../lib/trainingLibrary');
+const {
+  csvImportLimiter,
+  libraryImportLimiter,
+  pdfExportLimiter,
+  pdfImportLimiter,
+  programCommitLimiter,
+} = require('../middleware/rateLimits');
+const {
+  PARSER_VERSION,
+  csvTemplate,
+  draftFromProgram,
+  normalizeDraft,
+  normalizeName,
+  parseCsvDraft,
+  parsePasteDraft,
+  validateDraft,
+} = require('../lib/programDraft.cjs');
+const { extractPdfText } = require('../lib/pdfText');
+const { normalizeQuickSessionCreate, quickSessionHash, trackingExercises } = require('../lib/quickSessions');
+const { annotateQuickCompletion, quickCompletionFlags } = require('../lib/quickSessionReads');
+const { todayDateInTz } = require('../utils/time');
+const { attachExerciseMedia } = require('../lib/exerciseMedia/hydration');
+const { normalizeDemoModes, unsafeExternalVideoUrls, UNSAFE_MESSAGE } = require('../lib/externalVideo');
+const { resolveExerciseDemo } = require('../lib/exerciseDemo');
+const {
+  generateLogSheetPdf,
+  generateProgramPdf,
+  logSheetFilename,
+  safeFilename,
+} = require('../lib/programPdf');
+
+const { historyHandler } = require('../lib/programHistory');
+const { normalizeLookAPrescription, isLoadRangeError } = require('../lib/lookAPrescription');
+
+const router = express.Router();
+router.use(requireAuth);
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+function programImportUpload(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'Import files must be 5 MB or smaller.' });
+    }
+    logError('program import upload error', err);
+    return res.status(400).json({ error: 'Could not read the uploaded file.' });
+  });
+}
+
+function isCsvUpload(file) {
+  return Boolean(file && (
+    file.mimetype === 'text/csv'
+    || file.mimetype === 'application/csv'
+    || file.mimetype === 'application/vnd.ms-excel'
+    || /\.csv$/i.test(file.originalname || '')
+  ));
+}
+
+function isPdfUpload(file) {
+  return Boolean(file && (
+    file.mimetype === 'application/pdf'
+    || /\.pdf$/i.test(file.originalname || '')
+  ));
+}
+
+function sourceForImport(sourceType) {
+  if (sourceType === 'pdf') return 'import_pdf_ai';
+  if (sourceType === 'paste') return 'manual';
+  return 'import_csv';
+}
+
+function isSupportedProgramFrequency(value) {
+  return Number.isInteger(value) && value >= 1 && value <= 5;
+}
+
+async function callOpenAiForDraft(pdfText, originalFilename) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.PROGRAM_IMPORT_MODEL;
+  if (!apiKey || !model) {
+    const error = new Error('PDF import is not configured. Add the AI import configuration, then try again.');
+    error.status = 503;
+    throw error;
+  }
+
+  const prompt = [
+    'Extract this fitness program PDF into strict JSON only.',
+    'Use this shape: { "program": { "name": "", "description": "", "frequency_days": 3, "source": "pdf" }, "days": [{ "day_number": 1, "name": "", "goal": "", "notes": "", "exercises": [{ "name": "", "sets": "", "reps": "", "rest": "", "tempo": "", "client_notes": "", "coach_notes": "", "video_url": "", "category": "", "equipment": "", "primary_muscle": "" }] }], "import_meta": { "source_type": "pdf", "original_filename": "", "parser_version": "", "confidence": 0.7, "warnings": [], "new_exercises_detected": [], "possible_duplicates": [] } }',
+    'Return 3, 4, or 5 days only. If uncertain, add a warning instead of inventing details.',
+    `Original filename: ${originalFilename}`,
+    'PDF text:',
+    pdfText.slice(0, 30000),
+  ].join('\n\n');
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      input: prompt,
+      text: { format: { type: 'json_object' } },
+    }),
+  });
+  if (!response.ok) {
+    const error = new Error('PDF import could not parse this file. Review the file or try CSV import.');
+    error.status = 502;
+    throw error;
+  }
+  const data = await response.json();
+  const text = data.output_text
+    || data.output?.flatMap((item) => item.content || []).map((item) => item.text).filter(Boolean).join('\n')
+    || '';
+  return JSON.parse(text);
+}
+
+// Client instances are authorized by their client's current coach (see
+// security/access.js), so every row the access checks see carries it.
+const OWNED_ROW = '*, client_owner:clients!client_id(coach_id)';
+
+async function workoutWithDetails(workoutId) {
+  const { data: workout, error: workoutError } = await supabaseAdmin.from('workouts').select(OWNED_ROW)
+    .eq('id', workoutId).eq('archived', false).maybeSingle();
+  if (workoutError) throw workoutError;
+  if (!workout) return null;
+  const { data: exercises, error } = await supabaseAdmin
+    .from('workout_exercises')
+    .select('*, library_exercise:exercise_library(*)')
+    .eq('workout_id', workoutId)
+    .eq('archived', false)
+    .order('position');
+  if (error) throw error;
+  // Current demo resolved live from the row's reference mode and the joined
+  // library exercise (never written back).
+  const withDemos = (exercises || []).map((row) => ({
+    ...row, demo: resolveExerciseDemo({ workoutExercise: row, libraryExercise: row.library_exercise }),
+  }));
+  return { ...workout, exercises: withDemos, exercise_count: withDemos.length };
+}
+
+function cleanExerciseLoads(loads, { program = false } = {}) {
+  if (!Array.isArray(loads)) return [];
+  return loads.filter((load) => load && load.load_value !== '' && load.load_value !== null && load.load_value !== undefined).map((load) => {
+    const value = Number(load.load_value);
+    if (!Number.isFinite(value) || value < 0 || !['lb', 'kg'].includes(load.load_unit)) {
+      const error = new Error('Each assigned load needs a non-negative value and lb or kg unit');
+      error.status = 400;
+      throw error;
+    }
+    if (!load.workout_exercise_id || (program && !load.program_day_id)) {
+      const error = new Error('Each assigned load must reference an assigned exercise');
+      error.status = 400;
+      throw error;
+    }
+    return {
+      ...(program ? { program_day_id: load.program_day_id } : {}),
+      workout_exercise_id: load.workout_exercise_id,
+      load_value: value,
+      load_unit: load.load_unit,
+    };
+  });
+}
+
+async function programAssignmentLoads(assignmentId) {
+  const { data, error } = await supabaseAdmin.from('program_assignment_exercise_loads').select('*')
+    .eq('program_assignment_id', assignmentId).eq('archived', false).order('created_at');
+  if (error) throw error;
+  return data || [];
+}
+
+async function workoutAssignmentLoads(assignmentId) {
+  const { data, error } = await supabaseAdmin.from('workout_assignment_exercise_loads').select('*')
+    .eq('workout_assignment_id', assignmentId).eq('archived', false).order('created_at');
+  if (error) throw error;
+  return data || [];
+}
+
+// `user` scopes legacy assignments to clients the caller may see, so a shared
+// program never reveals another coach's clients. Omit it for internal use.
+async function programWithDetails(programId, user = null) {
+  const { data: program } = await supabaseAdmin.from('programs').select(OWNED_ROW)
+    .eq('id', programId).eq('archived', false).maybeSingle();
+  if (!program) return null;
+  const { data: days, error } = await supabaseAdmin
+    .from('program_days')
+    .select('*, workout:workouts(*)')
+    .eq('program_id', programId)
+    .eq('archived', false)
+    .order('day_number');
+  if (error) throw error;
+  const detailedDays = [];
+  for (const day of days || []) {
+    detailedDays.push({ ...day, workout: await workoutWithDetails(day.workout_id) });
+  }
+  const { data: assignments } = await supabaseAdmin
+    .from('program_assignments')
+    .select('*, client:clients(id, name, coach_id)')
+    .eq('program_id', programId)
+    .eq('archived', false);
+  const detailedAssignments = [];
+  for (const assignment of assignments || []) {
+    if (user && !canAccessClient(user, assignment.client)) continue;
+    detailedAssignments.push({ ...assignment, exercise_loads: await programAssignmentLoads(assignment.id) });
+  }
+  return { ...program, days: detailedDays, assignments: detailedAssignments };
+}
+
+async function coachesById() {
+  const { data, error } = await supabaseAdmin.from('coaches').select('id, name');
+  if (error) throw error;
+  return new Map((data || []).map((coach) => [coach.id, coach]));
+}
+
+// Templates are shared by every coach. Client instances never appear here.
+async function listWorkouts(user, { author = null, assignableOnly = false } = {}) {
+  let q = supabaseAdmin.from('workouts').select('*')
+    .eq('archived', false).eq('is_template', true)
+    .order('created_at', { ascending: false });
+  if (assignableOnly) q = q.eq('hidden', false);
+  const { data, error } = await q;
+  if (error) throw error;
+  const authors = await coachesById();
+  const rows = filterByAuthor(data || [], author, user);
+  const result = [];
+  for (const workout of rows) result.push(withAuthor(await workoutWithDetails(workout.id), authors));
+  return result;
+}
+
+// A template that clients are still live-linked to (assignments created before
+// the copy-on-assign model) must not change underneath them. Instances never
+// count: they are already private to one client.
+async function legacyAssignmentCount(kind, row) {
+  if (!isTemplate(row)) return 0;
+  const count = async (query) => {
+    const { count: n, error } = await query;
+    if (error) throw error;
+    return n || 0;
+  };
+  if (kind === 'program') {
+    return count(supabaseAdmin.from('program_assignments').select('id', { count: 'exact', head: true })
+      .eq('program_id', row.id).eq('archived', false));
+  }
+  let total = await count(supabaseAdmin.from('workout_assignments').select('id', { count: 'exact', head: true })
+    .eq('workout_id', row.id).eq('archived', false));
+  const { data: days, error } = await supabaseAdmin.from('program_days').select('program_id')
+    .eq('workout_id', row.id).eq('archived', false);
+  if (error) throw error;
+  const programIds = [...new Set((days || []).map((day) => day.program_id))];
+  if (programIds.length) {
+    const { data: programs, error: programError } = await supabaseAdmin.from('programs').select('id')
+      .in('id', programIds).eq('archived', false);
+    if (programError) throw programError;
+    const activeIds = (programs || []).map((program) => program.id);
+    if (activeIds.length) {
+      total += await count(supabaseAdmin.from('program_assignments').select('id', { count: 'exact', head: true })
+        .in('program_id', activeIds).eq('archived', false));
+    }
+  }
+  return total;
+}
+
+async function rejectIfLegacyAssigned(res, kind, row) {
+  const assignmentCount = await legacyAssignmentCount(kind, row);
+  if (!assignmentCount) return false;
+  const noun = kind === 'program' ? 'program' : 'workout';
+  res.status(409).json({
+    error: `This ${noun} is still live-assigned to ${assignmentCount} client plan${assignmentCount === 1 ? '' : 's'}, so changing it would change those plans. Save it as a variation instead.`,
+    code: 'LEGACY_ASSIGNMENTS',
+    assignment_count: assignmentCount,
+  });
+  return true;
+}
+
+// Hidden library exercises cannot be added to a workout (already-present ones stay).
+async function newHiddenLibraryExercises(exercises, existingWorkout = null) {
+  const wanted = [...new Set((Array.isArray(exercises) ? exercises : [])
+    .map((exercise) => exercise?.exercise_library_id).filter(Boolean))];
+  if (!wanted.length) return [];
+  const already = new Set((existingWorkout?.exercises || []).map((exercise) => exercise.exercise_library_id).filter(Boolean));
+  const candidates = wanted.filter((id) => !already.has(id));
+  if (!candidates.length) return [];
+  const { data, error } = await supabaseAdmin.from('exercise_library').select('id, name')
+    .in('id', candidates).eq('hidden', true);
+  if (error) throw error;
+  return data || [];
+}
+
+// Where a saved copy should nest. An explicit `variation_of` (or null for
+// "standalone") wins; otherwise default to the template the row came from
+// (or the template itself when duplicating one), if that template is still live.
+async function resolveVariationParent(kind, row, body) {
+  const table = kind === 'program' ? 'programs' : 'workouts';
+  const explicit = 'variation_of' in body;
+  const candidate = explicit
+    ? body.variation_of
+    : (isTemplate(row) ? row.id : (kind === 'program' ? row.source_program_id : row.source_workout_id));
+  if (candidate === null || candidate === undefined || candidate === '') return { id: null };
+  if (typeof candidate !== 'string' || !/^[0-9a-f-]{36}$/i.test(candidate)) return { error: 'variation_of must be a template id' };
+  const { data } = await supabaseAdmin.from(table).select('id')
+    .eq('id', candidate).eq('is_template', true).eq('archived', false).maybeSingle();
+  if (!data) return explicit ? { error: 'Variation parent not found' } : { id: null };
+  return { id: data.id };
+}
+
+// An explicit name wins. A variation without one is "<source> (variation)" so it is
+// distinguishable in flat pickers; a standalone copy keeps the source name.
+function copyName(body, source, variationParentId) {
+  if (typeof body.name === 'string' && body.name.trim()) return body.name.trim();
+  return variationParentId ? `${source.name} (variation)` : null;
+}
+
+function rpcErrorStatus(error) {
+  const message = String(error?.message || '');
+  if (/not found/i.test(message)) return { status: 404, message };
+  if (/invalid .*exercise load/i.test(message)) return { status: 400, message: 'Each assigned load must reference an assigned exercise' };
+  return null;
+}
+
+// A quick session's prescription/loads are editable only before it is ever started.
+function isQuickSessionStarted(error) {
+  return /quick_session_started/.test(String(error?.message || ''));
+}
+
+function sendQuickSessionStarted(res) {
+  return res.status(409).json({
+    error: 'This quick session has already been started, so its prescription can no longer change.',
+    code: 'quick_session_started',
+  });
+}
+
+// Coach-facing assignment rows never carry the create fingerprint or request id.
+function coachAssignment(row) {
+  const { create_request_hash: _hash, create_request_id: _request, ...rest } = row;
+  return rest;
+}
+
+// Current-access recheck for a quick receipt (and an optional newly supplied
+// target client row) before anything about it is serialized.
+function authorizeQuickReceipt(user, receipt, suppliedClient = null) {
+  if (!receipt || receipt.kind !== 'quick' || receipt.archived) return false;
+  if (!receipt.client || receipt.client.archived || !canAccessClient(user, receipt.client)) return false;
+  if (suppliedClient !== null && (!suppliedClient || suppliedClient.archived || !canAccessClient(user, suppliedClient))) return false;
+  return true;
+}
+
+// Hydrates a quick assignment for a coach response, or null when the caller no
+// longer has access. Read failures throw (500), never masquerade as absence.
+async function quickAssignmentForResponse(user, assignmentId) {
+  const { data: assignment, error } = await supabaseAdmin.from('workout_assignments')
+    .select('*, client:clients(*)').eq('id', assignmentId).maybeSingle();
+  if (error) throw error;
+  if (!authorizeQuickReceipt(user, assignment)) return null;
+  const workout = await workoutWithDetails(assignment.workout_id);
+  if (!workout || !canAccessWorkout(user, workout)) return null;
+  const flags = await quickCompletionFlags(assignment.client_id, [assignment.id], { db: supabaseAdmin });
+  const { client: _client, ...row } = assignment;
+  return coachAssignment({
+    ...row,
+    workout,
+    exercise_loads: await workoutAssignmentLoads(assignment.id),
+    quick_session_completed: flags.get(assignment.id) === true,
+  });
+}
+
+async function programDaysAreAccessible(user, days, options = {}) {
+  const workoutIds = [...new Set((days || []).map((day) => day.workout_id).filter(Boolean))];
+  if (!workoutIds.length) return true;
+  const { data, error } = await supabaseAdmin.from('workouts').select(OWNED_ROW).in('id', workoutIds);
+  if (error) throw error;
+  return programDaysUseAccessibleWorkouts(user, days, data || [], options);
+}
+
+// ----- Exercise library -----
+router.get('/exercise-library', requireCoach, async (req, res) => {
+  try {
+    let q = supabaseAdmin.from('exercise_library').select('*').eq('archived', false).order('name');
+    // Hidden exercises stay out of builders/pickers unless the library page asks for them.
+    if (req.query.include_hidden !== 'true') q = q.eq('hidden', false);
+    if (req.query.q) q = q.ilike('name', `%${req.query.q}%`);
+    const { data, error } = await q;
+    if (error) throw error;
+    return res.json(data || []);
+  } catch (e) {
+    logError('exercise library error', e);
+    return res.status(500).json({ error: 'Failed to load exercise library' });
+  }
+});
+
+router.post('/exercise-library', requireCoach, async (req, res) => {
+  try {
+    const { name, category, equipment, primary_muscle, secondary_muscles, video_url, notes } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Exercise name is required' });
+    if (unsafeExternalVideoUrls([{ video_url }]).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
+    const { data, error } = await supabaseAdmin.from('exercise_library').insert({
+      name: String(name).trim(), category: category || null, equipment: equipment || null,
+      primary_muscle: primary_muscle || null, secondary_muscles: secondary_muscles || null,
+      video_url: video_url || null, notes: notes || null, source: 'manual', review_status: 'approved',
+    }).select().single();
+    if (error) throw error;
+    return res.status(201).json(data);
+  } catch (e) {
+    logError('create library exercise error', e);
+    return res.status(500).json({ error: 'Failed to save exercise' });
+  }
+});
+
+router.post('/exercise-library/import', requireCoach, libraryImportLimiter, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (rows.length > 500) return res.status(413).json({ error: 'Exercise imports are limited to 500 rows' });
+    const unsafeRows = unsafeExternalVideoUrls(rows);
+    if (unsafeRows.length) return res.status(400).json({ error: `${UNSAFE_MESSAGE} Check row ${unsafeRows.map((index) => index + 1).join(', ')}.` });
+    const cleaned = rows
+      .filter((row) => row.name && String(row.name).trim())
+      .map((row) => ({
+        name: String(row.name).trim(),
+        category: row.category || null,
+        equipment: row.equipment || null,
+        primary_muscle: row.primary_muscle || null,
+        secondary_muscles: row.secondary_muscles || null,
+        video_url: row.video_url || null,
+        notes: row.notes || null,
+        source: 'import_csv',
+        review_status: 'needs_review',
+      }));
+    if (!cleaned.length) return res.status(400).json({ error: 'No valid exercises found in import' });
+    const { data, error } = await supabaseAdmin.from('exercise_library').insert(cleaned).select();
+    if (error) throw error;
+    return res.status(201).json({ imported: data.length, exercises: data });
+  } catch (e) {
+    logError('import library error', e);
+    return res.status(500).json({ error: 'Failed to import exercises' });
+  }
+});
+
+router.put('/exercise-library/:id', requireCoach, async (req, res) => {
+  try {
+    const allowed = ['name', 'category', 'equipment', 'primary_muscle', 'secondary_muscles', 'video_url', 'notes', 'source', 'review_status'];
+    const updates = { updated_at: new Date().toISOString() };
+    for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k] || null;
+    if ('hidden' in (req.body || {})) updates.hidden = req.body.hidden === true;
+    if (updates.name !== undefined && !String(updates.name).trim()) return res.status(400).json({ error: 'Exercise name is required' });
+    if ('video_url' in updates && unsafeExternalVideoUrls([{ video_url: updates.video_url }]).length) {
+      // Only a NEW unsafe value is refused; re-saving the stored legacy value is not.
+      const { data: existing, error: existingError } = await supabaseAdmin.from('exercise_library').select('id, video_url').eq('id', req.params.id).maybeSingle();
+      if (existingError) throw existingError;
+      if (unsafeExternalVideoUrls([{ id: req.params.id, video_url: updates.video_url }], new Map([[req.params.id, existing?.video_url]])).length) {
+        return res.status(400).json({ error: UNSAFE_MESSAGE });
+      }
+    }
+    const { data, error } = await supabaseAdmin.from('exercise_library').update(updates)
+      .eq('id', req.params.id).eq('archived', false).select().maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Exercise not found' });
+    return res.json(data);
+  } catch (e) {
+    logError('update library exercise error', e);
+    return res.status(500).json({ error: 'Failed to update exercise' });
+  }
+});
+
+router.patch('/exercise-library/:id/archive', requireCoach, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('exercise_library').update({ archived: req.body?.archived !== false, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    logError('archive library exercise error', e);
+    return res.status(500).json({ error: 'Failed to archive exercise' });
+  }
+});
+
+// ----- Workout templates -----
+router.get('/workouts', requireCoach, async (req, res) => {
+  try {
+    return res.json(await listWorkouts(req.user, {
+      author: typeof req.query.author === 'string' ? req.query.author : null,
+      assignableOnly: req.query.assignable === 'true',
+    }));
+  } catch (e) {
+    logError('list workouts error', e);
+    return res.status(500).json({ error: 'Failed to load workouts' });
+  }
+});
+
+router.post('/workouts', requireCoach, async (req, res) => {
+  try {
+    const { name, description, goal, exercises } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Workout name is required' });
+    if (unsafeExternalVideoUrls(exercises).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
+    const rows = normalizeLookAPrescription(normalizeDemoModes(exercises));
+    const hiddenPicked = await newHiddenLibraryExercises(rows);
+    if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
+    // Templates are shared, so the creator is always recorded as the author.
+    const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout', {
+      p_workout_id: null,
+      p_coach_id: req.user.coach.id,
+      p_name: String(name).trim(),
+      p_description: description || null,
+      p_goal: goal || null,
+      p_exercises: Array.isArray(rows) ? trackingExercises(rows) : [],
+    });
+    if (isLoadRangeError(error)) return res.status(400).json({ error: error.message });
+    if (error) throw error;
+    return res.status(201).json(await workoutWithDetails(workoutId));
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    logError('create workout error', e);
+    return res.status(500).json({ error: 'Failed to create workout' });
+  }
+});
+
+router.get('/workouts/:id', requireCoach, async (req, res) => {
+  try {
+    const workout = await workoutWithDetails(req.params.id);
+    if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    return res.json(withAuthor(workout, await coachesById()));
+  } catch (e) {
+    logError('get workout error', e);
+    return res.status(500).json({ error: 'Failed to load workout' });
+  }
+});
+
+router.put('/workouts/:id', requireCoach, async (req, res) => {
+  try {
+    const workout = await workoutWithDetails(req.params.id);
+    if (!canManageWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    if (await rejectIfLegacyAssigned(res, 'workout', workout)) return undefined;
+    const body = req.body || {};
+    const name = 'name' in body ? String(body.name || '').trim() : workout.name;
+    if (!name) return res.status(400).json({ error: 'Workout name is required' });
+    if (unsafeExternalVideoUrls(body.exercises, new Map((workout.exercises || []).map((row) => [row.id, row.video_url]))).length) {
+      return res.status(400).json({ error: UNSAFE_MESSAGE });
+    }
+    const rows = Array.isArray(body.exercises)
+      ? normalizeLookAPrescription(normalizeDemoModes(body.exercises, new Map((workout.exercises || []).map((row) => [row.id, row]))))
+      : workout.exercises;
+    const hiddenPicked = await newHiddenLibraryExercises(rows, workout);
+    if (hiddenPicked.length) return res.status(422).json({ error: `Hidden exercises cannot be added: ${hiddenPicked.map((e) => e.name).join(', ')}` });
+    const { data: workoutId, error } = await supabaseAdmin.rpc('save_workout_with_program_history', {
+      p_workout_id: workout.id,
+      p_actor_coach_id: req.user.coach.id,
+      p_name: name,
+      p_description: 'description' in body ? body.description || null : workout.description,
+      p_goal: 'goal' in body ? body.goal || null : workout.goal,
+      p_exercises: trackingExercises(rows, workout.exercises),
+    });
+    if (error && isQuickSessionStarted(error)) return sendQuickSessionStarted(res);
+    if (error?.message === 'Workout not found') return res.status(404).json({ error: 'Workout not found' });
+    if (isLoadRangeError(error)) return res.status(400).json({ error: error.message });
+    if (error) throw error;
+    if (!workoutId) return res.status(404).json({ error: 'Workout not found' });
+    return res.json(await workoutWithDetails(workoutId));
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    logError('update workout error', e);
+    return res.status(500).json({ error: 'Failed to update workout' });
+  }
+});
+
+router.patch('/workouts/:id/archive', requireCoach, async (req, res) => {
+  try {
+    const workout = await workoutWithDetails(req.params.id);
+    if (!canManageWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    if (await rejectIfLegacyAssigned(res, 'workout', workout)) return undefined;
+    const { data, error } = await supabaseAdmin.from('workouts').update({ archived: true, updated_at: new Date().toISOString() }).eq('id', workout.id).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    logError('archive workout error', e);
+    return res.status(500).json({ error: 'Failed to archive workout' });
+  }
+});
+
+router.patch('/workouts/:id/hidden', requireCoach, async (req, res) => {
+  try {
+    const workout = await workoutWithDetails(req.params.id);
+    if (!canManageWorkout(req.user, workout) || !isTemplate(workout)) return res.status(404).json({ error: 'Workout not found' });
+    if (typeof req.body?.hidden !== 'boolean') return res.status(400).json({ error: 'hidden must be true or false' });
+    const { data, error } = await supabaseAdmin.from('workouts')
+      .update({ hidden: req.body.hidden, updated_at: new Date().toISOString() }).eq('id', workout.id).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    logError('hide workout error', e);
+    return res.status(500).json({ error: 'Failed to update workout visibility' });
+  }
+});
+
+// Copies a client's workout (or duplicates a template) into a new hidden
+// template. From a client instance, client-specific loads/coach notes are stripped.
+router.post('/workouts/:id/save-as-template', requireCoach, async (req, res) => {
+  try {
+    const workout = await workoutWithDetails(req.params.id);
+    if (!canAccessWorkout(req.user, workout)) return res.status(404).json({ error: 'Workout not found' });
+    const body = req.body || {};
+    const variationOf = await resolveVariationParent('workout', workout, body);
+    if (variationOf.error) return res.status(400).json({ error: variationOf.error });
+    const { data: newId, error } = await supabaseAdmin.rpc('save_workout_as_template', {
+      p_workout_id: workout.id,
+      p_coach_id: req.user.coach.id,
+      p_name: copyName(body, workout, variationOf.id),
+      p_variation_of: variationOf.id,
+    });
+    if (error) {
+      const mapped = rpcErrorStatus(error);
+      if (mapped) return res.status(mapped.status).json({ error: mapped.message });
+      throw error;
+    }
+    return res.status(201).json(withAuthor(await workoutWithDetails(newId), await coachesById()));
+  } catch (e) {
+    logError('save workout as template error', e);
+    return res.status(500).json({ error: 'Failed to save workout as template' });
+  }
+});
+
+// ----- Program import/export -----
+router.get('/import/template.csv', requireCoach, async (_req, res) => {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="CVF-program-import-template.csv"');
+  return res.send(csvTemplate());
+});
+
+router.post('/import/parse-csv', requireCoach, csvImportLimiter, programImportUpload, async (req, res) => {
+  try {
+    if (!isCsvUpload(req.file)) return res.status(400).json({ error: 'Upload a CSV file using the program import template.' });
+    const text = req.file.buffer.toString('utf8');
+    const draft = parseCsvDraft(text, { originalFilename: req.file.originalname, sourceType: 'csv' });
+    const validation = validateDraft(draft);
+    if (!validation.valid) return res.status(422).json({ error: 'CSV parsed, but the draft needs fixes before saving.', draft: validation.draft, errors: validation.errors });
+    return res.json({ message: 'CSV parsed. Review imported program before saving.', draft: validation.draft, errors: [] });
+  } catch (e) {
+    const status = e.validation ? 400 : 500;
+    logError('parse csv program error', e);
+    return res.status(status).json({ error: e.message || 'Could not parse CSV import' });
+  }
+});
+
+router.post('/import/parse-paste', requireCoach, csvImportLimiter, async (req, res) => {
+  try {
+    const draft = parsePasteDraft(req.body?.text);
+    const validation = validateDraft(draft);
+    if (!validation.valid) {
+      return res.status(422).json({
+        error: 'Paste parsed, but the draft needs fixes before saving.',
+        draft: validation.draft,
+        errors: validation.errors,
+      });
+    }
+    return res.json({ message: 'Paste parsed. Review imported program before saving.', draft: validation.draft, errors: [] });
+  } catch (e) {
+    if (e.code === 'NO_EXERCISES_FOUND' || e.validation?.no_exercises) {
+      return res.status(400).json({ error: "Couldn't find any exercises in this text." });
+    }
+    logError('parse pasted program error', e);
+    return res.status(500).json({ error: 'Could not parse pasted program' });
+  }
+});
+
+router.post('/import/parse-pdf', requireCoach, pdfImportLimiter, programImportUpload, async (req, res) => {
+  try {
+    if (!isPdfUpload(req.file)) return res.status(400).json({ error: 'Upload a PDF file.' });
+    const text = await extractPdfText(req.file.buffer);
+    if (!text.trim()) return res.status(400).json({ error: 'Could not extract readable text from this PDF. Try the CSV template instead.' });
+    const aiDraft = await callOpenAiForDraft(text, req.file.originalname);
+    const draft = normalizeDraft({
+      ...aiDraft,
+      import_meta: {
+        ...(aiDraft.import_meta || {}),
+        source_type: 'pdf',
+        original_filename: req.file.originalname,
+        parser_version: PARSER_VERSION,
+      },
+    });
+    const validation = validateDraft(draft);
+    if (!validation.valid) return res.status(422).json({ error: 'PDF parsed, but the draft needs fixes before saving.', draft: validation.draft, errors: validation.errors });
+    return res.json({ message: 'PDF parsed. Review extracted program before saving.', draft: validation.draft, errors: [] });
+  } catch (e) {
+    logError('parse pdf program error', e);
+    return res.status(e.status || 500).json({ error: e.message || 'Could not parse PDF import' });
+  }
+});
+
+router.post('/import/commit', requireCoach, programCommitLimiter, async (req, res) => {
+  try {
+    const validation = validateDraft(req.body?.draft || req.body);
+    if (!validation.valid) return res.status(422).json({ error: 'Fix import draft errors before saving.', errors: validation.errors, draft: validation.draft });
+    const importedExercises = validation.draft.days.flatMap((day) => day.exercises || []);
+    if (unsafeExternalVideoUrls(importedExercises).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
+    const source = sourceForImport(validation.draft.import_meta.source_type);
+    const { data, error } = await supabaseAdmin.rpc('commit_program_import', {
+      p_coach_id: req.user.coach.id,
+      p_source: source,
+      p_draft: validation.draft,
+    });
+    if (isLoadRangeError(error)) return res.status(400).json({ error: error.message });
+    if (error) {
+      logError('commit program import rpc error', error);
+      return res.status(500).json({ error: 'Program import could not be saved. Confirm the latest database migration has been applied.' });
+    }
+    const program = data?.program_id ? await programWithDetails(data.program_id) : null;
+    return res.status(201).json({ ...data, program });
+  } catch (e) {
+    logError('commit program import error', e);
+    return res.status(500).json({ error: 'Failed to save imported program' });
+  }
+});
+
+// ----- Structured programs -----
+router.get('/', requireCoach, async (req, res) => {
+  try {
+    let q = supabaseAdmin.from('programs').select('*')
+      .eq('archived', false).eq('is_template', true)
+      .not('frequency_days', 'is', null)
+      .order('created_at', { ascending: false });
+    if (req.query.assignable === 'true') q = q.eq('hidden', false);
+    const { data, error } = await q;
+    if (error) throw error;
+    const authors = await coachesById();
+    const rows = filterByAuthor(data || [], typeof req.query.author === 'string' ? req.query.author : null, req.user);
+    const result = [];
+    for (const program of rows) {
+      const detailed = await programWithDetails(program.id, req.user);
+      result.push(withAuthor({
+        ...program,
+        days: detailed.days,
+        day_count: detailed.days.length,
+        exercise_count: detailed.days.reduce((sum, day) => sum + (day.workout?.exercise_count || 0), 0),
+        // Only legacy live-linked assignments can appear on a template, and only for the caller's clients.
+        active_assignments: (detailed.assignments || []).filter((a) => !a.archived),
+      }, authors));
+    }
+    return res.json(result);
+  } catch (e) {
+    logError('list programs error', e);
+    return res.status(500).json({ error: 'Failed to load programs' });
+  }
+});
+
+router.post('/', requireCoach, async (req, res) => {
+  try {
+    const { name, description, frequency_days, days } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Program name is required' });
+    const frequency = Number(frequency_days);
+    if (!isSupportedProgramFrequency(frequency)) return res.status(400).json({ error: 'Choose 1 to 5 days per week' });
+    const validDays = Array.isArray(days) ? days.filter((d) => d.workout_id) : [];
+    if (validDays.length !== frequency) return res.status(400).json({ error: `Assign one workout to each of the ${frequency} days` });
+    if (!await programDaysAreAccessible(req.user, validDays)) return res.status(404).json({ error: 'Workout not found' });
+    const { data: programId, error } = await supabaseAdmin.rpc('save_program', {
+      p_program_id: null,
+      p_coach_id: req.user.coach.id,
+      p_is_admin: req.user.role === 'admin',
+      p_name: String(name).trim(),
+      p_description: description || null,
+      p_frequency_days: frequency,
+      p_days: validDays,
+    });
+    if (error) throw error;
+    return res.status(201).json(withAuthor(await programWithDetails(programId, req.user), await coachesById()));
+  } catch (e) {
+    logError('create program error', e);
+    return res.status(500).json({ error: e.message || 'Failed to create program' });
+  }
+});
+
+router.get('/:id/export.pdf', requireCoach, pdfExportLimiter, async (req, res) => {
+  try {
+    const program = await programWithDetails(req.params.id);
+    if (!program || !canAccessProgram(req.user, program) || program.archived) return res.status(404).json({ error: 'Program not found' });
+    const pdf = await generateProgramPdf(program, req.user, {
+      includeVideos: req.query.includeVideos !== 'false',
+      includeCoachNotes: req.query.includeCoachNotes === 'true',
+      format: req.query.format || 'client',
+    });
+    const filename = safeFilename(program.name);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(pdf);
+  } catch (e) {
+    logError('export program pdf error', e);
+    return res.status(500).json({ error: 'Failed to export program PDF' });
+  }
+});
+
+router.get('/:id/history', requireCoach, historyHandler(async (id) => {
+  // Authorize with the same current-client ownership embed as normal reads,
+  // without hydrating workouts, assignments or any completed client records.
+  const { data, error } = await supabaseAdmin.from('programs').select(OWNED_ROW)
+    .eq('id', id).eq('archived', false).maybeSingle();
+  if (error) throw error;
+  return data;
+}, async (id) => {
+  const { data, error } = await supabaseAdmin.from('program_change_revisions')
+    .select('id,snapshot,author_coach_id,author_name_snapshot,recorded_at,source')
+    .eq('program_id', id).order('id', { ascending: false }).limit(201);
+  if (error) {
+    if (['42P01', 'PGRST205'].includes(error.code)) return null;
+    throw error;
+  }
+  return { revisions: (data || []).slice(0, 200).reverse(), has_earlier: (data || []).length > 200 };
+}));
+
+router.get('/:id', requireCoach, async (req, res) => {
+  try {
+    const program = await programWithDetails(req.params.id, req.user);
+    if (!program || !canAccessProgram(req.user, program) || program.archived) return res.status(404).json({ error: 'Program not found' });
+    return res.json(withAuthor(program, await coachesById()));
+  } catch (e) {
+    logError('get program error', e);
+    return res.status(500).json({ error: 'Failed to load program' });
+  }
+});
+
+router.put('/:id', requireCoach, async (req, res) => {
+  try {
+    const program = await programWithDetails(req.params.id, req.user);
+    if (!program || !canAccessProgram(req.user, program)) return res.status(404).json({ error: 'Program not found' });
+    if (await rejectIfLegacyAssigned(res, 'program', program)) return undefined;
+    const body = req.body || {};
+    const name = 'name' in body ? String(body.name || '').trim() : program.name;
+    if (!name) return res.status(400).json({ error: 'Program name is required' });
+    const frequency = 'frequency_days' in body ? Number(body.frequency_days) : program.frequency_days;
+    if (!isSupportedProgramFrequency(frequency)) return res.status(400).json({ error: 'Choose 1 to 5 days per week' });
+    const validDays = Array.isArray(body.days)
+      ? body.days.filter((day) => day.workout_id)
+      : program.days.map((day) => ({ day_number: day.day_number, workout_id: day.workout_id, notes: day.notes }));
+    if (validDays.length !== frequency) {
+      return res.status(400).json({ error: `Assign one workout to each of the ${frequency} days` });
+    }
+    if (!await programDaysAreAccessible(req.user, validDays, { instanceClientId: isTemplate(program) ? null : program.client_id })) {
+      return res.status(404).json({ error: 'Workout not found' });
+    }
+    const { data: programId, error } = await supabaseAdmin.rpc('save_program_with_history', {
+      p_program_id: program.id,
+      p_actor_coach_id: req.user.coach.id,
+      p_name: name,
+      p_description: 'description' in body ? body.description || null : program.description,
+      p_frequency_days: frequency,
+      p_days: validDays,
+    });
+    if (error?.message === 'Program not found') return res.status(404).json({ error: 'Program not found' });
+    if (error) throw error;
+    if (!programId) return res.status(404).json({ error: 'Program not found' });
+    return res.json(withAuthor(await programWithDetails(programId, req.user), await coachesById()));
+  } catch (e) {
+    logError('update program error', e);
+    return res.status(500).json({ error: 'Failed to update program' });
+  }
+});
+
+router.patch('/:id/archive', requireCoach, async (req, res) => {
+  try {
+    const program = await programWithDetails(req.params.id);
+    if (!program || !canAccessProgram(req.user, program)) return res.status(404).json({ error: 'Program not found' });
+    if (await rejectIfLegacyAssigned(res, 'program', program)) return undefined;
+    const { data, error } = await supabaseAdmin.from('programs').update({ archived: true }).eq('id', program.id).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    logError('archive program error', e);
+    return res.status(500).json({ error: 'Failed to archive program' });
+  }
+});
+
+router.patch('/:id/hidden', requireCoach, async (req, res) => {
+  try {
+    const program = await programWithDetails(req.params.id);
+    if (!program || !canAccessProgram(req.user, program) || !isTemplate(program)) return res.status(404).json({ error: 'Program not found' });
+    if (typeof req.body?.hidden !== 'boolean') return res.status(400).json({ error: 'hidden must be true or false' });
+    const { data, error } = await supabaseAdmin.from('programs').update({ hidden: req.body.hidden }).eq('id', program.id).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    logError('hide program error', e);
+    return res.status(500).json({ error: 'Failed to update program visibility' });
+  }
+});
+
+// Copies a client's program (or duplicates a template) into a new hidden template.
+router.post('/:id/save-as-template', requireCoach, async (req, res) => {
+  try {
+    const program = await programWithDetails(req.params.id);
+    if (!program || !canAccessProgram(req.user, program)) return res.status(404).json({ error: 'Program not found' });
+    const body = req.body || {};
+    const variationOf = await resolveVariationParent('program', program, body);
+    if (variationOf.error) return res.status(400).json({ error: variationOf.error });
+    const { data: newId, error } = await supabaseAdmin.rpc('save_program_as_template', {
+      p_program_id: program.id,
+      p_coach_id: req.user.coach.id,
+      p_name: copyName(body, program, variationOf.id),
+      p_variation_of: variationOf.id,
+    });
+    if (error) {
+      const mapped = rpcErrorStatus(error);
+      if (mapped) return res.status(mapped.status).json({ error: mapped.message });
+      throw error;
+    }
+    return res.status(201).json(withAuthor(await programWithDetails(newId, req.user), await coachesById()));
+  } catch (e) {
+    logError('save program as template error', e);
+    return res.status(500).json({ error: 'Failed to save program as template' });
+  }
+});
+
+// Assigning clones the template into a client-specific program; the template
+// is never modified and later edits to either side stay independent.
+router.post('/:id/assign', requireCoach, async (req, res) => {
+  try {
+    const program = await programWithDetails(req.params.id);
+    if (!program || !canAccessProgram(req.user, program) || !isTemplate(program)) return res.status(404).json({ error: 'Program not found' });
+    if (!canAssignTemplate(program)) return res.status(409).json({ error: 'This program is hidden and cannot be assigned. Unhide it first.' });
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.body?.client_id).eq('archived', false).maybeSingle();
+    if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
+    // Block an accidental double-assign: the same template already active for this client
+    // (as a live-linked legacy assignment, or as a clone of it).
+    const { data: legacy } = await supabaseAdmin.from('program_assignments').select('id')
+      .eq('program_id', program.id).eq('client_id', clientRow.id).eq('archived', false).limit(1);
+    const { data: cloned } = await supabaseAdmin.from('program_assignments')
+      .select('id, program:programs!inner(source_program_id, archived)')
+      .eq('client_id', clientRow.id).eq('archived', false)
+      .eq('program.source_program_id', program.id).eq('program.archived', false).limit(1);
+    if ((legacy && legacy.length) || (cloned && cloned.length)) {
+      return res.status(409).json({ error: 'Program is already assigned to this client' });
+    }
+    const loads = cleanExerciseLoads(req.body.exercise_loads, { program: true });
+    const { data: assignmentId, error } = await supabaseAdmin.rpc('assign_program_clone', {
+      p_program_id: program.id,
+      p_client_id: clientRow.id,
+      p_notes: req.body.notes || null,
+      p_loads: loads,
+    });
+    if (error) {
+      const mapped = rpcErrorStatus(error);
+      if (mapped) return res.status(mapped.status).json({ error: mapped.message });
+      throw error;
+    }
+    const { data } = await supabaseAdmin.from('program_assignments').select('*, client:clients(id, name)')
+      .eq('id', assignmentId).single();
+    return res.status(201).json({
+      ...data,
+      exercise_loads: await programAssignmentLoads(assignmentId),
+      program: await programWithDetails(data.program_id, req.user),
+    });
+  } catch (e) {
+    logError('assign program error', e);
+    return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to assign program' });
+  }
+});
+
+// A client's active program assignments with their own (cloned) program plans.
+router.get('/program-assignments/client/:clientId', requireCoach, async (req, res) => {
+  try {
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
+    if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
+    const { data, error } = await supabaseAdmin.from('program_assignments').select('*')
+      .eq('client_id', clientRow.id).eq('archived', false).order('created_at', { ascending: false });
+    if (error) throw error;
+    const result = [];
+    for (const assignment of data || []) {
+      const program = await programWithDetails(assignment.program_id, req.user);
+      if (program) result.push({ ...assignment, program, exercise_loads: await programAssignmentLoads(assignment.id) });
+    }
+    return res.json(result);
+  } catch (e) {
+    logError('client program assignments error', e);
+    return res.status(500).json({ error: 'Failed to load program assignments' });
+  }
+});
+
+router.put('/assignments/:assignmentId/loads', requireCoach, async (req, res) => {
+  try {
+    const { data: assignment } = await supabaseAdmin.from('program_assignments')
+      .select('*, program:programs(*), client:clients(*)').eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
+    if (!assignment || assignment.program?.archived || assignment.client?.archived || !canAccessClient(req.user, assignment.client)) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+    const loads = cleanExerciseLoads(req.body?.exercise_loads, { program: true });
+    const { error } = await supabaseAdmin.rpc('save_program_assignment_with_loads', {
+      p_assignment_id: assignment.id,
+      p_program_id: assignment.program_id,
+      p_client_id: assignment.client_id,
+      p_notes: 'notes' in (req.body || {}) ? req.body.notes : assignment.notes,
+      p_loads: loads,
+    });
+    if (error) throw error;
+    return res.json({ ...assignment, exercise_loads: await programAssignmentLoads(assignment.id) });
+  } catch (e) {
+    logError('update program assignment loads error', e);
+    return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to update assigned loads' });
+  }
+});
+
+router.patch('/assignments/:assignmentId/archive', requireCoach, async (req, res) => {
+  try {
+    const { data: assignment } = await supabaseAdmin.from('program_assignments')
+      .select('*, program:programs(*), client:clients(*)').eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
+    if (!assignment || assignment.program?.archived || !canAccessClient(req.user, assignment.client)) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+    const { data, error } = await supabaseAdmin.from('program_assignments').update({ archived: true }).eq('id', assignment.id).select().single();
+    if (error) throw error;
+    return res.json(data);
+  } catch (e) {
+    logError('unassign error', e);
+    return res.status(500).json({ error: 'Failed to unassign program' });
+  }
+});
+
+// ----- Standalone workout assignments -----
+router.get('/workout-assignments/client/:clientId', requireCoach, async (req, res) => {
+  try {
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', req.params.clientId).eq('archived', false).maybeSingle();
+    if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
+    const { data, error } = await supabaseAdmin.from('workout_assignments').select('*')
+      .eq('client_id', clientRow.id).eq('archived', false).order('assigned_for', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    const result = [];
+    for (const a of await annotateQuickCompletion(clientRow.id, data || [], { db: supabaseAdmin })) {
+      const workout = await workoutWithDetails(a.workout_id);
+      if (workout) result.push(coachAssignment({ ...a, workout, exercise_loads: await workoutAssignmentLoads(a.id) }));
+    }
+    return res.json(result);
+  } catch (e) {
+    logError('workout assignments error', e);
+    return res.status(500).json({ error: 'Failed to load workout assignments' });
+  }
+});
+
+router.post('/workout-assignments', requireCoach, async (req, res) => {
+  try {
+    const { client_id, workout_id, assignment_mode, assigned_for, notes } = req.body || {};
+    const { data: clientRow } = await supabaseAdmin.from('clients').select('*')
+      .eq('id', client_id).eq('archived', false).maybeSingle();
+    if (!clientRow || !canAccessClient(req.user, clientRow)) return res.status(404).json({ error: 'Client not found' });
+    const template = await workoutWithDetails(workout_id);
+    if (!canAccessWorkout(req.user, template) || !isTemplate(template)) return res.status(404).json({ error: 'Workout not found' });
+    if (!canAssignTemplate(template)) return res.status(409).json({ error: 'This workout is hidden and cannot be assigned. Unhide it first.' });
+    const mode = assignment_mode === 'dated' ? 'dated' : 'active';
+    if (mode === 'dated' && !assigned_for) return res.status(400).json({ error: 'Choose a date for dated workouts' });
+    const loads = cleanExerciseLoads(req.body?.exercise_loads);
+    // Clone the template into this client's own workout; the template is untouched.
+    const { data: assignmentId, error } = await supabaseAdmin.rpc('assign_workout_clone', {
+      p_workout_id: template.id,
+      p_client_id: clientRow.id,
+      p_assignment_mode: mode,
+      p_assigned_for: mode === 'dated' ? assigned_for : null,
+      p_notes: notes || null,
+      p_loads: loads,
+    });
+    if (error) {
+      const mapped = rpcErrorStatus(error);
+      if (mapped) return res.status(mapped.status).json({ error: mapped.message });
+      throw error;
+    }
+    const { data } = await supabaseAdmin.from('workout_assignments').select('*').eq('id', assignmentId).single();
+    return res.status(201).json({ ...data, workout: await workoutWithDetails(data.workout_id), exercise_loads: await workoutAssignmentLoads(assignmentId) });
+  } catch (e) {
+    logError('assign workout error', e);
+    return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to assign workout' });
+  }
+});
+
+router.put('/workout-assignments/:assignmentId/loads', requireCoach, async (req, res) => {
+  try {
+    const { data: assignment } = await supabaseAdmin.from('workout_assignments')
+      .select('*, client:clients(*), workout:workouts(*)')
+      .eq('id', req.params.assignmentId).eq('archived', false).maybeSingle();
+    if (!assignment || assignment.workout?.archived || assignment.client?.archived || !canAccessWorkoutAssignment(req.user, assignment)) {
+      return res.status(404).json({ error: 'Workout assignment not found' });
+    }
+    const loads = cleanExerciseLoads(req.body?.exercise_loads);
+    const { error } = await supabaseAdmin.rpc('save_workout_assignment_with_loads', {
+      p_assignment_id: assignment.id,
+      p_client_id: assignment.client_id,
+      p_workout_id: assignment.workout_id,
+      p_assignment_mode: assignment.assignment_mode,
+      p_assigned_for: assignment.assigned_for,
+      p_notes: 'notes' in (req.body || {}) ? req.body.notes : assignment.notes,
+      p_loads: loads,
+    });
+    if (error && isQuickSessionStarted(error)) return sendQuickSessionStarted(res);
+    if (error) throw error;
+    return res.json(coachAssignment({ ...assignment, exercise_loads: await workoutAssignmentLoads(assignment.id) }));
+  } catch (e) {
+    logError('update workout assignment loads error', e);
+    return res.status(e.status || 500).json({ error: e.status ? e.message : 'Failed to update assigned loads' });
+  }
+});
+
+router.patch('/workout-assignments/:assignmentId/archive', requireCoach, async (req, res) => {
+  try {
+    const { data: assignment, error: loadError } = await supabaseAdmin.from('workout_assignments')
+      .select('*, client:clients(*)')
+      .eq('id', req.params.assignmentId)
+      .eq('archived', false)
+      .maybeSingle();
+    if (loadError) throw loadError;
+    if (assignment?.client?.archived || !canAccessWorkoutAssignment(req.user, assignment)) {
+      return res.status(404).json({ error: 'Workout assignment not found' });
+    }
+    const { data, error } = await supabaseAdmin.from('workout_assignments')
+      .update({ archived: true })
+      .eq('id', assignment.id)
+      .eq('archived', false)
+      .select()
+      .single();
+    if (error) throw error;
+    return res.json(coachAssignment(data));
+  } catch (e) {
+    logError('archive workout assignment error', e);
+    return res.status(500).json({ error: 'Failed to remove workout assignment' });
+  }
+});
+
+// ----- Coach-created quick sessions (docs/superpowers/specs/2026-10-09-quick-sessions-design.md) -----
+const QUICK_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+router.post('/quick-sessions', requireCoach, async (req, res) => {
+  let normalized;
+  if (unsafeExternalVideoUrls(req.body?.exercises).length) return res.status(400).json({ error: UNSAFE_MESSAGE });
+  try {
+    normalized = normalizeQuickSessionCreate(req.body, { today: todayDateInTz() });
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    logError('quick session normalize error', e);
+    return res.status(500).json({ error: 'Failed to save the quick session' });
+  }
+  try {
+    const { request_id: requestId, payload } = normalized;
+    // Actor comes only from authentication; the fingerprint only from the server.
+    const { data, error } = await supabaseAdmin.rpc('create_quick_session', {
+      p_actor: req.user.coach.id,
+      p_client_id: payload.client_id,
+      p_request_id: requestId,
+      p_hash: quickSessionHash(payload),
+      p_assigned_for: payload.assigned_for,
+      p_name: payload.name,
+      p_notes: payload.notes,
+      p_exercises: payload.exercises,
+    });
+    if (error) {
+      if (/^Hidden exercises cannot be added/.test(String(error.message || ''))) return res.status(422).json({ error: error.message });
+      throw error;
+    }
+    if (data?.state === 'request_mismatch') return res.status(409).json({ state: 'request_mismatch' });
+    if (data?.state === 'created' || data?.state === 'replayed') {
+      const assignment = await quickAssignmentForResponse(req.user, data.assignment_id);
+      if (!assignment) return res.status(404).json({ state: 'not_found' });
+      return res.status(data.state === 'created' ? 201 : 200).json({ state: data.state, assignment });
+    }
+    return res.status(404).json({ state: 'not_found' });
+  } catch (e) {
+    logError('create quick session error', e);
+    return res.status(500).json({ error: 'Failed to save the quick session' });
+  }
+});
+
+// Authorized status of an uncertain create. Absence never proves rollback.
+router.get('/quick-sessions/requests/:requestId', requireCoach, async (req, res) => {
+  try {
+    if (!QUICK_UUID.test(req.params.requestId)) return res.status(400).json({ error: 'Invalid request id' });
+    const { data, error } = await supabaseAdmin.rpc('get_quick_session_request', {
+      p_actor: req.user.coach.id,
+      p_request_id: req.params.requestId.toLowerCase(),
+    });
+    if (error) throw error;
+    if (data?.state === 'committed') {
+      const assignment = await quickAssignmentForResponse(req.user, data.assignment_id);
+      if (assignment) return res.json({ state: 'committed', assignment });
+    }
+    return res.status(404).json({ state: 'not_found' });
+  } catch (e) {
+    logError('quick session status error', e);
+    return res.status(500).json({ error: 'Failed to check the quick session' });
+  }
+});
+
+// Independent, idempotent: one hidden shared studio template per quick session.
+router.post('/quick-sessions/:assignmentId/save-to-library', requireCoach, async (req, res) => {
+  try {
+    if (!QUICK_UUID.test(req.params.assignmentId)) return res.status(400).json({ error: 'Invalid quick session' });
+    const { data, error } = await supabaseAdmin.rpc('save_quick_session_to_library', {
+      p_actor: req.user.coach.id,
+      p_assignment_id: req.params.assignmentId.toLowerCase(),
+    });
+    if (error) throw error;
+    if (data?.state === 'saved' || data?.state === 'replayed') {
+      return res.status(data.state === 'saved' ? 201 : 200).json({ state: data.state, template_id: data.template_id });
+    }
+    return res.status(404).json({ state: 'not_found' });
+  } catch (e) {
+    logError('quick session library save error', e);
+    return res.status(500).json({ error: 'Failed to save to the studio library' });
+  }
+});
+
+// Current exercise guides for every assigned exercise in one batched lookup.
+// Serialized rows already passed the client allowlist; media is its own DTO.
+async function withAssignedExerciseMedia(programs, workouts) {
+  const lists = [
+    ...programs.flatMap((assignment) => (assignment.program?.days || []).map((day) => day.workout).filter(Boolean)),
+    ...workouts.map((assignment) => assignment.workout).filter(Boolean),
+  ];
+  const hydrated = await attachExerciseMedia(lists.flatMap((workout) => workout.exercises || []), (row) => row.exercise_library_id);
+  let index = 0;
+  for (const workout of lists) workout.exercises = (workout.exercises || []).map(() => hydrated[index++]);
+}
+
+router.get('/client/assigned', requireClient, async (req, res) => {
+  try {
+    const { data: programAssignments, error } = await supabaseAdmin.from('program_assignments')
+      .select('*, program:programs(*)').eq('client_id', req.user.client.id).eq('archived', false);
+    if (error) throw error;
+    const programs = [];
+    for (const assignment of programAssignments || []) {
+      if (assignment.program && !assignment.program.archived) programs.push(clientSafeProgramAssignment({
+        ...assignment,
+        exercise_loads: await programAssignmentLoads(assignment.id),
+        program: await programWithDetails(assignment.program_id),
+      }));
+    }
+    const { data: workoutAssignments, error: waErr } = await supabaseAdmin.from('workout_assignments').select('*')
+      .eq('client_id', req.user.client.id).eq('archived', false).order('assigned_for', { ascending: true, nullsFirst: false });
+    if (waErr) throw waErr;
+    const workouts = [];
+    for (const assignment of await annotateQuickCompletion(req.user.client.id, workoutAssignments || [], { db: supabaseAdmin })) {
+      const workout = await workoutWithDetails(assignment.workout_id);
+      if (workout) workouts.push(clientSafeWorkoutAssignment({ ...assignment, workout, exercise_loads: await workoutAssignmentLoads(assignment.id) }));
+    }
+    await withAssignedExerciseMedia(programs, workouts);
+    return res.json({ programs, workouts });
+  } catch (e) {
+    logError('client programs error', e);
+    return res.status(500).json({ error: 'Failed to load your programs' });
+  }
+});
+
+function sendLogSheet(res, name, pdf) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${logSheetFilename(name)}"`);
+  return res.send(pdf);
+}
+
+router.get('/client/assignments/:assignmentId/log-sheet.pdf', requireClient, pdfExportLimiter, async (req, res) => {
+  try {
+    const { data: assignment, error } = await supabaseAdmin.from('program_assignments').select('*')
+      .eq('id', req.params.assignmentId).eq('client_id', req.user.client.id).eq('archived', false).maybeSingle();
+    if (error) throw error;
+    const program = assignment ? await programWithDetails(assignment.program_id) : null;
+    if (!program) return res.status(404).json({ error: 'Program not found' });
+    const loads = await programAssignmentLoads(assignment.id);
+    const pdf = await generateLogSheetPdf({
+      title: program.name,
+      clientName: req.user.client.name,
+      note: assignment.notes,
+      sections: (program.days || []).map((day) => ({
+        title: `Day ${day.day_number}: ${day.workout?.name || 'Workout Day'}`,
+        goal: day.workout?.goal,
+        notes: day.notes,
+        exercises: day.workout?.exercises || [],
+        loads: loads.filter((load) => load.program_day_id === day.id),
+      })),
+    });
+    return sendLogSheet(res, program.name, pdf);
+  } catch (e) {
+    logError('client program log sheet error', e);
+    return res.status(500).json({ error: 'Failed to create workout PDF' });
+  }
+});
+
+router.get('/client/workout-assignments/:assignmentId/log-sheet.pdf', requireClient, pdfExportLimiter, async (req, res) => {
+  try {
+    const { data: assignment, error } = await supabaseAdmin.from('workout_assignments').select('*')
+      .eq('id', req.params.assignmentId).eq('client_id', req.user.client.id).eq('archived', false).maybeSingle();
+    if (error) throw error;
+    const workout = assignment ? await workoutWithDetails(assignment.workout_id) : null;
+    if (!workout) return res.status(404).json({ error: 'Workout not found' });
+    const pdf = await generateLogSheetPdf({
+      title: workout.name,
+      clientName: req.user.client.name,
+      note: assignment.notes,
+      sections: [{
+        title: workout.name || 'Workout',
+        goal: workout.goal,
+        exercises: workout.exercises,
+        loads: await workoutAssignmentLoads(assignment.id),
+      }],
+    });
+    return sendLogSheet(res, workout.name, pdf);
+  } catch (e) {
+    logError('client workout log sheet error', e);
+    return res.status(500).json({ error: 'Failed to create workout PDF' });
+  }
+});
+
+module.exports = router;

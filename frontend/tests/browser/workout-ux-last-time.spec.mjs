@@ -83,6 +83,7 @@ async function setup(page, { role = 'client', online = true, historyHold = null,
       Object.assign(state.log, { status: 'completed', completed_at: new Date().toISOString() });
       return json(state.log);
     }
+    if (method === 'GET' && /^\/workout-logs\/lt-log\/exercises\/(ex-goblet|ex-deadbug)\/cue-retry$/.test(path)) return json({ source_version: null, can_create: false, can_recheck: false, outgoing: [], incoming: [] });
     state.unexpected.push(`${method} ${path}`);
     return json({ error: 'Unexpected synthetic route' }, 404);
   });

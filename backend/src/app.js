@@ -1,3 +1,5 @@
+// Redesign gate: a no-op unless PT_REDESIGN=look-a (docs/redesign-gate.md). Must run before any route is required.
+require('./lib/redesignGate').install();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');

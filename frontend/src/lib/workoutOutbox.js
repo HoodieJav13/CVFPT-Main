@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { isWriteBlocked, metricWriteAcknowledged, reconcileAddedSet, rewritePendingSetId } from '@/lib/workoutSync';
+import { ackedSetRow, isWriteBlocked, markRecheck, metricWriteAcknowledged, nextSendable, optimisticSetData, reconcileAddedSet, reconcileQueuedSet, replyRow, rewritePendingSetId } from '@/lib/workoutSync';
 
 /**
  * Offline outbox for workout writes (docs/offline-workout-completion.md).
@@ -29,7 +29,7 @@ export function applyOptimistic(log, operation) {
   if (operation.kind === 'set') {
     return updateExercise(log, operation.exerciseId, (exercise) => ({
       ...exercise,
-      sets: exercise.sets.map((set) => set.id === operation.setId ? { ...set, ...operation.data } : set),
+      sets: exercise.sets.map((set) => set.id === operation.setId ? { ...set, ...optimisticSetData(set, operation.data) } : set),
     }));
   }
   if (operation.kind === 'note') {
@@ -135,6 +135,11 @@ export function hasQueuedCompleteFor(logId) {
   return readQueue(logId).some((operation) => operation.kind === 'complete');
 }
 
+// A queued write is parked for the person's choice (F6): only the tracker can resolve it.
+export function hasParkedFor(logId) {
+  return readQueue(logId).some((operation) => operation.parked);
+}
+
 // pt-session-events/v1: every set write carries an idempotency id, the set
 // revision this device last saw, a per-device sequence and whether it was made
 // offline, so the server can replay safely and keep (never overwrite) a value
@@ -158,7 +163,14 @@ export function setEventEnvelope(log, operation, eventId, logId) {
   };
 }
 
-export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRejected, getLog, onConflict } = {}) {
+// Writes after a released/dropped one for the same set are re-checked against the next reply.
+function markRecheckAfter(queue, operation) {
+  const at = queue.findIndex((queued) => queued.id === operation.id);
+  return queue.map((queued, index) => ((at < 0 || index > at) && queued.setId === operation.setId
+    ? { ...queued, parked: false, recheck: true } : queued));
+}
+
+export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRejected, getLog, onConflict, onSetSaved, onSetDropped, onParked } = {}) {
   const storageKey = outboxStorageKey(logId);
   const initial = useMemo(() => {
     try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch { return []; }
@@ -174,6 +186,12 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
   const getLogRef = useRef(getLog);
   const keptNoticeRef = useRef(false);
   const conflictRef = useRef(onConflict);
+  const setSavedRef = useRef(onSetSaved);
+  setSavedRef.current = onSetSaved;
+  const setDroppedRef = useRef(onSetDropped);
+  setDroppedRef.current = onSetDropped;
+  const parkedRef = useRef(onParked);
+  parkedRef.current = onParked;
   syncedRef.current = onCompleteSynced;
   rejectedRef.current = onCompleteRejected;
   getLogRef.current = getLog;
@@ -201,10 +219,29 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
     window.clearTimeout(retryRef.current);
     let finished = false;
     const run = (async () => {
+    // The server's current row per set, from this run's set replies (F5).
+    const knownRows = new Map();
     try {
-      while (queueRef.current.length) {
+      for (;;) {
+        let operation = nextSendable(queueRef.current);
+        if (!operation) break;
         setSaveState('saving');
-        const operation = queueRef.current[0];
+        if (operation.recheck) {
+          // Queued before a replayed reply for its set (F5): re-checked against
+          // the server's current row before it is sent, never sent stale.
+          const row = knownRows.get(operation.setId);
+          const decision = row ? reconcileQueuedSet(operation, row) : null;
+          if (!decision || decision.action !== 'send') {
+            const parked = { ...operation, parked: true };
+            persist(queueRef.current.map((queued) => (queued.id === operation.id ? parked : queued)));
+            parkedRef.current?.(parked);
+            continue;
+          }
+          const ready = { ...operation, data: decision.data, recheck: false };
+          persist(queueRef.current.map((queued) => (queued.id === operation.id ? ready : queued)));
+          setLog((current) => applyOptimistic(current, ready));
+          operation = ready;
+        }
         try {
           const { data } = await api.request({ method: operation.method, url: operation.url, data: operation.data });
           const outcome = data?.event?.outcome;
@@ -226,15 +263,21 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
           }
           persist(queueRef.current.filter((queued) => queued.id !== operation.id));
           if (operation.kind === 'set' && outcome) {
+            const current = replyRow(data);
+            if (current) knownRows.set(operation.setId, current);
+            // A replay means this screen's copy of the set may be older than the
+            // server's: every write still queued for it is re-checked first.
+            if (outcome === 'replayed') persist(markRecheck(queueRef.current, operation.setId));
             // Keep the values on screen; adopt the server's revision so the next
-            // write is based on what the server now holds.
+            // write is based on what the server now holds (an applied reply
+            // only: see ackedSetRow).
             setLog((current) => updateExercise(current, operation.exerciseId, (exercise) => ({
               ...exercise,
-              sets: exercise.sets.map((set) => (set.id === operation.setId && outcome !== 'conflict'
-                ? { ...set, revision: data.revision, last_actor_role: data.last_actor_role, completed_plan_revision: data.completed_plan_revision }
-                : set)),
+              sets: exercise.sets.map((set) => (set.id === operation.setId ? ackedSetRow(set, data) : set)),
             })));
             if (outcome === 'conflict' || (outcome === 'replayed' && data.event.original_outcome === 'conflict')) conflictRef.current?.(data);
+            // The acknowledged operation (its queue id) and the server's answer.
+            setSavedRef.current?.(operation, data);
           }
           if (operation.kind === 'substitute' && data?.log) {
             const remaining = queueRef.current;
@@ -259,6 +302,10 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
             const keptFirst = operation.kind !== 'complete' && keepUndelivered(logId, operation);
             const remaining = queueRef.current.filter((queued) => queued.id !== operation.id);
             persist(remaining);
+            // The server refused this operation: it will never be acknowledged,
+            // so anything waiting on its acknowledgement is told now, in step
+            // with leaving the queue.
+            if (operation.kind === 'set') setDroppedRef.current?.(operation);
             let fresh = null;
             try {
               const { data } = await api.get(`/workout-logs/${logId}`);
@@ -299,8 +346,10 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
           return false;
         }
       }
-      setSaveState('saved');
-      return true;
+      // Anything left is parked, waiting for the person's choice or a fresh read.
+      const waiting = queueRef.current.length > 0;
+      setSaveState(waiting ? 'not_saved' : 'saved');
+      return !waiting;
     } finally {
       finished = true;
       inFlightRef.current = null;
@@ -321,12 +370,15 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
     const enveloped = target.kind === 'set' && !target.data?.event_id
       ? { ...target, data: { ...target.data, ...setEventEnvelope(getLogRef.current?.(), target, queueId, logId) } }
       : target;
-    const queued = { id: queueId, attempts: 0, ...enveloped };
+    // Behind a parked or re-checked write for the same set, it is re-checked too (F5).
+    const behind = target.setId && queueRef.current.some((op) => op.setId === target.setId && (op.parked || op.recheck));
+    const queued = { id: queueId, attempts: 0, ...enveloped, ...(behind ? { recheck: true } : {}) };
     persist([...queueRef.current, queued]);
     setLog((current) => applyOptimistic(current, queued));
     setSaveState('saving');
     window.setTimeout(() => flush(), 0);
-    return true;
+    // Truthy as before; the queue id lets a caller recognise this operation's acknowledgement.
+    return queueId;
   }, [flush, logId, persist, setLog]);
 
   /** "Keep editing instead": a queued completion is client-local until sent. */
@@ -354,9 +406,46 @@ export function useWorkoutOutbox(logId, setLog, { onCompleteSynced, onCompleteRe
     log,
   ), []);
 
+  // Parked/re-check writes that are first in the queue for their set: the
+  // ones a fresh read may decide (F5).
+  const decidable = useCallback(() => queueRef.current.filter((operation, index) => (operation.parked || operation.recheck)
+    && !queueRef.current.slice(0, index).some((earlier) => earlier.setId && earlier.setId === operation.setId)), []);
+  const replaceQueued = useCallback((operationId, change) => {
+    const target = queueRef.current.find((operation) => operation.id === operationId);
+    if (!target) return null;
+    const next = change(target);
+    persist(next ? queueRef.current.map((operation) => (operation.id === operationId ? next : operation))
+      : queueRef.current.filter((operation) => operation.id !== operationId));
+    return { target, next };
+  }, [persist]);
+  // Send this write with these (reconciled or explicitly chosen) values; later
+  // writes for the set are re-checked against its reply.
+  const releaseParked = useCallback((operationId, data) => {
+    const result = replaceQueued(operationId, (operation) => ({ ...operation, data, parked: false, recheck: false }));
+    if (!result) return;
+    persist(markRecheckAfter(queueRef.current, result.next));
+    setLog((current) => applyOptimistic(current, result.next));
+  }, [persist, replaceQueued, setLog]);
+  // The person chose the saved values and nothing is left to write.
+  const dropParked = useCallback((operationId) => {
+    const result = replaceQueued(operationId, () => null);
+    if (!result) return;
+    persist(markRecheckAfter(queueRef.current, result.target));
+    setDroppedRef.current?.(result.target);
+  }, [persist, replaceQueued]);
+
   return {
     enqueue,
     flush,
+    decidable,
+    releaseParked,
+    dropParked,
+    hasParked: (setId) => queueRef.current.some((operation) => operation.setId === setId && operation.parked),
+    isWaiting: (setId) => queueRef.current.some((operation) => operation.setId === setId && (operation.parked || operation.recheck)),
+    // Anything parked or waiting for a re-check (F6): a queued Finish cannot sync before it.
+    hasWaitingAny: () => queueRef.current.some((operation) => operation.parked || operation.recheck),
+    // Whether an operation (by queue id) is still waiting to be sent or acknowledged.
+    isQueued: (operationId) => queueRef.current.some((operation) => operation.id === operationId),
     hydrate,
     saveState,
     online,

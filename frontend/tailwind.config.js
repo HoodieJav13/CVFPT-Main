@@ -3,7 +3,12 @@ module.exports = {
     darkMode: ["class"],
     content: [
     "./src/**/*.{js,jsx,ts,tsx}",
-    "./index.html"
+    "./index.html",
+    // Keep dormant cockpit utilities out of the default stylesheet.
+    ...(process.env.REACT_APP_PT_COCKPIT !== 'true' || process.env.VERCEL_ENV === 'production'
+      ? ["!./src/{components,pages,lib}/cockpit/**/*.{js,jsx,ts,tsx}"] : []),
+    // Redesign gate: overlay screens are scanned only when the gate is on.
+    ...(process.env.REACT_APP_PT_REDESIGN === "look-a" ? ["./redesign/look-a/src/**/*.{js,jsx,ts,tsx}"] : [])
   ],
   theme: {
     extend: {

@@ -1,5 +1,6 @@
 import { CueRetryEntry } from '@/components/training/CueRetryEntry';
 import { workoutEntryErrorMessage, workoutEntryErrors } from '@/lib/workoutEntryErrors';
+import { asksForLoad } from '@/lib/exerciseLoad';
 import { performedSet, trackingType, tracks } from '@/lib/workoutMetrics';
 import { WorkoutViewport } from '@/components/training/WorkoutViewport';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
@@ -25,7 +26,7 @@ import { makeId, updateExercise, useWorkoutOutbox } from '@/lib/workoutOutbox';
 import {
   adjustRestEnd, formatRestSeconds, manualRestSeconds, REST_ADJUST_SECONDS,
 } from '@/lib/rest';
-import { freshnessLabel, lastTimeFills, mergeRefresh } from '@/lib/workoutSync';
+import { draftCollisionsIn, freshnessLabel, lastTimeFills, mergeRefresh, noteDraftEdit, reconcileQueuedSet, resolveQueuedChoice } from '@/lib/workoutSync';
 import { SetConflictNotice, SwapStatus, canSwap } from '@/components/training/SessionCorrections';
 import SwapExerciseDialog, { readCachedSwapOptions, swapOptionsCacheKey } from '@/components/training/SwapExerciseDialog';
 import { lastTimeDate, lastTimeFillNote, lastTimeLine, pickLastTimeOccurrence } from '@/lib/lastTime';
@@ -39,6 +40,8 @@ import { ExerciseInstructionDialog } from '@/components/training/media/ExerciseI
 import { ExerciseDemoAction, ExerciseDemoDialog } from '@/components/training/media/ExerciseDemoDialog';
 import { demoForRow } from '@/lib/exerciseDemo';
 import { nextPosterTargets } from '@/lib/exerciseMedia';
+import { CHOICE_SET_REASON, EXERCISE_UNDO_MS, HELD_SET_REASON, ackPrefillMarker, annotateValueViews, exerciseQuickPlan, exerciseUndoPlan, unresolvedPrefillSet } from '@/lib/exerciseQuickComplete';
+import { captureUndoView, restoreUndoView } from '@/lib/undoView';
 
 // The rest timer reads prescribed_rest_seconds — the structured column the
 // database parses and backfills. The old runtime text parser is gone; text
@@ -47,6 +50,18 @@ import { nextPosterTargets } from '@/lib/exerciseMedia';
 // Bounded refresh (L12): no live push; the tracker re-reads the log on this
 // cadence while online and says how fresh its copy is.
 const REFRESH_SECONDS = 10;
+// Draft choice (stale-draft repair, 2026-11-12): a value and its unit are one choice.
+const PAIRED_FIELD = {
+  actual_load_value: 'actual_load_unit', actual_load_unit: 'actual_load_value',
+  actual_duration_value: 'actual_duration_unit', actual_duration_unit: 'actual_duration_value',
+  actual_distance_value: 'actual_distance_unit', actual_distance_unit: 'actual_distance_value',
+};
+const DRAFT_FIELD_LABEL = {
+  actual_load_value: 'Weight', actual_load_unit: 'Weight unit', actual_reps: 'Reps', actual_rpe: 'RPE',
+  actual_duration_value: 'Duration', actual_duration_unit: 'Duration unit',
+  actual_distance_value: 'Distance', actual_distance_unit: 'Distance unit',
+};
+const shownValue = (value) => (value === null || value === undefined || value === '' ? 'blank' : String(value));
 
 function formatTimer(seconds) {
   const safe = Math.max(0, seconds);
@@ -141,7 +156,7 @@ function ExerciseHistory({ logId, exercise }) {
 // The rest timer owns its own 250ms tick so a running countdown re-renders
 // only these controls — not every exercise card and controlled input (audit #11).
 // The opt-in end-of-rest cue lives here too, since it keys off the same tick.
-function RestTimerFab({ restEndsAt, onClear, onAdjust, restAlerts, attentionScale }) {
+function RestTimerFab({ restEndsAt, onClear, onAdjust, restAlerts, attentionScale, quietEndsAt = null }) {
   const [now, setNow] = useState(Date.now());
   const announcedRef = useRef(false);
 
@@ -167,6 +182,9 @@ function RestTimerFab({ restEndsAt, onClear, onAdjust, restAlerts, attentionScal
     }
     if (announcedRef.current || !restAlerts) return;
     announcedRef.current = true;
+    // A timer that Undo put back after its deadline had already passed reads
+    // as finished but does not alert again: that alert time is long gone.
+    if (quietEndsAt !== null && restEndsAt === quietEndsAt) return;
     try {
       if (typeof navigator.vibrate === 'function') navigator.vibrate(200);
     } catch { /* capability declined */ }
@@ -185,7 +203,7 @@ function RestTimerFab({ restEndsAt, onClear, onAdjust, restAlerts, attentionScal
         oscillator.onended = () => context.close();
       }
     } catch { /* audio unavailable or blocked */ }
-  }, [complete, restAlerts]);
+  }, [complete, restAlerts, quietEndsAt, restEndsAt]);
 
   if (!restEndsAt) return null;
   const seconds = Math.max(0, Math.ceil((restEndsAt - now) / 1000));
@@ -216,7 +234,7 @@ function RestTimerFab({ restEndsAt, onClear, onAdjust, restAlerts, attentionScal
         </Button>
       </div>
       <div className="sr-only" aria-live="assertive" aria-atomic="true" data-testid="rest-complete-announcement">
-        {complete ? 'Rest complete' : ''}
+        {complete && !(quietEndsAt !== null && restEndsAt === quietEndsAt) ? 'Rest complete' : ''}
       </div>
     </>
   );
@@ -266,8 +284,18 @@ export default function WorkoutTracker() {
   // Set when the server refuses a queued Finish (the outbox has already reloaded
   // the still-active log), so finish() keeps the client here with the reason.
   const completeRejection = useRef(null);
-  // Sets being typed into (not yet saved): refresh keeps their values and base revision.
+  // Sets being typed into (not yet saved): refresh keeps their typed values.
   const draftIds = useRef(new Set());
+  // Which fields of each draft the person edited, with their values from
+  // before the first edit (independent review of f284a1e6, 2026-11-12): a
+  // refresh keeps only those, so an untouched field never carries an older
+  // value into the next save over another device's newer one.
+  const draftEdits = useRef(new Map());
+  // Drafts whose edited field another device also changed: set id ->
+  // { fields, saved, savedOrigin }. Nothing is written for the set until the
+  // person chooses "Save mine" or "Use saved".
+  const draftChoices = useRef(new Map());
+  const clearDraft = (setId) => { draftIds.current.delete(setId); draftEdits.current.delete(setId); };
   const refreshRef = useRef(null);
   const [lastChecked, setLastChecked] = useState(null);
   const [, setClock] = useState(0);
@@ -278,15 +306,161 @@ export default function WorkoutTracker() {
   const [announcement, setAnnouncement] = useState('');
   const [detailsOpen, setDetailsOpen] = useState({});
   const [rpeOpen, setRpeOpen] = useState({});
+  // Exercise quick completion (final review 2026-11-12 #5): the one grouped
+  // Undo that is currently offered, and a synchronous double-activation gate.
+  const [exerciseUndo, setExerciseUndo] = useState(null);
+  const [undoNow, setUndoNow] = useState(() => Date.now());
+  const exerciseQuickGate = useRef(null);
+  // Full previous-state Undo (owner decision 2026-11-12): the record already
+  // used (a second tap in the same frame must not reopen twice), how many
+  // rest timers have been started (a newer one is kept on Undo), a restored
+  // deadline that had already passed (no repeat alert), and the view to put
+  // back once the reopened rows render.
+  const exerciseUndoUsed = useRef(null);
+  const onPrefillAckRef = useRef(null);
+  const restStarts = useRef(0);
+  const [quietRestEndsAt, setQuietRestEndsAt] = useState(null);
+  const [viewRestore, setViewRestore] = useState(null);
+  // Sets an Undo returned to their untouched prescribed prefill (this device
+  // only; see withRestoredPrefill). Any later edit of the set forgets it.
+  const prefillStorageKey = `cvf_workout_prefill_${id}`;
+  // The stored markers, or null when storage cannot be read.
+  const readStoredPrefill = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem(prefillStorageKey) || '{}');
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    } catch { return null; }
+  };
+  const [prefillMarks] = useState(() => ({ current: readStoredPrefill() || {} }));
+  const [, setPrefillVersion] = useState(0);
+  // Changes only the named sets' markers, merged into what is stored now, so an
+  // older copy of this page still finishing a request never overwrites another
+  // set's marker. Re-renders so the quick-complete gate follows at once.
+  const writePrefillMarks = (changes) => {
+    const next = { ...(readStoredPrefill() ?? prefillMarks.current) };
+    for (const [setId, marker] of Object.entries(changes)) {
+      if (marker) next[setId] = marker;
+      else delete next[setId];
+    }
+    prefillMarks.current = next;
+    try {
+      if (Object.keys(next).length) localStorage.setItem(prefillStorageKey, JSON.stringify(next));
+      else localStorage.removeItem(prefillStorageKey);
+    } catch { /* the marker only refines labels on this device */ }
+    setPrefillVersion((version) => version + 1);
+  };
+  const forgetPrefill = (setId) => {
+    if (!prefillMarks.current[setId] && !readStoredPrefill()?.[setId]) return;
+    writePrefillMarks({ [setId]: null });
+  };
+  // What each pending set's values mean (server value origin, this device's
+  // markers, typed drafts): see annotateValueViews (cross-device Undo).
+  const rulesView = (exercise) => annotateValueViews(exercise, prefillMarks.current, { draftIds: draftIds.current });
+  // Sets whose own write was answered as a replay (Ultra F2, 2026-11-12): the
+  // reply is the server's current row, which may hold another device's newer
+  // value, while this screen keeps its own. Quick complete waits for a refresh
+  // to show the server's values (in memory only: a reload reads them anyway).
+  // set id -> the refresh count when held; only a refresh started after that lifts it.
+  const replayHolds = useRef(new Map());
+  const refreshCount = useRef(0);
+  // Held (F3, 2026-11-12): every replayed set reply, with or without a
+  // marker. Nothing may be written for the set until the refresh lands, since
+  // the server applies a same-actor write whatever its base revision.
+  // Also held (F5, 2026-11-13): a set with a queued write parked or waiting for
+  // a re-check after a replay, until a fresh read decides it or asks the person.
+  const waitingRef = useRef(() => false);
+  const isHeld = (setId) => replayHolds.current.has(setId) || (waitingRef.current(setId) && !draftChoices.current.has(setId));
+  const isChoosing = (setId) => draftChoices.current.has(setId);
+  // set id -> refresh count at the set's last acknowledged write: a read sent
+  // before it cannot decide that set's queued writes.
+  const ackedAt = useRef(new Map());
+  onPrefillAckRef.current = (operation, data) => {
+    ackedAt.current.set(operation.setId, refreshCount.current);
+    if (data?.event?.outcome === 'replayed') {
+      replayHolds.current.set(operation.setId, refreshCount.current);
+      setPrefillVersion((version) => version + 1);
+      refreshRef.current?.();
+    }
+    const marker = (readStoredPrefill() ?? prefillMarks.current)[operation.setId];
+    if (!marker) return;
+    const next = ackPrefillMarker(marker, operation, data);
+    if (next === marker) return;
+    writePrefillMarks({ [operation.setId]: next });
+  };
+  // The server refused this marker's own Undo write: it was not applied, so
+  // nothing is left to wait for (independent finding 02).
+  const onPrefillDropRef = useRef(null);
+  onPrefillDropRef.current = (operation) => {
+    const marker = (readStoredPrefill() ?? prefillMarks.current)[operation.setId];
+    if (marker && marker.op === operation.id) writePrefillMarks({ [operation.setId]: null });
+  };
   const landedRef = useRef(false);
+  // finish() navigates itself; a queued Finish that syncs later (after a
+  // parked choice was made here, F6) navigates from the outbox callback.
+  const finishingRef = useRef(false);
   const outbox = useWorkoutOutbox(id, setLog, {
     onCompleteRejected: (message) => { completeRejection.current = message; },
+    onCompleteSynced: () => {
+      if (finishingRef.current) return;
+      localStorage.removeItem(`cvf_rest_timer_${id}`);
+      localStorage.removeItem(prefillStorageKey);
+      navigate(`${basePath}/workouts/${id}`, { replace: true, state: { completedWorkoutId: id } });
+    },
     getLog: () => logRef.current,
     onConflict: () => {
       toast.message('Someone else changed this set first. Both values are kept and your coach will choose.');
       refreshRef.current?.();
     },
+    // A restored-prefill marker binds to the revision its own Undo write was acknowledged at.
+    onSetSaved: (operation, data) => onPrefillAckRef.current?.(operation, data),
+    onSetDropped: (operation) => onPrefillDropRef.current?.(operation),
+    // A queued write could not be re-checked yet: show the set as checking and read.
+    onParked: () => { setPrefillVersion((version) => version + 1); refreshRef.current?.(); },
   });
+  waitingRef.current = outbox.isWaiting;
+  const flushRef = useRef(null);
+  flushRef.current = outbox.flush;
+  // A set whose own Undo write has not been acknowledged yet, but whose
+  // revision moved on, holds a value nobody can attribute yet: quick complete
+  // waits for the acknowledgement (independent finding 02).
+  const unresolvedIn = (exercise) => {
+    const held = (exercise?.sets || []).find((set) => set.status === 'pending' && isHeld(set.id));
+    if (held) return { setId: held.id, setNumber: held.set_number, queued: false, checking: true };
+    const choosing = (exercise?.sets || []).find((set) => set.status === 'pending' && draftChoices.current.has(set.id));
+    if (choosing) return { setId: choosing.id, setNumber: choosing.set_number, queued: false, choosing: true };
+    return unresolvedPrefillSet(exercise, prefillMarks.current, outbox.isQueued);
+  };
+  // Every set write declares what its values mean: 'entered' for the person's
+  // own values, 'prefill' only for an Undo returning the untouched
+  // prescription (the server validates that against its snapshot). The marker
+  // binds the write to this device (replacing any earlier one for the set), so
+  // an old server without origins still never gates this device's own saves
+  // and still knows its own restored prefill.
+  const enqueueSet = (operation, origin = 'entered') => {
+    const current = logRef.current || log;
+    const target = current?.exercises.find((row) => row.id === operation.exerciseId)?.sets.find((row) => row.id === operation.setId);
+    // The one gate for every set write route (F3): a held set's screen values
+    // may be older than the server's, so none of them is sent.
+    if (isHeld(operation.setId)) {
+      toast.message(HELD_SET_REASON(target?.set_number ?? ''));
+      return null;
+    }
+    // A draft another device also changed waits for the person's choice.
+    if (isChoosing(operation.setId)) {
+      toast.message(CHOICE_SET_REASON(target?.set_number ?? ''));
+      return null;
+    }
+    const base = target?.revision;
+    // What the person changed (F5): the edited fields with their values before
+    // the edit, and the completion state when this write changes it. Kept with
+    // the queue entry so a re-check never guesses which values were meant.
+    const edits = { ...(draftEdits.current.get(operation.setId) || {}) };
+    if (target && Object.hasOwn(operation.data || {}, 'status') && operation.data.status !== target.status) edits.status = target.status;
+    const queued = outbox.enqueue({ ...operation, edits, data: { ...operation.data, value_origin: origin } });
+    if (queued && Number.isInteger(base)) writePrefillMarks({ [operation.setId]: origin === 'prefill' ? { op: queued, base } : { op: queued, base, origin: 'entered' } });
+    else if (queued) forgetPrefill(operation.setId);
+    return queued;
+  };
   const hydratePending = outbox.hydrate;
   const restStorageKey = `cvf_rest_timer_${id}`;
 
@@ -294,8 +468,16 @@ export default function WorkoutTracker() {
   // timestamp persists per log and is restored while still in the future.
   const startRest = (seconds) => {
     const endsAt = Date.now() + (seconds * 1000);
+    restStarts.current += 1;
     localStorage.setItem(restStorageKey, String(endsAt));
     setRestEndsAt(endsAt);
+  };
+  // Undo puts a previous timer back exactly (same deadline); it is not a new start.
+  const restoreRest = (endsAt) => {
+    if (endsAt) localStorage.setItem(restStorageKey, String(endsAt));
+    else localStorage.removeItem(restStorageKey);
+    setQuietRestEndsAt(endsAt && endsAt <= Date.now() ? endsAt : null);
+    setRestEndsAt(endsAt || null);
   };
   const clearRest = () => {
     localStorage.removeItem(restStorageKey);
@@ -316,6 +498,18 @@ export default function WorkoutTracker() {
     }
   }, [restStorageKey]);
 
+  useEffect(() => {
+    if (!exerciseUndo) return undefined;
+    const tick = () => {
+      const now = Date.now();
+      setUndoNow(now);
+      if (now >= exerciseUndo.expiresMs) setExerciseUndo((current) => (current === exerciseUndo ? null : current));
+    };
+    tick();
+    const timer = window.setInterval(tick, 500);
+    return () => window.clearInterval(timer);
+  }, [exerciseUndo]);
+
   const load = useCallback(async () => {
     try {
       const { data } = await api.get(`/workout-logs/${id}`);
@@ -323,8 +517,11 @@ export default function WorkoutTracker() {
         navigate(`${basePath}/workouts/${id}`, { replace: true });
         return;
       }
+      refreshCount.current += 1;
+      const decided = decideQueuedRef.current?.(data, refreshCount.current);
       const hydrated = hydratePending(data);
       setLog(hydrated);
+      if (decided?.released) flushRef.current?.();
       setLastChecked(Date.now());
       setLoadError(null);
       // First load (fresh or resumed) lands on the next unfinished set with no
@@ -346,19 +543,84 @@ export default function WorkoutTracker() {
 
   const refresh = useCallback(async () => {
     if (!navigator.onLine) return;
+    refreshCount.current += 1;
+    const started = refreshCount.current;
     try {
       const { data } = await api.get(`/workout-logs/${id}`);
       if (data.status !== 'active') {
         navigate(`${basePath}/workouts/${id}`, { replace: true });
         return;
       }
-      setLog((current) => hydratePending(mergeRefresh(current, data, draftIds.current)));
+      // Queued writes waiting after a replay are decided first (F5), so the
+      // screen shows what will actually be sent.
+      const decided = decideQueuedRef.current?.(data, started);
+      let choicesChanged = Boolean(decided?.changed);
+      {
+        // Compare with the server's values plus this device's own queued
+        // writes, so a value still on its way is not mistaken for another device's.
+        const serverView = hydratePending(data);
+        const found = draftCollisionsIn(logRef.current, serverView, draftIds.current, draftEdits.current);
+        const serverSets = new Map(serverView.exercises.flatMap((exercise) => exercise.sets.map((set) => [set.id, set])));
+        for (const [setId, choice] of [...draftChoices.current]) {
+          if (choice.kind !== 'queued' && !found.has(setId)) { draftChoices.current.delete(setId); choicesChanged = true; }
+        }
+        for (const [setId, fields] of found) {
+          if (draftChoices.current.get(setId)?.kind === 'queued') continue;
+          const edits = draftEdits.current.get(setId) || {};
+          const all = [...new Set(fields.flatMap((field) => [field, PAIRED_FIELD[field]].filter((key) => key && Object.hasOwn(edits, key))))];
+          const row = serverSets.get(setId);
+          draftChoices.current.set(setId, {
+            fields: all,
+            saved: Object.fromEntries(all.map((field) => [field, row?.[field] ?? null])),
+            savedOrigin: row && Object.hasOwn(row, 'value_origin') ? { value: row.value_origin } : null,
+          });
+          choicesChanged = true;
+        }
+      }
+      setLog((current) => hydratePending(mergeRefresh(current, data, draftIds.current, draftEdits.current)));
       setLastChecked(Date.now());
+      // The screen now shows the server's values: lift the replay holds made
+      // before this refresh started (a read sent earlier may predate them).
+      let lifted = false;
+      for (const [setId, heldAt] of replayHolds.current) {
+        if (heldAt < started) { replayHolds.current.delete(setId); lifted = true; }
+      }
+      if (lifted || choicesChanged) setPrefillVersion((version) => version + 1);
+      if (decided?.released) flushRef.current?.();
     } catch {
       // Keep this device's copy; the freshness label shows its age.
     }
   }, [basePath, hydratePending, id, navigate]);
   refreshRef.current = refresh;
+  // Decide the queued writes a fresh read may decide (F5): the first queued
+  // write of each set that is parked or waiting for a re-check, unless the set
+  // was held or acknowledged after this read was sent.
+  const decideQueuedRef = useRef(null);
+  decideQueuedRef.current = (serverLog, started) => {
+    const rows = new Map(serverLog.exercises.flatMap((exercise) => exercise.sets.map((set) => [set.id, set])));
+    let released = false;
+    let changed = false;
+    for (const operation of outbox.decidable()) {
+      const heldAt = replayHolds.current.get(operation.setId);
+      const acked = ackedAt.current.get(operation.setId);
+      if ((heldAt !== undefined && heldAt >= started) || (acked !== undefined && acked >= started)) continue;
+      const row = rows.get(operation.setId);
+      // Gone from the server: the write goes as it is and the server answers it.
+      const decision = row ? reconcileQueuedSet(operation, row) : { action: 'send', data: operation.data };
+      if (decision.action === 'send') {
+        outbox.releaseParked(operation.id, decision.data);
+        if (draftChoices.current.get(operation.setId)?.kind === 'queued') draftChoices.current.delete(operation.setId);
+        released = true;
+      } else {
+        draftChoices.current.set(operation.setId, { kind: 'queued', opId: operation.id, fields: decision.fields, saved: decision.saved, yours: decision.yours, row });
+      }
+      changed = true;
+    }
+    for (const [setId, choice] of [...draftChoices.current]) {
+      if (choice.kind === 'queued' && !outbox.isWaiting(setId)) { draftChoices.current.delete(setId); changed = true; }
+    }
+    return { released, changed };
+  };
   useEffect(() => {
     const timer = window.setInterval(() => { refreshRef.current?.(); setClock((tick) => tick + 1); }, REFRESH_SECONDS * 1000);
     const onOnline = () => refreshRef.current?.();
@@ -385,6 +647,18 @@ export default function WorkoutTracker() {
     });
     return () => cancelAnimationFrame(frame);
   }, [reveal]);
+
+  // After an Undo, put back the scroll position and focus from just before the
+  // undone action, once the reopened rows have rendered.
+  useEffect(() => {
+    if (!viewRestore) return undefined;
+    let stop = () => {};
+    const frame = requestAnimationFrame(() => {
+      const tracker = document.querySelector('[data-testid="workout-tracker"]');
+      stop = restoreUndoView(viewRestore.view, tracker, { fallback: viewRestore.fallback });
+    });
+    return () => { cancelAnimationFrame(frame); stop(); };
+  }, [viewRestore]);
 
   // Save swap choices on this phone while online, so a swap still works offline.
   const contractLog = Boolean(log?.server_time);
@@ -505,11 +779,14 @@ export default function WorkoutTracker() {
   const attentionRecipe = ATTENTION_FEEDBACK_MOTION[intensity];
 
   const setLocalValue = (exerciseId, setId, key, value) => {
+    const before = (logRef.current || log)?.exercises.find((row) => row.id === exerciseId)?.sets.find((row) => row.id === setId);
+    draftEdits.current.set(setId, noteDraftEdit(draftEdits.current.get(setId), before, key));
     setLog((current) => updateExercise(current, exerciseId, (exercise) => ({
       ...exercise,
       sets: exercise.sets.map((set) => set.id === setId ? { ...set, [key]: value } : set),
     })));
     draftIds.current.add(setId);
+    forgetPrefill(setId);
     outbox.markDirty();
   };
 
@@ -527,14 +804,16 @@ export default function WorkoutTracker() {
   const showRpe = (exercise) => Boolean(rpeOpen[exercise.id]) || rpeLocked(exercise);
 
   const saveSet = (exercise, set) => {
+    // Leaving a held set's field saves nothing; anything typed stays a draft.
+    if (isHeld(set.id) || isChoosing(set.id)) return;
     let payload;
     try { payload = performedSet(set, exercise); } catch (error) { setValidatedSets((current) => ({ ...current, [set.id]: true })); toast.message(workoutEntryErrorMessage(error)); return; }
-    outbox.enqueue({
+    const queued = enqueueSet({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
       data: payload,
     });
-    draftIds.current.delete(set.id);
+    if (queued) clearDraft(set.id);
   };
 
   const toggleSet = (exercise, set) => {
@@ -543,12 +822,13 @@ export default function WorkoutTracker() {
     // stale unit is a backend 400 that would revert the completion.
     let payload;
     try { payload = performedSet({ ...set, status }, exercise); } catch (error) { setValidatedSets((current) => ({ ...current, [set.id]: true })); toast.message(workoutEntryErrorMessage(error)); return; }
-    outbox.enqueue({
+    const queued = enqueueSet({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
       data: payload,
     });
-    draftIds.current.delete(set.id);
+    if (!queued) return;
+    clearDraft(set.id);
     if (status === 'completed') afterCompletion(exercise, set);
   };
 
@@ -571,14 +851,106 @@ export default function WorkoutTracker() {
   // previous completed set's actuals. Never inferred from the prescription and
   // never applied to a set the person already typed into (workoutGuide.repeatPlan).
   const repeatPrevious = (exercise, set) => {
-    const plan = repeatPlan(exercise, set, { drafting: draftIds.current.has(set.id), conflicts: log.conflicts });
+    const ruled = rulesView(exercise);
+    const plan = repeatPlan(ruled, ruled.sets.find((row) => row.id === set.id) || set, { drafting: draftIds.current.has(set.id), conflicts: log.conflicts });
     if (!plan.available) return;
-    outbox.enqueue({
+    const queued = enqueueSet({
       kind: 'set', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}`,
       data: plan.payload,
     });
-    afterCompletion(exercise, set);
+    if (queued) afterCompletion(exercise, set);
+  };
+
+  // Record every remaining set of one exercise exactly as entered (blank sets
+  // stay blank, prefilled prescription is not copied), as one grouped action.
+  const quickCompleteExercise = (exercise) => {
+    if (exerciseQuickGate.current === exercise.id) return;
+    const plan = exerciseQuickPlan(rulesView(exercise), { sealed, conflicts: log.conflicts, draftIds: draftIds.current, unresolved: unresolvedIn(exercise) });
+    if (!plan.available) {
+      if (plan.invalidSetId) setValidatedSets((current) => ({ ...current, [plan.invalidSetId]: true }));
+      if (plan.reason) toast.message(plan.reason);
+      return;
+    }
+    exerciseQuickGate.current = exercise.id;
+    window.setTimeout(() => { if (exerciseQuickGate.current === exercise.id) exerciseQuickGate.current = null; }, 800);
+    const tracker = document.querySelector('[data-testid="workout-tracker"]');
+    const view = captureUndoView(tracker, [tracker?.querySelector('[data-testid="workout-scroll-region"]')], `[data-testid="tracker-exercise-card"][data-exercise-id="${CSS.escape(exercise.id)}"]`);
+    const restBefore = restEndsAt;
+    // Drafts recorded here keep their edit records for an Undo.
+    const edits = new Map(plan.entries.filter((entry) => draftEdits.current.has(entry.setId)).map((entry) => [entry.setId, draftEdits.current.get(entry.setId)]));
+    for (const entry of plan.entries) {
+      enqueueSet({
+        kind: 'set', exerciseId: exercise.id, setId: entry.setId,
+        method: 'patch', url: `/workout-logs/${id}/sets/${entry.setId}`,
+        data: entry.payload,
+      });
+      clearDraft(entry.setId);
+    }
+    const lastSet = plan.entries[plan.entries.length - 1];
+    const rest = restAfterSet(log.exercises, exercise.id, lastSet.setId);
+    if (rest.seconds > 0) startRest(rest.seconds);
+    else if (rest.clear) clearRest();
+    const done = new Map(plan.entries.map((entry) => [entry.setId, entry.payload]));
+    const updated = updateExercise(logRef.current || log, exercise.id, (row) => ({
+      ...row, sets: row.sets.map((item) => (done.has(item.id) ? { ...item, ...done.get(item.id) } : item)),
+    }));
+    const following = nextWork(updated.exercises);
+    if (following) setReveal({ ...following, nonce: Date.now() });
+    const summary = `${exercise.exercise_name}: ${plan.entries.length} ${plan.entries.length === 1 ? 'set' : 'sets'} recorded as entered (${plan.withDetails} with details, ${plan.without} without).`;
+    setAnnouncement(following ? summary : `${summary} All sets done. Finish the workout when ready.`);
+    setExerciseUndo({
+      exerciseId: exercise.id, exerciseName: exercise.exercise_name, entries: plan.entries, expiresMs: Date.now() + EXERCISE_UNDO_MS, summary,
+      restBefore, restStarts: restStarts.current, view, edits,
+    });
+  };
+
+  const undoExerciseQuick = () => {
+    const record = exerciseUndo;
+    if (!record) return;
+    const exercise = (logRef.current || log).exercises.find((row) => row.id === record.exerciseId);
+    const used = exerciseUndoUsed.current === record;
+    exerciseUndoUsed.current = record;
+    const plan = exerciseUndoPlan(used ? { ...record, used: true } : record, exercise, {
+      nowMs: Date.now(), sealed, rest: { endsAt: restEndsAt, starts: restStarts.current },
+    });
+    // A held set cannot be reopened with this screen's values (F3): refuse the
+    // whole group, as for any set changed since; per-set undo stays possible later.
+    const held = plan.available && plan.entries.find((entry) => isHeld(entry.setId) || isChoosing(entry.setId));
+    setExerciseUndo(null);
+    if (held) {
+      const number = exercise?.sets.find((row) => row.id === held.setId)?.set_number;
+      toast.message((isHeld(held.setId) ? HELD_SET_REASON : CHOICE_SET_REASON)(number ?? ''));
+      return;
+    }
+    if (!plan.available) {
+      if (plan.reason) toast.message(plan.reason);
+      return;
+    }
+    // Sets that held only the prescribed prefill go back declared as prefill:
+    // untouched again on every device (the server checks it against its own
+    // snapshot), and on this device bound to the exact Undo write, then to the
+    // revision the server acknowledges (enqueueSet).
+    const prefill = new Set(plan.prefillIds);
+    for (const entry of plan.entries) {
+      enqueueSet({
+        kind: 'set', exerciseId: record.exerciseId, setId: entry.setId,
+        method: 'patch', url: `/workout-logs/${id}/sets/${entry.setId}`,
+        data: entry.payload,
+      }, prefill.has(entry.setId) ? 'prefill' : 'entered');
+    }
+    // The exercise is open again: release the quick-complete double-tap gate
+    // (it was clear before the action), so a deliberate new tap is not ignored.
+    if (exerciseQuickGate.current === record.exerciseId) exerciseQuickGate.current = null;
+    // Sets that were being typed into before go back to being drafts, so
+    // "Same as previous" and refresh treat them exactly as before.
+    for (const setId of plan.draftIds) {
+      draftIds.current.add(setId);
+      if (record.edits?.has(setId)) draftEdits.current.set(setId, record.edits.get(setId));
+    }
+    if (plan.rest.apply) restoreRest(plan.rest.endsAt);
+    setViewRestore({ view: record.view, fallback: `[data-exercise-id="${CSS.escape(record.exerciseId)}"] [data-testid="exercise-quick-complete"]`, nonce: Date.now() });
+    setAnnouncement(`${record.exerciseName}: ${plan.entries.length} ${plan.entries.length === 1 ? 'set' : 'sets'} reopened.`);
   };
 
   const jumpTo = (exerciseId) => {
@@ -638,7 +1010,62 @@ export default function WorkoutTracker() {
     }
   };
 
+  // The person's explicit answer to a draft another device also changed.
+  // A queued write's choice (F5): send the chosen values, or, when the saved
+  // values leave nothing to write, remove only that queued write.
+  const resolveQueued = (set, choice, pick) => {
+    draftChoices.current.delete(set.id);
+    const operation = outbox.decidable().find((queued) => queued.id === choice.opId);
+    if (operation) {
+      const result = resolveQueuedChoice(operation, choice.row, choice.fields, pick);
+      if (result.action === 'drop') {
+        outbox.dropParked(operation.id);
+        const row = choice.row;
+        setLog((current) => updateExercise(current, operation.exerciseId, (exercise) => ({
+          ...exercise,
+          sets: exercise.sets.map((item) => (item.id === set.id ? {
+            ...item, status: row.status, actual_load_value: row.actual_load_value, actual_load_unit: row.actual_load_unit, actual_reps: row.actual_reps, actual_rpe: row.actual_rpe,
+            actual_duration_value: row.actual_duration_value, actual_duration_unit: row.actual_duration_unit, actual_distance_value: row.actual_distance_value, actual_distance_unit: row.actual_distance_unit,
+            revision: row.revision, last_actor_role: row.last_actor_role, ...(Object.hasOwn(row, 'value_origin') ? { value_origin: row.value_origin } : {}),
+          } : item)),
+        })));
+      } else {
+        outbox.releaseParked(operation.id, result.data);
+      }
+      outbox.flush();
+    }
+    setPrefillVersion((version) => version + 1);
+  };
+  const keepMine = (exercise, set) => {
+    const queuedChoice = draftChoices.current.get(set.id);
+    if (queuedChoice?.kind === 'queued') { resolveQueued(set, queuedChoice, 'mine'); return; }
+    if (!draftChoices.current.delete(set.id)) return;
+    setPrefillVersion((version) => version + 1);
+    // The server's row and revision with the typed fields (mergeRefresh).
+    saveSet(exercise, set);
+  };
+  const takeSaved = (exercise, set) => {
+    const choice = draftChoices.current.get(set.id);
+    if (!choice) return;
+    if (choice.kind === 'queued') { resolveQueued(set, choice, 'saved'); return; }
+    draftChoices.current.delete(set.id);
+    const edits = { ...(draftEdits.current.get(set.id) || {}) };
+    choice.fields.forEach((field) => { delete edits[field]; });
+    const rest = Object.keys(edits).length > 0;
+    if (rest) draftEdits.current.set(set.id, edits);
+    else clearDraft(set.id);
+    setLog((current) => updateExercise(current, exercise.id, (row) => ({
+      ...row,
+      sets: row.sets.map((item) => (item.id === set.id ? {
+        ...item, ...choice.saved, ...(!rest && choice.savedOrigin ? { value_origin: choice.savedOrigin.value } : {}),
+      } : item)),
+    })));
+    setPrefillVersion((version) => version + 1);
+  };
+
   const removeSet = (exercise, set) => {
+    if (isHeld(set.id)) { toast.message(HELD_SET_REASON(set.set_number)); return; }
+    if (isChoosing(set.id)) { toast.message(CHOICE_SET_REASON(set.set_number)); return; }
     outbox.enqueue({
       kind: 'archive', exerciseId: exercise.id, setId: set.id,
       method: 'patch', url: `/workout-logs/${id}/sets/${set.id}/archive`, data: {},
@@ -695,7 +1122,7 @@ export default function WorkoutTracker() {
     let filledCount = 0;
     const filledSets = [];
     lastTimeFills(current.sets, occurrence, current).forEach(({ setId, data }) => {
-      const queued = outbox.enqueue({
+      const queued = enqueueSet({
         kind: 'set', exerciseId: exercise.id, setId,
         method: 'patch', url: `/workout-logs/${id}/sets/${setId}`,
         data,
@@ -725,8 +1152,34 @@ export default function WorkoutTracker() {
     }
   };
 
+  // The first set that must be settled before Finish can sync (F6): a choice
+  // to make, or a write still checking for newer saved values after a replay.
+  const finishBlocker = () => {
+    for (const exercise of (logRef.current || log)?.exercises || []) {
+      for (const set of exercise.sets) {
+        const choice = draftChoices.current.get(set.id);
+        if (choice) return { exercise, set, choosing: true, draft: choice.kind !== 'queued' };
+        if (outbox.isWaiting(set.id)) return { exercise, set, choosing: false };
+      }
+    }
+    return null;
+  };
+  const goToSet = (blocker) => {
+    setFinishOpen(false);
+    window.setTimeout(() => {
+      const row = document.querySelector(`[data-set-id="${CSS.escape(blocker.set.id)}"]`);
+      const target = row?.querySelector('[data-testid="set-choice"]') || row;
+      target?.scrollIntoView({ block: 'center' });
+      target?.querySelector('button')?.focus({ preventScroll: true });
+    }, 50);
+  };
+
   const finish = async () => {
+    // An unsaved draft that needs a choice cannot go with Finish (its typed
+    // values are not queued yet); the dialog says so (F6). Never queue Finish twice.
+    if (finishBlocker()?.draft || outbox.queuedComplete) return;
     setFinishing(true);
+    finishingRef.current = true;
     completeRejection.current = null;
     try {
       // Queue the completion behind any pending set writes (FIFO). The
@@ -748,13 +1201,25 @@ export default function WorkoutTracker() {
         toast.error(completeRejection.current);
         return;
       }
+      // A write parked during this drain needs a choice that only this screen
+      // offers: stay here with Finish kept queued (F6), never "waiting for a
+      // connection" on the detail page.
+      if (!flushed && outbox.hasWaitingAny()) {
+        const blocker = finishBlocker();
+        setPrefillVersion((version) => version + 1);
+        if (blocker) goToSet(blocker);
+        else setFinishOpen(false);
+        return;
+      }
       trackProductEvent('workout_completed', { source: isCoach ? 'coach_tracker' : 'client_tracker', offline: !flushed });
       localStorage.removeItem(restStorageKey);
+      localStorage.removeItem(prefillStorageKey);
       navigate(`${basePath}/workouts/${id}`, {
         replace: true,
         state: flushed ? { completedWorkoutId: id } : { finishedLocally: true },
       });
     } finally {
+      finishingRef.current = false;
       setFinishing(false);
     }
   };
@@ -766,6 +1231,7 @@ export default function WorkoutTracker() {
       trackProductEvent('workout_abandoned', { source: isCoach ? 'coach_tracker' : 'client_tracker' });
       localStorage.removeItem(`cvf_workout_outbox_${id}`);
       localStorage.removeItem(restStorageKey);
+      localStorage.removeItem(prefillStorageKey);
       navigate(isCoach ? `/coach/clients/${log.client_id}` : '/client/programs', { replace: true });
     } catch (error) {
       toast.error(errMsg(error));
@@ -777,7 +1243,17 @@ export default function WorkoutTracker() {
         className="signature-glass flex flex-col gap-2 rounded-2xl p-2.5"
         data-testid="workout-control-dock"
       >
-        <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} onAdjust={adjustRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} />
+        {exerciseUndo && undoNow < exerciseUndo.expiresMs && (
+          // In the always-visible dock: the tracker moves on to the next
+          // exercise, so an Undo inside the finished card would be off screen.
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5" role="status" data-testid="exercise-quick-undo">
+            <span className="min-w-0 break-words text-sm">{exerciseUndo.exerciseName}: {exerciseUndo.entries.length} {exerciseUndo.entries.length === 1 ? 'set' : 'sets'} recorded as entered.</span>
+            <Button type="button" variant="outline" size="sm" className="h-auto min-h-11 whitespace-normal" disabled={sealed} onClick={undoExerciseQuick} data-testid="exercise-quick-undo-button">
+              Undo ({Math.max(1, Math.ceil((exerciseUndo.expiresMs - undoNow) / 1000))}s)
+            </Button>
+          </div>
+        )}
+        <RestTimerFab restEndsAt={restEndsAt} onClear={clearRest} onAdjust={adjustRest} restAlerts={restAlerts} attentionScale={attentionRecipe.scale} quietEndsAt={quietRestEndsAt} />
         <div className="flex items-center gap-2 px-1">
           <div
             className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary"
@@ -837,7 +1313,12 @@ export default function WorkoutTracker() {
       />
       {outbox.queuedComplete && (
         <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="finished-locally-banner">
-          <p className="text-sm font-medium">Finished on this phone — waiting to sync. Editing is locked.</p>
+          <p className="text-sm font-medium">{(() => {
+            const blocker = finishBlocker();
+            if (blocker?.choosing) return `Finished on this phone. Set ${blocker.set.set_number} of ${blocker.exercise.exercise_name} needs your choice before this can sync: choose which values to keep below.`;
+            if (blocker) return `Finished on this phone. Set ${blocker.set.set_number} of ${blocker.exercise.exercise_name} is checking for newer saved values before this can sync.`;
+            return 'Finished on this phone — waiting to sync. Editing is locked.';
+          })()}</p>
           <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0" onClick={outbox.removeQueuedComplete} data-testid="keep-editing-button">
             Keep editing
           </Button>
@@ -943,7 +1424,6 @@ export default function WorkoutTracker() {
               />
             </CardHeader>
             <CardContent className="space-y-3">
-              <CueRetryEntry log={log} exercise={exercise} />
               <LastTimeLine
                 state={lastTimeState[exercise.id]}
                 occurrence={lastTimeCache.current[exercise.id]}
@@ -952,14 +1432,14 @@ export default function WorkoutTracker() {
               <div className={cn('hidden gap-1 px-1 text-xs font-medium text-muted-foreground sm:grid', showRpe(exercise)
                 ? 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]'
                 : 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_2.75rem]')}>
-                <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>{showRpe(exercise) && <span>RPE</span>}<span className="sr-only">Complete</span>
+                <span>Set</span><span>{asksForLoad(exercise) ? 'Weight' : null}</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>{showRpe(exercise) && <span>RPE</span>}<span className="sr-only">Complete</span>
               </div>
-              {exercise.sets.map((set) => (
-                <div key={set.id} data-set-id={set.id} data-active={isActiveSet(exercise, set) ? 'true' : undefined} className={cn('grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-end gap-1 rounded-md px-1 py-1 sm:items-center', showRpe(exercise)
+              {exercise.sets.map((set) => { const checking = isHeld(set.id); const choice = draftChoices.current.get(set.id); const held = checking || Boolean(choice); return (
+                <div key={set.id} data-set-id={set.id} data-held={checking ? 'true' : undefined} data-choosing={choice ? 'true' : undefined} data-active={isActiveSet(exercise, set) ? 'true' : undefined} className={cn('grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-end gap-1 rounded-md px-1 py-1 sm:items-center', showRpe(exercise)
                   ? 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]'
                   : 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_2.75rem]', setRowClass(exercise, set))}>
                   <span className={cn('row-span-2 self-center text-center text-sm tabular-nums sm:row-span-1', isActiveSet(exercise, set) && 'font-semibold text-primary')}>{set.set_number}</span>
-                  <div className="col-span-3 min-w-0 sm:col-span-1">
+                  {asksForLoad(exercise) ? <div className="col-span-3 min-w-0 sm:col-span-1">
                     <span className="text-xs text-muted-foreground sm:hidden">Weight</span>
                     <div className="flex min-w-0 gap-1">
                       <Input
@@ -969,11 +1449,11 @@ export default function WorkoutTracker() {
                         placeholder={exercise.prescribed_load_value != null ? String(exercise.prescribed_load_value) : undefined}
                         onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_load_value', event.target.value)}
                         onBlur={() => saveSet(exercise, set)}
-                        disabled={sealed}
+                        disabled={sealed} readOnly={held}
                         {...errorProps(exercise, set, 'actual_load_value')}
                         aria-label={`${exercise.exercise_name} set ${set.set_number} weight`}
                       />
-                      <Select disabled={sealed} value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
+                      <Select disabled={sealed || held} value={set.actual_load_unit || exercise.prescribed_load_unit || 'lb'} onValueChange={(value) => {
                         setLocalValue(exercise.id, set.id, 'actual_load_unit', value);
                         saveSet(exercise, { ...set, actual_load_unit: value });
                       }}>
@@ -986,12 +1466,12 @@ export default function WorkoutTracker() {
                         <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
                       </Select>
                     </div>
-                  </div>
+                  </div> : <span aria-hidden="true" className="hidden sm:block" />}
                   <div className={cn('col-start-2 min-w-0 sm:col-start-auto', !showRpe(exercise) && 'col-span-2 sm:col-span-1')}>
                     <span className="text-xs text-muted-foreground sm:hidden">{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>
                     {trackingType(exercise) === 'reps_weight' ? <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
                       placeholder={exercise.prescribed_reps || undefined}
-                      onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed}
+                      onChange={(event) => setLocalValue(exercise.id, set.id, 'actual_reps', event.target.value)} onBlur={() => saveSet(exercise, set)} disabled={sealed} readOnly={held}
                       {...errorProps(exercise, set, 'actual_reps')} aria-label={`${exercise.exercise_name} set ${set.set_number} performed reps`} /> : <span aria-hidden className="text-center text-muted-foreground">—</span>}
                   </div>
                   {showRpe(exercise) && <div className="min-w-0">
@@ -1002,7 +1482,7 @@ export default function WorkoutTracker() {
                         // Keep the column open once edited, so clearing a value never unmounts the focused field.
                         setRpeOpen((current) => (current[exercise.id] ? current : { ...current, [exercise.id]: true }));
                         setLocalValue(exercise.id, set.id, 'actual_rpe', event.target.value);
-                      }} onBlur={() => saveSet(exercise, set)} disabled={sealed}
+                      }} onBlur={() => saveSet(exercise, set)} disabled={sealed} readOnly={held}
                       {...errorProps(exercise, set, 'actual_rpe')} aria-label={`${exercise.exercise_name} set ${set.set_number} performed RPE`} />
                   </div>}
                   <Button
@@ -1017,7 +1497,7 @@ export default function WorkoutTracker() {
                       {['duration', 'distance'].filter((metric) => tracks(exercise, metric)).map((metric) => (
                         <WorkoutMetricInput key={metric} metric={metric} errorId={entryErrors(exercise, set)[`actual_${metric}_value`] ? errorId(set, `actual_${metric}_value`) : undefined} label={`${exercise.exercise_name} set ${set.set_number} performed ${metric}`}
                           value={set[`actual_${metric}_value`]} unit={set[`actual_${metric}_unit`] || exercise[`prescribed_${metric}_unit`]}
-                          disabled={sealed} onValueChange={(value) => setLocalValue(exercise.id, set.id, `actual_${metric}_value`, value)}
+                          disabled={sealed || held} onValueChange={(value) => setLocalValue(exercise.id, set.id, `actual_${metric}_value`, value)}
                           onBlur={() => saveSet(exercise, set)} onUnitChange={(unit) => {
                             const updated = { ...set, [`actual_${metric}_unit`]: unit };
                             setLocalValue(exercise.id, set.id, `actual_${metric}_unit`, unit);
@@ -1032,6 +1512,25 @@ export default function WorkoutTracker() {
                       <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span>{message}</span>
                     </p>
                   ))}
+                  {choice && (
+                    <div role="group" aria-label={`Set ${set.set_number}: choose which values to keep`} className="col-span-full space-y-2 rounded-md border border-border bg-muted/40 p-2 text-sm" data-testid="set-choice">
+                      <p className="flex items-start gap-2"><Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span>Also changed on another device while you were typing. Choose which values to keep.</span></p>
+                      <ul className="space-y-0.5 text-xs tabular-nums">
+                        {choice.fields.map((field) => (
+                          <li key={field}>{DRAFT_FIELD_LABEL[field] || field} · saved: {shownValue(choice.saved[field])} · yours: {shownValue(choice.yours ? choice.yours[field] : set[field])}</li>
+                        ))}
+                      </ul>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" size="sm" className="min-h-11" disabled={(sealed && choice.kind !== 'queued') || checking} onClick={() => keepMine(exercise, set)} data-testid="set-choice-mine">Save mine</Button>
+                        <Button type="button" size="sm" variant="outline" className="min-h-11" disabled={(sealed && choice.kind !== 'queued') || checking} onClick={() => takeSaved(exercise, set)} data-testid="set-choice-saved">Use saved</Button>
+                      </div>
+                    </div>
+                  )}
+                  {checking && (
+                    <p role="status" className="col-span-full flex items-start gap-2 text-xs text-muted-foreground" data-testid="set-checking">
+                      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span>Checking for newer saved values. This set can be changed once they arrive.</span>
+                    </p>
+                  )}
                   {set.set_origin === 'extra' && (
                     <Button type="button" size="touchIcon" variant="ghost" className="col-start-2 text-muted-foreground" disabled={sealed} onClick={() => removeSet(exercise, set)} aria-label="Remove extra set" title="Remove extra set">
                       <Trash2 aria-hidden />
@@ -1040,8 +1539,9 @@ export default function WorkoutTracker() {
                   {(log.conflicts || []).filter((conflict) => conflict.workout_log_set_id === set.id).map((conflict) => (
                     <SetConflictNotice key={conflict.id} conflict={conflict} logId={id} viewer={isCoach ? 'coach' : 'client'} online={outbox.online} onChanged={() => refreshRef.current?.()} />
                   ))}
-                  {!sealed && set.id === exercise.sets.find((row) => row.status !== 'completed')?.id && (() => {
-                    const plan = repeatPlan(exercise, set, { drafting: draftIds.current.has(set.id), conflicts: log.conflicts });
+                  {!sealed && !held && set.id === exercise.sets.find((row) => row.status !== 'completed')?.id && (() => {
+                    const ruled = rulesView(exercise);
+                    const plan = repeatPlan(ruled, ruled.sets.find((row) => row.id === set.id) || set, { drafting: draftIds.current.has(set.id), conflicts: log.conflicts });
                     if (plan.available) {
                       return (
                         <Button type="button" variant="secondary" size="sm" className="col-span-full min-h-11 justify-start whitespace-normal text-left"
@@ -1056,7 +1556,23 @@ export default function WorkoutTracker() {
                       : null;
                   })()}
                 </div>
-              ))}
+              ); })}
+              {(() => {
+                if (exerciseUndo?.exerciseId === exercise.id && undoNow < exerciseUndo.expiresMs) return null;
+                const plan = exerciseQuickPlan(rulesView(exercise), { sealed, conflicts: log.conflicts, unresolved: unresolvedIn(exercise) });
+                if (!plan.available) {
+                  return plan.reason ? <p className="text-xs text-muted-foreground" data-testid="exercise-quick-unavailable">{plan.reason}</p> : null;
+                }
+                return (
+                  <div className="space-y-1">
+                    <Button type="button" variant="secondary" className="h-auto min-h-11 w-full justify-start whitespace-normal py-2 text-left leading-snug"
+                      onClick={(event) => { if (event.detail > 1) return; quickCompleteExercise(exercise); }} data-testid="exercise-quick-complete">
+                      <Check className="mr-1.5 h-4 w-4 shrink-0" aria-hidden /> {plan.label}
+                    </Button>
+                    <p className="px-1 text-xs text-muted-foreground">Only what you entered is recorded; blank sets stay blank and the prescribed numbers are not filled in.</p>
+                  </div>
+                );
+              })()}
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={sealed} onClick={() => addSet(exercise)}>
                   <Plus className="mr-1.5 h-4 w-4" /> Add set
@@ -1119,6 +1635,7 @@ export default function WorkoutTracker() {
                   </>
                 );
               })()}
+              <CueRetryEntry log={log} exercise={exercise} />
             </CardContent>
           </Card>
         )}</SupersetGroups>
@@ -1180,9 +1697,21 @@ export default function WorkoutTracker() {
             {!isCoach && <div className="space-y-1.5"><Label htmlFor="workout-feedback">Feedback for your coach</Label><Textarea id="workout-feedback" rows={4} value={feedback} onChange={(event) => setFeedback(event.target.value)} /></div>}
             <div className="space-y-1.5"><Label htmlFor="workout-notes">Workout notes</Label><Textarea id="workout-notes" rows={3} value={workoutNotes} onChange={(event) => setWorkoutNotes(event.target.value)} /></div>
           </div>
+          {finishOpen && finishBlocker() && (() => {
+            const blocker = finishBlocker();
+            return (
+              <div role="status" className="space-y-2 rounded-md border border-border bg-muted/40 p-3 text-sm" data-testid="finish-blocked">
+                <p className="flex items-start gap-2"><Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{blocker.choosing
+                    ? `Set ${blocker.set.set_number} of ${blocker.exercise.exercise_name} was also changed on another device. Choose which values to keep before finishing.${blocker.draft ? '' : ' If you confirm now, the workout finishes once you choose.'}`
+                    : `Set ${blocker.set.set_number} of ${blocker.exercise.exercise_name} is checking for newer saved values. If you confirm now, the workout finishes once it is done.`}</span></p>
+                <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => goToSet(blocker)}>{blocker.choosing ? 'Resolve' : 'Go to'} set {blocker.set.set_number}</Button>
+              </div>
+            );
+          })()}
           <DialogFooter>
             <Button variant="outline" size="touch" onClick={() => setFinishOpen(false)}>Keep tracking</Button>
-            <Button size="touch" onClick={finish} disabled={finishing}>{finishing ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Finishing workout</span></> : 'Confirm completion'}</Button>
+            <Button size="touch" onClick={finish} disabled={finishing || Boolean(finishBlocker()?.draft)}>{finishing ? <><Loader2 className="h-4 w-4 animate-spin" /><span className="sr-only">Finishing workout</span></> : 'Confirm completion'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
