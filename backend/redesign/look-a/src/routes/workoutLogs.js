@@ -331,7 +331,7 @@ function resolveExerciseVideos(exercises, workoutExercises = [], libraryExercise
     const source = bySource.get(exercise.source_workout_exercise_id) || null;
     const libraryId = exercise.exercise_library_id || source?.exercise_library_id;
     const reference = { workoutExercise: source, libraryExercise: library.get(libraryId) || null };
-    return { ...exercise, video_url: resolvedVideoUrl(reference), demo: resolveExerciseDemo(reference) };
+    return { ...exercise, category: reference.libraryExercise?.category ?? null, equipment: reference.libraryExercise?.equipment ?? null, video_url: resolvedVideoUrl(reference), demo: resolveExerciseDemo(reference) };
   });
 }
 
@@ -352,7 +352,7 @@ async function withExerciseVideos(exercises, { media = true } = {}) {
   let library = [];
   if (libraryIds.length) {
     const { data, error } = await supabaseAdmin.from('exercise_library')
-      .select('id, video_url').in('id', libraryIds);
+      .select('id, video_url, category, equipment').in('id', libraryIds);
     if (error) throw error;
     library = data || [];
   }

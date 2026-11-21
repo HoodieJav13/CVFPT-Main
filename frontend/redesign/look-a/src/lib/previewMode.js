@@ -1006,6 +1006,8 @@ function workoutLogDetails(logId) {
     .sort((a, b) => a.position - b.position)
     .map((exercise) => ({
       ...exercise,
+      equipment: previewExerciseDemoReference(exercise).libraryExercise?.equipment ?? null,
+      category: previewExerciseDemoReference(exercise).libraryExercise?.category ?? null,
       video_url: resolvedVideoUrl(previewExerciseDemoReference(exercise)),
       demo: resolveExerciseDemo(previewExerciseDemoReference(exercise)),
       sets: state.workoutLogSets

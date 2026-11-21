@@ -1,5 +1,6 @@
 import { CueRetryEntry } from '@/components/training/CueRetryEntry';
 import { workoutEntryErrorMessage, workoutEntryErrors } from '@/lib/workoutEntryErrors';
+import { asksForLoad } from '@/lib/exerciseLoad';
 import { performedSet, trackingType, tracks } from '@/lib/workoutMetrics';
 import { WorkoutViewport } from '@/components/training/WorkoutViewport';
 import { WorkoutMetricInput } from '@/components/training/WorkoutMetricInput';
@@ -1432,14 +1433,14 @@ export default function WorkoutTracker() {
               <div className={cn('hidden gap-1 px-1 text-xs font-medium text-muted-foreground sm:grid', showRpe(exercise)
                 ? 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]'
                 : 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_2.75rem]')}>
-                <span>Set</span><span>Weight</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>{showRpe(exercise) && <span>RPE</span>}<span className="sr-only">Complete</span>
+                <span>Set</span><span>{asksForLoad(exercise) ? 'Weight' : null}</span><span>{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>{showRpe(exercise) && <span>RPE</span>}<span className="sr-only">Complete</span>
               </div>
               {exercise.sets.map((set) => { const checking = isHeld(set.id); const choice = draftChoices.current.get(set.id); const held = checking || Boolean(choice); return (
                 <div key={set.id} data-set-id={set.id} data-held={checking ? 'true' : undefined} data-choosing={choice ? 'true' : undefined} data-active={isActiveSet(exercise, set) ? 'true' : undefined} className={cn('grid min-h-12 grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-end gap-1 rounded-md px-1 py-1 sm:items-center', showRpe(exercise)
                   ? 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_minmax(3.5rem,1fr)_2.75rem]'
                   : 'sm:grid-cols-[1.75rem_minmax(8.5rem,2fr)_minmax(3.5rem,1fr)_2.75rem]', setRowClass(exercise, set))}>
                   <span className={cn('row-span-2 self-center text-center text-sm tabular-nums sm:row-span-1', isActiveSet(exercise, set) && 'font-semibold text-primary')}>{set.set_number}</span>
-                  <div className="col-span-3 min-w-0 sm:col-span-1">
+                  {asksForLoad(exercise) ? <div className="col-span-3 min-w-0 sm:col-span-1">
                     <span className="text-xs text-muted-foreground sm:hidden">Weight</span>
                     <div className="flex min-w-0 gap-1">
                       <Input
@@ -1466,7 +1467,7 @@ export default function WorkoutTracker() {
                         <SelectContent><SelectItem value="lb">lb</SelectItem><SelectItem value="kg">kg</SelectItem></SelectContent>
                       </Select>
                     </div>
-                  </div>
+                  </div> : <span aria-hidden="true" className="hidden sm:block" />}
                   <div className={cn('col-start-2 min-w-0 sm:col-start-auto', !showRpe(exercise) && 'col-span-2 sm:col-span-1')}>
                     <span className="text-xs text-muted-foreground sm:hidden">{trackingType(exercise) === 'reps_weight' ? 'Reps' : '—'}</span>
                     {trackingType(exercise) === 'reps_weight' ? <Input type="number" min="0" step="1" inputMode="numeric" className="h-11 px-2 text-sm tabular-nums" value={set.actual_reps ?? ''}
